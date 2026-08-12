@@ -89,6 +89,10 @@ const { readAllocatedCapital, readAllocatedCapitalAll, writeAllocatedCapital } =
 const { setManualMode } = require('../lib/maker/manual-mode');
 const { isAutoCloseEnabled, setAutoClose } = require('../lib/maker/auto-close-config');
 const PULIZIA = require('../lib/maker/pulizia-mercato-chiuso');
+// Lo stato REALE del mercato al venue (`closed`/`acceptingOrders`), per la scansione dei registri:
+// e' la domanda giusta perche' copre risoluzione e annullamento, mentre l'orologio vede solo la
+// scadenza nominale.
+const { leggiVenueClob } = require('../lib/maker/verifica-mercati-venue');
 const { registraResiduoScoperto, potaScadute, leggiRegistroResidui, scriviRegistroResidui } = require('../lib/maker/accumulo-residui');
 const MC = require('../lib/maker/modalita-chiusura');
 // ── IL PERCORSO DI PROFILO, CABLATO AL CICLO ────────────────────────────────────────────────────────
@@ -637,6 +641,105 @@ function maniPulizia(regMerge, regChiusura) {
   };
 }
 
+// Il board normalizzato: la stessa fonte che `resolveMarketRules` legge come prima scelta.
+const BOARD_FILE = path.join(__dirname, '..', 'data', 'liquidity-rewards.json');
+
+// ══ LA SCANSIONE DEI REGISTRI, OGNI 30 MINUTI E UNA VOLTA ALL'AVVIO ═════════════════════════════════
+// La pulizia dei registri partiva solo da `auto-close`, che itera le POSIZIONI: un mercato morto SENZA
+// posizione ma con voci residue non veniva mai visitato, e quelle voci restavano li' per sempre.
+// Misurato il 12 agosto: **86 mercati orfani** — presenti nei registri, fuori dal board, senza posizione.
+//
+// `lib/maker/scansione-registri.js` decide; qui vivono le fonti, perche' qui vive il disco e la rete.
+// Ogni fonte e' iniettata e ogni fallimento vale «non lo so», mai «non c'e' niente»: l'unica direzione
+// in cui questa scansione puo' sbagliare senza fare danno e' esaminare MENO mercati di quanti dovrebbe.
+const REGISTRI_DA_SCANDIRE = [
+  ['data/merge-attese.json', (j) => Object.keys(j.attese || {})],
+  ['data/residui-scoperti.json', (j) => Object.keys(j.residui || {})],
+  ['data/residui-sotto-soglia.json', (j) => Object.keys(j.voci || j.residui || {})],
+  ['data/modalita-chiusura.json', (j) => Object.keys(j.coppie || {})],
+  ['data/maker-allocated-capital.json', (j) => Object.keys(j.markets || {})],
+  ['data/maker-manual-mode.json', (j) => Object.keys(j.markets || j.marketIds || {})],
+  ['data/maker-auto-close.json', (j) => (j.enabledMarketIds || Object.keys(j.markets || {}))],
+];
+
+/** Tutti i mercati NOMINATI dai registri operativi. Le chiavi per coppia sono `<marketId>:<book>`. */
+function mercatiNeiRegistri() {
+  const out = new Set();
+  for (const [rel, estrai] of REGISTRI_DA_SCANDIRE) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(__dirname, '..', rel), 'utf8'));
+      for (const k of estrai(j) || []) {
+        const id = String(k || '').split(':')[0].toLowerCase();
+        if (id) out.add(id);
+      }
+    } catch { /* un registro assente o rotto contribuisce zero: non si conclude niente su di lui */ }
+  }
+  return [...out];
+}
+
+/** I mercati che il board conosce adesso. Board illeggibile ⇒ `null`, e allora si interroga tutto. */
+function mercatiSulBoard() {
+  try {
+    const j = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8'));
+    const righe = Array.isArray(j) ? j : (Array.isArray(j.markets) ? j.markets : []);
+    const s = new Set();
+    for (const r of righe) { const id = String((r && (r.conditionId || r.marketId)) || '').toLowerCase(); if (id) s.add(id); }
+    return s;
+  } catch { return null; }
+}
+
+let ultimaScansione = 0;
+async function scansioneRegistri({ forzata = false } = {}) {
+  const SR = require('../lib/maker/scansione-registri');
+  const now = Date.now();
+  if (!forzata && now - ultimaScansione < SR.CADENZA_MS) return null;
+  ultimaScansione = now;
+
+  // ── GLI ORDINI SI LEGGONO UNA VOLTA SOLA, non uno per mercato ──────────────────────────────────
+  // Una lettura per mercato su ~90 mercati sarebbe novanta richieste per una scansione di manutenzione.
+  // Si legge tutto e si raggruppa; se la lettura fallisce, `perMercato` resta `null` e NESSUN mercato
+  // risulta a libro libero — cioe' non si pulisce niente, che e' il verso giusto.
+  let perMercato = null;
+  try {
+    const l = await listManualOrders({ marketId: null });
+    const righe = (l && Array.isArray(l.orders)) ? l.orders : null;
+    if (righe) {
+      perMercato = new Map();
+      for (const o of righe) {
+        const id = String((o && (o.marketId || o.conditionId)) || '').toLowerCase();
+        if (id) perMercato.set(id, (perMercato.get(id) || 0) + 1);
+      }
+    }
+  } catch { perMercato = null; }
+
+  const board = mercatiSulBoard();
+  const snap = readVenuePositions();
+  const posizioni = (snap && snap.readable === true)
+    ? (snap.positions || []).map((p) => ({ marketId: String(p.conditionId || p.marketId || '').toLowerCase() })).filter((x) => x.marketId)
+    : null;
+
+  const regMerge = registroAttesaMerge();
+  const regChi = registroModalitaChiusura();
+  const esito = await SR.scansiona({
+    posizioni,
+    ordini: perMercato ? [...perMercato.keys()].map((m) => ({ marketId: m })) : null,
+    registri: mercatiNeiRegistri(),
+    suBoard: board ? (id) => board.has(id) : null,
+    statoVenue: async (id) => { try { return leggiVenueClob({ marketId: id }); } catch { return null; } },
+    // `null` (lettura fallita) NON diventa 0: un mercato senza voce nella mappa ha zero ordini SOLO se
+    // la mappa esiste.
+    ordiniDelMercato: async (id) => (perMercato ? (perMercato.get(id) || 0) : null),
+    maniRegistri: maniPulizia(regMerge, regChi),
+  });
+
+  log(`scansione registri: ${esito.esaminati} mercati nell'unione`
+    + ` (${esito.unione.daPosizioni} da posizioni, ${esito.unione.daOrdini} da ordini, ${esito.unione.daRegistri} dai registri`
+    + `, di cui ${esito.unione.soloRegistri.length} SOLO nei registri)`
+    + ` · ${esito.interrogati} interrogati al venue · ${esito.morti} morti · ${esito.puliti} ripuliti`
+    + (esito.unione.fontiNonLette.length ? ` · ⚠ fonti non lette: ${esito.unione.fontiNonLette.join(', ')}` : ''));
+  return esito;
+}
+
 // ── LA SCADENZA DI UN MERCATO, PER IL PASSO 5 ────────────────────────────────────────────────────
 // `resolveMarketRules` non porta `endDate` (verificato leggendo il suo `return`: readable, tick, banda,
 // minSize, i due token, i book — e nient'altro), quindi la scadenza si legge dal board, che e' la
@@ -646,7 +749,6 @@ function maniPulizia(regMerge, regChiusura) {
 // c'e' piu', si restituisce `null` — e `validoPerRipianificare` lo tratta come «non si ripianifica».
 // E' la direzione giusta: qui si aprono due ordini NUOVI, e §5 punto 44 e' la storia di cosa costa
 // aprire liquidita' su un mercato di cui non si conoscono piu' le proprieta'.
-const BOARD_FILE = path.join(__dirname, '..', 'data', 'liquidity-rewards.json');
 function scadenzaMercato(marketId) {
   try {
     const j = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8'));
@@ -1478,6 +1580,22 @@ async function main() {
   };
   await run();
   setInterval(run, tuning.pollMs);
+
+  // ── LA SCANSIONE DEI REGISTRI: UNA ALL'AVVIO, POI OGNI 30 MINUTI ─────────────────────────────────
+  // All'avvio perche' e' il momento in cui e' piu' probabile che ci siano voci vecchie — un processo che
+  // riparte dopo ore di fermo — e ogni 30 minuti perche' e' manutenzione: un mercato che muore non ha
+  // fretta di essere dimenticato, e una cadenza stretta costerebbe letture del venue per riconfermare
+  // ogni volta la stessa cosa.
+  //
+  // TRY/CATCH SUO, come la riconciliazione e il confronto reward: una scansione che fallisce e' un
+  // referto mancato, non un ciclo di riprezzo perso. E non tocca ordini ne' capitale — cancella voci di
+  // registro di mercati che il VENUE dichiara chiusi, e solo a libro libero.
+  const scansioneSicura = async (quando) => {
+    try { await scansioneRegistri({ forzata: quando === 'avvio' }); }
+    catch (e) { log(`scansione registri fallita (non fatale): ${e.message}`); }
+  };
+  await scansioneSicura('avvio');
+  setInterval(() => { scansioneSicura('periodica'); }, require('../lib/maker/scansione-registri').CADENZA_MS);
 
   // ── IL MOTORE DI MARKET MAKING HA IL SUO OROLOGIO ────────────────────────────────────────────────
   // 3 secondi, non i 5 del watcher reattivo. Sono due compiti diversi: quello reattivo interviene solo
