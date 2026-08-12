@@ -194,8 +194,28 @@ module.exports = {
     },
     {
       name:          'dashboard',
-      script:        'npm',
-      args:          'start -- --port 3000',
+      // ── PERCHE' NON PIU' `npm start` — trovato dalla prova `kill -9` del 12 agosto 2026 ───────────
+      // `script:'npm', args:'start -- --port 3000'` faceva gestire a pm2 il PADRE (npm), che a sua
+      // volta lancia `next start`, che lancia `next-server`. La porta 3000 la tiene il NIPOTE.
+      // Un `kill -9` sul processo gestito da pm2 uccideva quindi solo il padre e lasciava
+      // `next-server` ORFANO e vivo, con la porta ancora occupata: pm2 rilanciava, il nuovo processo
+      // trovava la porta presa e moriva con EADDRINUSE, all'infinito. Misurato: 30 riavvii instabili
+      // in tre minuti, e il servizio e' tornato solo dopo aver ucciso l'orfano A MANO.
+      // Con la politica VECCHIA (`max_restarts: 20`) sarebbe stato marcato `errored` al ventesimo e
+      // sarebbe rimasto giu' per sempre — cioe' i due difetti insieme producevano un dashboard che
+      // non si rialzava da un crash. La politica robusta gli ha tenuto aperta la strada; questa riga
+      // toglie la ragione per cui non riusciva a percorrerla.
+      //
+      // Eseguendo il binario di next DIRETTAMENTE, il processo che pm2 gestisce E' quello che possiede
+      // la porta: `kill -9` la libera, e il riavvio trova campo libero. Nessuna catena di processi in
+      // mezzo, quindi anche `pm2 stop`/`restart` diventano esatti invece che approssimati.
+      // NB: `npm start` resta valido per l'avvio a mano — questo cambia solo come lo lancia pm2.
+      script:        './node_modules/next/dist/bin/next',
+      // ARGOMENTI IN FORMA DI ARRAY, e non come stringa: con `args: 'start --port 3000'` next riceveva
+      // `3000` come PERCORSO DEL PROGETTO («Invalid project directory provided, no such directory:
+      // /root/rewards-bot/3000») perche' `--port` si perdeva nel passaggio. L'array non viene ri-diviso
+      // da nessuno, quindi ogni elemento arriva esattamente com'e' scritto.
+      args:          ['start', '-p', '3000'],
       cwd:           '/root/prediction-market',
       restart_delay: 5000,
       max_restarts:  20,
