@@ -842,3 +842,71 @@ module.exports = {
     },
   ],
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// LA POLITICA DI RIAVVIO DEI PROCESSI CRITICI — 12 agosto 2026
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// IL BUCO, MISURATO SUI PROCESSI VIVI e non dedotto dal file: tutti e dieci i processi critici girano
+// con `max_restarts: 20` e `min_uptime` NON impostato, cioe' il difetto di pm2 di **1 secondo**.
+// La semantica di pm2 e' questa: un'uscita prima di `min_uptime` conta come riavvio *instabile*, e al
+// ventesimo instabile consecutivo pm2 marca l'app `errored` e **SMETTE DI RIPROVARE**.
+//
+//   oggi:  20 tentativi x 15 s di `restart_delay` = **5 minuti**, poi giu' per sempre.
+//
+// Cinque minuti e' quanto basta a un 429 prolungato del venue in fase di boot, o a un disco pieno che
+// si libera da solo. E chi resta giu' non e' un processo qualsiasi: `agent43-guardian` e' l'unica cosa
+// che sorveglia le perdite, e `agent40-manual-reprice` l'unica che gestisce le posizioni aperte.
+// Dal 9 agosto 2026 (§5 punto 63, rimozione di agent37) **nessuno guarda piu' il loro battito**: un
+// `errored` silenzioso non verrebbe notato da nessun meccanismo automatico.
+//
+// LA CORREZIONE, e le due cifre che la compongono:
+//   · `min_uptime: 30_000` — un processo che sta su 30 s e' partito davvero, e il contatore degli
+//     instabili si AZZERA. Il boot piu' lento della flotta e' agent40 (~5 s per agganciare il feed in
+//     push), quindi 30 s sta comodamente sopra a tutti: un'uscita dentro quella finestra e' davvero
+//     «non e' riuscito a partire», non «e' partito e poi e' successo qualcosa».
+//   · `max_restarts: 500` — con i `restart_delay` gia' presenti (5-60 s, DELIBERATI e NON toccati qui)
+//     diventano da ~42 minuti (dashboard, 5 s) a ~8 ore (agent24, 60 s) di tentativi prima di
+//     arrendersi, contro i 5 minuti di adesso. E per esaurirli serve un crash loop VERO: qualunque
+//     avvio che regga 30 s riporta il contatore a zero.
+//
+// PERCHE' QUI E NON IN DIECI BLOCCHI. La stessa decisione scritta dieci volte e' il reperto che il
+// rilevatore D1 dell'audit cerca, e la divergenza qui vorrebbe dire «un processo critico ha una
+// politica di riavvio diversa dagli altri e nessuno se n'e' accorto». Un punto solo, e un test
+// (`lib/safety/riavvio-robusto.test.js`) che lo verifica leggendo il modulo.
+//
+// COSA NON TOCCA: `restart_delay` (per-agente, deciso caso per caso — agent24 ha 60 s per non
+// martellare Gamma), `max_memory_restart`, `autostart`, e i processi FUORI dall'elenco. In
+// particolare **agent44-audit-scoperta resta com'e'**: `autorestart:false` + `max_restarts:3` +
+// `cron_restart` sono la sua politica giusta (§3), e applicargli questa lo trasformerebbe in un
+// processo sempre vivo, che e' l'opposto di cio' che e'.
+//
+// ⚠ QUANDO DIVENTA EFFETTIVA. pm2 tiene la propria copia in memoria della descrizione del processo:
+// un `pm2 restart <nome>` NON rilegge questo file. Serve `pm2 restart agents/ecosystem.config.js
+// --only <nome>`. Finche' non lo si fa per un processo, quel processo gira con la politica vecchia.
+const RIAVVIO_ROBUSTO = Object.freeze({
+  autorestart: true,     // gia' il difetto di pm2, ma dichiarato: un difetto non e' una decisione
+  min_uptime:  30_000,
+  max_restarts: 500,
+});
+
+// I processi il cui `errored` silenzioso ha una conseguenza. `agent44-audit-scoperta` non c'e' per
+// costruzione (vedi sopra), e nemmeno i trenta fermati dalla riduzione all'insieme minimo.
+const PROCESSI_CRITICI = Object.freeze([
+  'agent24-liquidity-rewards',   // il board: senza, il piano invecchia e il trigger smette di piazzare
+  'agent27-news-guard',
+  'agent34-clob-ws',             // i book: senza, ogni mercato diventa cieco e gli ordini si ritirano
+  'agent38-tape-watchdog',
+  'agent40-manual-reprice',      // riprezzo, uscita, merge: l'unico che gestisce le posizioni aperte
+  'agent41-realloc-scheduler',   // l'unico che puo' piazzare da solo
+  'agent42-watch-makers',
+  'agent43-guardian',            // l'unico che sorveglia le perdite
+  'agent-monitor',
+  'dashboard',
+]);
+
+for (const app of module.exports.apps) {
+  if (PROCESSI_CRITICI.includes(app.name)) Object.assign(app, RIAVVIO_ROBUSTO);
+}
+
+module.exports.RIAVVIO_ROBUSTO = RIAVVIO_ROBUSTO;
+module.exports.PROCESSI_CRITICI = PROCESSI_CRITICI;
