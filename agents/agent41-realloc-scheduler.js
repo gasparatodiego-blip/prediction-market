@@ -1600,7 +1600,7 @@ function main() {
     // Il sorvegliante dell'interruttore parte SUBITO e non dopo il minuto di grazia: la sua prima
     // esecuzione non piazza niente per costruzione (inizializza l'istante), e serve proprio a essere
     // gia' in ascolto se qualcuno preme AVVIA nel primo minuto di vita del processo.
-    annuncia('log', `sorveglianza dell'interruttore ACCESA — controllo ogni ${AVVIO_CADENZA_MS / 1000}s: un AVVIA fa partire un mini-ciclo forzato entro ~2 minuti`);
+    annuncia('log', `sorveglianza dell'interruttore ACCESA — controllo ogni ${AVVIO_CADENZA_MS / 1000}s: un AVVIA fa partire SUBITO un ciclo di allocazione COMPLETO (motivo \`avvia-operatore\`), e la cadenza riparte da li'`);
     sorvegliaAvvio().catch(() => {});
     setInterval(() => { sorvegliaAvvio().catch((e) => annuncia('error', 'sorveglianza avvio fallita', { error: e.message })); }, AVVIO_CADENZA_MS);
   } else {
