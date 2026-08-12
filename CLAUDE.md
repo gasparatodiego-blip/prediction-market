@@ -3,7 +3,24 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~16:25 UTC (§5 punti 107-109).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~19:10 UTC (§5 punto 110).
+
+> ## 🔇 UNA DECISIONE PRESA POTEVA USCIRE SENZA UN ESITO SCRITTO — §5 punto 110
+> Il bot ha girato con capitale reale 17:50→18:23. Un fill ha lasciato **24 share NO scoperte** su
+> Vindman (carico 0,124, $2,976) e da lì, ogni ~60 s: `merge-livello-2` seguito da `skip-no-target`.
+> **14 decisioni, 14 skip, ZERO esiti** — nessun `-piazzato`, nessun `-reject-`, nessun
+> `merge-saltato-*`, `modalita-chiusura.json` mai creato, `residui-scoperti.json` fermo alle 09:48.
+> **La causa è il ramo `skip` di `runAutoCloseCycle`** (`auto-close.js`), che faceva `continue` PRIMA
+> del blocco che tenta il completamento della coppia: `planExit` rifiutava giustamente un'uscita in
+> perdita (banda fino a 0,115 contro carico 0,124) e quel rifiuto veniva letto come «non c'è niente da
+> fare». **Quarta occorrenza dello stesso difetto** — `already-covered` e `close-at-market` corretti
+> l'8 agosto, l'uscita ordinaria già a posto, `skip` rimasto indietro.
+> **Due correzioni.** ① Il ramo `skip` ora TENTA la coppia su ogni gate tranne i tre in cui manca un
+> ingresso (`no-position`, `no-entry-price`, `rules-unreadable`), che lo DICHIARANO invece di tacere.
+> ② Un **obbligo di esito** si apre nella stessa istruzione che scrive la decisione e va chiuso: due
+> punti di flush che nessun `continue` può saltare, e `merge-esito-mancante` per chi sfugge.
+> Misurato sul ciclo vero: il completamento parte, **BUY YES 24 @ 0,866**, e con il venue che rifiuta
+> si vede l'intera cascata (L1 → chiusura rapida → riposizionamento scoperto → rinuncia → skip).
 
 > ## 📐 IL TETTO PER MERCATO NON È PIÙ UNA COSTANTE: DERIVA DA `f_min` — §5 punto 107
 > $130 → $65 → e adesso **nessun numero**. Il tetto nasce da `minSize × costoCoppia / f_min_obiettivo`
@@ -5425,6 +5442,183 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
      (`053d6ad`): interroga la produzione e trova un campione vuoto — «0 su 0 chiamate» — cioè dipende
      dai dati, non dal codice. Gli altri sette sono i preesistenti del punto 84.
      `npm run build` verde, `BUILD_ID` `uNVp9ZjdEZPj-e1sWd2cA`, `prerender-manifest.json` presente.
+
+---
+
+## 5-quinquies · 12 agosto 2026, dopo il primo giro con capitale reale
+
+110. **IL RAMO `skip` INGHIOTTIVA LA GERARCHIA, E LA DECISIONE USCIVA MUTA — corretto il 12 agosto
+     2026, ~19:00 UTC. agent40 RIAVVIATO.**
+
+     **La scena, dai dati vivi.** Bot su AVVIA 17:50:28 → 18:23:10, KILL alle 18:23:06. Fra le
+     **17:58:02 e le 17:58:12** la gamba NO di Vindman (`cid_b73f32c2`) è stata fillata per intero:
+     **24 share @ 0,124 = $2,976**, confermato indipendentemente dal saldo (663,105 → 660,13, cioè
+     −$2,975 esatti). La gamba opposta è stata **cancellata correttamente** alle 17:58:12
+     (`lato-singolo-senza-punteggio`, mid YES 0,9035 fuori da [0,10 · 0,90] ⇒ un lato solo matura
+     zero). Da lì in poi, ogni ~60 s e per 14 giri:
+
+     ```
+     auto-close | merge-livello-2   «ci si mette da MAKER su YES per 24 share, tetto 86,6¢»
+     auto-close | skip-no-target    «banda fino a 0,115 già sotto il carico 0,124»
+     ```
+
+     **Zero righe di esito.** E i registri lo confermavano dall'esterno: `data/modalita-chiusura.json`
+     mai creato, `data/residui-scoperti.json` fermo alle 09:48 — cioè nemmeno `segnalaScoperto` era
+     stato raggiunto.
+
+     **LA CAUSA, LOCALIZZATA.** `runAutoCloseCycle`, ramo `if (d.action === 'skip')`: `m.skipped++`,
+     una riga d'audit, `continue`. Quel `continue` sta **quaranta righe prima** del blocco
+     `provaCoppia([])` dell'uscita ordinaria, che è l'unico punto in cui `completaCoppia` viene
+     chiamata sul percorso normale. Quindi:
+     - la decisione (`merge-livello-2`) è scritta più in alto, prima di `decideClose` — e resta;
+     - il tentativo non avviene, quindi nessun `merge-livello-2-piazzato` né `-reject-*`;
+     - `registraCoppia` non viene chiamata, quindi nemmeno `merge-saltato-*`;
+     - `completaCoppia` non parte, quindi né `chi.entra` (modalità chiusura) né `segnalaScoperto`.
+
+     **Il percorso ERA raggiungibile**: il KILL si legge in cima a `runAutoCloseCycle` e al momento del
+     fill era spento, il bot era su AVVIA, e le 14 righe `merge-livello-2` provano che il ciclo girava
+     e arrivava fin lì. Non è stato un blocco di sicurezza: è stato un ramo che usciva troppo presto.
+
+     **È LA QUARTA OCCORRENZA DELLO STESSO DIFETTO.** §5 punti 27 e 34 avevano corretto
+     `already-covered` e `close-at-market` l'8 agosto; l'uscita ordinaria era a posto per costruzione.
+     `skip` era rimasto perché sembrava «non c'è niente da fare» — mentre «non posso VENDERE in
+     guadagno» e «non posso COMPRARE l'altro lato» sono due domande diverse, e la seconda è
+     esattamente quella che la regola della gamba scoperta (§5 punto 54) esiste per porre. Il caso
+     «banda sotto il carico» **è** il caso che quella regola doveva coprire.
+
+     ### ① IL SILENZIO, corretto per primo perché è la classe del difetto
+
+     Tre modifiche in `lib/maker/auto-close.js`, e nessuna è una promessa in un commento:
+     - **l'obbligo si apre insieme alla decisione**: `apriObbligo(chiaveMerge, …)` sta nella stessa
+       istruzione che scrive la riga `merge-livello-N`. Da lì il ciclo non può più uscire in silenzio
+       su quella posizione;
+     - **si chiude in `registraCoppia`**, che ora scrive una riga per **ogni** esito. `non-applicabile`
+       era l'unico ramo muto della funzione («non c'era niente da fare, quindi non c'è niente da
+       dire») e non lo è più: «non c'era una coppia da completare» e «il completamento non è stato
+       tentato» sono due fatti diversi. Anche `in-attesa` ora ha la sua riga — «ci sto già lavorando»
+       è una risposta, e senza traccia era indistinguibile dal silenzio;
+     - **due punti di flush che nessun `continue` può saltare**: in cima a ogni iterazione della
+       posizione (scarica la precedente) e dopo il ciclo delle posizioni (scarica l'ultima — un
+       `continue` sull'ultima iterazione esce dal ciclo e arriva comunque lì). Un obbligo ancora aperto
+       produce **`merge-esito-mancante`** con il motivo.
+     - **⚠ CASO RESIDUO DICHIARATO**: un'eccezione che sfugge dal corpo della posizione fa fallire
+       l'intero ciclo, quindi nessun flush gira. Non è un ramo silenzioso — agent40 lo registra come
+       `lastError` sul battito e il ciclo risulta non eseguito, cioè visibile in un modo più rumoroso.
+
+     ### ② IL COMPORTAMENTO
+
+     Il ramo `skip` tenta `provaCoppia([])` **prima** di rinunciare, su ogni gate tranne quelli in cui
+     il completamento è **strutturalmente impossibile** perché manca un ingresso che `completaCoppia`
+     richiede: `no-position` (niente da appaiare), `no-entry-price` (il tetto si prezza sul carico),
+     `rules-unreadable` (senza tick/banda/minSize non si costruisce niente), più i due di mercato morto
+     che escono già più sopra. **Non una allowlist di gate «buoni»** — che invecchierebbe al primo gate
+     nuovo — ma la lista corta di ciò che non si può fare. Su quei tre si scrive
+     `merge-saltato-senza-ingressi`: una rinuncia motivata non deve comparire come `merge-esito-mancante`.
+
+     **Misurato sul ciclo VERO con i numeri di Vindman**: il completamento parte —
+     **BUY YES 24 @ 0,866** (il tetto del merge, 100 − 12,4 − 1), `chiudePosizione: true`, nessun SELL
+     in perdita sul lato posseduto. E con il venue che rifiuta si vede l'intera cascata che prima non
+     esisteva: `merge-livello-2-reject-*` → `chiusura-rapida-taker-reject-*` →
+     `riposizionamento-scoperto-controparte-reject-*` → `merge-saltato-rinuncia` → `skip-no-target`
+     **con `coppiaTentata: true`**.
+
+     **Verifica.** Nuovo `lib/maker/decisione-merge-sempre-un-esito.test.js` **43/43**, che riproduce
+     la scena numero per numero (stesso verdetto `skip/no-target`, stesso testo «banda fino a 0.115
+     … carico 0.124») e difende la **proprietà** su otto scenari: ogni riga di decisione ha una riga di
+     esito. **Provato che fallisce senza il fix**: 15/43, con la firma esatta della produzione —
+     `merge-livello-2, skip-no-target` e zero esiti su ogni scenario.
+     ⚠ Una prima stesura dell'asserzione strutturale sul ramo `skip` usava un regex fino al `continue`
+     più vicino e passava **anche pre-fix**, perché catturava il `provaCoppia([])` dell'uscita
+     ordinaria quaranta righe più sotto. Ora è ancorata a `m.skipped++`, la prima istruzione del ramo
+     dopo il tentativo: 931 caratteri col fix, 9 senza.
+
+     **File:** `lib/maker/auto-close.js` · nuovo `lib/maker/decisione-merge-sempre-un-esito.test.js`.
+
+111. **PERCHÉ L'UTILIZZO ERA AL 7,5% — E NON È IL TETTO DERIVATO. Sola diagnosi, nessun codice.**
+
+     L'ipotesi di partenza era che il conflitto fra **tetto per mercato** ($32,67, derivato da `f_min`)
+     e **pavimento premiante** ($24,50 / $61,25 / $122,50 / $245 per minSize 20/50/100/200) fosse il
+     vincolo che lega. **L'algebra conferma il conflitto e la misura lo assolve.**
+
+     **L'algebra, esatta.** Un mercato è ammissibile se `pavimento(minSize) ≤ tetto`, cioè
+     `minSize × 0,98 × 1,25 ≤ 20 × 0,98 / 0,60` ⇒ **`minSize ≤ 26,67`**. Solo i mercati a
+     **minSize 20** passano: 50, 100 e 200 sono esclusi **per costruzione**, non per il board di
+     stasera. Verificato con `capPerMarketUsd(663,11) = 32,67` e `pavimentoPremiante()`.
+
+     **MA IL TETTO NON È IL VINCOLO CHE LEGA, e la misura è netta.** Imbuto completo rieseguito sui
+     **30 snapshot reali del board del 12 agosto** (`data/history/rewards-poly/2026-08-12.json`, ognuno
+     col **proprio** orologio), con pavimento + orizzonte 18 h + finestra di mid `[0,36 · 0,64]`:
+
+     | | capacità = mercati × $32,67 | % del capitale |
+     |---|---|---|
+     | minimo | $98 | 15% |
+     | Q1 | $653 | 99% |
+     | **mediana** | **$817** | **123%** |
+     | Q3 | $1.111 | 168% |
+     | massimo | $2.287 | 345% |
+
+     **23 snapshot su 30 (77%) coprivano l'obiettivo del 90% ($596,80).** Il tetto derivato non è
+     troppo stretto per questo board: la capacità mediana è **una volta e un quarto** il capitale.
+
+     **IL BOARD DELLE 17:34 ERA IL SECONDO PEGGIORE DELLA GIORNATA**: 6 mercati, **$196 = 30%** del
+     capitale. È esattamente il piano che agent41 ha calcolato alle 17:51 (6 mercati, 3 eseguibili,
+     $71,84 impegnati). Quaranta minuti dopo, alle 18:16, lo stesso imbuto dà **27 mercati / $882 /
+     133%**.
+
+     **E LA CAUSA DELL'ANOMALIA NON È IL PAVIMENTO: È L'ORIZZONTE MISURATO SU UNA DATA TRONCATA.**
+     Alle 16:47 il pavimento lasciava passare 51 mercati e l'orizzonte ne toglieva **zero**; alle 17:34
+     il pavimento ne lasciava 49 e l'orizzonte li portava a **14**. Fra i due snapshot **63 mercati su
+     88 in comune hanno cambiato `endDate`**, tutti **all'indietro**, fino a 24 ore:
+
+     ```
+     Amsterdam / Jeddah / Milano / Monaco / Tel Aviv …
+        16:47  2026-08-13T12:00:00Z   →   17:34  2026-08-13T00:00:00Z    (−12 h)
+     «US announces end of Iranian blockade»
+        16:47  2026-08-13T23:59:00Z   →   17:34  2026-08-13T00:00:00Z    (−24 h)
+     ```
+
+     È l'unificazione della scadenza sul **CLOB** (§5 punto 104, commit `cf1299e`), entrata nel
+     processo col riavvio di agent24 delle **~17:23**: il CLOB **tronca a mezzanotte UTC**, Gamma
+     pubblicava l'ora vera. **Controfattuale esatto sullo snapshot delle 17:34**, prendendo la scadenza
+     Gamma dallo snapshot delle 16:47 per gli stessi mercati:
+
+     | fonte della scadenza | passano l'orizzonte 18 h | capacità |
+     |---|---|---|
+     | **CLOB** (in servizio dalle 17:23) | **14** | **$457 · 69%** |
+     | Gamma (fino alle 17:23) | **34** | **$1.111 · 168%** |
+     | esclusi dal **solo** troncamento | **20 mercati** | **−$654** |
+
+     **⚠ IL TRONCAMENTO NON COSTA SEMPRE: MORDE A CERTE ORE.** Sul board delle 18:48 le due letture
+     danno **lo stesso numero** (32 mercati) pur divergendo su 56 righe su 66 con un troncamento medio
+     di **12,0 ore**: la differenza conta solo quando la scadenza vera cade nella fascia fra 18 h e
+     18 h + troncamento. Alle 17:34 ci cadeva un'intera coorte; alle 18:48 nessuna.
+
+     **La scelta del CLOB come fonte resta giusta per la ragione per cui è stata fatta** — è il
+     registro di chi smette davvero di accettare ordini, ed è la più prudente per costruzione. Quello
+     che non era stato misurato è **l'interazione con il pavimento di 18 h**: sottrarre fino a 24 ore a
+     ogni mercato e poi chiedere che ne restino 18 significa, per i mercati che scadono «domani»,
+     escluderli da ~06:00 UTC del giorno prima invece che da ~06:00 del giorno stesso.
+
+     **LE OPZIONI, CON I NUMERI. Nessuna implementata: la scelta è dell'operatore.**
+
+     Imbuto completo (pavimento + orizzonte + finestra di mid) rieseguito su **due** board: quello
+     delle **17:34** che ha prodotto il piano magro, e quello delle **18:48**, cioè adesso. Capacità =
+     mercati × tetto; il 90% dell'obiettivo è $596,80.
+
+     | # | leva | 17:34 (il board del piano) | 18:48 (adesso) | costo / rischio |
+     |---|---|---|---|---|
+     | **A** | **non toccare niente** | 6 merc · **$196 · 30%** | 26 merc · **$849 · 128%** | capacità mediana della giornata $817 (123%), 23/30 snapshot coprono il 90%. Ma il 23% dei giri cade in una finestra magra, e lì l'utilizzo resta sotto il 30% |
+     | **B** | **orizzonte su Gamma quando il CLOB è a mezzanotte esatta** (il troncamento è riconoscibile) | 20 merc · **$653 · 99%** | — *(serve lo snapshot precedente per il confronto)* | **×3,3 nella finestra magra.** Riapre però una seconda fonte per la stessa domanda, cioè ciò che §5 punto 104 aveva chiuso apposta: va deciso come regola, non come eccezione |
+     | **C** | **pavimento orizzonte 18 h → 12 h** | 6 merc · $196 · 30% — **ZERO effetto** | 26 merc · $849 · 128% — **ZERO effetto** | **misurato e inutile**: le date troncate stanno a `00:00`, cioè 6,4 h alle 17:34, quindi restano sotto anche a 12 h. Scendere a **6 h** darebbe 21 merc ($686 · 103%), ma contraddice la taratura di §5 punto 38 fase 1 (mediana 22,7 h sui premianti) |
+     | **E** | **`f_min` 0,60 → 0,32** (tetto $61,25, ammette minSize ≤ 50) | 8 merc · **$490 · 74%** | 28 merc · **$1.715 · 259%** | `f_min` 0,32 vuol dire che un fill sotto il 32% lascia un residuo non piazzabile. A 0,16 (tetto $122,50, minSize ≤ 100): 9 merc · $1.103 · 166% alle 17:34. È un ritorno parziale al rischio del tetto da $130 |
+     | **F** | **togliere la finestra di mid** alzando il tetto per ordine (oggi $21,34 ⇒ `[0,36 · 0,64]`) | 14 merc · **$457 · 69%** | 32 merc · **$1.045 · 158%** | ×2,3 alle 17:34, ma resta sotto il 90%: da sola non basta nella finestra magra, e alza il rischio per singolo ordine |
+     | **B+F** | le due insieme | 34 merc · **$1.111 · 168%** | — | copre il 90% con margine anche nel secondo peggior board della giornata |
+
+     **La raccomandazione, in una frase**: la leva con il miglior rapporto effetto/rischio è **B** — il
+     troncamento è riconoscibile senza ambiguità (scadenza CLOB esattamente a mezzanotte **e** Gamma
+     più tardi nello stesso giorno), correggerlo non allarga nessun perimetro di rischio e restituisce
+     solo l'ora vera a un mercato che il venue accetta ancora. **C è da scartare**: la misura dice che
+     non fa niente. **A resta legittima**: 23 giri su 30 vanno bene da soli.
 
 ---
 
