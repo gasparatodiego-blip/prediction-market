@@ -101,8 +101,11 @@ function capitalToQualify(mid, minSize, pairCostUsd = null) {
   // Stessa regola di shareForCapital, invertita: quanto capitale serve perché `size` arrivi a `minSize`.
   // Con il costo della coppia noto è `minSize × pairCost`; senza, resta il vecchio `2 × mid × minSize`.
   // Le due devono muoversi insieme, altrimenti la soglia e il rifiuto raccontano due storie diverse.
-  if (typeof pairCostUsd === 'number' && Number.isFinite(pairCostUsd) && pairCostUsd > 0) return minSize * pairCostUsd;
-  return 2 * clampPrice(mid) * minSize;
+  // ⚠ IL RAMO `2 × mid × minSize` E' STATO TOLTO il 12 agosto 2026. Non era «il vecchio»: era
+  // SBAGLIATO — assumeva che entrambi i lati costassero `mid`, vero solo a mid 0,50, e a mid 0,055
+  // sottostimava di nove volte il capitale necessario a qualificare. La conversione vive ora in
+  // `lib/rewards/size-da-capitale`, ed e' la stessa che usa il modulo che piazza.
+  return require('../../../lib/rewards/size-da-capitale').capitalePerQualificare({ minSize, pairCostUsd });
 }
 
 /**

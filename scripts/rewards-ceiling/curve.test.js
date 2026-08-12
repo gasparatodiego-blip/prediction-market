@@ -70,9 +70,14 @@ console.log('\nvenue min_incentive_size — sotto il minimo il rendimento e ZERO
   ok('concorda con lib/rewardScore.quadraticUserShare sotto il minimo (entrambe 0)',
     quadraticUserShare(500, 0.50, 6, 200, 50, 0) === 0 && shareForCapital(500, 0.50, 100, 200) === 0);
   // il capitale che sbloccherebbe la riga: minSize share per lato, ai due lati
-  ok('capitalToQualify(0.50, 200) = $200 (200 share/lato a 0,50)', near(capitalToQualify(0.50, 200), 200));
-  ok('capitalToQualify su input non rispondibili → null, mai una soglia inventata',
-    capitalToQualify(0, 200) === null && capitalToQualify(0.5, 0) === null);
+  // ⚠ La soglia NON dipende piu' dal mid (12 agosto 2026): 200 share per lato costano `200 × costo
+  // della coppia`, e a mid 0,50 il vecchio `2 × mid × minSize` dava lo stesso numero solo per caso.
+  const SDC_C = require('../../lib/rewards/size-da-capitale');
+  ok(`capitalToQualify(0.50, 200) = $${SDC_C.capitalePerQualificare({ minSize: 200 })} (200 share per lato)`,
+    near(capitalToQualify(0.50, 200), SDC_C.capitalePerQualificare({ minSize: 200 })));
+  ok('  e lo stesso a qualunque mid: il mid non entra piu nel conto',
+    near(capitalToQualify(0.05, 200), capitalToQualify(0.95, 200)));
+  ok('minSize non rispondibile → null, mai una soglia inventata', capitalToQualify(0.5, 0) === null);
 }
 
 console.log(`\ncurve.test: ${n} assertions passed`);

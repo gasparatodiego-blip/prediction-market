@@ -77,9 +77,10 @@ function computeNet(byMarket, markouts, potByCond, cfg) {
     // LE SHARE PER LATO, con la stessa regola che ha appena deciso il punteggio. Se questa riga e
     // shareForCapital divergessero, il piano mostrerebbe una size che non e quella con cui e stato
     // classificato — ed e esattamente il difetto che il costo della coppia esiste per chiudere.
-    const sizePerSideShares = usaCoppia
-      ? capitalTotal / pairCostUsd
-      : (capitalTotal / 2) / Math.max(0.01, Math.min(0.99, mid));
+    // UNA FORMULA SOLA (lib/rewards/size-da-capitale). Il ramo `(C/2)/mid` e' stato tolto il 12 agosto
+    // 2026: non era «meno preciso», era sbagliato — a mid 0,055 dava nove volte le share vere.
+    const sizePerSideShares = require('../../../lib/rewards/size-da-capitale')
+      .sharePerLato({ capitaleUsd: capitalTotal, pairCostUsd: usaCoppia ? pairCostUsd : null }).shares;
     const belowVenueMinSize = fin(minSize) && minSize > 0 && sizePerSideShares < minSize;
     const grossPerDay = pot * share;                            // $/day rate — window-independent
     const grossWindow = grossPerDay * spanDays;                 // over the market's OWN observed span
