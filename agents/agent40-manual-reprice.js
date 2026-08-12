@@ -402,7 +402,51 @@ const registroOrfani = (() => {
 // pianificazione. Il riposizionamento NON si fa nel ciclo di riprezzo — non ha mai aperto esposizione e
 // non deve cominciare adesso: la coda viene consegnata al ciclo di chiusura, che il riposizionamento lo
 // sa gia' fare (Lavoro B, `capitalePerRiposizionamento` + tetto in vigore).
-const daRipianificareCoda = new Map();
+//
+// ══ E ADESSO E' SU DISCO (12 agosto 2026, dalla prova di crash) ═════════════════════════════════════
+// La coda viveva SOLO in memoria, ed e' l'unico stato in-memoria di agent40 la cui perdita costa
+// qualcosa di reale: un `kill -9` fra la cancellazione della gamba orfana e il drenaggio della coda
+// faceva sparire il mercato dalla pianificazione. Nessun capitale a rischio — la gamba e' gia'
+// cancellata, quindi l'esposizione e' SCESA — ma il capitale liberato restava fermo, e nessun ciclo
+// sarebbe tornato a occuparsene: la coda si riempie solo alla cancellazione, che era gia' avvenuta.
+//
+// Tutto il resto dello stato in memoria e' o un contatore di conferma (`breaches`,
+// `ultimaValutazione`) che si ricostruisce al giro dopo, o una cache (`ultimePosizioni`, 5 s), o un
+// insieme anti-ripetizione dei log (`residuiSegnalati`, `conflittiSoppressi`): perderli costa un ciclo
+// o una riga di log doppia. Questa costava un riposizionamento.
+//
+// Scrittura atomica tmp+rename come gli altri registri. Le voci si potano a 24 h: un mercato in coda da
+// un giorno non e' piu' da ripianificare, e' da dimenticare.
+const RIPIANIFICA_FILE = path.join(__dirname, '..', 'data', 'da-ripianificare.json');
+const RIPIANIFICA_TTL_MS = 24 * 3_600_000;
+
+const daRipianificareCoda = (() => {
+  const m = new Map();
+  const scrivi = () => {
+    try {
+      const tmp = `${RIPIANIFICA_FILE}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify({ atIso: new Date().toISOString(), voci: [...m.values()] }, null, 1));
+      fs.renameSync(tmp, RIPIANIFICA_FILE);
+    } catch { /* una coda che non si scrive non deve fermare una cancellazione gia' avvenuta */ }
+  };
+  // All'avvio si RIPRENDE cio' che il processo precedente aveva in mano.
+  try {
+    const j = JSON.parse(fs.readFileSync(RIPIANIFICA_FILE, 'utf8'));
+    const ora = Date.now();
+    for (const v of (j && Array.isArray(j.voci) ? j.voci : [])) {
+      if (!v || !v.marketId) continue;
+      const at = Number(v.at);
+      if (Number.isFinite(at) && ora - at > RIPIANIFICA_TTL_MS) continue;
+      m.set(String(v.marketId), v);
+    }
+  } catch { /* file assente: coda vuota, che e' lo stato normale */ }
+  return {
+    set: (k, v) => { m.set(String(k), { ...v, at: Number(v && v.at) || Date.now() }); scrivi(); },
+    values: () => m.values(),
+    clear: () => { m.clear(); scrivi(); },
+    get size() { return m.size; },
+  };
+})();
 
 const POSIZIONI_FRESCHE_MS = 5_000;
 let ultimePosizioni = { at: 0, res: null };
