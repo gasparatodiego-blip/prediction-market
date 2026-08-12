@@ -101,6 +101,65 @@ const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit'
 const killSwitch = require('../lib/safety/kill-switch');
 const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 const UTIL = require('../lib/maker/utilizzo-capitale');
+const CAPLAV = require('../lib/maker/capitale-al-lavoro');
+
+// ── LO STATO DELLA DIAGNOSI DEL CAPITALE FERMO ────────────────────────────────────────────────────
+// Vive in memoria e non su disco di proposito: descrive un EPISODIO in corso, e dopo un riavvio la
+// risposta onesta è «riparto a contare» — scrivere la diagnosi subito dopo un riavvio direbbe «sotto
+// soglia da 30 minuti» su un processo che è vivo da dieci secondi.
+let statoDiagnosiFermo = { sottoDa: null, giaScritta: false };
+
+/**
+ * IL CAPITALE AL LAVORO, DETTO A OGNI GIRO. Una riga di log e una voce di audit, dalla stessa misura
+ * che il ciclo ha già fatto — non una seconda lettura, che potrebbe divergere.
+ * Quando resta sotto la soglia di diagnosi abbastanza a lungo, aggiunge la RIPARTIZIONE in dollari.
+ */
+function raccontaCapitaleAlLavoro(utilizzo, referto, quale) {
+  let c;
+  try { c = CAPLAV.capitaleAlLavoro({ utilizzo }); } catch { return; }
+  try {
+    annuncia('log', `CAPITALE AL LAVORO · ${c.leggibile
+      ? `$${c.alLavoroUsd.toFixed(2)} su $${c.totaleUsd.toFixed(2)} = ${c.pct}% · obiettivo ${c.obiettivoPct}%`
+        + `${c.raggiunto ? ' ✓ RAGGIUNTO' : ` · mancano $${c.mancanoUsd.toFixed(2)}`}`
+      : c.motivo}`);
+  } catch { /* il log non deve poter fermare il ciclo */ }
+
+  const d = CAPLAV.valutaDiagnosi({ frazione: c.leggibile ? c.frazione : null, ora: Date.now(), stato: statoDiagnosiFermo });
+  statoDiagnosiFermo = { sottoDa: d.sottoDa, giaScritta: d.giaScritta };
+
+  let rip = null;
+  if (d.scrivi && c.leggibile) {
+    // Le cause arrivano da chi le conosce — il referto del giro — e NON si indovinano qui: quello che
+    // nessuno ha misurato resta `non attribuito`, che è il segnale che manca un osservatore.
+    const senzaRighe = /nessun mercato del piano ha spazio sufficiente|non ha righe utilizzabili/.test(String(referto && referto.motivo || ''))
+      || /spazio sufficiente/.test(String(referto && referto.motivoStop || ''));
+    rip = CAPLAV.ripartizioneFermo({
+      fermoUsd: c.fermoUsd,
+      // Il residuo che il giro ha dichiarato di non aver saputo allocare è la stima migliore che
+      // abbiamo di «fermo perché il piano non offre righe»: viene dal referto, non da un'ipotesi.
+      pianoSenzaRigheUsd: senzaRighe && Number.isFinite(referto && referto.residuoUsd) ? referto.residuoUsd : 0,
+      tettoMercatoPienoUsd: 0,
+      rifiutatiDalVenueUsd: 0,
+      nonQuotabiliUsd: 0,
+      rateLimitUsd: 0,
+    });
+    annuncia('log', `⚠ CAPITALE FERMO DA ${Math.round((Date.now() - d.sottoDa) / 60000)} MINUTI — ${rip.riga}`);
+  }
+
+  try {
+    appendMakerAudit({
+      ts: Date.now(), venue: 'polymarket', source: 'realloc-scheduler', op: 'capitale-al-lavoro',
+      outcome: c.leggibile ? (c.raggiunto ? 'obiettivo-raggiunto' : 'sotto-obiettivo') : 'non-misurabile',
+      reason: c.motivo,
+      observed: {
+        quale,
+        alLavoroUsd: c.alLavoroUsd, totaleUsd: c.totaleUsd, fermoUsd: c.fermoUsd,
+        pct: c.pct, obiettivoPct: c.obiettivoPct, mancanoUsd: c.mancanoUsd,
+        ripartizione: rip ? rip.voci : null, ripartizioneChiude: rip ? rip.chiude : null,
+      },
+    });
+  } catch { /* l'audit non deve poter fermare il ciclo */ }
+}
 // ── IL FRENO DI PROVA (12 agosto 2026) ────────────────────────────────────────────────────────────
 // Fino a oggi `REALLOC_SCHEDULER_DRY_RUN` non era letto da NESSUNA riga: era decorativo, e per due
 // giorni ha fatto credere che agent41 fosse in prova mentre non lo era. Adesso frena davvero, su
@@ -710,6 +769,9 @@ async function giro(motivoAvvio) {
   }
 
   scrivi({ at: new Date().toISOString(), tipo: 'ciclo-referto', motivoAvvio, ...referto });
+  // Il capitale al lavoro si dice anche qui, non solo nel mini-ciclo: il ciclo da 6h è quello che
+  // RIBILANCIA, quindi è il punto in cui la misura cambia di più ed è più utile leggerla.
+  raccontaCapitaleAlLavoro(referto && (referto.utilizzoStimatoDopo || referto.utilizzo), referto, 'ciclo-6h');
   scriviStato({ lastRunAt: avvio, lastRunIso: new Date(avvio).toISOString(), lastAzione: referto.azione, lastMotivo: referto.motivo });
 
   if (referto.azione === 'fermato') {
@@ -1411,6 +1473,7 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   } finally { inCorso = false; }
 
   scrivi(r);
+  raccontaCapitaleAlLavoro(r.utilizzoStimatoDopo || r.utilizzo, r, 'mini-ciclo');
   if (r.esito === 'allocato') {
     annuncia('log', `mini-ciclo${r.forzato ? ' FORZATO' : ''}: $${r.allocatoUsd} rimessi al lavoro su ${(r.mercati || []).length} mercato/i`
       + ` (${r.piazzati} ordini piazzati, ${r.rifiutati} rifiutati`

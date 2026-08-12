@@ -3,6 +3,7 @@ import { leggiSaldoUsd } from '@/lib/maker/saldo-cache';
 import { listManualOrders } from '@/lib/maker/manual-order';
 import { readVenuePositions } from '@/lib/safety/venue-positions-snapshot';
 import { misuraUtilizzo, formattaUtilizzo, nozionaleARiposo, valorePosizioni, TARGET_UTILIZZO } from '@/lib/maker/utilizzo-capitale';
+import { capitaleAlLavoro } from '@/lib/maker/capitale-al-lavoro';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,6 +59,13 @@ export async function GET() {
       utilizzo: u,
       riga: formattaUtilizzo(u),
       target: TARGET_UTILIZZO,
+      // ── IL CAPITALE AL LAVORO, COL SUO OBIETTIVO ACCANTO (12 agosto 2026) ──────────────────────
+      // Stesso numero, stessa misura, nessuna seconda lettura: `capitaleAlLavoro` riceve l'esito di
+      // `misuraUtilizzo` che questa rotta ha gia' calcolato. Esiste come campo proprio perche' il
+      // pannello deve poter mostrare «$X su $Y = Z% · obiettivo 95%» senza doverlo ricomporre da
+      // tre campi diversi — e ricomporlo a mano e' il modo in cui, il 9 agosto, un totale gonfiato
+      // e' finito a schermo accanto a uno giusto.
+      capitaleAlLavoro: capitaleAlLavoro({ utilizzo: u }),
       // LE FONTI, CIASCUNA COL SUO STATO. Serve a rispondere a «perche' non e' misurabile» senza
       // dover aprire i log: una delle tre righe qui sotto dira' di no, e dira' perche'.
       fonti: {
