@@ -124,6 +124,23 @@ Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~16:25 UTC (§5 p
 > (306 righe su 306; ha `hoursToResolution`), e scadenza assente vale `unknown`, che **non esclude mai**.
 > **Il fail-closed ha funzionato: nessun ordine toccato.**
 
+> ## 🗓 UNA SOLA FONTE PER LA SCADENZA: IL VENUE — §5 punto 104
+> Il pianificatore leggeva Gamma, la verifica leggeva il CLOB: due mercati scelti con 32,3 h e 20,3 h e
+> poi rifiutati con «mancano 8,3 h», tre ricalcoli, ciclo fermato. **Misurato su 38 mercati**: il CLOB
+> **tronca a mezzanotte**, quindi è **mai più tardi di Gamma** — la più prudente per costruzione, e il
+> registro di chi smette davvero di accettare ordini. Le soglie sono **dedotte dalla forma dell'errore**:
+> oltre **24 h** non è troncamento, e Gamma **prima** del CLOB oltre 1 h è incompatibile col troncamento
+> ⇒ in entrambi i casi il mercato è **escluso A MONTE**, `reasonCode: scadenza-discorde`. Una lettura
+> **mancante** invece non esclude: non è una contraddizione. Costo zero — la seconda lettura entra nel
+> `Promise.all` già esistente di agent24.
+
+> ## ▶️ AVVIA FA PARTIRE SUBITO UN CICLO COMPLETO — §5 punto 105
+> Prima innescava il mini-ciclo, che sceglie dal piano salvato: il piano vero ripartiva alla cadenza
+> successiva, **fino a dieci minuti di capitale fermo**. Adesso la transizione FERMO→AVVIA chiama
+> **`giro`, lo stesso ciclo della cadenza** — stesse regole, stesso freno, stesso lucchetto — con il solo
+> motivo `avvia-operatore` a distinguerlo negli audit. Scatta **solo sulla transizione**, mai due volte
+> per lo stesso AVVIA, mai in parallelo a un ciclo in corso, e la cadenza **riparte dall'avvio**.
+
 > ## ⏱ LA CHIUSURA FORZATA A 3 ORE ESISTEVA E NON POTEVA SCATTARE — §5 punto 85
 > Due cause, nessuna era il numero. **①** Il verdetto si calcolava DOPO la guardia `livello !== 1 && !== 2`:
 > il livello 3 è l'esito più comune — **1.119 occorrenze** di `merge-livello-3` sui due giornali — e su
@@ -5345,6 +5362,69 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
      l'allocazione — quindi il `f_min` reale del piano è **75%**, non il 60% dell'obiettivo. Se
      l'operatore vuole davvero il 60% realizzato, la leva non è il tetto ma il passo della griglia.
      **Baseline test: 190 eseguiti, 183 verdi, 7 rossi preesistenti.**
+
+104. **UNA SOLA FONTE PER LA SCADENZA: IL VENUE, COL BOARD COME RISCONTRO — 12 agosto 2026, in `main`.**
+     Commit `cf1299e`. Le fonti erano due, lette in due punti diversi: il **pianificatore** leggeva il
+     board (Gamma, via agent24), la **verifica** leggeva il venue (`end_date_iso` del CLOB). Sul ciclo
+     delle **15:41:31Z** due mercati sono stati scelti con 32,3 h e 20,3 h di vita e poi rifiutati con
+     «mancano 8,3 h (soglia 18 h)» — tre ricalcoli e il ciclo fermato, **senza che nessuna delle due
+     letture fosse sbagliata**.
+     **FONTE SCELTA: IL VENUE**, e la misura la sceglie. Su 38 mercati del board: differenza Gamma −
+     CLOB **mai negativa**, mediana 0,0 h, p90 16,0 h, **massimo esattamente 24,0 h**; 15 su 38
+     divergono oltre 2 h. Il CLOB **tronca a mezzanotte UTC**, Gamma pubblica l'ora vera — quindi il
+     CLOB è **per costruzione mai più tardi di Gamma**: a parità di attendibilità è la più prudente, ed
+     è il registro di chi smette davvero di accettare ordini. Gamma resta come riscontro incrociato.
+     **LE DUE SOGLIE SONO DEDOTTE DALLA FORMA DELL'ERRORE**, non scelte a occhio: oltre **24 h** non è
+     troncamento (è il massimo che il troncamento può produrre), e **Gamma prima del CLOB oltre 1 h** è
+     incompatibile col troncamento, che può solo anticipare. In entrambi i casi il mercato è
+     **INAMMISSIBILE** ed è escluso **A MONTE**, prima del knapsack, con `reasonCode: scadenza-discorde`
+     distinto da «scade troppo presto».
+     **LE DUE DIREZIONI DI FALLIMENTO SONO OPPOSTE APPOSTA**: la **divergenza** fra due letture presenti
+     esclude (fail-closed); una **lettura mancante** no (fail-open) — non è una contraddizione, e
+     trattarla come tale fermerebbe il bot a ogni singhiozzo del venue. Nessuna lettura ⇒ esclude.
+     **Costo zero sulla scansione**: la seconda lettura entra nel `Promise.all` **già esistente** del
+     ciclo per mercato di agent24 — ~110 ms misurati contro i 2,7-3,4 s/mercato che la profondità costa
+     già. Nessuna fase nuova. Cache di un'ora.
+     **⚠ LA VIA IN BLOCCO È MORTA, e la misura l'ha esclusa prima di scriverla**: il catalogo CLOB
+     paginato (`/markets`) dà 60 pagine e 52.356 date in 8,3 s ma **zero `condition_id` in comune col
+     nostro board** — 0 su 114. Resta la lettura per mercato.
+     **Difetto trovato dal selfcheck**: la soglia si decideva sul valore **arrotondato per la stampa**,
+     quindi un secondo oltre le 24 h passava come «esattamente 24». Ora si confronta l'esatto.
+     File: `lib/rewards/scadenza-mercato.js` (`scadenzaUnificata`, selfcheck 22/22) ·
+     `agents/agent24-liquidity-rewards.js` · `lib/rewards-normalize.js` · `lib/rewards/allocator.js` ·
+     `agents/agent41-realloc-scheduler.js` (`scadenzaDalBoard`; `leggiVenue` non ricava più la scadenza
+     da `end_date_iso`, che resta accanto come `endDateVenueGrezza`) ·
+     `lib/rewards/scadenza-unificata.test.js` **50/50**.
+
+105. **AVVIA INNESCA SUBITO UN CICLO COMPLETO — 12 agosto 2026, in `main`.** Commit `55624e3`.
+     La sorveglianza dell'interruttore reagiva già entro 15 s, ma innescava il **mini-ciclo**: quello
+     sceglie dal piano salvato e ha le sue attese, quindi il piano vero ripartiva alla cadenza
+     successiva — **fino a dieci minuti di capitale fermo** dopo che una persona ha premuto il bottone.
+     **SI RIUSA `giro`, IL CICLO A CADENZA**, e non se ne scrive uno parallelo: è l'unico modo di
+     garantire «stesse regole, stesso fail-closed, stesso freno» senza doverlo promettere in un
+     commento. `giro` rilegge l'interruttore, consulta il freno in **due** punti (il referto e
+     `dryRunOnly` del reset) e passa dal motore e dai suoi cancelli. Cambia **solo il motivo**,
+     `avvia-operatore`, che viaggia in `ciclo-avvio` e `ciclo-referto`.
+     **I tre vincoli, e nessuno è codice nuovo**: si guarda l'**istante** in cui l'interruttore è stato
+     scritto (non il fatto che sia acceso), quindi una lettura ripetuta non passa; `ultimoAvvioVisto` è
+     aggiornato **prima** dell'await, quindi mai due volte per lo stesso AVVIA; `giro` esce con `null`
+     se `inCorso`, **lo stesso lucchetto** del ciclo a cadenza e del mini-ciclo — e in quel caso **non**
+     si riallinea la cadenza, che il ciclo in corso sposta da sé.
+     **Difetto chiuso nel farlo**: il timeout era anonimo, quindi un ciclo fuori cadenza spostava
+     `lastRunAt` ma **non** il timeout già armato, che sarebbe scattato all'ora vecchia — un secondo
+     ciclo troppo presto. Ora il timer è **uno solo**, tenuto in mano e annullato prima di riarmarlo.
+     **⚠ `controlloCapitaleFermo({forzatoDa})` non ha più un chiamante** in produzione: il parametro
+     resta e non è stato rimosso — toglierlo tocca il percorso forzato del mini-ciclo, che ha guardie
+     sue, ed è più prudente dichiararlo che modificarlo adesso.
+     File: `agents/agent41-realloc-scheduler.js` · `lib/maker/avvia-innesca-ciclo.test.js` **20/20**.
+     `capitale-al-lavoro.test.js` **aggiornato e RAFFORZATO, non tolto**: pretendeva la stringa del
+     mini-ciclo, ora pretende il ciclo completo e il riallineamento (74/74).
+
+106. **BASELINE TEST: 192 eseguiti, 184 verdi, 8 rossi.** L'ottavo è
+     `lib/maker/cancellazione-riconosciuta.test.js`, **provato rosso anche sul commit precedente**
+     (`053d6ad`): interroga la produzione e trova un campione vuoto — «0 su 0 chiamate» — cioè dipende
+     dai dati, non dal codice. Gli altri sette sono i preesistenti del punto 84.
+     `npm run build` verde, `BUILD_ID` `uNVp9ZjdEZPj-e1sWd2cA`, `prerender-manifest.json` presente.
 
 ---
 
