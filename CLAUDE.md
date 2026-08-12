@@ -3,7 +3,20 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~13:45 UTC (§5 punti 103-105).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~14:10 UTC (§5 punti 103-106).
+
+> ## 🧾 IL LEDGER NON SI CHIUDEVA MAI: $16.960 CONTRO ZERO POSIZIONI REALI — §5 punto 106
+> **Due cause, e nessuna correzione bastava da sola.** ① `diagnoseExposure` **non passava affatto** lo
+> snapshot del venue a `computeExposure`: la fusione ledger↔venue era **codice morto** su quel percorso.
+> ② La fusione sapeva TENERE il massimo su un token visto da entrambi e AGGIUNGERE un token che esiste
+> solo al venue, ma **non sapeva TOGLIERE** un token che il venue dice chiuso — e il ledger si chiude
+> solo se la riconciliazione riesce a scrivere la riga di uscita, che una vendita, un merge on-chain,
+> un redeem o una risoluzione non producono.
+> Misurato: **14 posizioni per $16.960,06** contro **zero al venue** ⇒ 26× il tetto di $600, quindi
+> **tutte** le gambe di ogni giro tornavano `skipped`. **Ricostruita dallo stato vero: $0,00.**
+> L'assenza vale come prova **solo** con snapshot `readable` (che oltre `MAX_AGE_MS` è già `false`):
+> assente, vecchio o illeggibile ⇒ non si netta niente. **Nessuna riga viene cancellata**: il ledger
+> resta append-only e la posizione resta marcata `chiusaAlVenue`.
 
 > ## 🧪 IL DRY-RUN DI agent41 ERA INERTE FINO AL 12 AGOSTO 2026 — §5 punto 103
 > `REALLOC_SCHEDULER_DRY_RUN=1` era nell'ambiente **dal 7 agosto** e **non era letto da NESSUNA riga di
@@ -5245,6 +5258,28 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
      **Due lavori che ne discendono, entrambi aperti**: nettare il ledger (o rendere `diagnoseExposure`
      coerente con lo snapshot del venue), e far sì che `skipped` compaia nel referto invece di sparire
      fra `placed` e `refused`.
+
+106. **IL LEDGER NETTATO, E `skipped` CHE NON SPARISCE PIÙ** (commit `c90ec95`). Vedi il banner per le
+     due cause e i numeri. Quello che va tenuto qui:
+     - **perché l'assenza vale come prova, qui e solo qui**: `readVenuePositions` restituisce
+       `readable:false` oltre `MAX_AGE_MS` (180 s), quindi `readable === true` significa già «lettura
+       FRESCA», e su questo venue la risposta è l'elenco **completo** delle posizioni aperte, non una
+       pagina. Fuori da quelle condizioni il ledger resta com'era — il comportamento di prima, e il
+       verso prudente su un tetto;
+     - **non si cancella niente**: il file dei fill resta append-only; si corregge l'ESPOSIZIONE, che è
+       una lettura derivata, e la riga resta nell'elenco con `chiusaAlVenue` e la sua
+       `esposizionePrimaUsd`. Sparire in silenzio renderebbe «nettata» indistinguibile da «non è mai
+       esistita»;
+     - **verificato sul numero che il tetto confronta davvero** (`usage.openNotionalUsd`), non solo
+       sulla diagnostica: `usage` legge lo snapshot per conto suo e beneficia della stessa correzione;
+     - **il residuo di virgola mobile**: nettare 14 posizioni lasciava $0,0001. Sotto il centesimo non
+       è esposizione, è rumore, e si azzera — ma **solo** in quel ramo, cioè solo dopo che il venue ha
+       smentito qualcosa.
+     - **`skipped` nel referto**: non entrava né in `placed` né in `refused`, quindi «0 piazzati, 0
+       rifiutati» descriveva un **blocco totale** con la stessa riga con cui descriverebbe l'inazione.
+       Ora il referto porta `saltati` e `motiviSaltati` (motivo + quante volte) e il log li stampa.
+     `ledger-nettato.test.js` **19/19**, coi cinque modi di non avere una lettura fresca che lasciano
+     l'esposizione invariata. Baseline test: **188 eseguiti, 181 verdi, 7 rossi**.
 
 ---
 
