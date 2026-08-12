@@ -3,7 +3,20 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~19:45 UTC (§5 punto 112).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~19:50 UTC (§5 punti 112-113).
+
+> ## 🪟 LA «FINESTRA DI MID» NON È UN CANCELLO, È UNA RIGA DI LOG — §5 punto 113
+> Stasera è stato piazzato un ordine su Vindman a mid **0,8675**, fuori dalla finestra `[0,36 · 0,64]`
+> stampata all'avvio di agent41. **Non è un buco: la finestra non è mai stata una protezione.**
+> `concentration.finestraMid` ha **due** consumatori — la riga di log di agent41 e il proprio selfcheck
+> — e **nessun percorso di piazzamento la consulta**. Il cancello vero è il **tetto per ordine**
+> ($21,34), e le due gambe l'hanno passato: $20,81 e $2,98.
+> **La finestra è calcolata al TETTO PIENO** ($32,67 ⇒ Q 33,3 share ⇒ gamba cara $28,92 ⇒ bloccata),
+> ma la griglia del piano ha allocato **$24** ⇒ Q 24,0 ⇒ gamba cara **$20,81, che passa**. La finestra
+> reale di quella riga era `[0,113 · 0,887]`.
+> **⚠ IL BUCO VERO STA ALTROVE, ed è `f_min`**: obiettivo 0,60, ma su quella riga vale **0,832** —
+> `20 × 0,998 / 24`. Sotto l'83% di fill il residuo sarebbe stato sotto il minimo del venue e non
+> piazzabile. È lo stesso difetto di §5 punto 109 (griglia sotto il tetto) misurato su una riga sola.
 
 > ## 🗓 IL TRONCAMENTO DEL VENUE SI RICONOSCE, E ALLORA SI RESTITUISCE L'ORA VERA — §5 punto 112
 > **Opzione B, decisione dell'operatore.** Il CLOB tronca a mezzanotte UTC; quando il troncamento è
@@ -5694,6 +5707,55 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
 
      **File:** `lib/rewards/scadenza-mercato.js` · `agents/agent24-liquidity-rewards.js` (la riga di
      conteggio) · `lib/rewards/scadenza-unificata.test.js`.
+
+113. **LA «FINESTRA DI MID» NON È UN CANCELLO — sola diagnosi, nessuna correzione.**
+
+     **La domanda.** Il 12 agosto è stato piazzato un ordine su Vindman con la gamba NO a **0,124** e
+     la YES a **0,867**, cioè un mercato a mid **0,8675**, mentre agent41 stampa all'avvio «finestra
+     mid [0,36 · 0,64]».
+
+     **① La finestra non si applica né al mid né al prezzo del lato: non si applica a niente.**
+     `finestraMid` (`lib/rewards/concentration.js:241`) è una funzione **derivata e di solo
+     rendiconto**. Consumatori, censiti: `agents/agent41-realloc-scheduler.js:1574` (la riga di log
+     d'avvio) e il selfcheck del modulo stesso. **Nessun percorso di piazzamento la consulta** —
+     l'unica altra occorrenza in `lib/maker/` è una variabile locale omonima in `operator-board.js:162`
+     che tiene la finestra di *velocità del mid*, che è un'altra cosa.
+
+     **② Il percorso.** `agent41` (ciclo completo innescato dall'AVVIA delle 17:50:28) →
+     `allocation-reset` → allocazione in blocco → corsia manuale. Lo dice l'audit:
+     `source: 'manual-ui'`, `origine: 'auto'`, `note: "allocazione in blocco, mercato 3/3 gamba yes"`.
+
+     **③ Il cancello vero era attivo, e ha fatto il suo lavoro.** È il **tetto per ordine** $21,34
+     (GATE 4 della corsia manuale + la cintura indipendente dell'adapter). Le due gambe:
+     **$20,81** e **$2,98** — entrambe sotto, la cara con **$0,53** di margine. Nessun gate è stato
+     saltato, nessuna protezione aggirata.
+
+     **④ PERCHÉ LA FINESTRA STAMPATA NON DESCRIVE LA REALTÀ.** È calcolata al **tetto pieno**:
+
+     ```
+     al tetto  $32,67 → Q = 33,34 share → gamba cara a 0,8675 = $28,92  >  $21,34 ⇒ bloccata
+     al VERO   $24,00 → Q = 24,05 share → gamba cara a 0,867  = $20,81  <  $21,34 ⇒ PASSA
+     ```
+
+     La griglia del piano si ferma a **$24-26**, sotto il tetto (§5 punto 109). Quindi la finestra reale
+     di quella riga era **`[0,113 · 0,887]`**, e il mid 0,8675 ci sta dentro. La riga di log non è
+     sbagliata: descrive una riga allocata al tetto, che la griglia non produce quasi mai.
+
+     **⑤ IL BUCO VERO, e non è la finestra: è `f_min`.** Il tetto per mercato esiste per tenere
+     `f_min = minSize × costoCoppia / capitale` a **0,60** (§5 punto 107). Su questa riga:
+
+     ```
+     f_min = 20 × 0,998 / 24 = 0,832
+     ```
+
+     **83,2%**: sotto quella frazione di fill il residuo scoperto sarebbe stato sotto il minimo del
+     venue e **non piazzabile**. Il fill è arrivato al 100% e il residuo è rimasto piazzabile per un
+     soffio; a metà fill la posizione sarebbe stata bloccata. È lo stesso difetto che §5 punto 109 ha
+     già registrato a livello di piano («il `f_min` reale è 75%, non il 60%»), misurato qui su una riga
+     sola e con un numero peggiore.
+
+     **Non corretto**, come richiesto. La leva non è la finestra — che è un rendiconto — ma il **passo
+     della griglia del capitale**, che è la stessa conclusione di §5 punto 109.
 
 ---
 
