@@ -85,7 +85,10 @@ const { listManualOrders, replaceManualOrder, resolveMarketRules, resolveMarketD
 const { reconcileManualLane, fetchVenuePositions } = require('../lib/maker/manual-reset');
 const { decideRimpiazzo } = require('../lib/maker/rimpiazzo-gamba');
 const { resolveOffsetFor } = require('../lib/maker/offset-config');
-const { readAllocatedCapital } = require('../lib/maker/allocated-capital');
+const { readAllocatedCapital, readAllocatedCapitalAll, writeAllocatedCapital } = require('../lib/maker/allocated-capital');
+const { setManualMode } = require('../lib/maker/manual-mode');
+const { isAutoCloseEnabled, setAutoClose } = require('../lib/maker/auto-close-config');
+const PULIZIA = require('../lib/maker/pulizia-mercato-chiuso');
 const { registraResiduoScoperto, potaScadute, leggiRegistroResidui, scriviRegistroResidui } = require('../lib/maker/accumulo-residui');
 const MC = require('../lib/maker/modalita-chiusura');
 // ── IL PERCORSO DI PROFILO, CABLATO AL CICLO ────────────────────────────────────────────────────────
@@ -483,6 +486,9 @@ function registroAttesaMerge() {
     fs.renameSync(tmp, MERGE_WAIT_FILE);
   };
   return {
+    // Esposte per la pulizia di un mercato morto: `pulisci` lavora su UNA chiave, e un mercato ne ha
+    // una per lato. Vedi `maniPulizia`.
+    leggiTutto, scriviTutto,
     leggi: (chiave) => {
       const a = leggiTutto()[String(chiave)];
       return a && Number.isFinite(Number(a.at)) ? a : null;
@@ -525,6 +531,9 @@ function registroModalitaChiusura() {
     fs.renameSync(tmp, CHIUSURA_FILE);
   };
   return {
+    // Le due primitive sono esposte perche' la pulizia di un mercato morto deve poter togliere OGNI
+    // voce di quel mercato in un colpo solo: `esci` lavora per (mercato, lato) e non basterebbe.
+    leggiTutto, scriviTutto,
     leggi: (marketId, book) => MC.leggiChiusura(leggiTutto(), marketId, book),
     entra: (a) => {
       const r = MC.entraInChiusura({ ...a, registro: leggiTutto() });
@@ -545,6 +554,85 @@ function registroModalitaChiusura() {
       const r = MC.segnaFase({ ...a, registro: leggiTutto() });
       if (r.cambiata) scriviTutto(r.registro);
       return r;
+    },
+    // ── LA MEMORIA DELLA SORELLA (12 agosto 2026) ────────────────────────────────────────────────
+    // «Avevo chiesto 100 share, ne ho piazzate 40»: senza questo, il ciclo che trova un completamento
+    // gia' a riposo non ha modo di sapere che copre meno del bersaglio, e la posizione resta scoperta
+    // per la differenza senza che nessun numero lo dica. Sta su DISCO come il resto del registro,
+    // perche' il bersaglio deve sopravvivere a un `pm2 restart`: in memoria, dopo un riavvio, una
+    // sorella da 40 su 100 sembrerebbe completa.
+    registraSorella: (a) => {
+      const r = MC.registraSorella({ ...a, registro: leggiTutto() });
+      if (r.aggiornata) scriviTutto(r.registro);
+      return r;
+    },
+  };
+}
+
+// ── LA PULIZIA DEI REGISTRI DI UN MERCATO MORTO (12 agosto 2026) ─────────────────────────────────
+// `lib/maker/pulizia-mercato-chiuso.js` decide; qui vivono le sei MANI, perche' qui vive il disco.
+// Ognuna e' chiusa sul suo registro e risponde `{ok, rimosso}`: `rimosso:false` vuol dire «non c'era
+// niente di questo mercato», che e' un esito legittimo e non un fallimento.
+//
+// ⚠ NESSUNA DI QUESTE MANI CANCELLA UN AUDIT. Spariscono i registri di STATO CORRENTE; i giornali
+// (`*-audit.jsonl`) restano intatti — «cancellare un audit non e' pulizia» e' gia' la regola di questo
+// repo (§5 punto 63). E nessuna riscatta o vende: il redeem e' fuori perimetro per decisione
+// dell'operatore, e una posizione su un mercato risolto continua a valere il suo esito.
+function maniPulizia(regMerge, regChiusura) {
+  const perMercato = (leggi, scrivi, appartiene) => (marketId) => {
+    try {
+      const reg = leggi() || {};
+      const chiavi = Object.keys(reg).filter((k) => appartiene(k, reg[k], marketId));
+      if (!chiavi.length) return { ok: true, rimosso: false };
+      for (const k of chiavi) delete reg[k];
+      scrivi(reg);
+      return { ok: true, rimosso: true };
+    } catch (e) { return { ok: false, motivo: e && e.message ? e.message : String(e) }; }
+  };
+  const id = (m) => String(m || '').toLowerCase();
+  // Le chiavi dei due registri per coppia sono `<marketId>:<book>` (chiusura) e `<marketId>:<book>`
+  // (attese di merge): si confronta il prefisso, non la chiave intera.
+  const prefisso = (k, _v, m) => id(k).startsWith(`${id(m)}:`) || id(k) === id(m);
+  return {
+    attesaMerge: perMercato(regMerge.leggiTutto, regMerge.scriviTutto, prefisso),
+    chiusura: perMercato(regChiusura.leggiTutto, regChiusura.scriviTutto, prefisso),
+    residui: perMercato(
+      () => { const r = leggiRegistroResidui(); return (r && r.residui) ? r.residui : {}; },
+      (residui) => { scriviRegistroResidui({ residui }); },
+      prefisso),
+    // Il tetto e' l'unico che si riscrive PER INTERO, perche' `writeAllocatedCapital` sostituisce la
+    // mappa: si rilegge, si toglie il mercato morto, si riscrive il resto. Una lettura non riuscita
+    // NON produce una scrittura — riscrivere una mappa vuota toglierebbe il tetto a ogni mercato, e a
+    // valle un tetto assente vale «nessuna esposizione nuova» ovunque (§5 punto 53).
+    tetto: (marketId) => {
+      try {
+        const tutti = readAllocatedCapitalAll();
+        if (!tutti || tutti.readable !== true) return { ok: false, motivo: `mappa dei tetti non leggibile: ${(tutti && tutti.error) || 'motivo ignoto'}` };
+        const mappa = tutti.markets || {};
+        if (!Object.keys(mappa).some((k) => id(k) === id(marketId))) return { ok: true, rimosso: false };
+        const rows = Object.entries(mappa)
+          .filter(([k]) => id(k) !== id(marketId))
+          .map(([k, v]) => ({ marketId: k, capital: v && v.capitalUsd }));
+        writeAllocatedCapital({ rows, capital: tutti.capital, by: 'agent40 · mercato chiuso' });
+        return { ok: true, rimosso: true };
+      } catch (e) { return { ok: false, motivo: e && e.message ? e.message : String(e) }; }
+    },
+    // Gestione manuale e uscita automatica NON si cancellano: si SPENGONO, con le stesse funzioni del
+    // pannello e del reset. Sono registri con un audit proprio e una semantica di opt-in — toglierne
+    // una riga a mano vorrebbe dire inventare un secondo formato per lo stesso stato.
+    manuale: (marketId) => {
+      try {
+        if (!isManualMarket(marketId).manual) return { ok: true, rimosso: false };
+        setManualMode({ marketId, manual: false, by: 'agent40 · mercato chiuso', reason: 'mercato risolto o annullato sul venue, libro libero' });
+        return { ok: true, rimosso: true };
+      } catch (e) { return { ok: false, motivo: e && e.message ? e.message : String(e) }; }
+    },
+    autoClose: (marketId) => {
+      try {
+        if (!isAutoCloseEnabled(marketId)) return { ok: true, rimosso: false };
+        setAutoClose({ marketId, enabled: false, by: 'agent40 · mercato chiuso', reason: 'mercato risolto o annullato sul venue, libro libero' });
+        return { ok: true, rimosso: true };
+      } catch (e) { return { ok: false, motivo: e && e.message ? e.message : String(e) }; }
     },
   };
 }
@@ -602,6 +690,11 @@ async function closeTask() {
     // riposizionamento post-fill, che deve dimensionarsi su quanto c'e' DAVVERO adesso e non sul
     // capitale appena fuso. Se la lettura non e' affidabile si passa `null` piu' sotto.
     const saldoGiro = await saldoDelGiro();
+    // I DUE REGISTRI SI COSTRUISCONO UNA VOLTA PER CICLO, non due: `auto-close` li usa per il merge e
+    // per la modalita' chiusura, e la pulizia di un mercato morto deve toccare gli STESSI oggetti —
+    // due istanze scriverebbero lo stesso file da due letture diverse.
+    const regMergeCiclo = registroAttesaMerge();
+    const regChiusuraCiclo = registroModalitaChiusura();
     const res = await runAutoCloseCycle({
       marketIds: visitare,
       killStatus: () => killSwitch.killStatus(),
@@ -616,12 +709,21 @@ async function closeTask() {
       // ── IL REGISTRO DELLE ATTESE DEL LIVELLO 2 ──────────────────────────────────────────────────
       // Su file e non in memoria: un'attesa di 60 minuti che si azzera a ogni riavvio del processo non
       // e' un timeout, e agent40 riavvia. auto-close resta puro — qui c'e' l'unica scrittura.
-      attesaMerge: registroAttesaMerge(),
+      attesaMerge: regMergeCiclo,
       // Il registro della MODALITA' CHIUSURA e la scadenza del mercato. Senza queste due dep
       // `auto-close` si comporta esattamente come prima: nessun timestamp, nessuna cancellazione del
       // residuo, nessuna esenzione da «mai primo» e nessun controllo di validita' al passo 5.
-      chiusura: registroModalitaChiusura(),
+      chiusura: regChiusuraCiclo,
       scadenzaMercato,
+      // ── LA PULIZIA DEI REGISTRI DI UN MERCATO MORTO (12 agosto 2026) ─────────────────────────────
+      // `auto-close` la chiama sul ramo `market-closed`/`market-not-accepting`, cioe' quando il VENUE
+      // dice che il mercato non c'e' piu' — che copre la risoluzione ordinaria e l'annullamento con la
+      // stessa lettura, mentre l'orologio del mercato vede solo la scadenza nominale.
+      //
+      // NON CABLATA ⇒ COMPORTAMENTO DI PRIMA: quel ramo faceva `continue` e continua a farlo.
+      pulisciMercatoChiuso: ({ marketId, causa, libroLibero }) => PULIZIA.pulisciRegistri({
+        marketId, causa, libroLibero, registri: maniPulizia(regMergeCiclo, regChiusuraCiclo),
+      }),
       // ── IL CANCELLATORE, CHE QUI NON C'ERA — E TRE PERCORSI LO ASPETTAVANO ───────────────────────
       // `auto-close` chiama `deps.cancelOrder` in tre punti, tutti e tre PRIMA di fare qualcosa di
       // irreversibile: la chiusura forzata a mercato (toglie l'uscita e la liquidita' prima di vendere
