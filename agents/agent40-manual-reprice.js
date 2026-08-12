@@ -668,6 +668,23 @@ function maniPulizia(regMerge, regChiusura) {
       () => { const r = leggiRegistroResidui(); return (r && r.residui) ? r.residui : {}; },
       (residui) => { scriviRegistroResidui({ residui }); },
       prefisso),
+    // La coda di ripianificazione: un mercato morto non ha piu' niente da ripianificare.
+    ripianifica: (marketId) => {
+      try {
+        const j = JSON.parse(fs.readFileSync(RIPIANIFICA_FILE, 'utf8'));
+        const voci = Array.isArray(j && j.voci) ? j.voci : [];
+        const resta = voci.filter((v) => id(v && v.marketId) !== id(marketId));
+        if (resta.length === voci.length) return { ok: true, rimosso: false };
+        const tmp = `${RIPIANIFICA_FILE}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify({ atIso: new Date().toISOString(), voci: resta }, null, 1));
+        fs.renameSync(tmp, RIPIANIFICA_FILE);
+        return { ok: true, rimosso: true };
+      } catch (e) {
+        // File assente = coda vuota = niente da rimuovere. Non e' un fallimento.
+        if (e && e.code === 'ENOENT') return { ok: true, rimosso: false };
+        return { ok: false, motivo: e && e.message ? e.message : String(e) };
+      }
+    },
     // Il tetto e' l'unico che si riscrive PER INTERO, perche' `writeAllocatedCapital` sostituisce la
     // mappa: si rilegge, si toglie il mercato morto, si riscrive il resto. Una lettura non riuscita
     // NON produce una scrittura — riscrivere una mappa vuota toglierebbe il tetto a ogni mercato, e a
@@ -740,6 +757,12 @@ const REGISTRI_DA_SCANDIRE = [
   ['data/maker-allocated-capital.json', (j) => Object.keys(j.markets || {})],
   ['data/maker-manual-mode.json', (j) => Object.keys(j.markets || j.marketIds || {})],
   ['data/maker-auto-close.json', (j) => (j.enabledMarketIds || Object.keys(j.markets || {}))],
+  // ⚠ AGGIUNTO IL 12 AGOSTO 2026 dalla verifica di tenuta. La coda di ripianificazione e' diventata
+  // persistente ieri (§5 punto 88) e non era in questo elenco: un mercato la cui UNICA traccia fosse
+  // una voce in coda non sarebbe stato visitato dalla scansione. La voce si pota da sola a 24 h,
+  // quindi il danno era limitato — ma «si pota da sola» e «viene ripulita quando il mercato muore»
+  // sono due cose diverse, e la seconda e' quella che questa scansione promette.
+  ['data/da-ripianificare.json', (j) => (Array.isArray(j.voci) ? j.voci.map((v) => v && v.marketId) : [])],
 ];
 
 /** Tutti i mercati NOMINATI dai registri operativi. Le chiavi per coppia sono `<marketId>:<book>`. */
