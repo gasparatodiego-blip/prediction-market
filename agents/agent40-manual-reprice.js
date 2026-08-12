@@ -89,6 +89,8 @@ const { readAllocatedCapital, readAllocatedCapitalAll, writeAllocatedCapital } =
 const { setManualMode } = require('../lib/maker/manual-mode');
 const { isAutoCloseEnabled, setAutoClose } = require('../lib/maker/auto-close-config');
 const PULIZIA = require('../lib/maker/pulizia-mercato-chiuso');
+// Il catalogo di ripiego: porta `endDate` dei mercati usciti dal board ma su cui abbiamo capitale.
+const { readMarketCatalog } = require('../lib/maker/market-catalog');
 // Lo stato REALE del mercato al venue (`closed`/`acceptingOrders`), per la scansione dei registri:
 // e' la domanda giusta perche' copre risoluzione e annullamento, mentre l'orologio vede solo la
 // scadenza nominale.
@@ -772,15 +774,44 @@ async function scansioneRegistri({ forzata = false } = {}) {
 // E' la direzione giusta: qui si aprono due ordini NUOVI, e §5 punto 44 e' la storia di cosa costa
 // aprire liquidita' su un mercato di cui non si conoscono piu' le proprieta'.
 function scadenzaMercato(marketId) {
+  const id = String(marketId).toLowerCase();
+  const daRiga = (r) => {
+    if (!r) return null;
+    const t = Date.parse(r.endDate || r.endDateIso || r.end_date_iso || r.endDateUtc || '');
+    return Number.isFinite(t) ? t : null;
+  };
+  // ── PRIMA IL BOARD: e' la fonte piu' fresca ────────────────────────────────────────────────────
   try {
     const j = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8'));
     const righe = Array.isArray(j) ? j : (Array.isArray(j.markets) ? j.markets : []);
-    const id = String(marketId).toLowerCase();
-    const r = righe.find((x) => String(x && (x.conditionId || x.marketId || x.id) || '').toLowerCase() === id);
-    if (!r) return null;
-    const t = Date.parse(r.endDate || r.endDateIso || r.end_date_iso || '');
-    return Number.isFinite(t) ? t : null;
-  } catch { return null; }
+    const t = daRiga(righe.find((x) => String((x && (x.conditionId || x.marketId || x.id)) || '').toLowerCase() === id));
+    if (t != null) return t;
+  } catch { /* board illeggibile: si prova il ripiego */ }
+
+  // ══ E POI IL CATALOGO DI RIPIEGO — LA META' CHE MANCAVA (12 agosto 2026) ═══════════════════════
+  // ⚠ IL DIFETTO: questa funzione leggeva SOLO il board, e il board tiene i primi 150 mercati per
+  // montepremi. Un mercato che ne esce — per rotazione o perche' si sta avvicinando alla risoluzione,
+  // che e' proprio il caso di cui parliamo — restituiva `null`, e `chiusuraForzataPreScadenza` con una
+  // scadenza `null` risponde `forza:false`. Cioe' la regola «entro 3 ore si chiude a qualunque prezzo»
+  // si spegneva esattamente sui mercati che stanno per risolvere e non sono piu' sul tabellone.
+  //
+  // Vale la REGOLA DI COPERTURA di questo repo — «board ∪ mercati con posizione, mai solo board» —
+  // gia' applicata al gate live-min (§5 punto 69), alla sottoscrizione del book (61), alla
+  // composizione del board (52) e alla lista dell'uscita automatica (55). Qui la seconda meta' e' il
+  // CATALOGO DI RIPIEGO (`maker-manual-markets.json`), che agent41 riempie con le regole del mercato
+  // — scadenza compresa — MENTRE quel mercato era nel piano (§5 punti 44 e 47). E' esattamente la
+  // fonte pensata per «il board non lo conosce piu', ma noi ci abbiamo dentro del capitale».
+  //
+  // ORDINE: board prima, ripiego dopo. Il board e' piu' fresco; il ripiego e' una copia del momento in
+  // cui il mercato era ancora nel piano, e va usato solo quando la prima fonte tace.
+  try {
+    const cat = readMarketCatalog();
+    const m = cat && cat.markets ? cat.markets[id] : null;
+    const t = daRiga(m);
+    if (t != null) return t;
+  } catch { /* nemmeno il ripiego: si dichiara `null`, e la chiusura forzata non scatta */ }
+
+  return null;
 }
 
 async function closeTask() {
