@@ -3,8 +3,32 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~13:00 UTC (§5 punti 100-102 — le tre
-voci del blocco D).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~13:45 UTC (§5 punti 103-105).
+
+> ## 🧪 IL DRY-RUN DI agent41 ERA INERTE FINO AL 12 AGOSTO 2026 — §5 punto 103
+> `REALLOC_SCHEDULER_DRY_RUN=1` era nell'ambiente **dal 7 agosto** e **non era letto da NESSUNA riga di
+> codice**: solo commenti, test che ne vietano il ritorno, e il rilevatore **D4** dell'audit — che esiste
+> proprio per i flag che nessuno legge e che citava questo caso come esempio. **Per due giorni ha fatto
+> credere all'operatore che agent41 fosse in prova mentre non lo era.**
+> Adesso frena davvero, su **entrambi** i percorsi verso il venue (ciclo 6 h e mini-ciclo 10 min — il
+> secondo aveva `dryRunOnly: false` **cablato**), rileggendolo a ogni giro. **Fail-closed**: assente,
+> vuoto o ambiguo ⇒ non piazza. ⚠ **Il difetto del sistema diventa «non piazzare»**: per far piazzare
+> agent41 serve un valore di spegnimento esplicito (`0`, `false`, `off`, `no`, `spento`).
+
+> ## 💵 IL CAPITALE AVEVA DUE LETTURE CHE SI CONTRADDICEVANO — §5 punto 104
+> Stesso giro: «capitale liquido fermo **$663,11**» e «**$273,11** al lavoro / $273,11 totali · liberi
+> $0,00». Non due fonti: `misuraUtilizzo` chiamata due volte, la seconda con il saldo **decrementato**
+> *e* gli ordini **aumentati** dello stesso $390 — contato due volte. Su questo venue un BUY a riposo
+> tiene il collaterale nel wallet: piazzare non abbassa il saldo. Corretto: totale $663,11 · libero
+> $273,11 · impegnato $390 · **58,8%**. `misuraDopo` non accetta più il saldo come parametro, e una
+> **riconciliazione** (soglia max 2% / $5) ferma il giro se le due letture divergono.
+
+> ## 🚧 «0 PIAZZATI, 0 RIFIUTATI» NON VOLEVA DIRE «NON HA PROVATO» — §5 punto 105
+> Il mini-ciclo delle 13:07 **ha** invocato la corsia: tutte e 12 le gambe sono tornate `skipped`, e
+> `skipped` non conta né in `placed` né in `refused`. Il motivo di ognuna: «il cap cumulativo di
+> esposizione aperta ($600) sarebbe superato: **già impegnati $16.960,06**». Contro **zero posizioni al
+> venue**. È il difetto del §5 punto 72 che si è riformato — il ledger dei fill non netta le posizioni
+> chiuse. **NON corretto in questa sessione**: è la ragione per cui il bot non piazza.
 
 > ## 📐 LA STIMA È UNA QUANTITÀ, NON PIÙ UN TASSO FOTOGRAFATO — §5 punto 100
 > **Opzione A applicata** (decisione dell'operatore). `estUsdPerDay` è un TASSO; fotografarlo alle 23:55
@@ -5180,6 +5204,47 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
      indovinare; `allocator.horizonFilter` GIUDICA. Intestazione di `horizon.js` e il suo selfcheck
      allineati, così non diventano il reperto **D7**. Un'asserzione preesistente in
      `tetto-orizzonte.test.js` è stata **invertita, non rimossa**. `orizzonte-unico.test.js` **22/22**.
+
+---
+
+## 5-quater · 12 agosto 2026, sera
+
+103. **IL FRENO DI PROVA, CHE PRIMA NON ESISTEVA** (commit `b41c19e`). Vedi il banner. Quello che va
+     tenuto qui: i **due** percorsi di agent41 verso il venue sono il ciclo da 6 h (`soloRacconto`, che
+     era `!bot.enabled` e basta) e il mini-ciclo da 10 min (che aveva `dryRunOnly: false` **cablato**).
+     Frenare solo il primo avrebbe fermato ciò che scatta ogni sei ore lasciando libero ciò che scatta
+     ogni dieci minuti. Il freno **non sostituisce KILL e FERMA**: è un terzo presidio ortogonale, e il
+     più stretto dei tre perché vale anche a bot AVVIATO e kill spento. Stato nel log d'avvio e in
+     `data/freno-prova.json`. `freno-prova.test.js` **25/25**, inclusa l'asserzione che prende la
+     regressione (nessun `dryRunOnly: false` cablato) e il conteggio delle letture, che è il posto dove
+     ci si accorge se nasce un terzo percorso.
+     **⚠ Trappola registrata**: la prima stesura del test cercava la stringa nel sorgente **commenti
+     compresi**, e il commento che *racconta* la riga corretta lo faceva fallire. I test strutturali di
+     questo repo devono filtrare le righe di commento.
+
+104. **UNA SOLA VERITÀ SUL CAPITALE** (commit `2a8a6c4`). Vedi il banner per i numeri.
+     `UTIL.misuraDopo(prima, impegnato)` **non accetta il saldo**: l'errore non è più esprimibile. Il
+     valore delle posizioni si ricava dall'invariante `totale = saldo + posizioni` invece di essere
+     riletto — due letture nello stesso giro potrebbero divergere, ed è la classe di difetto che si sta
+     chiudendo. `UTIL.riconcilia()` confronta il saldo del trigger con quello della misura **prima** di
+     decidere quanto impegnare; soglia **max(2%, $5)** — relativa perché su conti grandi $2 non sono
+     niente, assoluta perché su conti piccoli il 2% è rumore. Oltre soglia il giro si ferma con
+     `fermato-capitale-incoerente`. Una lettura mancante **non** è una lettura concorde.
+     Il freno è ora visibile nel pannello: rotta `GET /api/maker/freno-prova` e badge accanto a KILL,
+     con **tre** stati — «SCONOSCIUTO» non somiglia a «disinserito», per la stessa ragione per cui il
+     difetto è esistito.
+
+105. **PERCHÉ IL MINI-CICLO NON PIAZZA — DIAGNOSI, NON CORRETTO.** «0 piazzati, 0 rifiutati» sembrava
+     «la corsia non è stata invocata». **È stata invocata**: tutte e 12 le gambe sono tornate
+     `status: 'skipped'`, e `skipped` non entra in nessuno dei due contatori — quindi il referto
+     descriveva un blocco totale con la stessa riga con cui descriverebbe l'inazione.
+     Il motivo di ogni gamba: *«il cap cumulativo di esposizione aperta ($600) sarebbe superato: già
+     impegnati **$16.960,06**»*. Misurato adesso: `diagnoseExposure` riporta **$16.960,06** contro
+     **zero posizioni al venue**. È il difetto del **§5 punto 72** riformato — il ledger dei fill non
+     netta le posizioni chiuse — e con l'esposizione a 26× il tetto **nessun ordine può passare**.
+     **Due lavori che ne discendono, entrambi aperti**: nettare il ledger (o rendere `diagnoseExposure`
+     coerente con lo snapshot del venue), e far sì che `skipped` compaia nel referto invece di sparire
+     fra `placed` e `refused`.
 
 ---
 
