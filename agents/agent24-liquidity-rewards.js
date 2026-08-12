@@ -852,6 +852,28 @@ async function scan() {
   }
   results = kept;
 
+  // ── DA DOVE VIENE LA SCADENZA, CONTATO A OGNI SCANSIONE ────────────────────────────────────────
+  // Il verdetto per riga viaggia gia' su `endDateFonte` e `scadenzaMotivo`, ma un campo per riga non
+  // risponde alla domanda «quanto sta pesando la regola oggi»: per quella servirebbe interrogare il
+  // board. La riga qui sotto la rende leggibile dal log, che e' dove si guarda per primo quando
+  // l'utilizzo crolla. `gamma-ora-vera-su-clob-troncato` e' la fonte introdotta il 12 agosto 2026
+  // (Opzione B): conta i mercati a cui il troncamento del venue avrebbe tolto fino a 24 ore.
+  {
+    const perFonte = {};
+    let discordi = 0;
+    for (const r of results) {
+      const f = r.endDateFonte || 'ignota';
+      perFonte[f] = (perFonte[f] || 0) + 1;
+      if (r.scadenzaAmmissibile === false) discordi += 1;
+    }
+    const recuperati = perFonte['gamma-ora-vera-su-clob-troncato'] || 0;
+    console.log(`  scadenza: ${Object.entries(perFonte).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' · ')}`
+      + `${discordi ? ` · ${discordi} INAMMISSIBILI per scadenza discorde` : ''}`
+      + (recuperati
+        ? ` — ${recuperati} mercato/i con l'ORA VERA ripresa dal board perché il venue tronca a mezzanotte`
+        : ' — nessun troncamento del venue da correggere in questa scansione'));
+  }
+
   const out = {
     meta: {
       generatedAt:        new Date().toISOString(),

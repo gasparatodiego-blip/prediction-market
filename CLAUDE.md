@@ -3,7 +3,21 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~19:10 UTC (§5 punto 110).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~19:45 UTC (§5 punto 112).
+
+> ## 🗓 IL TRONCAMENTO DEL VENUE SI RICONOSCE, E ALLORA SI RESTITUISCE L'ORA VERA — §5 punto 112
+> **Opzione B, decisione dell'operatore.** Il CLOB tronca a mezzanotte UTC; quando il troncamento è
+> **dimostrabile** si usa la data di Gamma. La condizione è una **prova**, non tre indizi:
+> `troncaAMezzanotteUTC(gamma) === clob` — la data del board, passata per la stessa trasformazione che
+> il venue applica, dà esattamente quella del venue. Implica da sola «CLOB a mezzanotte» + «Gamma non
+> prima» + «stesso giorno UTC», e **distingue il caso delle 24 h esatte**, che nessuna delle tre
+> clausole a mano coglierebbe: Gamma a mezzanotte del giorno dopo tronca a **se stessa**, quindi non è
+> un troncamento e si tiene il CLOB. Le soglie preesistenti (>24 h ⇒ escluso, anticipo >1 h ⇒ escluso)
+> **non sono state toccate**. Fonte nuova negli audit: `gamma-ora-vera-su-clob-troncato`.
+> **Misurato sul board delle 17:34** — quello del piano da 6 mercati: orizzonte 18 h da **14 a 34
+> mercati**, capacità **$457 → $1.111** (69% → 168%). **Sul board delle 19:16 la regola scatta su 43
+> mercati e cambia ZERO verdetti**: morde solo quando la scadenza vera cade fra il pavimento e il
+> pavimento + troncamento.
 
 > ## 🔇 UNA DECISIONE PRESA POTEVA USCIRE SENZA UN ESITO SCRITTO — §5 punto 110
 > Il bot ha girato con capitale reale 17:50→18:23. Un fill ha lasciato **24 share NO scoperte** su
@@ -5619,6 +5633,67 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
      più tardi nello stesso giorno), correggerlo non allarga nessun perimetro di rischio e restituisce
      solo l'ora vera a un mercato che il venue accetta ancora. **C è da scartare**: la misura dice che
      non fa niente. **A resta legittima**: 23 giri su 30 vanno bene da soli.
+
+112. **OPZIONE B: IL TRONCAMENTO PROVATO RESTITUISCE L'ORA VERA — 12 agosto 2026, ~19:40 UTC.
+     agent24 RIAVVIATO.** Decisione dell'operatore, non riaperta.
+
+     **Dove vive.** In `scadenzaUnificata` (`lib/rewards/scadenza-mercato.js`), cioè **il punto unico**
+     già unificato il 12 agosto (§5 punto 104): la scelta avviene dentro quella funzione e i chiamanti
+     continuano a vedere **una sola data**. Nessuna seconda fonte è stata riaperta nel resto del
+     sistema — verificato: gli unici importatori del modulo sono `agent24` e `rewards-normalize`, e il
+     secondo **proietta soltanto** i campi che agent24 ha già calcolato (`agent41` e `allocator` lo
+     nominano solo in commenti).
+
+     **LA CONDIZIONE È UNA PROVA, e questa è la parte che conta.** Si potrebbe scrivere «CLOB a
+     mezzanotte esatta **e** Gamma più tardi **e** stesso giorno»: tre indizi da tenere allineati a
+     mano. La stessa cosa si dice una volta e si verifica:
+
+     ```js
+     if (g > c && troncaAMezzanotteUTC(g) === c) { … usa Gamma … }
+     ```
+
+     La data del board, passata per **la stessa trasformazione che il venue applica**, dà esattamente
+     la data del venue. Se vale, il CLOB *è* il troncamento di Gamma e non può essere altro. La
+     condizione implica da sola tutte e tre le clausole — il CLOB è a mezzanotte perché è l'immagine
+     della funzione; Gamma non è prima perché il troncamento non sposta in avanti; è lo stesso giorno
+     perché altrimenti l'immagine sarebbe un'altra.
+
+     **⚠ E DISTINGUE IL CASO DELLE 24 ORE ESATTE**, che nessuna delle tre clausole prese a mano
+     coglierebbe. Un divario di 24 h esatte vuol dire Gamma a mezzanotte del giorno **dopo**, e quella
+     data tronca a **se stessa**: non è un troncamento, è il CLOB che descrive un giorno diverso, e si
+     tiene il CLOB. La soglia dei 24 h resta dov'era e continua a escludere oltre — questa condizione
+     non la tocca e non la duplica.
+
+     **I quattro vincoli, tutti verificati da un test dedicato:** CLOB a mezzanotte + Gamma più tardi
+     lo stesso giorno ⇒ **Gamma** · CLOB non a mezzanotte ⇒ **CLOB** · Gamma oltre 24 h ⇒ **mercato
+     escluso** (soglia preesistente, intatta) · Gamma assente o illeggibile ⇒ **CLOB**.
+
+     **Il motivo è riconoscibile negli audit**: `fonte: 'gamma-ora-vera-su-clob-troncato'`, che viaggia
+     già su `endDateFonte` della riga di board, più un `motivo` testuale. E agent24 stampa a **ogni
+     scansione** il conteggio per fonte con la riga «*N mercato/i con l'ORA VERA ripresa dal board
+     perché il venue tronca a mezzanotte*»: un campo per riga non risponde a «quanto pesa la regola
+     oggi», e quella è la domanda che ci si fa quando l'utilizzo crolla.
+
+     **L'EFFETTO, MISURATO CON LA FUNZIONE VERA.**
+
+     | board | sopra il pavimento | orizzonte 18 h PRIMA | DOPO | capacità |
+     |---|---|---|---|---|
+     | **17:34** (quello del piano da 6 mercati) | 49 | **14** | **34** | **$457 → $1.111** (69% → 168%) |
+     | **19:16** (adesso) | 52 | 26 | **26** | $849 → $849 (128%, invariata) |
+
+     **⚠ SUL BOARD DI ADESSO LA REGOLA SCATTA SU 43 MERCATI E CAMBIA ZERO VERDETTI**, e va detto
+     invece di lasciarlo dedurre: il troncamento morde **solo** quando la scadenza vera cade fra il
+     pavimento (18 h) e il pavimento + troncamento. Alle 17:34 ci cadeva un'intera coorte; alle 19:16
+     nessuna. La regola non è inerte — è **condizionale**, e il suo valore si vede nelle finestre magre.
+
+     **Verifica.** `scadenza-mercato.selfcheck()` **27/27** (era 22) · `scadenza-unificata.test.js`
+     **63/63** (era 50). Due asserzioni preesistenti **ribaltate, non allentate**: dicevano «vince il
+     venue, che è il più prudente» sui due mercati veri del ciclo delle 15:41:31Z, che sono esattamente
+     i casi che l'Opzione B cambia. Al loro posto la proprietà nuova, più la garanzia che regge ancora:
+     la data scelta non è **mai** oltre la più tarda delle due letture né prima della più prudente.
+
+     **File:** `lib/rewards/scadenza-mercato.js` · `agents/agent24-liquidity-rewards.js` (la riga di
+     conteggio) · `lib/rewards/scadenza-unificata.test.js`.
 
 ---
 
