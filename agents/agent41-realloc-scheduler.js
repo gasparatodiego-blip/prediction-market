@@ -1495,7 +1495,22 @@ function main() {
       fs_.renameSync(tmp_, p_);
     } catch { /* il pannello lo mostrera' come sconosciuto: non e' un motivo per non partire */ }
   }
-  annuncia('log', `ACCESO — intervallo ${INTERVAL_MS / 3_600_000}h, tetto per mercato $${MARKET_CAP_FIXED_USD} FISSO (YES+NO sommati) · nessun limite al numero di mercati`
+  annuncia('log', `ACCESO — intervallo ${INTERVAL_MS / 3_600_000}h`
+    + (() => {
+      // IL TETTO IN VIGORE E DA QUALE CAPITALE NASCE. Dal 12 agosto 2026 non e' piu' una costante:
+      // e' derivato da `f_min`, e il numero di mercati e' la conseguenza. Chi legge il log deve
+      // vedere il numero VERO di adesso, non quello di riferimento.
+      try {
+        const CO = require('../lib/rewards/concentration');
+        const cap = (() => { try { const a = readAllocatedCapitalAll(); return Number(a && a.capital); } catch { return null; } })();
+        const t = CO.capPerMarketUsd(cap);
+        const f = CO.finestraMid(cap);
+        return `, tetto per mercato $${t} DERIVATO da capitale $${Number.isFinite(cap) ? cap.toFixed(2) : 'non letto'}`
+          + ` (f_min obiettivo ${(CO.F_MIN_OBIETTIVO * 100).toFixed(0)}%) · $${(t / 2).toFixed(2)} per lato`
+          + ` · ${CO.mercatiSostenibili(cap)} mercati sostenibili (tetto di carico ${CO.MAX_MERCATI})`
+          + ` · tetto per ordine $${CO.liveMinOrderCapUsd(cap)} · finestra mid [${f.lo} · ${f.hi}]`;
+      } catch { return ', tetto per mercato non calcolabile'; }
+    })()
     + ` · il bot e' ${bot0.enabled ? 'AVVIATO (ordini veri quando le regole lo consentono)' : 'FERMO (solo piano, nessun ordine)'}`
     + ` · l'interruttore e' ${FILE_INTERRUTTORE}, si commuta dalla tab «Mercati ottimizzati»`);
   scrivi({ at: new Date().toISOString(), tipo: 'avvio', stato: 'acceso', botEnabled: bot0.enabled,

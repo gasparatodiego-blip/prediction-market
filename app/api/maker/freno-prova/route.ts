@@ -26,6 +26,29 @@ export async function GET() {
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
     const attivo = raw?.attivo === true;
+    // ── IL TETTO IN VIGORE, E DA QUALE CAPITALE NASCE ──────────────────────────────────────────
+    // Dal 12 agosto 2026 il tetto per mercato non e' piu' una costante: e' derivato dal capitale.
+    // L'operatore deve poter vedere quale valore e' in vigore ADESSO senza leggere il codice, ed e'
+    // la stessa domanda del freno — «in che regime sta girando agent41» — quindi sta nella stessa
+    // risposta invece che in una rotta nuova.
+    let tetto: Record<string, unknown> | null = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const CO = require('@/lib/rewards/concentration');
+      const capRaw = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data', 'maker-allocated-capital.json'), 'utf8'));
+      const capitale = Number(capRaw?.capital);
+      const t = CO.capPerMarketUsd(Number.isFinite(capitale) ? capitale : null);
+      const f = CO.finestraMid(Number.isFinite(capitale) ? capitale : null);
+      tetto = {
+        capitaleUsd: Number.isFinite(capitale) ? capitale : null,
+        perMercatoUsd: t, perLatoUsd: +(t / 2).toFixed(2),
+        perOrdineUsd: CO.liveMinOrderCapUsd(Number.isFinite(capitale) ? capitale : null),
+        mercatiSostenibili: CO.mercatiSostenibili(Number.isFinite(capitale) ? capitale : null),
+        fMinObiettivo: CO.F_MIN_OBIETTIVO, maxMercati: CO.MAX_MERCATI,
+        finestraMid: [f.lo, f.hi],
+        derivato: true,
+      };
+    } catch { tetto = null; }
     const etaMs = raw?.atIso ? Date.now() - Date.parse(raw.atIso) : null;
     return NextResponse.json({
       ok: true,
@@ -41,6 +64,7 @@ export async function GET() {
       // L'etichetta che il pannello mostra, decisa QUI: due componenti che se la inventano ciascuna
       // per conto suo sono due modi di dire cose diverse sullo stesso fatto.
       etichetta: attivo ? 'IN PROVA' : 'PIAZZA DAVVERO',
+      tetto,
     });
   } catch (e) {
     return NextResponse.json({

@@ -496,12 +496,12 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
   const [killMsg, setKillMsg] = useState<string | null>(null);
   // Lo stato del freno di prova di agent41. Sola lettura, e la fonte è ciò che agent41 ha dichiarato
   // di sé su disco: il dashboard è un altro processo e l'ambiente di agent41 non ce l'ha.
-  const [freno, setFreno] = useState<{ attivo: boolean | null; motivo: string | null; etichetta: string } | null>(null);
+  const [freno, setFreno] = useState<{ attivo: boolean | null; motivo: string | null; etichetta: string; tetto?: { perMercatoUsd: number; perLatoUsd: number; capitaleUsd: number | null; mercatiSostenibili: number } | null } | null>(null);
   useEffect(() => {
     let vivo = true;
     const leggi = () => fetch('/api/maker/freno-prova')
       .then((r) => r.json())
-      .then((b) => { if (vivo) setFreno({ attivo: b?.attivo ?? null, motivo: b?.motivo ?? null, etichetta: b?.etichetta ?? 'SCONOSCIUTO' }); })
+      .then((b) => { if (vivo) setFreno({ attivo: b?.attivo ?? null, motivo: b?.motivo ?? null, etichetta: b?.etichetta ?? 'SCONOSCIUTO', tetto: b?.tetto ?? null }); })
       .catch(() => { if (vivo) setFreno({ attivo: null, motivo: 'stato del freno non raggiungibile', etichetta: 'SCONOSCIUTO' }); });
     leggi();
     const t = setInterval(leggi, 30_000);
@@ -1152,6 +1152,14 @@ export default function LiquidityRewardsConsole({ initialTab }: { initialTab?: s
         >
           {freno?.attivo === true ? '🧪 agent41 IN PROVA' : freno?.attivo === false ? '🔴 agent41 PIAZZA DAVVERO' : '❔ freno SCONOSCIUTO'}
         </span>
+        {/* Il tetto in vigore, DERIVATO dal capitale dal 12 agosto 2026: l'operatore deve vedere
+            quale numero governa il piano di adesso, e da quale capitale nasce. */}
+        {freno?.tetto && (
+          <span className="lrc-tetto" title={`tetto per mercato derivato dal capitale · ${freno.tetto.mercatiSostenibili} mercati sostenibili`}>
+            tetto ${freno.tetto.perMercatoUsd}/mercato (${freno.tetto.perLatoUsd}/lato) da $
+            {freno.tetto.capitaleUsd != null ? freno.tetto.capitaleUsd.toFixed(2) : '—'} · {freno.tetto.mercatiSostenibili} mercati
+          </span>
+        )}
         <span className="lrc-killnote">
           {killMsg ?? 'KILL ferma ogni corsia e cancella tutto sul venue. Ripristina verifica da due fonti che non resti esposizione.'}
         </span>
@@ -2843,6 +2851,7 @@ const CSS = `
   white-space: nowrap; border: 1px solid transparent; }
 .lrc-freno.is-prova { color: #7dd3a7; background: rgba(45,160,110,.12); border-color: rgba(45,160,110,.35); }
 .lrc-freno.is-vivo  { color: #ff9b9b; background: rgba(200,60,60,.14);  border-color: rgba(200,60,60,.42); }
+.lrc-tetto { font-size: 10px; color: var(--ex-txt-3); white-space: nowrap; padding: 3px 6px; }
 .lrc-freno.is-ignoto{ color: var(--ex-txt-3); background: rgba(140,140,140,.12); border-color: rgba(140,140,140,.3); }
 
 .lrc-ladderbox { padding: 12px; margin-bottom: 12px; }
