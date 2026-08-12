@@ -22,7 +22,14 @@ import { useCallback, useEffect, useState } from 'react';
 
 interface Giorno {
   giorno: string;
+  // `stimaUsd` NON e' piu' la fotografia delle 23:55: e' la QUANTITA' integrata Sigma(tasso x durata),
+  // cioe' la stessa grandezza del bonifico. La fotografia resta in `stimaFotoUsd` per confronto.
   stimaUsd: number | null;
+  stimaFotoUsd?: number | null;
+  stimaBase?: string | null;
+  copertura?: number | null;
+  campioni?: number | null;
+  completa?: boolean;
   realeUsd: number | null;
   consuntivato: boolean;
   scartoUsd: number | null;
@@ -100,8 +107,9 @@ export default function RegistroRewardPanel() {
         </div>
       </div>
       <div className="rr-nota">
-        * su {t?.giornateConEntrambi ?? 0} giornate con entrambi i numeri ({usd(t?.realeSuGiorniConfrontabili)} reali).
-        Media {usd(t?.mediaGiornalieraUsd)}/g.
+        * la stima e' <b>integrata</b>: &Sigma;(tasso &times; durata) sui campioni della giornata, non la
+        fotografia delle 23:55 — stessa grandezza del bonifico. Su {t?.giornateConEntrambi ?? 0} giornate
+        con entrambi i numeri ({usd(t?.realeSuGiorniConfrontabili)} reali). Media {usd(t?.mediaGiornalieraUsd)}/g.
       </div>
 
       <div className="rr-lista">
@@ -110,7 +118,16 @@ export default function RegistroRewardPanel() {
             <span className="rr-data">{giornoBreve(g.giorno)}</span>
             <span className="rr-val">{g.consuntivato ? usd(g.realeUsd) : '—'}</span>
             <span className="rr-vs">vs</span>
-            <span className="rr-val rr-stima">{usd(g.stimaUsd)}</span>
+            <span className="rr-val rr-stima">
+              {usd(g.stimaUsd)}
+              {/* La copertura sta ACCANTO al numero e solo quando conta: una giornata campionata a
+                  meta' e' una sottostima nota, e su mobile un secondo numero sempre acceso e' rumore. */}
+              {g.copertura != null && g.completa === false && (
+                <i className="rr-cop" title={`giornata coperta al ${(g.copertura * 100).toFixed(0)}% dai campioni: la stima e' una sottostima nota`}>
+                  {(g.copertura * 100).toFixed(0)}%
+                </i>
+              )}
+            </span>
             <span className={`rr-pill ${g.scartoPct == null ? 'rr-p-n' : (g.scartoPct > 50 ? 'rr-p-alto' : (g.scartoPct < -50 ? 'rr-p-basso' : 'rr-p-ok'))}`}>
               {g.scartoPct == null ? (g.consuntivato ? '=' : 'attesa') : `${g.scartoPct > 0 ? '+' : ''}${g.scartoPct.toFixed(0)}%`}
             </span>
@@ -145,6 +162,7 @@ export default function RegistroRewardPanel() {
                    padding:2px 0; border-top:1px solid #1c2029; }
         .rr-attesa { opacity:.5; }
         .rr-data { width:42px; opacity:.7; flex:none; }
+        .rr-cop { font-style: normal; font-size: 9px; opacity: .6; margin-left: 3px; vertical-align: super; }
         .rr-val { width:58px; text-align:right; flex:none; }
         .rr-stima { opacity:.6; }
         .rr-vs { opacity:.35; font-size:10px; flex:none; }

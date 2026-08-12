@@ -121,7 +121,12 @@ const { registraCancellazioni } = require('../lib/maker/cancellazioni-visibili')
 // Due controlli orari dentro QUESTO processo: nessun pm2 nuovo. agent40 e' gia' sempre acceso e gira
 // ogni 5 secondi, quindi ha gia' l'orologio che serve — aggiungere un processo per due letture al
 // giorno sarebbe stato un demone in piu' da sorvegliare per niente.
-const { compitiDovuti, registraStima, registraReale, leggiConfronto, giorniDaRecuperare } = require('../lib/maker/confronto-reward');
+const { compitiDovuti, registraStima, registraStimaIntegrata, registraReale, leggiConfronto, giorniDaRecuperare } = require('../lib/maker/confronto-reward');
+// ── LA STIMA COME QUANTITÀ, NON COME FOTOGRAFIA ────────────────────────────────────────────────────
+// `buildSummary` restituisce un TASSO ($/giorno). Fotografarlo una volta alle 23:55 e confrontarlo col
+// bonifico della giornata e' cio' che produceva il +465% (docs/diagnosi-sovrastima-465.md). Adesso il
+// tasso si campiona durante la giornata e si integra: Σ(tasso × durata).
+const stimaIntegrata = require('../lib/maker/stima-integrata');
 // La lettura del consuntivo. SOLA LETTURA per costruzione: usa solo le credenziali L2, parla solo in
 // GET, e non importa l'adapter — l'unico oggetto del progetto che sappia mandare un ordine.
 const { leggiRewardReale } = require('../lib/maker/reward-reale');
@@ -1650,6 +1655,22 @@ async function main() {
           log(`CONFRONTO REWARD · stima di ${c.giornoStima} fotografata:`
             + ` $${sum && Number.isFinite(sum.estGrossUsdPerDay) ? sum.estGrossUsdPerDay.toFixed(2) : 'N/D'}/g`);
         }
+        // ── E LA GRANDEZZA CHE VERRA' DAVVERO CONFRONTATA COL BONIFICO ─────────────────────────────
+        // La fotografia qui sopra resta, ed e' la serie con cui e' stato misurato il +465%: toglierla
+        // renderebbe il prima e il dopo non confrontabili. Ma cio' che finisce nello scarto e'
+        // l'INTEGRALE dei campioni della giornata, che e' una quantita' come lo e' il bonifico.
+        const integ = stimaIntegrata.integra({ giorno: c.giornoStima, now: Date.now() });
+        const wi = registraStimaIntegrata({
+          giorno: c.giornoStima,
+          integrataUsd: integ.usd, coperturaFrazione: integ.coperturaFrazione,
+          campioni: integ.campioni, completo: integ.completo, fonte: 'campioni-vivi',
+        });
+        if (wi.scritto) {
+          log(`CONFRONTO REWARD · stima INTEGRATA di ${c.giornoStima}:`
+            + ` $${Number.isFinite(integ.usd) ? integ.usd.toFixed(4) : 'N/D'}`
+            + ` su ${integ.campioni} campioni, copertura ${(integ.coperturaFrazione * 100).toFixed(1)}%`
+            + `${integ.completo ? '' : ' — INCOMPLETA, la cifra e\' una sottostima nota'}`);
+        }
       }
 
       if (c.reale) {
@@ -1708,10 +1729,40 @@ async function main() {
     } finally { confrontoInCorso = false; }
   };
 
+  // ── IL CAMPIONATORE DELLA STIMA ────────────────────────────────────────────────────────────────
+  // Ha un orologio SUO e un lucchetto SUO, non quello di `controlliOrari`: un confronto reward lento
+  // (che fa rete verso il registro attivita') non deve poter far saltare campioni, altrimenti la
+  // copertura scenderebbe proprio nelle ore in cui il confronto lavora. Costo misurato di un campione:
+  // 124 ms mediani, di cui ~80 ms l'unica chiamata al venue. Passo 5 minuti ⇒ 0,2 richieste al minuto.
+  let campionaInCorso = false;
+  let ultimoCampioneMs = 0;
+  const campionaStima = async () => {
+    if (campionaInCorso) return;
+    const ora = Date.now();
+    if (ora - ultimoCampioneMs < stimaIntegrata.passoMs()) return;
+    campionaInCorso = true;
+    try {
+      const board = await buildMarketBoard({});
+      const ordini = await buildOrderBoard();
+      const sum = buildSummary(board.markets, ordini);
+      // `estGrossUsdPerDay` e' `null` quando almeno un mercato con capitale in banda non e' scorabile:
+      // in quel caso NON si registra niente, e l'intervallo restera' scoperto e dichiarato. Registrare
+      // uno zero direbbe «in quel momento non maturavo», che e' un'altra affermazione.
+      const tasso = sum && Number.isFinite(sum.estGrossUsdPerDay) ? sum.estGrossUsdPerDay : null;
+      stimaIntegrata.registraCampione({
+        tMs: ora, tassoUsdPerDay: tasso,
+        capitaleInBandaUsd: sum && Number.isFinite(sum.committedInBandUsd) ? sum.committedInBandUsd : null,
+      });
+      ultimoCampioneMs = ora;
+    } catch { /* un campione perso e' un buco dichiarato, non un errore che ferma il ciclo */ }
+    finally { campionaInCorso = false; }
+  };
+
   const run = async () => {
     cicloManuale++;
     // Prima del ciclo vero: e' una lettura, non tocca ordini, e un suo fallimento e' gia' isolato.
     controlliOrari().catch(() => {});
+    campionaStima().catch(() => {});
     let esito = null; let erroreCiclo = null;
     try { esito = await cycle(); }
     catch (e) { erroreCiclo = e; log('cycle failed:', e && e.message ? e.message : String(e)); }
