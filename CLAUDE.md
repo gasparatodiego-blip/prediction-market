@@ -3,8 +3,33 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **11 agosto 2026**, ~20:50 UTC (§5 punto 74 — verifica
-completa degli otto lavori della giornata e riavvio pulito di tutta la flotta).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~09:40 UTC (§5 punti 75-77 — la gestione
+del fill completata in sei passi, e i due lavori dell'11 agosto sera finalmente documentati).
+
+> ## 🔓 IL TAKER DEL MERGE NON HA MAI ESEGUITO — DUE CAUSE, ENTRAMBE CHIUSE — §5 punti 75 e 76
+> **Misurato sul giornale vivo: `merge-livello-1-piazzato` = ZERO** su **1.693** valutazioni e **852**
+> `reject-would-cross`. E il taker gemello, `chiusura-rapida-taker`, ha **636 tentativi e 0 riusciti**.
+> **Prima causa** (11 agosto, commit `ace1d57`): il Livello 1 dichiarava **un campo su quattro** di quelli
+> che `completaCoppiaOk` richiede. **Seconda causa** (12 agosto): con il tetto per mercato sceso a $65 il
+> **tetto per ordine è $37,50**, e una controparte da coppia $65 non ci sta — 40 rifiuti `manual-order-cap`.
+> Adesso i percorsi che **chiudono** sono esenti dal tetto per ordine, e l'esenzione è una **prova**
+> rifatta sull'ordine esatto: SELL entro il posseduto, BUY entro `manca`. Qualunque lettura mancante
+> lascia il tetto applicato, e il tetto di **safety** non è mai esentato.
+
+> ## 🩹 IL BUCO APERTO L'11 AGOSTO È CHIUSO — §5 punto 76
+> La **chiusura forzata pre-scadenza** vendeva al miglior bid cancellando solo le *uscite*, non la nostra
+> **liquidità BUY** sullo stesso lato: sul ramo `already-covered` quella restava viva e la vendita poteva
+> attraversarla. Era il guard che `close-at-market` ha dal 5 agosto, mancante su un percorso nato dopo.
+> Ora la liquidità entra in `daTogliere` ed eredita «se una cancellazione fallisce, non si vende».
+> **E i percorsi taker non mirano più ai propri ordini**: leggevano `dpMerge[…].asks/.bids` **grezzi**;
+> adesso passano da `othersLadder`, la stessa funzione di «mai primo sul libro».
+
+> ## 📈 TETTO COPPIA 110¢ → 120¢, E LA SORELLA CRESCE — §5 punti 76 e 77
+> `TETTO_COPPIA_CENTS` è **120** (decisione dell'operatore, mai applicata fino al 12 agosto). Undici
+> asserzioni che scrivevano `110` ora **derivano** il confine dal modulo. E il completamento di coppia
+> non resta più a metà: se il capitale non basta si piazza quel che si può, il **bersaglio vive su disco**
+> e ai cicli successivi si **aggiunge** la differenza — mai si sostituisce l'ordine a riposo, che
+> aprirebbe una finestra di scoperto totale.
 
 > ## 🛡️ IL GUARDIANO DELLE PERDITE È FUORI SERVIZIO — §5 punto 74
 > `data/guardian-state.json` porta ancora il latch dello scatto del **9 agosto**, e con quel file
@@ -4425,6 +4450,191 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     recupero entro pochi secondi ogni volta. Oggi è innocuo perché non c'è nulla da gestire, ma lo
     snapshot oltre **180 s** fa rifiutare **ogni** piazzamento: se i 429 si infittiscono a bot acceso, è
     il primo posto dove guardare.
+
+75. **I DUE LAVORI DELL'11 AGOSTO SERA, MAI DOCUMENTATI FIN QUI.** Sono `696255b` (pushato la sera
+    stessa) e `ace1d57` (rimasto **locale** fino alle 08:0x del 12 agosto). Vengono registrati adesso
+    perché §5 si fermava al punto 74 e nessuno dei due comparirebbe altrove.
+
+    **① `696255b` — IL FILL ENTRA IN MODALITÀ CHIUSURA** (`lib/maker/modalita-chiusura.js`, nuovo, 516
+    righe). Un fill — parziale o totale — apre ora un flusso esplicito invece di cadere nella gerarchia
+    ordinaria: **timestamp** sulla coppia scritto una volta sola e persistito su disco · le share **non
+    fillate spariscono in ogni caso**, anche se il taker riesce · **PIANO A**, il taker immediato (che
+    esisteva già: è il Livello 1, non ne è stato scritto un secondo) · e **solo se fallisce**, le REGOLE
+    di chiusura — sorella alla size fillata e vicino al mid esente da «mai primo», gamba fillata in banda
+    o a carico +1 tick anche fuori banda, mai sotto il carico. Più la **chiusura forzata sotto le tre ore**
+    dalla risoluzione (`ORE_CHIUSURA_FORZATA = 3`, confine inclusivo).
+    - **Parziale e totale sono lo stesso percorso**, e la ramificazione è **nei dati**: `residuiDaCancellare`
+      guarda il LIBRO, e con un fill totale la lista esce vuota da sola. Nessun `if (tipoFill)`.
+    - **Tre difetti trovati dai test e non dal ragionamento**: `Number(null)` valeva zero su una scadenza
+      non letta (avrebbe forzato la vendita **ovunque**), la chiusura forzata stava **prima** delle
+      cancellazioni (avrebbe venduto due volte), e sommare le osservazioni di una posizione già cumulativa
+      dava 120 share invece di 65.
+    - **✅ PUNTO 6-BIS, CONFERMATO DALL'OPERATORE IL 12 AGOSTO — decisione consapevole, non una svista.**
+      I fill parziali multipli restano **«ultima osservazione + storia»** e **NON** vengono sommati
+      aritmeticamente. La size che arriva è `sizePosseduta`, cioè **la posizione al venue, che è già
+      cumulativa**: dopo tre fill il venue dice 20, poi 35, poi 65 — non 20, 15, 30. Sommare darebbe
+      **120 invece di 65**, e la sorella verrebbe dimensionata su una posizione che non esiste. Si tiene
+      l'ultima come verità corrente e la storia accanto (`osservazioni[]`, con `incremento` per
+      differenza), così «da 20 a 35 a 65» resta leggibile. **Non toccare.**
+      *(⚠ Il registro della SORELLA — punto 77 — somma invece, ed è giusto: lì ogni voce è un ordine
+      NOSTRO, cioè un incremento vero. Le due regole sono opposte perché le due fonti lo sono.)*
+
+    **② `ace1d57` — IL LIVELLO 1 DICHIARAVA UN CAMPO SU QUATTRO.** Misurato sui due giornali maker:
+    **852 `merge-livello-1-reject-would-cross`**, e **`merge-livello-1-piazzato` = ZERO** su 1.693
+    valutazioni — cioè **il taker del merge non ha MAI eseguito in tutta la vita di questo stack**.
+    La causa non era la regola anti-incrocio: `completaCoppiaOk` (`manual-order.js:1044`) esiste dal 9
+    agosto e consente a un BUY di attraversare per completare una coppia aperta. Ma chiede
+    `attraversaApposta` **+** `completaCoppia` **+** `prezzoCaricoCoppia` **+** `tettoCoppiaCents`, e il
+    Livello 1 passava **solo il primo** — che «da solo continua a non fare niente su un BUY», come dice
+    il commento del gate stesso. **Stessa classe di §5 punto 52** (`signerProvider` non cablato): la
+    regola c'era, il chiamante non le passava ciò che chiede. Il modello giusto stava **dodici righe più
+    sotto**, nel taker della chiusura rapida — che infatti non ha **nemmeno un** `would-cross`.
+    - **Secondo problema, strutturale, trovato dal test:** il tetto del merge è **99¢** ma il gate accetta
+      solo `[100, 200]`, quindi non era **dichiarabile**. Si dichiara **100** — il minimo accettato — e il
+      vincolo vero resta più stretto e **a monte**: `decidiLivello` non propone nemmeno un Livello 1 sopra
+      99¢. Il gate è la seconda linea, non l'unica, e con 100 continua a rifiutare qualunque cosa sopra
+      la pari.
+
+76. **IL TETTO PER ORDINE NON RIGUARDA CHI CHIUDE, E UN TAKER NON MIRA AI PROPRI ORDINI — in `main`
+    il 12 agosto 2026, ~09:00 UTC. agent40 e dashboard RIAVVIATI.** Commit `48b4fe8`.
+
+    **① L'ESENZIONE DAL TETTO PER ORDINE.** Con il tetto per mercato sceso a **$65** l'11 agosto, il
+    tetto per ordine — che è **derivato** (`MARKET_CAP_FIXED_USD / 2 + 5`) — vale **$37,50**. Su un
+    ordine che APRE è la cifra giusta; su un ordine che CHIUDE è il difetto, perché la controparte da
+    comprare costa quanto la posizione già aperta impone. **40 rifiuti `chiusura-rapida-taker-reject-manual-order-cap`**
+    misurati sui giornali. Quindi il fix del Livello 1, appena pushato, sarebbe restato inerte per un
+    motivo diverso.
+    - **LA DICHIARAZIONE NON BASTA, ED È TUTTO IL PUNTO.** `lib/maker/esenzione-chiusura.js` (nuovo)
+      rifà l'aritmetica sull'ordine esatto contro lo **snapshot posizioni del venue**: **SELL** ≤ share
+      possedute, **BUY** ≤ `(possedute sul lato opposto) − (già possedute su questo)`, cioè al più
+      `manca`. Un BUY così può solo **appaiare**: nel caso limite porta i due lati in parti uguali, che
+      è esposizione direzionale **zero**, e mai oltre.
+    - **UNA SOLA ARITMETICA PER DUE CINTURE.** Le cinture sono due e indipendenti — il **GATE 4** di
+      `manual-order` e la cintura dell'adapter (`adapter.js:632`) — e devono esentare **gli stessi**
+      ordini. `evaluateReductionProof` è stata **ESTRATTA** in `lib/venues/polymarket-clob-maker/prova-riduzione.js`
+      (zero righe di logica cambiate) e importata da entrambe: ricopiarla sarebbe il reperto che il
+      rilevatore **D1** cerca, e qui una divergenza allargherebbe un limite di rischio. `adapter.js`
+      continua a esportare `evaluateReductionProof` con lo stesso nome — nessun test cambia.
+    - **IL CASO CHE SEMBRA UN BUCO E NON LO È.** Lo snapshot non elenca i token con posizione zero, quindi
+      «token assente» e «snapshot illeggibile» arrivano entrambi come `null`. La distinzione si ottiene
+      **senza un terzo stato**: le due letture vengono dalla **stessa** `readVenuePositions`
+      (`leggiCoppiaDetenuta`). Se lo snapshot è rotto o scaduto, `heldOpposto` è `null` e l'esenzione non
+      scatta; se `heldOpposto` è un numero, quello snapshot **era** leggibile e in quella stessa lettura
+      un token assente possiede davvero zero. Le due letture non possono straddleare un refresh.
+    - **IL TETTO DI SAFETY NON È MAI ESENTATO**: si esenta solo il cap live-min, e solo quando è lui a
+      mordere. Se il più stretto è `safety-risk-limits`, il rifiuto resta — e lo dice nel motivo.
+    - **COSTO ZERO SUGLI ALTRI ORDINI**: lo snapshot si legge solo **dopo** che il tetto ha già rifiutato
+      e solo se la dichiarazione c'è.
+    - **CHI DICHIARA, E CHI NO.** Sei punti in `auto-close` (L1+sorella · incremento sorella · chiusura
+      rapida · i due rami della chiusura pre-scadenza · uscita forzata a mercato) e **nessun** percorso di
+      liquidità — `plan-to-orders`, `bulk-allocate`, `auto-reprice` non nominano il campo, e un test lo
+      verifica per assenza.
+    - **⚠ UNA AGGIUNTA RISPETTO ALLA DECISIONE, dichiarata:** l'**uscita forzata a mercato**
+      (`close-at-market`) non era nell'elenco dei quattro percorsi ed è stata esentata lo stesso. È un
+      SELL di una posizione detenuta, cioè il caso su cui `evaluateReductionProof` esiste già ed è la
+      prova più forte di tutte. Lasciarla fuori avrebbe prodotto un sistema che sa chiudere una coppia
+      sopra $37,50 ma non sa **vendere** una posizione sopra $37,50.
+
+    **② IL TETTO DELLA COPPIA: 110¢ → 120¢.** Decisione dell'operatore già presa e mai applicata.
+    `TETTO_COPPIA_DEFAULT_CENTS = 120`, env `MAKER_TETTO_COPPIA_CENTS` con clamp `[100, 200]` invariato.
+    Il numero è il **costo massimo che si accetta di pagare per non restare direzionali**: una coppia
+    chiusa a 120¢ è una perdita certa di 20¢/share, e si accetta perché l'alternativa non è zero — è
+    un'esposizione direzionale aperta il cui esito peggiore vale 100¢/share.
+    **⚠ IL TETTO DEL MERGE (99¢) È UN'ALTRA COSA E NON SI È MOSSO**: quello dice se completare la coppia
+    è *profittevole*, questo se è *accettabile*. Due domande, due numeri.
+    - **Undici asserzioni ritarate, non allentate.** `chiusura-rapida.test.js` e
+      `controparte-primo-assoluto.test.js` scrivevano `110` in undici punti: il giorno del cambio sarebbero
+      diventati undici rossi che non segnalavano nessun difetto. Ora **derivano** il confine da
+      `CR.TETTO_COPPIA_CENTS` — difendono che il tetto **morda dove deve**, non il numero — e due fixture
+      sono state ricostruite dal tetto (il livello «troppo caro» sta 5¢ sopra il massimo pagabile, e il
+      carico del tick grosso è scelto perché il massimo esatto non cada su un multiplo del tick). Il
+      **valore** si asserisce in **un punto solo**, che è dove un cambio va notato di proposito.
+
+    **③ ANTI-SELF-TRADE SUI PERCORSI TAKER.** Il guard esisteva per `close-at-market` (dal 5 agosto);
+    i percorsi taker di `auto-close` leggevano `dpMerge[…].asks` e `.bids` **GREZZI**, cioè scale che
+    contengono anche i nostri ordini. Un taker prezzato sul miglior ask può quindi eseguirsi contro il
+    nostro stesso ask, e il fill che ne nasce è **fantasma**. Il venue non ci protegge: la self-trade
+    prevention del CLOB non è documentata (`inventory-guard.js:27`).
+    - **Si riusa `othersLadder`** — la stessa funzione con cui il motore applica «mai primo sul libro» —
+      sugli ordini a riposo che il ciclo ha **già** letto: nessuna lettura nuova del venue. Quattro punti
+      convertiti (`scalaAltrui`), compreso il **bid** della chiusura forzata, che è il caso pericoloso
+      perché attraversa lo spread di proposito.
+    - **Fail-closed in una direzione sola**: scala non leggibile o tick assente ⇒ si torna alla scala
+      grezza, cioè al comportamento di prima. Non si inventa una scala **vuota**, che direbbe «non c'è
+      nessuno» proprio quando non lo sappiamo.
+    - **⚠ E IL BUCO APERTO L'11 AGOSTO È CHIUSO.** La **chiusura forzata pre-scadenza** cancellava solo
+      `cancelOrderIds` (le uscite) e non la nostra **liquidità BUY** sullo stesso lato: sul ramo
+      `already-covered` quella restava viva e la vendita forzata poteva attraversarla. Ora entra in
+      `daTogliere` — **la stessa lista**, non un secondo meccanismo — ed eredita la disciplina «se anche
+      una sola cancellazione fallisce, non si vende». Il verdetto `forza` si calcola **prima** delle
+      cancellazioni (decide *cosa* togliere); il ramo che **esegue** resta **dopo**, che è la correzione
+      trovata da un test l'11 agosto e non si tocca.
+
+77. **LA CHIUSURA RIPROVA, LA SORELLA CRESCE, E UN MERCATO MORTO NON RESTA IN SEI REGISTRI — in `main`
+    il 12 agosto 2026, ~09:30 UTC. agent40 RIAVVIATO.** Commit `7e75809`.
+
+    **① RETRY CON BACKOFF SUI PERCORSI DI CHIUSURA.** `backoff-venue` era in servizio solo per le
+    **letture** dell'adapter: l'invio dell'ordine è deliberatamente fuori da `withRetry` (§4 fase 8), e
+    un rifiuto in chiusura aspettava il ciclo dopo. Ora i **sei** piazzamenti di chiusura passano da
+    `piazzaChiudendo` — fino a **3 tentativi** con attesa progressiva, `Retry-After` rispettato.
+    - **Si riprova SOLO ciò che ha senso.** La corsia manuale risponde con un `gate` quando a rifiutare è
+      una **nostra** regola (tetto, allowlist, banda, mai-primo, duplicato): quelle decisioni non cambiano
+      fra un tentativo e l'altro dentro lo stesso ciclo, e ritentarle sarebbe martellare il proprio
+      codice. Si riprova solo quando il rifiuto viene dal **venue**.
+    - **L'ESITO AMBIGUO NON SI RIPROVA MAI**: se la richiesta era già partita l'ordine può essere a
+      riposo, e ritentare alla cieca è il modo classico di ritrovarsi **due ordini da un'intenzione sola**.
+      Lo decide `classificaErrore`, non una seconda regola.
+    - **Il KILL resta sovraordinato e si rilegge PRIMA di ogni ritentativo**, non solo a inizio ciclo: fra
+      un tentativo e l'altro passano secondi, e in quei secondi l'operatore può averlo premuto.
+    - **La quotazione ordinaria NON riprova**, ed è voluto: un ordine di liquidità rifiutato può aspettare
+      il ciclo dopo senza che nulla peggiori; una posizione scoperta no.
+
+    **② LA SORELLA CRESCE INVECE DI RESTARE A METÀ.** Il ramo che trovava un completamento già a riposo
+    usciva con `in-attesa` **senza guardare quanto coprisse**: una sorella da 40 share su un bersaglio di
+    100 restava 40 **per sempre**, e la posizione restava scoperta per 60 senza che nessun numero lo
+    dicesse. Adesso il **bersaglio** vive nel registro su disco — quindi sopravvive a un `pm2 restart`,
+    dopo il quale una sorella da 40 su 100 sembrerebbe altrimenti completa — la size iniziale si limita al
+    capitale libero (`sizeSostenibile`), e ai cicli successivi si **aggiunge** la differenza.
+    - **SI AGGIUNGE, NON SI SOSTITUISCE.** Cancellare 40 share che stanno già lavorando per ripiazzarne
+      100 aprirebbe una finestra in cui la posizione è scoperta **per intero** — esattamente ciò che si
+      sta chiudendo. È anche la lezione di §5 punto 73.
+    - **Il bersaglio si legge dal registro, la copertura dal LIBRO.** Il registro dice cosa abbiamo
+      chiesto; solo il libro dice cosa c'è. Se divergono vince il libro.
+    - **Mai sotto il minimo del venue e mai arrotondato in su**: un incremento troppo piccolo verrebbe
+      rifiutato (`BELOW_MIN_SIZE` è bloccante in questo stack) e arrotondare comprerebbe più del
+      necessario. Si aspetta il ciclo in cui il capitale basta per un ordine intero.
+    - **⚠ QUINTA OCCORRENZA DI `Number(null) === 0` IN QUESTO REPO, e trovata da una prova e non dal
+      ragionamento** (le altre: §5 punti 66, 68, e due volte l'11 agosto). «Non ho letto il libro» sarebbe
+      diventato «sul libro non c'è niente», e la funzione avrebbe proposto di aggiungere il bersaglio
+      **intero** sopra una copertura sconosciuta. Ora si guarda il valore grezzo: solo un numero è un
+      numero, e uno **zero vero** invece si aggiunge.
+
+    **③ I SEI REGISTRI DI UN MERCATO MORTO.** Alla fine della vita di un mercato il sistema faceva **due**
+    cose su sei: `end-of-life-cancel` toglie gli ordini a riposo e `allowlist-auto-off` lo toglie dalla
+    allowlist. Restavano scritti `merge-attese`, `residui-scoperti`, `modalita-chiusura`,
+    `maker-allocated-capital`, `maker-manual-mode`, `maker-auto-close` — e ogni ciclo continuava a
+    visitarlo per poi rifiutarsi di fare qualcosa (§5 punto 57 racconta cosa costa).
+    - **«RISOLTO» E «ANNULLATO» SONO LA STESSA DOMANDA, E NON SI CHIEDE ALL'OROLOGIO.** `market-clock`
+      legge `endDate`, quindi vede la scadenza **nominale**: un mercato voidato prima non la raggiunge mai.
+      La pulizia si attacca a `closed`/`acceptingOrders` — la lettura che `decideClose` usa dal 4 agosto —
+      e copre entrambi i casi con lo stesso codice.
+    - **SOLO A LIBRO LIBERO**, e `libroLibero !== true` blocca tutto: «non ho letto gli ordini» vale NO.
+      Togliere il tetto o la gestione manuale mentre un nostro ordine è vivo lascerebbe un ordine vero su
+      un mercato che il sistema non governa più — la stessa disciplina di `allowlist-auto-off`.
+    - **Un registro che fallisce non ferma gli altri**: sono sei stati indipendenti, e mezza pulizia è
+      meglio di nessuna. Una mappa dei tetti **illeggibile** non produce però nessuna scrittura:
+      riscriverla vuota toglierebbe il tetto a **ogni** mercato (§5 punto 53).
+    - **Gestione manuale e uscita automatica si SPENGONO** con `setManualMode`/`setAutoClose`, le stesse
+      funzioni del pannello e del reset — hanno un audit proprio e una semantica di opt-in.
+    - **NESSUN AUDIT VIENE CANCELLATO** («cancellare un audit non è pulizia», §5 punto 63) e **il redeem
+      resta fuori perimetro** per decisione dell'operatore: `redeemPosition` continua a non avere
+      chiamanti. Qui si toglie la burocrazia, non il capitale.
+
+    **⚠ RESTA APERTO, e va detto invece che lasciato implicito.** La pulizia si innesca da `auto-close`,
+    che itera le **posizioni**: un mercato morto **senza** posizione ma con voci nei registri non viene
+    visitato. Per gli ORDINI ci pensa `end-of-life-cancel` in `auto-reprice`, che però non chiama la
+    pulizia — agganciarcela è il lavoro successivo, e non è una riga: `auto-reprice` non legge lo stato
+    del venue, legge l'orologio.
 
 ---
 
