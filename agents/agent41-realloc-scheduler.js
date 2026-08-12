@@ -1230,7 +1230,7 @@ async function miniCiclo(decisione, deps = {}) {
   //     una gamba rimasta sola se l'altra viene rifiutata — e' l'unico uso, e riduce esposizione.
   const diag = deps.diag !== undefined ? deps.diag : diagnoseExposure({});
   let esito = await piazza(righeOrdine, diag);
-  passate.push({ n: 1, mercati: mercati.map((m) => m.marketId), piazzati: esito && esito.placed, rifiutati: esito && esito.refused });
+  passate.push({ n: 1, mercati: mercati.map((m) => m.marketId), piazzati: esito && esito.placed, rifiutati: esito && esito.refused, saltati: esito && esito.skipped });
 
   // ── LE PASSATE SUCCESSIVE ───────────────────────────────────────────────────────────────────────
   // Si riprova SOLO se nessun ordine e' passato: se anche uno solo e' andato a segno il giro ha fatto il
@@ -1258,7 +1258,7 @@ async function miniCiclo(decisione, deps = {}) {
     annuncia('log', `mini-ciclo: passata ${passate.length + 1} — ${bloccati.length} mercato/i esclusi`
       + ` (${bloccati.map((x) => x.slice(0, 10)).join(', ')}), si prova ${m2.map((x) => String(x.marketId).slice(0, 10)).join(', ')}`);
     esito = await piazza(r2, diag);
-    passate.push({ n: passate.length + 1, mercati: m2.map((m) => m.marketId), piazzati: esito && esito.placed, rifiutati: esito && esito.refused, esclusi: bloccati });
+    passate.push({ n: passate.length + 1, mercati: m2.map((m) => m.marketId), piazzati: esito && esito.placed, rifiutati: esito && esito.refused, saltati: esito && esito.skipped, esclusi: bloccati });
     righeOrdine = r2; mercati = m2;
   }
   if (esito && esito.placed === 0 && passate.length >= TRIG.MAX_MERCATI_PER_GIRO) {
@@ -1311,6 +1311,21 @@ async function miniCiclo(decisione, deps = {}) {
     utilizzo: utilPrima, utilizzoStimatoDopo: utilDopo,
     capitaleTotale: +capitaleTotale.toFixed(2), aRiposoUsd: +aRiposo.toFixed(2),
     piazzati: esito && esito.placed, rifiutati: esito && esito.refused,
+    // ── I SALTATI, CHE PRIMA SPARIVANO ─────────────────────────────────────────────────────────
+    // `skipped` non entra ne' in `placed` ne' in `refused`: il 12 agosto tutte e 12 le gambe sono
+    // tornate `skipped` per il tetto di esposizione, e il referto diceva «0 piazzati, 0 rifiutati» —
+    // cioe' descriveva un blocco TOTALE con la stessa riga con cui descriverebbe l'inazione.
+    saltati: esito && esito.skipped,
+    // E il PERCHE', non solo il numero: senza il motivo un saltato resta invisibile quanto prima.
+    motiviSaltati: (() => {
+      const c = {};
+      for (const x of ((esito && esito.results) || [])) {
+        if (!x || x.status !== 'skipped') continue;
+        const k = String(x.reason || 'motivo non dichiarato').slice(0, 120);
+        c[k] = (c[k] || 0) + 1;
+      }
+      return Object.entries(c).map(([motivo, quante]) => ({ motivo, quante }));
+    })(),
     nonPreparati, senzaRipiego, passate, motivoPassate,
     durataMs: Date.now() - t0, risultati: esito && esito.results,
   };
@@ -1373,7 +1388,9 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   scrivi(r);
   if (r.esito === 'allocato') {
     annuncia('log', `mini-ciclo${r.forzato ? ' FORZATO' : ''}: $${r.allocatoUsd} rimessi al lavoro su ${(r.mercati || []).length} mercato/i`
-      + ` (${r.piazzati} ordini piazzati, ${r.rifiutati} rifiutati) · fonte: ${r.fonte}`
+      + ` (${r.piazzati} ordini piazzati, ${r.rifiutati} rifiutati`
+      + `${r.saltati ? `, ${r.saltati} SALTATI` : ''}) · fonte: ${r.fonte}`
+      + `${(r.motiviSaltati || []).length ? ` · saltati perche': ${r.motiviSaltati.map((m) => `${m.quante}x ${m.motivo}`).join(' | ')}` : ''}`
       + ` · ${UTIL.formattaUtilizzo(r.utilizzoStimatoDopo)}`);
   } else if (r.esito === 'nessuna-azione') {
     annuncia('log', `mini-ciclo: nessuna azione — ${r.motivo}`);
