@@ -101,6 +101,11 @@ const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit'
 const killSwitch = require('../lib/safety/kill-switch');
 const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 const UTIL = require('../lib/maker/utilizzo-capitale');
+// ── IL FRENO DI PROVA (12 agosto 2026) ────────────────────────────────────────────────────────────
+// Fino a oggi `REALLOC_SCHEDULER_DRY_RUN` non era letto da NESSUNA riga: era decorativo, e per due
+// giorni ha fatto credere che agent41 fosse in prova mentre non lo era. Adesso frena davvero, su
+// TUTTI i percorsi che possono arrivare al venue, ed e' fail-closed: assente o ambiguo ⇒ non piazza.
+const FRENO = require('../lib/maker/freno-prova');
 
 const ROOT = path.resolve(__dirname, '..');
 const DATA_DIR = path.join(ROOT, 'data');
@@ -638,7 +643,11 @@ async function giro(motivoAvvio) {
   // `dryRunOnly` resta il nome del parametro a valle (runReallocCycle non cambia): qui significa
   // «calcola tutto ma non toccare il venue». Con il bot fermo è esattamente quello che vogliamo, e il
   // ciclo continua a girare per intero — verifica, saldo, piano — così il pannello ha sempre da mostrare.
-  const soloRacconto = !bot.enabled;
+  // Il freno di prova si somma al bot FERMO: basta uno dei due perche' il giro racconti senza toccare
+  // il venue. Si RILEGGE a ogni giro, come l'interruttore — un freno che vale solo dal riavvio non e'
+  // un freno.
+  const frenoGiro = FRENO.statoFreno();
+  const soloRacconto = !bot.enabled || frenoGiro.attivo;
   scrivi({ at: new Date(avvio).toISOString(), tipo: 'ciclo-avvio', motivoAvvio, dryRun: soloRacconto,
     botEnabled: bot.enabled, botBy: bot.by, botAt: bot.atIso, aperture: r,
     intervalloOre: INTERVAL_MS / 3_600_000, tettoPerMercatoUsd: MARKET_CAP_FIXED_USD });
@@ -726,7 +735,11 @@ let ultimoTriggerAt = null;
  */
 function piazzaCoppia(rows, diag) {
   return runBulkAllocation(
-    { rows, dryRunOnly: false, origine: 'auto' },
+    // QUI c'era `dryRunOnly: false` CABLATO: il mini-ciclo piazzava a prescindere da qualunque flag.
+    // E' il secondo dei due percorsi di agent41 verso il venue, e senza questa riga il freno avrebbe
+    // coperto solo il ciclo da sei ore — cioe' avrebbe frenato il percorso che scatta ogni sei ore e
+    // lasciato libero quello che scatta ogni dieci minuti.
+    { rows, dryRunOnly: FRENO.statoFreno().attivo, origine: 'auto' },
     {
       openNotionalUsd: diag && diag.readable ? (diag.openNotionalUsd || 0) : 0,
       cancelOrder: ({ orderId, marketId }) => cancelManualOrder({ orderId, marketId }, 'manual-ui'),
@@ -1426,6 +1439,20 @@ function main() {
     return;
   }
   const bot0 = statoBot();
+  // LO STATO DEL FRENO, PRIMA DI TUTTO IL RESTO: e' la domanda «sto piazzando davvero?», e finora la
+  // risposta era deducibile solo leggendo il codice. Va scritta anche su disco, perche' il pannello
+  // non puo' leggere l'ambiente di un altro processo.
+  {
+    const f = FRENO.statoFreno();
+    annuncia('log', FRENO.rigaLog(f));
+    try {
+      const fs_ = require('fs');
+      const p_ = require('path').join(require('../lib/safety/store').DATA_DIR, 'freno-prova.json');
+      const tmp_ = `${p_}.tmp`;
+      fs_.writeFileSync(tmp_, JSON.stringify({ ...f, agente: 'agent41-realloc-scheduler', pid: process.pid, atIso: new Date().toISOString() }, null, 1));
+      fs_.renameSync(tmp_, p_);
+    } catch { /* il pannello lo mostrera' come sconosciuto: non e' un motivo per non partire */ }
+  }
   annuncia('log', `ACCESO — intervallo ${INTERVAL_MS / 3_600_000}h, tetto per mercato $${MARKET_CAP_FIXED_USD} FISSO (YES+NO sommati) · nessun limite al numero di mercati`
     + ` · il bot e' ${bot0.enabled ? 'AVVIATO (ordini veri quando le regole lo consentono)' : 'FERMO (solo piano, nessun ordine)'}`
     + ` · l'interruttore e' ${FILE_INTERRUTTORE}, si commuta dalla tab «Mercati ottimizzati»`);
