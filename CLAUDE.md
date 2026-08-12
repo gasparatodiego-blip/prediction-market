@@ -3,8 +3,31 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~12:20 UTC (§5 punti 92-98 — le sei voci
-del blocco C, più il rosso che la suite ha trovato).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~13:00 UTC (§5 punti 100-102 — le tre
+voci del blocco D).
+
+> ## 📐 LA STIMA È UNA QUANTITÀ, NON PIÙ UN TASSO FOTOGRAFATO — §5 punto 100
+> **Opzione A applicata** (decisione dell'operatore). `estUsdPerDay` è un TASSO; fotografarlo alle 23:55
+> e confrontarlo col bonifico della giornata è ciò che produceva il +465%. Adesso
+> **stima = Σ(tasso × durata)**, campionata ogni **5 minuti** da agent40 (costo misurato: **124 ms** a
+> campione, 0,2 req/min = +0,6% sul carico di flotta). Tre regole: un campione vale al più **due passi**,
+> uno scoperto **sottostima e lo dichiara** (`coperturaFrazione`), un tasso non finito **non si registra**.
+> **Ricalcolo a ritroso 6-11 agosto: +466% → +118%** sulle stesse 5 giornate, e **il 10 agosto passa da
+> −100% a +94%**. ⚠ La ricostruzione storica mappa solo il **48-63% del nozionale** e non lo scala:
+> è dichiarato, non aggirato.
+
+> ## 🏷️ LE USCITE PROTETTIVE SONO ESCLUSE DAL RESET PER DECISIONE — §5 punto 101
+> `SORGENTI_AUTOMATICHE` diceva `'auto-close'`, il valore vero è **`'auto-close-on-fill'`**: 4.686 righe
+> etichettate `manual-ui`. Correggere la stringa e basta avrebbe fatto **spazzare le uscite protettive**.
+> Quindi: stringa corretta **e** terza origine **`auto-chiusura`**, che il reset non tocca per scelta.
+> Il reset spazza gli ordini automatici **di piano**, non chi sta chiudendo una posizione.
+
+> ## ⏱️ UNA SOLA MISURA DI ORIZZONTE: 18 ORE — §5 punto 102
+> Pianificatore 18 h contro verifica 24 h ⇒ fascia di disaccordo permanente. Ora `market-validity`
+> **deriva** la soglia da `MIN_HORIZON_DAYS = 0,75`. Il board normalizzato porta **`endDate`** (prima
+> mancava su 306 righe su 306) e **una scadenza non determinabile ESCLUDE**: ribalta la regola
+> «unknown non rifiuta mai», che era giusta quando la scadenza mancava per caso e sbagliata quando
+> mancava per costruzione.
 
 > ## 🛡️ NESSUN PROCESSO CRITICO PUÒ PIÙ ARRENDERSI DOPO CINQUE MINUTI — §5 punto 97
 > `max_restarts: 20` + `min_uptime` di difetto (1 s) volevano dire: **20 crash rapidi × 15 s = 5 minuti**,
@@ -5096,6 +5119,67 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
     perché agent24 non ha mai aperto `.env`. **I tre inline preesistenti non sono stati toccati**:
     agent40/41/43 le credenziali le usano davvero. Il test include la **controprova** che senza
     restrizione le quattro credenziali passerebbero (4/4).
+
+---
+
+## 5-ter · IL BLOCCO D — tre voci, 12 agosto 2026
+
+100. **OPZIONE A: LA STIMA DIVENTA UNA QUANTITÀ INTEGRATA** (commit `329efe6`, `ef47b09`).
+     Decisione dell'operatore su `docs/diagnosi-sovrastima-465.md`. `lib/maker/stima-integrata.js`
+     (nuovo) è **puro**: non legge il venue e non calcola tassi — li riceve e risponde a due domande,
+     «registra questo campione» e «quanto fa l'integrale».
+     **Il campionatore** vive in agent40 con **orologio e lucchetto propri**, non quelli del confronto:
+     un confronto lento (che fa rete) non deve poter far saltare campioni proprio nelle ore in cui
+     lavora. **Passo 5 minuti**, e il numero viene da una misura: 124 ms mediani a campione, di cui
+     ~80 ms l'unica chiamata al venue. 288 campioni/giorno = 0,2 req/min. Si cambia con
+     `MAKER_STIMA_PASSO_MS`, fuori da [60 s, 30 min] scartato.
+     **Il confronto** usa `baseStima`, unico punto che decide, e **scrive quale base ha usato**. La
+     fotografia resta in `stimaUsd`: è la serie con cui è stato misurato il +465%.
+     **Ricalcolo a ritroso** (`scripts/ricalcola-stima-integrata.js`), campioni ricostruiti dallo
+     storico board (34 istantanee/giorno) e da `execution-audit`, con la matematica del repo
+     (`recoverCompetitorQ` + `estimateCapitalLevel`) e il limite di profondità:
+
+     | giorno | foto | integrata | reale | scarto vecchio | scarto nuovo |
+     |---|---|---|---|---|---|
+     | 06/08 | $3,09 | $0,85 | $1,30 | +137% | **−35%** |
+     | 08/08 | $49,17 | $11,02 | $3,68 | +1236% | **+200%** |
+     | 09/08 | — | $30,41 | $8,35 | — | +264% |
+     | 10/08 | $0,00 | $8,23 | $4,25 | **−100%** | **+94%** |
+     | **totale** | **$52,26** | **$20,11** | **$9,24** | **+466%** | **+118%** |
+
+     **⚠ IL LIMITE, DICHIARATO**: `execution-audit` indicizza per TOKEN e lo storico board per
+     `conditionId`; la mappa copre **48-63% del nozionale** e il resto **non viene scalato**. In senso
+     opposto la ricostruzione non applica il giudizio «in banda» del percorso vivo: le due distorsioni
+     hanno segno contrario ed è scritto nell'intestazione dello script.
+     **Pannello**: mostra l'integrata, con la copertura accanto **solo quando la giornata non è
+     completa** — su mobile un secondo numero sempre acceso è rumore.
+     `stima-integrata.test.js` **42/42**.
+
+101. **LA COSTANTE SBAGLIATA, E PERCHÉ CORREGGERLA DA SOLA SAREBBE STATO UN DANNO** (commit `a4b458e`).
+     `SORGENTI_AUTOMATICHE` conteneva `'auto-close'`; il valore vero è `AUTO_CLOSE_SOURCE =
+     'auto-close-on-fill'`. **4.686 righe** `→ manual-ui`, zero `→ auto`, sbagliata dal commit che ha
+     introdotto il meccanismo. Le uscite sopravvivevano al reset **per accidente**.
+     Adesso esiste **`ORIGINE_AUTO_CHIUSURA = 'auto-chiusura'`**: automatica, ma che sta chiudendo una
+     posizione. Il reset spazza gli automatici **di piano** e non tocca chi chiude — e
+     `separaPerOrigine` restituisce `protetti`, che il referto dichiara: «ha lasciato 4 righe» e «ha
+     risparmiato 4 vie d'uscita» sono due fatti diversi.
+     **Le costanti sono IMPORTATE**: era una stringa ricopiata a produrre il difetto. `mm-tracking`
+     resta letterale perché il suo modulo è il motore da 882 righe — un test verifica che coincida.
+     `reset-uscite-protette.test.js` **22/22**.
+
+102. **UNA SOLA MISURA DI ORIZZONTE, E LO SCARTO A MONTE** (commit `4b5426c`). Tre correzioni, nessuna
+     sufficiente da sola:
+     - **la soglia è una**: `market-validity` **deriva** `HORIZON_MIN_HOURS` da `MIN_HORIZON_DAYS`
+       ⇒ **18 ore**. Scelto 18 e non 24 perché 0,75 g è il numero tarato sui dati (§5 punto 38 fase 1)
+       mentre il 24 non aveva nessuna misura dietro;
+     - **il board porta `endDate`**: `rewards-normalize` proiettava solo `hoursToResolution`, che è un
+       numero calcolato al momento; `horizonVerdict` vuole una ISO. Mancava su **306 righe su 306**;
+     - **scadenza non determinabile ⇒ ESCLUSO**. Ribalta «unknown non rifiuta mai»: era giusta quando
+       la scadenza mancava per caso, sbagliata quando mancava per costruzione.
+     **La distinzione resta netta**: `horizonVerdict` MISURA e continua a rispondere `unknown` senza
+     indovinare; `allocator.horizonFilter` GIUDICA. Intestazione di `horizon.js` e il suo selfcheck
+     allineati, così non diventano il reperto **D7**. Un'asserzione preesistente in
+     `tetto-orizzonte.test.js` è stata **invertita, non rimossa**. `orizzonte-unico.test.js` **22/22**.
 
 ---
 
