@@ -232,8 +232,33 @@ async function leggiVenue({ marketId }) {
     rewardsDailyRate: pot,
     maxSpreadCents: Number.isFinite(maxSpread) ? maxSpread : null,
     minSizeShares: Number.isFinite(minSize) ? minSize : null,
-    endDate: typeof j.end_date_iso === 'string' ? j.end_date_iso : null,
+    // LA SCADENZA NON SI LEGGE PIÙ QUI (12 agosto 2026). Fino a oggi questa riga restituiva
+    // `end_date_iso` grezzo, e il pianificatore leggeva invece il board: due letture della stessa cosa,
+    // e sul ciclo delle 15:41:31Z due mercati sono stati scelti con 32,3 h e 20,3 h di vita e poi
+    // rifiutati con «mancano 8,3 h» — tre ricalcoli e il ciclo fermato, senza che nessuna delle due
+    // fosse sbagliata: il CLOB tronca a mezzanotte, Gamma pubblica l'ora vera.
+    //
+    // Adesso la riconciliazione avviene UNA VOLTA in agent24 (lib/rewards/scadenza-mercato) e il board
+    // porta il verdetto. Qui si legge da lì, così pianificatore e verifica usano lo stesso numero PER
+    // COSTRUZIONE e non per coincidenza. La lettura grezza del venue resta accanto, dichiarata, perché
+    // «le due fonti concordano» resti verificabile dall'esterno.
+    endDate: scadenzaDalBoard(marketId, typeof j.end_date_iso === 'string' ? j.end_date_iso : null),
+    endDateVenueGrezza: typeof j.end_date_iso === 'string' ? j.end_date_iso : null,
   };
+}
+
+/**
+ * La scadenza riconciliata del board — l'UNICO punto da cui la verifica la legge.
+ *
+ * Ripiego dichiarato: se il board non porta la riga (mercato uscito dal tabellone) si usa la lettura
+ * grezza del venue, che è la più prudente delle due e quindi il ripiego sicuro. Mai il contrario.
+ */
+function scadenzaDalBoard(marketId, grezzaVenue) {
+  try {
+    const r = rigaBoardNormalizzata(marketId);
+    if (r && typeof r.endDate === 'string' && r.endDate.trim()) return r.endDate;
+  } catch { /* board illeggibile: si ripiega sulla lettura del venue, che è la più prudente */ }
+  return grezzaVenue;
 }
 
 // ── IL SALDO ────────────────────────────────────────────────────────────────────────────────────────

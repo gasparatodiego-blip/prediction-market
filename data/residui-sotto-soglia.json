@@ -1,0 +1,21 @@
+{
+  "at": 1786232717323,
+  "atIso": "2026-08-08T23:45:17.323Z",
+  "residui": [
+    {
+      "type": "residuo-sotto-soglia",
+      "at": "2026-08-08T23:42:16.272Z",
+      "marketId": "0xc00c23bbbe2414e8d79516455d62ecd7088297d7bb9328d7b83d14f776e5c08f",
+      "marketTitle": "Will the lowest temperature in London be 18°C on August 10?",
+      "orderId": "0x447529483a3b253748b126a0a7b6859368ff05a52b50b2931171a31b4ba05e48",
+      "book": "no",
+      "side": "BUY",
+      "price": 0.65,
+      "sizeRemaining": 1.25,
+      "minSize": 20,
+      "notionalUsd": 0.8125,
+      "secondsToExpiry": 180,
+      "expiresAt": "2026-08-08T23:45:16.272Z"
+    }
+  ]
+}

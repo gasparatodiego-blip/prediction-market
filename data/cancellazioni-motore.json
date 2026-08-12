@@ -1,0 +1,19 @@
+{
+  "at": 1786275017715,
+  "atIso": "2026-08-09T11:30:17.715Z",
+  "cancellazioni": [
+    {
+      "orderId": "0x9a4e4a0b3a16aecf6064aae2ad27ff506d4eb3d1559732465a8e4571903bd4aa",
+      "marketId": "0xbbd623c4191ca76dec466507375d6df85b403b7e14f9cbd3d09f2c450ae0cd96",
+      "marketTitle": "Will Mike Lindell win the 2026 Minnesota Governor Republican primary election?",
+      "book": "yes",
+      "price": 0.43,
+      "size": 60.6,
+      "notionalUsd": 26.06,
+      "motivo": "mai-primo-sul-libro",
+      "dettaglio": "il libro si è mosso e questo ordine è ora il migliore del suo lato. un tick dietro il miglior bid altrui (43¢) darebbe 42¢, fuori dalla banda premiante [43¢–46¢]. Restare in banda vorrebbe dire risalire in CIMA al libro, e questo lato non si quota: meglio non impegnare capitale che impegnarlo nella posizione peggiore del libro. — si cancella senza rimpiazzo: non si resta in cima nemmeno per restare premianti.",
+      "at": "2026-08-09T11:30:16.857Z",
+      "motivoLeggibile": "mai primo sul libro"
+    }
+  ]
+}

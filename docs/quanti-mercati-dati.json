@@ -1,0 +1,177 @@
+{
+ "generatoIso": "2026-08-12T14:25:41.081Z",
+ "capitale": 663.11,
+ "costoCoppia": 0.98,
+ "boardMercati": 118,
+ "distribuzioneMinimi": [
+  {
+   "minSize": 20,
+   "mercati": 86,
+   "costoCoppiaUsd": 19.6
+  },
+  {
+   "minSize": 50,
+   "mercati": 16,
+   "costoCoppiaUsd": 49
+  },
+  {
+   "minSize": 100,
+   "mercati": 6,
+   "costoCoppiaUsd": 98
+  },
+  {
+   "minSize": 200,
+   "mercati": 10,
+   "costoCoppiaUsd": 196
+  }
+ ],
+ "massimoPieno": {
+  "n": 33,
+  "speso": 646.8,
+  "residuo": 16.31,
+  "composizione": {
+   "20": 33
+  }
+ },
+ "massimoConRiserva": {
+  "n": 30,
+  "speso": 588
+ },
+ "curva": [
+  {
+   "n": 5,
+   "perMercato": 132.62,
+   "qualificati": 108,
+   "effettivi": 5,
+   "usdGiorno": 303.28,
+   "quotaMediana": 98.17,
+   "capitaleUsato": 663.11
+  },
+  {
+   "n": 10,
+   "perMercato": 66.31,
+   "qualificati": 102,
+   "effettivi": 10,
+   "usdGiorno": 407.28,
+   "quotaMediana": 72.41,
+   "capitaleUsato": 663.11
+  },
+  {
+   "n": 11,
+   "perMercato": 60.28,
+   "qualificati": 102,
+   "effettivi": 11,
+   "usdGiorno": 432.78,
+   "quotaMediana": 70.47,
+   "capitaleUsato": 663.11
+  },
+  {
+   "n": 15,
+   "perMercato": 44.21,
+   "qualificati": 86,
+   "effettivi": 15,
+   "usdGiorno": 493.38,
+   "quotaMediana": 77.65,
+   "capitaleUsato": 663.11
+  },
+  {
+   "n": 20,
+   "perMercato": 33.16,
+   "qualificati": 86,
+   "effettivi": 20,
+   "usdGiorno": 560.64,
+   "quotaMediana": 73.12,
+   "capitaleUsato": 663.11
+  },
+  {
+   "n": 25,
+   "perMercato": 26.52,
+   "qualificati": 86,
+   "effettivi": 25,
+   "usdGiorno": 590.76,
+   "quotaMediana": 43.22,
+   "capitaleUsato": 663.11
+  },
+  {
+   "n": 30,
+   "perMercato": 22.1,
+   "qualificati": 86,
+   "effettivi": 30,
+   "usdGiorno": 598.24,
+   "quotaMediana": 40.37,
+   "capitaleUsato": 663.11
+  },
+  {
+   "n": 34,
+   "perMercato": 19.5,
+   "qualificati": 0,
+   "effettivi": 0,
+   "usdGiorno": 0,
+   "quotaMediana": null,
+   "capitaleUsato": 0
+  },
+  {
+   "n": 40,
+   "perMercato": 16.58,
+   "qualificati": 0,
+   "effettivi": 0,
+   "usdGiorno": 0,
+   "quotaMediana": null,
+   "capitaleUsato": 0
+  },
+  {
+   "n": 50,
+   "perMercato": 13.26,
+   "qualificati": 0,
+   "effettivi": 0,
+   "usdGiorno": 0,
+   "quotaMediana": null,
+   "capitaleUsato": 0
+  },
+  {
+   "n": 60,
+   "perMercato": 11.05,
+   "qualificati": 0,
+   "effettivi": 0,
+   "usdGiorno": 0,
+   "quotaMediana": null,
+   "capitaleUsato": 0
+  },
+  {
+   "n": 80,
+   "perMercato": 8.29,
+   "qualificati": 0,
+   "effettivi": 0,
+   "usdGiorno": 0,
+   "quotaMediana": null,
+   "capitaleUsato": 0
+  },
+  {
+   "n": 100,
+   "perMercato": 6.63,
+   "qualificati": 0,
+   "effettivi": 0,
+   "usdGiorno": 0,
+   "quotaMediana": null,
+   "capitaleUsato": 0
+  }
+ ],
+ "migliore": {
+  "n": 30,
+  "perMercato": 22.1,
+  "qualificati": 86,
+  "effettivi": 30,
+  "usdGiorno": 598.24,
+  "quotaMediana": 40.37,
+  "capitaleUsato": 663.11
+ },
+ "entro5": [
+  25,
+  30
+ ],
+ "entro10": [
+  20,
+  25,
+  30
+ ]
+}

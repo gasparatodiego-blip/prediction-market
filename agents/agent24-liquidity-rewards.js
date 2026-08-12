@@ -36,7 +36,7 @@ const fs    = require('fs');
 const https = require('https');
 const { scoreBook, estimateCapitalLevelRange } = require('../lib/rewardScore');
 const { categoryFromText } = require('../lib/category');
-const { risolviScadenza } = require('../lib/rewards/scadenza-mercato');
+const { risolviScadenza, scadenzaUnificata } = require('../lib/rewards/scadenza-mercato');
 const { writeCombinedSnapshot } = require('../lib/rewards-normalize');
 // Depth-at-touch suppression floor — shared SSOT (also used by lib/rewards-normalize and
 // re-exported to TS via lib/reward-gating.ts). Configurable via REWARD_DEPTH_TOUCH_FLOOR_USD.
@@ -346,6 +346,34 @@ async function getTick(tokenId) {
   return c ? c.tick : null;
 }
 
+// ── LA SCADENZA SECONDO IL VENUE ──────────────────────────────────────────────────────────────────
+// La seconda delle due fonti di scadenza. Gamma pubblica l'ora vera, il CLOB tronca a mezzanotte UTC:
+// sono due letture dello stesso evento con precisione diversa, e fino al 12 agosto 2026 il pianificatore
+// usava la prima e la verifica la seconda — due mercati scelti e poi rifiutati, tre ricalcoli, ciclo
+// fermato. Da qui in poi la riconciliazione avviene UNA VOLTA, qui, e il board porta il verdetto.
+//
+// COSTO: entra nel `Promise.all` gia' esistente del ciclo per mercato, quindi non aggiunge una fase e
+// non allunga la scansione in modo misurabile — ~110 ms di latenza misurata contro i 2,7-3,4 s/mercato
+// che la profondita' costa gia'. La cache di un'ora e' generosa perche' una data di risoluzione non
+// cambia di minuto in minuto.
+//
+// FAIL-OPEN SULLA LETTURA, e NON e' in contraddizione col fail-closed della regola: una lettura mancante
+// non e' una contraddizione fra fonti. Senza il CLOB si usa Gamma e lo si DICHIARA (`gamma-sola`);
+// e' la DIVERGENZA fra due letture presenti a escludere il mercato.
+const _scadenzaClobCache = new Map(); // conditionId -> { iso, ts }
+async function getScadenzaClob(conditionId) {
+  if (!conditionId) return null;
+  const c = _scadenzaClobCache.get(conditionId);
+  if (c && Date.now() - c.ts < 3_600_000) return c.iso;
+  try {
+    const r = await httpGet(`https://clob.polymarket.com/markets/${encodeURIComponent(conditionId)}`);
+    const iso = r && r.status === 200 && r.data && typeof r.data.end_date_iso === 'string'
+      ? r.data.end_date_iso : null;
+    if (iso) { _scadenzaClobCache.set(conditionId, { iso, ts: Date.now() }); return iso; }
+  } catch { /* si ripiega su un valore in cache, altrimenti null — mai una data inventata */ }
+  return c ? c.iso : null;
+}
+
 // ── Measure book depth + quadratic competitor score from CLOB ─────────────────
 // Returns:
 //   existingDepthUsd  — dollar notional (price×size) of in-band orders (UI display only)
@@ -610,7 +638,7 @@ async function scan() {
     // qualifying depth (and thus the per-side reward math) genuinely differs. 24h
     // volatility is identical for both tokens (NO = 1 − YES ⇒ Var(NO) = Var(YES)), so
     // we fetch it once and reuse it — exact, saves a call. NO book only when tokenIdNo.
-    const [book, bookNo, vol, stab, tickSize] = await Promise.all([
+    const [book, bookNo, vol, stab, tickSize, scadenzaClob] = await Promise.all([
       measureBookDepth(m.tokenId, m.rewardsMaxSpread, m.rewardsMinSize, fallbackMid),
       m.tokenIdNo
         ? measureBookDepth(m.tokenIdNo, m.rewardsMaxSpread, m.rewardsMinSize, 1 - fallbackMid)
@@ -621,7 +649,12 @@ async function scan() {
       // Var is identical and one fetch serves both sides.
       measurePriceStability(m.tokenId),
       getTick(m.tokenId),   // real market tick — required for the price-first row's on-tick prices
+      getScadenzaClob(m.conditionId),   // la SECONDA fonte di scadenza — vedi getScadenzaClob
     ]);
+
+    // LA RICONCILIAZIONE, in un punto solo. Da qui in poi il board porta UNA scadenza — la piu' prudente
+    // fra le due — e il verdetto di ammissibilita' che il pianificatore applica A MONTE.
+    const scadenza = scadenzaUnificata({ gammaIso: m.endDate, clobIso: scadenzaClob });
 
     const volatilityRisk   = classifyVol(vol.stdev, vol.range, m.endDate, m.rewardsMaxSpread);
     const existingDepthUsd = book.existingDepthUsd;
@@ -690,7 +723,16 @@ async function scan() {
       // Real 24h traded volume from Gamma. Gamma OMITS this key for markets with no 24h flow —
       // that absence is carried through as null (missing evidence), NEVER coerced to 0.
       volume24hUsd:      m.volume24hUsd,
-      endDate:           m.endDate,
+      // LA SCADENZA E' QUELLA RICONCILIATA, non piu' quella di Gamma: una fonte sola, letta qui, usata
+      // identicamente dal pianificatore e dalla verifica. Le due letture grezze restano accanto perche'
+      // «le fonti concordano» e «ne abbiamo letta una sola» non siano lo stesso dato.
+      endDate:           scadenza.iso,
+      endDateGamma:      m.endDate ?? null,
+      endDateClob:       scadenzaClob,
+      endDateFonte:      scadenza.fonte,
+      scadenzaDivergenzaOre: scadenza.divergenzaOre,
+      scadenzaAmmissibile:   scadenza.ammissibile,
+      scadenzaMotivo:        scadenza.motivo,
       // Provenienza della scadenza — 'market' | 'event' | null. Viaggia fino al board perche' chi legge
       // il piano possa distinguere una data pubblicata sul mercato da una ereditata dall'evento padre.
       endDateSource:     m.endDateSource ?? null,
