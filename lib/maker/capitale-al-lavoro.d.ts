@@ -5,14 +5,13 @@
 // oggetto legittimo. Non è un capriccio del compilatore: è un contratto mancante. Stessa trappola già
 // registrata in §5 punto 84 per `reward-riprova`.
 
-export interface UtilizzoLike {
-  leggibile?: boolean;
-  capitaleTotaleUsd?: number | null;
-  impegnatoUsd?: number | null;
-  liberoUsd?: number | null;
-  motivo?: string | null;
-  [k: string]: unknown;
-}
+// ⚠ SI RIUSA IL TIPO VERO, NON SE NE DICHIARA UNO «COMPATIBILE». Un'interfaccia strutturale scritta a
+// mano con una index signature (`[k: string]: unknown`) SEMBRA più permissiva e invece è più stretta:
+// TypeScript rifiuta un tipo senza index signature come non assegnabile, e il build cade con
+// «MisuraUtilizzo is not assignable to UtilizzoLike». È successo il 12 agosto 2026, ed è la ragione
+// per cui qui si importa la dichiarazione esistente invece di riscriverne una gemella.
+import type { MisuraUtilizzo } from './utilizzo-capitale';
+export type UtilizzoLike = MisuraUtilizzo;
 
 export interface CapitaleAlLavoro {
   leggibile: boolean;

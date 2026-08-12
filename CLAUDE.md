@@ -3,7 +3,25 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~21:55 UTC (§5 punti 114-115).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~23:10 UTC (§5 punti 116-118).
+
+> ## 📊 IL CAPITALE AL LAVORO È UN NUMERO, E L'OBIETTIVO È 95% — §5 punti 116-118
+> **Il collo di bottiglia NON è il rate limit**, e la misura lo smentisce: il gate del venue ha morso
+> **una volta in 48 ore**. `skip-rate-limited` è l'intervallo anti-churn **locale** (30 s) che per
+> costruzione non può costare un ordine (margine di rinnovo 180 s). Gli ordini muoiono perché
+> **«il rinnovo era dovuto ed è stato fermato da `motore-non-conforme`»** — `mai-primo-sul-libro`,
+> `profondita-insufficiente`: il rimpiazzo non sarebbe stato un ordine valido, e il motore ha ragione.
+> **La quota 60/40 è stata implementata come RETE** e sui volumi di oggi non morde mai (141 intent in
+> 48 h, picco 18/min aperture e 10/min rinnovi contro 24 e 16 posti).
+> **⚠ `REWARD_MAX_CLOB_MARKETS` NON SI PUÒ ALZARE**: cronometrato oggi **2,74-3,91 s/mercato**, e con
+> ~3 min di scoperta il tetto che sta sotto i 10 minuti è **150 alla mediana e 107 al peggiore** —
+> cioè il valore attuale è già il massimo. E l'ordinamento per montepremi **non** seppellisce i minSize
+> bassi: il loro montepremi mediano è **$56/g contro $52,36/g** degli altri.
+> **La monocultura meteo è aritmetica, non una scelta**: dei 323 mercati del board solo **50** hanno
+> `minSize 20` (l'unico scaglione sotto il tetto di $32,67) e **49 sono meteo**; i 196 a `minSize 1000`
+> chiedono **$1.225 per mercato** contro $661 di capitale.
+> **Nuovo indicatore** `lib/maker/capitale-al-lavoro.js`: obiettivo **0,95** (era 0,90), e sotto l'80%
+> per 30 minuti la **ripartizione del fermo in dollari con la somma che chiude**.
 
 > ## ⚛️ LA COPPIA SI VALUTA PRIMA, NON SI RIPARA DOPO — §5 punto 115
 > Le due gambe si inviano in **sequenza** e il tetto per ordine si valuta per **singolo ordine**: su un
@@ -5990,6 +6008,79 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
      **Suite: 195 eseguiti, 188 verdi, 7 rossi** — i preesistenti del punto 84, zero nuovi.
      `npm run build` verde, `BUILD_ID` `nHW_RGX3ksSCn5lwYTB-K`. Stato di produzione intatto: impronte
      MD5 identiche su kill, AVVIA/FERMA e limiti di rischio prima e dopo la suite.
+
+116. **LA QUOTA 60/40 SULLA FINESTRA — implementata, ma la premessa era sbagliata (12 agosto 2026).**
+     Le aperture (`bulk-allocate`) non possono più consumare tutta la finestra: si fermano a
+     `floor(rateCap × 0,60)` = **24 posti su 40**, e i **16** restanti sono riservati a rinnovi e
+     chiusure protettive. Un'apertura rimandata è un **rinvio dichiarato** (`rimandato-per-quota`,
+     `corsia: apertura`, `anomalia: false`) che riprova al giro dopo senza errore.
+     **⚠ SUI VOLUMI DI OGGI NON MORDE MAI, e va detto**: 141 intent in 48 h, picco **18/min** sulle
+     aperture e **10/min** sui rinnovi, contro 24 e 16 posti. Il gate del rate limit del **venue** ha
+     morso **una volta in 48 ore**, ed era il vecchio tetto di 20.
+     **⚠ E NON È LA CAUSA PER CUI GLI ORDINI MUOIONO.** `skip-rate-limited` in `auto-reprice` **non è
+     il rate limit del venue**: è `minIntervalMs`, l'intervallo anti-churn **locale** di 30 s, e il
+     commento accanto dichiara che non può costare l'ordine perché il margine di rinnovo è molte volte
+     più lungo. La causa vera la dice il campo `reason` di `scaduto-senza-rinnovo`: *«il rinnovo era
+     dovuto ed è stato fermato da `motore-non-conforme`»* — `mai-primo-sul-libro`,
+     `profondita-insufficiente`. **Il rimpiazzo non sarebbe stato un ordine valido**, e il motore ha
+     ragione a non piazzarlo: il capitale che torna fermo è il **prezzo di quella correttezza**.
+     La parte che serviva davvero è l'osservabilità: un rinnovo **dovuto e fermato** produce ora
+     `anomalia-rinnovo-fermato` **mentre restano `secondsToExpiry` secondi** per accorgersene, con
+     `costaLOrdine` che separa il gate del motore (uccide) dall'attesa locale (non uccide).
+     **Una riga per ordine, non una per ciclo** (`rinnoviSegnalati`, gemello di `residuiSegnalati`), e
+     in una lista propria — **non in `events`**, che i consumatori contano.
+
+117. **`REWARD_MAX_CLOB_MARKETS` È GIÀ AL MASSIMO: 150 — sola diagnosi, nessuna modifica.**
+     Cronometrato oggi sul processo vivo: **2,74 · 2,74 · 2,74 · 2,76 · 2,80 · 2,82 · 2,83 · 3,81 ·
+     3,91 s/mercato** (mediana **2,80**, era 3,3). Fase profondità **6,8-9,8 min** su 150 mercati, più
+     ~3 min di scoperta ⇒ round **9,8-12,8 min**.
+
+     | vincolo | s/mercato | tetto che ci sta |
+     |---|---|---|
+     | round < 10 min, ritmo mediano | 2,80 | **150** ← il valore attuale |
+     | round < 10 min, ritmo peggiore | 3,91 | **107** |
+     | periodo 15 min (il cronometro di agent24) | 2,80 | ~190-193 |
+
+     **Alzarlo violerebbe il vincolo dei 10 minuti che l'operatore ha posto**; al ritmo peggiore
+     osservato il valore corretto sarebbe più BASSO di quello attuale. Non toccato.
+     **E l'ordinamento per montepremi NON è il collo di bottiglia**: i mercati a `minSize 20` hanno
+     montepremi mediano **$56/g contro $52,36/g** degli altri, e stanno ai ranghi 13-206, sparsi. Sui
+     323 del board **40** hanno `minSize 20` e **16 stanno oltre il rango 150** — ma tutti e 323 hanno
+     comunque la profondità misurata, quindi il taglio non li esclude dal piano.
+     **LA CAUSA VERA DELLA MONOCULTURA METEO È ARITMETICA**: il tetto per mercato è **$32,67**, quindi
+     passa **solo `minSize 20`** (pavimento $24,50). Sul board: `minSize 20` → **50 mercati, 49 meteo**;
+     50 → 9; 100 → 53; 200 → 11; 300 → 4; **1000 → 196** (il 61%, che chiede **$1.225 per mercato**).
+     **Nessuna scelta di tetto diversifica**: a `f_min` 0,32 (tetto $61,25) i mercati passano da 21 a
+     18 — CALANO, perché `Q` cresce col tetto mentre il margine di $5 sul tetto per ordine resta fisso
+     e **la finestra di mid si stringe**. La leva vera è più capitale, non una manopola.
+
+118. **IL CAPITALE AL LAVORO: UN NUMERO, UN OBIETTIVO, E IL FERMO RIPARTITO IN DOLLARI.**
+     `lib/maker/capitale-al-lavoro.js` (nuovo, puro). **Non ricalcola niente**: riceve l'esito di
+     `misuraUtilizzo`, che resta la fonte. Aggiunge le due cose che mancavano.
+     - **L'obiettivo è 0,95** (era 0,90), dichiarato accanto al numero. `totale = saldo + posizioni` e
+       **niente altro**; `alLavoro = totale − libero`, **derivato per differenza e mai risommato** —
+       è la regola che il 9 agosto era stata violata ($776,65 dichiarati su $669,09 reali, +16,1%), e
+       il test la difende **con quei numeri**.
+     - **La ripartizione del fermo chiude sul capitale fermo**, al centesimo. Le cause si attribuiscono
+       **da monte a valle** (piano senza righe → non quotabili → tetto pieno → quota → rifiuti del
+       venue) così lo stesso dollaro non viene contato due volte, e quello che nessuno ha misurato
+       resta **`non attribuito`: una voce, non un arrotondamento nascosto**.
+     - **La diagnosi scatta sotto l'80% per 30 minuti** (tre giri del mini-ciclo) e si scrive **una
+       volta per episodio**. Non misurabile **non arma e non disarma**.
+     **Visibile in tre posti**: riga `CAPITALE AL LAVORO` a ogni ciclo e mini-ciclo di agent41, voce
+     `capitale-al-lavoro` nel giornale di audit, campo `capitaleAlLavoro` su
+     `GET /api/maker/utilizzo-capitale`.
+     **MISURATO SULLE 48 ORE** (19 campioni dai referti): **medio 22,8% · minimo 0% · massimo 40,5%
+     ($268,15)**. La causa che pesa di più in dollari è **«piano senza righe utilizzabili»**: il
+     `motivoStop` dei mini-cicli è `nessun mercato del piano ha spazio sufficiente` e il residuo
+     dichiarato arriva a **$331,67** in un solo giro.
+
+     **⚠ TRAPPOLA DI BUILD, seconda occorrenza.** Un `.d.ts` che dichiara un'interfaccia «compatibile»
+     con una index signature (`[k: string]: unknown`) è **più stretta**, non più larga: TypeScript
+     rifiuta il tipo vero come non assegnabile e il build cade con *«MisuraUtilizzo is not assignable
+     to UtilizzoLike»*. Si importa il tipo esistente, non se ne scrive un gemello. E finché il build
+     è rotto **`.next` resta senza `BUILD_ID`**: un riavvio del dashboard in quella finestra lo manda
+     in crash loop (§5 punto 7).
 
 ---
 

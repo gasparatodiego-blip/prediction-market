@@ -1482,7 +1482,7 @@ async function cycle() {
   // Un rinnovo dovuto e non partito è un ordine con un conto alla rovescia: se il gate non si sposta
   // entro `secondsToExpiry`, quel capitale torna fermo. Si stampa PRIMA dei lati singoli perché è
   // l'unica riga di questo blocco su cui si può ancora agire.
-  for (const a of (res.events || []).filter((x) => x && x.type === 'rinnovo-fermato')) {
+  for (const a of (res.rinnoviFermati || [])) {
     log(`${a.costaLOrdine ? '⚠ RINNOVO FERMATO' : 'rinnovo rimandato'} · cid_${String(a.marketId).replace(/^0x/, '').slice(0, 10)}`
       + ` · ${String(a.book).toUpperCase()} ${a.price} x ${a.size}${a.notionalUsd != null ? ` ($${a.notionalUsd})` : ''}`
       + ` · ${a.secondsToExpiry}s alla scadenza · gate ${a.gate}`
