@@ -3,8 +3,23 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~09:40 UTC (§5 punti 75-77 — la gestione
-del fill completata in sei passi, e i due lavori dell'11 agosto sera finalmente documentati).
+Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~13:30 UTC (§5 punti 78-83 — sei difetti
+indipendenti chiusi, un commit per ciascuno).
+
+> ## 🟢 IL GUARDIANO DELLE PERDITE È TORNATO IN SERVIZIO — §5 punto 81
+> `data/guardian-state.json` **non esiste più**: il latch del 9 agosto è stato azzerato applicando la
+> regola nuova, non a mano — 59,5 h di età, P&L **+$2,54 / +0,385%** contro soglie −$30 / −5%, con riga
+> `latch-azzerato-per-scadenza` nel giornale. Da adesso il latch **non si legge più come un booleano**:
+> agent43 rivaluta dal P&L corrente, e un latch oltre le 24 h con P&L sopra soglia si azzera da solo.
+> Un latch vecchio con P&L **ancora sotto soglia resta scattato**: il tempo non guarisce una perdita.
+> **⚠ agent43 gira ancora col codice vecchio: riavvio pendente.**
+
+> ## 🧹 LA PULIZIA DEI REGISTRI HA UNA SCANSIONE SUA — §5 punto 82
+> Partiva da `auto-close`, che itera le POSIZIONI: un mercato morto **senza posizione** ma con voci nei
+> registri non veniva mai visitato. **Misurato oggi: 86 mercati orfani** su 88 presenti nei registri
+> operativi. Adesso una scansione itera l'**unione** di posizioni ∪ ordini ∪ **voci nei registri**, ogni
+> 30 minuti e una all'avvio, interrogando il **venue** (non l'orologio) sui mercati fuori dal board.
+> **⚠ agent40 gira ancora col codice vecchio: riavvio pendente, e finché non riparte le 86 voci restano.**
 
 > ## 🔓 IL TAKER DEL MERGE NON HA MAI ESEGUITO — DUE CAUSE, ENTRAMBE CHIUSE — §5 punti 75 e 76
 > **Misurato sul giornale vivo: `merge-livello-1-piazzato` = ZERO** su **1.693** valutazioni e **852**
@@ -4635,6 +4650,165 @@ Lista viva. Solo voci con evidenza reale nel codice, nei commit o nei file di st
     visitato. Per gli ORDINI ci pensa `end-of-life-cancel` in `auto-reprice`, che però non chiama la
     pulizia — agganciarcela è il lavoro successivo, e non è una riga: `auto-reprice` non legge lo stato
     del venue, legge l'orologio.
+
+78. **IL PANNELLO NON DICHIARAVA I PROPRI ORDINI, E LA SELEZIONE ERA SCRITTA A MANO IN DUE PUNTI —
+    corretto il 12 agosto 2026. ASPETTA IL RIAVVIO di agent40 e del dashboard.** Commit `39a6389`+`bd763f0`.
+
+    **① LA SELEZIONE ERA DUPLICATA.** La **sottrazione** dei nostri ordini dal book è sempre stata una
+    funzione sola (`top-of-book.othersLadder`). La **selezione** — «quali righe sono nostre su questo
+    lato» — no: `auto-reprice` filtrava `owned.filter((x) => x.book === order.book)`, `manual-order`
+    filtrava per `tokenId` con una sua normalizzazione. Due filtri scritti a mano sullo stesso concetto
+    (il reperto del rilevatore **D1**), e qui la divergenza non produce un errore visibile: produce un
+    **book altrui diverso** fra chi DECIDE il prezzo e chi lo PIAZZA. Ora è
+    `lib/maker/nostri-ordini.nostriSulLato`, chiamata da entrambi.
+
+    **② IL SERVER NON SI FIDA DEL CLIENT, E NON NE FA A MENO.** Erano due rami esclusivi — se il
+    chiamante passava `ownOrders` si usavano quelli, altrimenti si leggeva dal venue — e **entrambi**
+    hanno un buco: fidarsi di una lista incompleta fa scambiare i nostri ordini per concorrenza; leggere
+    e basta lascia la lista **vuota** quando la rete fallisce, che è lo stesso difetto per un'altra
+    strada. Adesso si legge **sempre** e si **unisce** deduplicando per `orderId`, con il **venue in
+    precedenza**: il client può solo AGGIUNGERE righe.
+    - **Il pannello manda `ownOrders`**, best-effort: una lettura fallita non blocca il piazzamento,
+      perché il server la rifà comunque.
+    - **⚠ L'UNICA VIA PER SALTARE LA LETTURA, E IL CLIENT NON PUÒ IMBOCCARLA:**
+      `ownOrdersAuthoritative: true`, che un chiamante IN-PROCESS (il watcher di riprezzo, che gira ogni
+      pochi secondi e li ha già in mano) dichiara per non pagare una richiesta a ogni riprezzo. **Non è
+      nello schema zod della rotta**, e zod scarta ciò che non dichiara: dal browser quel campo non
+      arriva. **Il confine di fiducia è lo schema, non una promessa.**
+    - **Un difetto vero trovato dai test preesistenti**: `nostriSulLato` scartava le righe senza
+      `tokenId`/`book`, ma i chiamanti in-process passano liste **già ristrette** al lato e quelle righe
+      non portano etichette. Scartarle le avrebbe lasciate nel book altrui **travestite da concorrenti**.
+      Regola finale: riga **senza** etichetta ⇒ si tiene (il chiamante l'ha già selezionata); riga
+      etichettata su un **altro** lato ⇒ si scarta.
+    - **Il referto distingue le provenienze** (`dalVenue`, `dalPannello`, `duplicati`, `venueLetto`):
+      senza, «letto dal venue» e «dichiarato dal pannello» sarebbero lo stesso numero.
+
+    **Verifica.** Nuovo `ownorders-condivisi.test.js` **30/30**: il test chiesto — due ordini propri e uno
+    di terzi ⇒ **il miglior concorrente è quello di terzi su ENTRAMBI i percorsi**, e senza la sottrazione
+    sarebbe il nostro. Tre test preesistenti **aggiornati, non allentati** (`auto-competizione`,
+    `mai-primo-sul-libro`, `ownorders-simmetria`): inseguivano la grafia del filtro a mano.
+
+79. **`clobRewards` ASSENTE NON È `clobRewards` A ZERO — 12 agosto 2026. NESSUN RIAVVIO NECESSARIO per
+    la ricerca; il dashboard serve il gate, quindi il suo riavvio è pendente.** Commit `eb02696`.
+
+    `/markets?condition_ids=…&limit=N` a volte non porta `clobRewards`. `rewardStateOf` rispondeva già
+    `illeggibile` invece di `senza-premio` (5 agosto), ma da lì il verdetto era **definitivo**: il gate
+    scartava su **una** lettura, e la prima lettura è proprio quella che a volte omette il campo.
+    - **Adesso si richiede**: una riga illeggibile va in coda per una **seconda fetch mirata per
+      condition_id**, con cache in memoria a **TTL 10 minuti** e un **tetto di 12 richieste per ciclo**.
+      Solo dopo, il gate decide.
+    - **Il tetto viene da una misura**: cinque fetch su condition id **veri** hanno dato
+      **97 · 100 · 106 · 122 · 143 ms** (mediana 106), quindi dodici in sequenza costano ~1,3 s tipici e
+      ~1,7 s nel caso peggiore. Si cambia con `MAKER_REWARD_RIPROVE_MAX`, scartato fuori da [1, 50].
+    - **In sequenza e non in parallelo**: dodici richieste simultanee sono il modo più rapido di
+      prendersi un 429, cioè proprio il dato mancante che questo lavoro recupera.
+    - **`reward-sconosciuto` ≠ `reward-zero`**: il primo è un fatto sulla **nostra lettura**, il secondo
+      un fatto **sul mercato**. Chi resta fuori dal tetto **non** diventa «sconosciuto» — non l'abbiamo
+      chiesto — e un fallimento **non va in cache**, o congelerebbe per dieci minuti una risposta che
+      potrebbe tornare al tentativo dopo.
+    - **MISURATO SUL BOARD DI OGGI (117 mercati campionati): 114 premiati · 0 senza-premio ·
+      3 illeggibili**, e i 3 restano illeggibili anche dopo la riprova ⇒ oggi sarebbero **3 scarti
+      `reward-sconosciuto` e ZERO `reward-zero`**.
+
+80. **`inCoda` E `priceAdjusted` ARRIVANO IN `execution-audit` E SUL PANNELLO — 12 agosto 2026.
+    ASPETTA IL RIAVVIO del dashboard e di agent40.** Commit `c1a2933`.
+
+    Il giornale maker e il valore di ritorno li avevano già; **`execution-audit.jsonl` no** — ed è il
+    registro su cui si ricostruisce cosa è successo a un ordine, oltre a essere l'unico che l'idempotenza
+    legge. Dopo il fatto non c'era modo di sapere se un ordine fosse finito dove è finito **per decisione
+    o per caso**.
+    - **Campi propri e non dentro `decision`**, che è testo libero per costruzione: «quante volte la coda
+      ha spostato un prezzo» deve essere una domanda a cui si risponde **contando**, non leggendo prosa.
+      Assenti valgono `null` e non un oggetto vuoto.
+    - **Il pannello ha un riepilogo della coda NON condizionato al buon esito**, ed è la parte che conta:
+      è sul **rifiuto** che serve di più — `mai-primo-sul-libro` è un gate che rifiuta, e prima il
+      pannello diceva *perché* senza dire *contro chi*. Si legge il concorrente misurato, quanti nostri
+      ordini sono stati sottratti e **da dove**, e l'arretramento per profondità coi suoi numeri.
+    - **⚠ TRAPPOLA RIPETUTA, quarta volta**: la prima stesura del test iniettava `{ file: tmp }` mentre
+      `cfg()` legge `auditFile`, quindi la dep veniva ignorata **in silenzio** e una riga di test è finita
+      nel registro di produzione (rimossa, backup preso). Il test ora **misura** il registro vero prima e
+      dopo: se tornerà a scriverci diventa rosso. *Una dep col nome sbagliato non è un errore: è un valore
+      di difetto che nessuno ha chiesto.*
+
+81. **IL LATCH DEL GUARDIANO SCADE, E NON SI FIDA PIÙ DI SE STESSO — 12 agosto 2026.
+    ASPETTA IL RIAVVIO di agent43.** Commit `c2ce8f3`.
+
+    Era, per chi lo LEGGE, un booleano: `scattato === true` ⇒ esci. Il file portava già P&L e baseline
+    dello scatto, ma **nessuno li rileggeva**. Conseguenza misurata: il latch del 9 agosto teneva agent43
+    fuori servizio il 12, con il P&L tornato a **+$2,54** su soglie −$30 / −5% — cioè nel momento in cui
+    il capitale era sano, **nessuno lo sorvegliava**.
+    - **`valutaLatch` rivaluta dal P&L CORRENTE.** Si azzera solo quando valgono **entrambe**: più vecchio
+      di **24 h** *e* P&L corrente **sopra soglia**. Un latch vecchio con P&L ancora sotto soglia **resta
+      scattato**: il tempo non guarisce una perdita. P&L non misurabile ⇒ **non si azzera al buio**.
+    - **Le 24 ore non ritardano lo SCATTO**, che resta immediato e duro: sono la finestra oltre la quale
+      un latch **già scattato e già rientrato** smette di valere.
+    - **L'azzeramento NON rimette il bot su AVVIA**: torna in servizio il **guardiano**, non il motore, e
+      il referto lo dichiara (`botRiavviato: false`).
+    - **Sotto le 24 h agent43 non legge nemmeno il venue**: la risposta è la stessa di prima e la lettura
+      costerebbe a ogni giro. **L'audit si scrive PRIMA** di togliere il file: se la rimozione fallisce
+      resta la traccia del tentativo.
+    - **IL LATCH DEL 9 AGOSTO È STATO AZZERATO** applicando la regola nuova (59,5 h, P&L +$2,54 /
+      +0,385%), con riga `latch-azzerato-per-scadenza` nel giornale. Backup preso.
+    - **⚠ `deps.stato` usava `||`**, quindi uno `stato: null` iniettato cadeva sul file **vero**. Corretto
+      in `!== undefined`. Effetto: **`guardian-perdite.test.js` — uno degli 8 rossi noti, rosso proprio
+      per il latch — è tornato VERDE (66/66)**, e la baseline dei rossi scende da 8 a **7**.
+
+82. **LA PULIZIA DEI REGISTRI NON DIPENDE PIÙ DA CHI ITERA COSA — 12 agosto 2026.
+    ASPETTA IL RIAVVIO di agent40.** Commit `14a6dd5`.
+
+    Partiva da `auto-close`, che itera le **posizioni**: un mercato morto **senza posizione** ma con voci
+    residue non veniva mai visitato. `end-of-life-cancel` chiude gli ordini ma non chiama la pulizia, e
+    legge l'**orologio** — quindi non vede un mercato annullato prima della scadenza nominale.
+    - **La scansione itera l'UNIONE di tre insiemi**: mercati con posizione ∪ con ordini a riposo ∪ **con
+      voci nei registri** (residui sotto minimo compresi). Il terzo è quello che mancava, ed è per
+      costruzione l'unico che può contenere un mercato che nessun altro insieme nomina più.
+    - **MISURATO OGGI: 86 MERCATI ORFANI** — nei registri, fuori dal board, senza posizione — su **88**
+      mercati distinti presenti nei registri operativi. Le voci: `maker-manual-mode` 86 ·
+      `maker-auto-close` 71 · `residui-scoperti` 8 · `maker-allocated-capital` 6 · `merge-attese` 2 ·
+      `residui-sotto-soglia` 1.
+    - **Chi è sul board non si interroga** (sarebbe una richiesta per confermare un sì). Per gli altri si
+      chiede al **VENUE** `closed`/`acceptingOrders`, che copre risoluzione **e** annullamento con la
+      stessa lettura. Si pulisce solo a **LIBRO LIBERO**, riusando `pulizia-mercato-chiuso`.
+    - **Cadenza 30 minuti + una all'avvio**, in un try/catch suo. Gli ordini si leggono **una volta** e si
+      raggruppano, invece di una richiesta per mercato.
+    - **NESSUN GIORNALE VIENE CANCELLATO**: il modulo non **nomina** nemmeno i file append-only, e il test
+      lo verifica per assenza — è più forte di una promessa, perché non si può cancellare un file di cui
+      non si conosce il nome.
+    - **⚠ SESTA OCCORRENZA DI `Number(null) === 0`**, trovata dal test: «non ho letto gli ordini» sarebbe
+      diventato «zero ordini», cioè libro provato vuoto, e la pulizia avrebbe tolto tetto e gestione
+      manuale a un mercato con un ordine vivo.
+
+83. **UN 429 SU `/positions` NON FERMA PIÙ IL BOT — 12 agosto 2026. ASPETTA IL RIAVVIO di agent40.**
+    Commit `a27f3a0`.
+
+    `fetchVenuePositions` faceva **un** tentativo. Sopra i 180 s di età dello snapshot ogni piazzamento
+    viene rifiutato, quindi un rate-limit prolungato bloccava il bot **senza che nulla fosse rotto**.
+    - **5 tentativi, 1 s → 30 s, con jitter ±25%.** Il jitter non è un vezzo: senza, ogni lettore riparte
+      dallo stesso istante dopo lo stesso 429 e riprovano **tutti insieme** — il modo di trasformare un
+      rate-limit in un rate-limit permanente.
+    - **Un 200 con un corpo che non è una lista NON si ritenta**: la risposta sarebbe la stessa.
+    - **429 / 5xx / rete / errore restano quattro tipi distinti** nel referto e nel log: «quante volte
+      siamo stati limitati» e «quante volte il venue è caduto» sono due domande diverse.
+    - **Un ultimo tentativo di refresh prima di arrendersi** (`readVenuePositionsConRefresh`), che **salta
+      la cache dei 5 secondi** — che in quel momento è proprio il dato stantio.
+    - **⚠ LA SOGLIA DEI 180 SECONDI NON È STATA TOCCATA, e il test lo asserisce.** Non è un fastidio: è la
+      protezione che impedisce di piazzare su una fotografia vecchia delle posizioni. Il rifiuto resta
+      identico — arriva **dopo** i tentativi invece che al primo singhiozzo, e dichiara se un refresh è
+      stato tentato.
+    - **La funzione SINCRONA resta invariata**: la chiamano percorsi che non possono aspettare (cintura
+      dell'adapter, esenzione dal tetto, gate live-min), e chi non inietta `refresh` ha esattamente il
+      comportamento di prima.
+
+84. **LA BASELINE DEI TEST È CAMBIATA: 7 ROSSI, NON PIÙ 8.** `guardian-perdite` è verde dal punto 81.
+    Restano: `leg-order`, `dipendenze-collegate`, `scaduto-senza-rinnovo`, `categoria-mercato`,
+    `scadenza-ereditata` e i due in `lib/venues/__tests__/`. Suite al 12 agosto: **175 eseguiti, 168
+    verdi, 7 rossi**, `npm run build` verde, `BUILD_ID` `j0KPYrSUbgElvTFcNqgAp`.
+
+    **⚠ TRAPPOLA DI BUILD REGISTRATA:** un modulo JS nuovo importato da una rotta **TypeScript** fa
+    fallire `tsc` — senza `.d.ts`, i parametri vengono inferiti dai valori di difetto del JS
+    (`righe = null` ⇒ `null | undefined`) e un array legittimo viene **rifiutato**. Non è un errore di
+    codice: è un contratto mancante. Vedi `lib/maker/reward-riprova.d.ts`, che dichiara anche perché
+    `RigaPremio` **non** ha una index signature (costringerebbe ogni tipo passato ad averne una).
 
 ---
 
