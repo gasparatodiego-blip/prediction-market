@@ -163,6 +163,11 @@ const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot')
 const UTIL = require('../lib/maker/utilizzo-capitale');
 const CAPLAV = require('../lib/maker/capitale-al-lavoro');
 const SENT = require('../lib/maker/sentinella-vuoto');
+const COER = require('../lib/maker/coerenza-soglie');
+const SBLOCCO = require('../lib/maker/sblocco-progressivo');
+// Il tetto per ORDINE arriva da dove è già dichiarato una volta sola: non nasce una settima copia qui.
+const { liveMinOrderCapUsd } = require('../lib/rewards/concentration');
+const CO = { liveMinOrderCapUsd };
 
 // ── LO STATO DELLA DIAGNOSI DEL CAPITALE FERMO ────────────────────────────────────────────────────
 // Vive in memoria e non su disco di proposito: descrive un EPISODIO in corso, e dopo un riavvio la
@@ -1052,6 +1057,22 @@ async function preparaMercatoNuovo(marketId, abilita, prendiInGestione, accendiU
   };
 }
 
+/**
+ * IL NOZIONALE CHE IL VENUE HA DAVVERO ACCETTATO in un insieme di risultati di piazzamento.
+ *
+ * `refused` e `skipped` non hanno messo niente sul book e non contano. Una riga senza `notionalUsd`
+ * leggibile vale ZERO e non si stima dal piano: sottostimare qui significa dichiarare meno capitale al
+ * lavoro di quanto ce n'è, cioè far scattare una difesa in più — il verso sicuro. Sovrastimare
+ * significa credersi a posto mentre il capitale è fermo, che è il difetto del 13 agosto.
+ */
+function nozionalePiazzato(risultati) {
+  return (risultati || []).reduce((tot, x) => {
+    if (!x || x.status === 'refused' || x.status === 'skipped') return tot;
+    const n = Number(x.notionalUsd);
+    return Number.isFinite(n) && n > 0 ? tot + n : tot;
+  }, 0);
+}
+
 async function miniCiclo(decisione, deps = {}) {
   const leggiPiano = deps.leggiPiano || leggiUltimoPiano;
   const leggiOrdini = deps.listOrders || (() => listManualOrders({}));
@@ -1204,6 +1225,28 @@ async function miniCiclo(decisione, deps = {}) {
   // Il numero che il 13 agosto 2026 non esisteva. Il piano ne DICHIARAVA 17 e le spendibili erano
   // ZERO: senza questa misura «il piano c'è» e «il piano serve a qualcosa» erano indistinguibili, e
   // il mini-ciclo ha risposto «nessuna azione» per tre ore mentre il capitale stava fermo.
+  // ── LE SOGLIE DI CHI RICEVE, PRIMA DI PROPORRE ────────────────────────────────────────────────
+  // Il pianificatore non conosce il tetto per ORDINE: alloca fino al tetto per MERCATO, e a mid estremo
+  // la gamba cara sfonda. Misurato: 243 mercati su 321 del board (76%) sfonderebbero al tetto pieno, e
+  // il giornale porta 631 rifiuti `manual-order-cap` in tre giorni. Qui le righe vengono ADATTATE — il
+  // capitale può solo scendere — così smettono di essere proposte per essere rifiutate. Nessun tetto è
+  // toccato: si rispetta quello che c'è già invece di scoprirlo al gate.
+  const adatt = COER.adattaRighe({
+    righe: righeCandidate,
+    soglieDi: (r) => ({
+      capPerMercatoUsd: capMercato,
+      tettoOrdineUsd: CO.liveMinOrderCapUsd(capitaleTotale),
+      pavimentoRigaUsd: TRIG.pavimentoDiRiga(r).usd,
+    }),
+  });
+  if (adatt.adattate || adatt.scartate.length) {
+    referto.coerenza = { adattate: adatt.adattate, scartate: adatt.scartate.length,
+      divergenze: adatt.divergenze.slice(0, 6), scartateDettaglio: adatt.scartate.slice(0, 6) };
+    annuncia('log', `mini-ciclo: coerenza soglie — ${adatt.adattate} riga/he con capitale RIDOTTO per rispettare il tetto per ordine`
+      + `, ${adatt.scartate.length} scartata/e perché nessun capitale soddisfa insieme tutte le soglie`);
+  }
+  righeCandidate = adatt.righe;
+
   const utiliOra = TRIG.contaRigheUtili({
     righe: righeCandidate, notionalePerMercato: perMercato,
     capPerMercatoUsd: capMercato, disponibileUsd: spendibileUsd,
@@ -1437,7 +1480,7 @@ async function miniCiclo(decisione, deps = {}) {
   //     una gamba rimasta sola se l'altra viene rifiutata — e' l'unico uso, e riduce esposizione.
   const diag = deps.diag !== undefined ? deps.diag : diagnoseExposure({});
   let esito = await piazza(righeOrdine, diag);
-  passate.push({ n: 1, mercati: mercati.map((m) => m.marketId), piazzati: esito && esito.placed, rifiutati: esito && esito.refused, saltati: esito && esito.skipped });
+  passate.push({ n: 1, mercati: mercati.map((m) => m.marketId), piazzati: esito && esito.placed, rifiutati: esito && esito.refused, saltati: esito && esito.skipped, nozionaleUsd: +nozionalePiazzato(esito && esito.results).toFixed(2) });
 
   // ── LE PASSATE SUCCESSIVE ───────────────────────────────────────────────────────────────────────
   // Si riprova SOLO se nessun ordine e' passato: se anche uno solo e' andato a segno il giro ha fatto il
@@ -1465,12 +1508,38 @@ async function miniCiclo(decisione, deps = {}) {
     annuncia('log', `mini-ciclo: passata ${passate.length + 1} — ${bloccati.length} mercato/i esclusi`
       + ` (${bloccati.map((x) => x.slice(0, 10)).join(', ')}), si prova ${m2.map((x) => String(x.marketId).slice(0, 10)).join(', ')}`);
     esito = await piazza(r2, diag);
-    passate.push({ n: passate.length + 1, mercati: m2.map((m) => m.marketId), piazzati: esito && esito.placed, rifiutati: esito && esito.refused, saltati: esito && esito.skipped, esclusi: bloccati });
+    passate.push({ n: passate.length + 1, mercati: m2.map((m) => m.marketId), piazzati: esito && esito.placed, rifiutati: esito && esito.refused, saltati: esito && esito.skipped, esclusi: bloccati, nozionaleUsd: +nozionalePiazzato(esito && esito.results).toFixed(2) });
     righeOrdine = r2; mercati = m2;
   }
   if (esito && esito.placed === 0 && passate.length >= TRIG.MAX_MERCATI_PER_GIRO) {
     motivoPassate = `tetto di ${TRIG.MAX_MERCATI_PER_GIRO} passate raggiunto: gli altri mercati si provano al giro dopo`;
   }
+
+  // 6-ter · I RIFIUTI RIPETUTI. La stessa richiesta rifiutata per la stessa ragione N volte di fila
+  //         non è sfortuna: è un blocco strutturale. Il 13 agosto sono state 114. Qui si contano, si
+  //         classificano e si trasforma la classe in una REAZIONE — che per le famiglie di rischio è
+  //         «cambia mercato e dichiara», mai «aggira».
+  try {
+    const reg = SBLOCCO.registraEsiti({ stato: statoRifiuti, esiti: (esito && esito.results) || [] });
+    statoRifiuti = reg.stato;
+    if (reg.blocchi.length) {
+      const rz = SBLOCCO.reazione(reg.blocchi);
+      azioniSuggerite = rz.azioni;
+      referto.rifiutiRipetuti = { blocchi: reg.blocchi.length, azioni: rz.azioni,
+        nonAgibili: rz.nonAgibili.slice(0, 6), soloRischio: rz.soloRischio };
+      const capofila = reg.blocchi[0];
+      annuncia('error', `🔁 RIFIUTO RIPETUTO — ${capofila.gate} × ${capofila.n} su ${String(capofila.marketId).slice(0, 12)}`
+        + ` (classe ${capofila.classe}) ⇒ ${rz.azioni.length ? 'via alternativa: ' + rz.azioni.join(', ') : 'NESSUNA azione: ' + capofila.perche}`);
+      if (rz.soloRischio) {
+        annuncia('log', 'i rifiuti ripetuti vengono TUTTI da regole di rischio: il bot non agisce e lo dichiara — '
+          + rz.nonAgibili.map((x) => `${String(x.marketId).slice(0, 10)} ${x.gate}`).join(' · '));
+      }
+      appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'realloc-scheduler', op: 'rifiuto-ripetuto',
+        reason: 'rifiuti-identici-consecutivi', decision: `${capofila.gate} ripetuto ${capofila.n} volte`,
+        outcome: rz.soloRischio ? 'nessuna-azione-regola-di-rischio' : 'via-alternativa',
+        requested: { soglia: SBLOCCO.N_RIPETIZIONI }, observed: { blocchi: reg.blocchi.slice(0, 6), azioni: rz.azioni } });
+    }
+  } catch (e) { annuncia('log', `registro dei rifiuti ripetuti non aggiornato: ${e.message}`); }
 
   // 7 · IL REGISTRO DELLE APERTURE. Dal 9 agosto 2026 non limita piu' niente — il tetto giornaliero e'
   //     stato tolto — ma resta la memoria di cosa ha aperto il bot da quando e' stato acceso, ed e'
@@ -1483,10 +1552,29 @@ async function miniCiclo(decisione, deps = {}) {
     }
   }
 
-  // 8 · L'UTILIZZO DOPO, con il capitale che questo giro ha impegnato. E' una STIMA dichiarata come
-  //     tale: il venue conferma gli ordini in modo asincrono, e la misura vera torna al giro dopo
-  //     leggendo di nuovo saldo e ordini. Serve a rispondere subito a «quanto ci siamo avvicinati».
-  const impegnatoOra = giro.allocatoUsd;
+  // 8 · L'UTILIZZO DOPO, con il capitale che questo giro ha DAVVERO impegnato.
+  //
+  // ⚠ QUI C'ERA `giro.allocatoUsd`, cioè il PIANO del giro, e non quello che il venue ha accettato.
+  // Misurato il 13 agosto 2026 alle 06:47:52: il giro aveva allocato **$284**, ma delle 17 gambe ne
+  // sono passate **8** — nozionale realmente piazzato **$127,79**. La riga «CAPITALE AL LAVORO»
+  // dichiarava di conseguenza **$578,40 = 87%** contro un valore onesto di ~$422 = ~63%, e la misura
+  // vera del giro dopo diceva 44,3%. Cioè il numero con cui si giudica se il bot sta lavorando era
+  // **l'intenzione, non il fatto**, e sbagliava sempre nella direzione che rassicura.
+  //
+  // Adesso si sommano i nozionali delle sole gambe che il venue non ha rifiutato né saltato. Il campo
+  // `notionalUsd` è quello che la corsia di piazzamento mette su ogni riga di risultato, quindi è la
+  // stessa grandezza di `aRiposo` — non una seconda stima. Una riga senza `notionalUsd` leggibile NON
+  // si indovina dal piano: vale zero, cioè si sottostima, che è il verso sicuro per un numero che
+  // decide se il capitale è al lavoro.
+  //
+  // Resta una STIMA e continua a dichiararsi tale (`utilizzoStimatoDopo`): il venue conferma in modo
+  // asincrono e la misura vera torna al giro successivo rileggendo saldo e ordini. Ma è la stima di
+  // ciò che è successo, non di ciò che si voleva far succedere.
+  // Le passate precedenti hanno piazzato anche loro: `esito` è solo l'ULTIMA. Senza sommarle, un giro
+  // che piazza in due passate dichiarerebbe meno di quanto ha fatto — l'errore opposto, ma pur sempre
+  // un numero che non descrive la realtà.
+  const impegnatoOra = +(nozionalePiazzato(esito && esito.results)
+    + passate.slice(0, -1).reduce((t, p) => t + (Number(p.nozionaleUsd) || 0), 0)).toFixed(2);
   // ── DERIVATO DALLA MISURA DI PRIMA, NON RICALCOLATO DA CAPO ────────────────────────────────────
   // Qui c'era `saldoUsd: Math.max(0, decisione.saldoUsd - impegnatoOra)` insieme a
   // `ordiniARiposoUsd: aRiposo + impegnatoOra`: lo STESSO importo sottratto dal saldo E aggiunto agli
@@ -1550,6 +1638,79 @@ async function miniCiclo(decisione, deps = {}) {
 // ⚠ E NON ALLENTA NIENTE: la sua unica azione è chiedere a `controlloCapitaleFermo` di girare ADESSO
 // invece che al prossimo cooldown. Kill, AVVIA/FERMA, freno di prova e tutti i cancelli per ordine
 // restano davanti e decidono come sempre.
+// ═══ LA SCALA DI SBLOCCO — OGNI DIFESA AGISCE, NESSUNA ALLENTA ═════════════════════════════════════
+// Lo stato della scala e delle serie di rifiuto vive nel processo: un riavvio lo azzera, ed è giusto —
+// un processo appena partito non ha ancora osservato niente, e ripartire dal gradino 1 dopo un riavvio
+// è più prudente che ereditare un gradino alto da una diagnosi che non è più la sua.
+let statoScala = null;
+let statoRifiuti = {};
+let azioniSuggerite = [];
+let sottoSogliaDa = null;
+let ultimoCicloOk = Date.now();
+
+/**
+ * L'ESECUTORE DEI GRADINI. Ogni voce è un'azione che rimette in sincronia lo STATO del bot con la
+ * realtà; **nessuna tocca una regola di rischio** — non alza tetti, non allarga bande, non consente di
+ * stare primi sul libro, non salta la chiusura forzata. Il gradino finale non è un'azione: è fermarsi.
+ */
+async function eseguiGradino(azione) {
+  const t0 = Date.now();
+  const fatto = (ok, dettaglio) => ({ azione, ok, dettaglio, durataMs: Date.now() - t0 });
+  try {
+    if (azione === 'ricostruisci-piano') {
+      await controlloCapitaleFermo({ forzatoDa: 'sblocco-progressivo' });
+      return fatto(true, 'mini-ciclo forzato: il piano viene ricostruito con gli stessi filtri del ciclo pesante');
+    }
+    if (azione === 'ricarica-configurazione') {
+      // I lettori di questo repo leggono già da disco a ogni chiamata («un controllo che ha bisogno di
+      // un riavvio non è un controllo»): la cosa utile qui è VERIFICARE che siano leggibili e dirlo,
+      // perché una configurazione illeggibile è essa stessa una causa di blocco.
+      const rp = readAutoRepriceConfig();
+      const tetti = readAllocatedCapitalAll();
+      const bot = statoBot();
+      return fatto(true, `riprezzo ${rp && rp.readable === true ? 'leggibile' : 'ILLEGGIBILE'}`
+        + ` · tetti ${tetti && tetti.readable !== false ? 'leggibili' : 'ILLEGGIBILI'}`
+        + ` · interruttore ${bot.enabled ? 'AVVIA' : 'FERMA'}`);
+    }
+    if (azione === 'riconcilia-esposizione') {
+      const { diagnoseExposure } = require('../lib/maker/manual-reset');
+      const d = diagnoseExposure({});
+      return fatto(true, `esposizione aperta $${Number(d && d.openNotionalUsd || 0).toFixed(2)}`
+        + ` · posizioni nel ledger ${(d && d.positions && d.positions.length) || 0}`
+        + ' — il ledger si netta contro lo snapshot del venue nella stessa lettura');
+    }
+    if (azione === 'ripara-precondizioni') {
+      const piano = leggiUltimoPiano();
+      const ids = piano && piano.ok ? (piano.righe || []).map((r) => r.marketId).filter(Boolean).slice(0, TRIG.MAX_MERCATI_PER_GIRO) : [];
+      let n = 0;
+      for (const id of ids) {
+        try { const r = await preparaMercatoNuovo({ marketId: id }); if (r && r.ok !== false) n += 1; } catch { /* una fallita non ferma le altre */ }
+      }
+      return fatto(n > 0, `precondizioni riscritte su ${n}/${ids.length} mercati del piano`);
+    }
+    if (azione === 'risveglia-feed') {
+      // Non si riavvia nessun processo: si RISEMINA la corsia calda, che agent34 rilegge da sé. È la
+      // stessa scrittura del ciclo normale, quindi non introduce nessun percorso nuovo.
+      const piano = leggiUltimoPiano();
+      const pr = writeCollectorPriority(piano && piano.ok ? { rows: piano.righe || [] } : { rows: [] }, {
+        candidati: candidatiPerIlFeed(), posizioni: mercatiConPosizione(),
+      });
+      return fatto(!!(pr && pr.ok !== false), `corsia calda riseminata: ${(pr && pr.mercati) || 0} mercati`);
+    }
+    if (azione === 'fermati-in-sicurezza') {
+      // ⚠ L'ULTIMO GRADINO. Cinque tentativi diversi non hanno sciolto il blocco: il bot non sa cosa
+      // sta succedendo, e un bot che non sa cosa sta succedendo non deve piazzare. Non tocca le
+      // posizioni aperte e non ferma l'uscita automatica — è FERMA, non KILL.
+      const r = impostaBot({ enabled: false, by: 'agent41 · sblocco progressivo',
+        reason: 'la scala di sblocco ha esaurito i gradini senza sciogliere il blocco: meglio fermo che pericoloso' });
+      return fatto(!!(r && r.ok !== false), 'bot messo su FERMA: le posizioni aperte restano gestite, i piazzamenti nuovi si fermano');
+    }
+  } catch (e) {
+    return fatto(false, `azione fallita: ${e && e.message}`);
+  }
+  return fatto(false, 'azione sconosciuta: non si inventa niente');
+}
+
 let statoVuoto = null;
 async function sorvegliaVuoto(deps = {}) {
   const leggiOrdini = deps.listOrders || (() => listManualOrders({}));
@@ -1615,6 +1776,69 @@ async function sorvegliaVuoto(deps = {}) {
     catch (e) { annuncia('error', `la ricostruzione chiesta dalla sentinella è fallita: ${e.message}`); }
   }
   return v;
+}
+
+/**
+ * L'AUTODIAGNOSI PERIODICA, e la scala che ne discende.
+ *
+ * Gira sulla stessa cadenza di rilevazione del trigger (**120 s**) e risponde a una domanda sola: *il
+ * bot sta facendo il suo mestiere?* Quattro ingredienti — ordini vivi, capitale al lavoro, cicli che
+ * girano, rinnovi che passano — e le soglie stanno in `sblocco-progressivo`, dichiarate lì con la
+ * misura che le motiva. Se la risposta è no, **si sale la scala invece di aspettare che qualcuno legga
+ * i log**: qui non c'è nessuno a leggerli.
+ */
+async function autodiagnosiPeriodica(deps = {}) {
+  const leggiOrdini = deps.listOrders || (() => listManualOrders({}));
+  const ora = deps.now || Date.now();
+  if (!TRIGGER_ATTIVO) return null;
+  if (!botAttivo()) { statoScala = null; sottoSogliaDa = null; return null; }
+  let kill = { effectivelyKilled: false, readable: true };
+  try { kill = killSwitch.killStatus(); } catch { kill = { effectivelyKilled: true, readable: false }; }
+  if (kill.effectivelyKilled === true || kill.readable === false) { statoScala = null; sottoSogliaDa = null; return null; }
+
+  let ordini = null; let aRiposo = 0;
+  try { const o = await leggiOrdini(); if (o && o.ok !== false && Array.isArray(o.orders)) { ordini = o.orders.length; aRiposo = Object.values(TRIG.notionalePerMercato(o.orders)).reduce((a, b) => a + b, 0); } } catch { ordini = null; }
+
+  let frazione = null;
+  try {
+    const s = await leggiSaldo();
+    const pos = readVenuePositions();
+    const u = UTIL.misuraUtilizzo({
+      saldoUsd: s && s.readable !== false ? s.usd : null, ordiniARiposoUsd: +aRiposo.toFixed(4),
+      posizioniUsd: pos && pos.readable === true ? UTIL.valorePosizioni(pos.positions || []) : null,
+    });
+    if (u.leggibile) frazione = u.frazione;
+  } catch { frazione = null; }
+
+  if (frazione != null && frazione < SBLOCCO.SOGLIA_AL_LAVORO) { if (sottoSogliaDa == null) sottoSogliaDa = ora; } else sottoSogliaDa = null;
+
+  const d = SBLOCCO.autodiagnosi({
+    ordiniVivi: ordini, frazioneAlLavoro: frazione, ultimoCicloMs: ora - ultimoCicloOk,
+    sottoSogliaDa, now: ora,
+  });
+
+  const g = SBLOCCO.prossimoGradino({ stato: statoScala, sano: d.sano, now: ora, azioniSuggerite });
+  const eraAlGradino = statoScala && statoScala.livello;
+  statoScala = g.stato;
+  if (d.sano === true && eraAlGradino) {
+    annuncia('log', `✅ SBLOCCO RIUSCITO — il bot è tornato sano dopo il gradino ${eraAlGradino}`);
+    azioniSuggerite = [];
+  }
+  if (!g.sali) return { diagnosi: d, gradino: null, motivo: g.motivo };
+
+  annuncia('error', `🔴 AUTODIAGNOSI: il bot NON sta lavorando — ${d.motivi.join(' · ')}`
+    + ` ⇒ gradino ${g.gradino.livello}/${SBLOCCO.SCALA.length}: ${g.gradino.cosa}`);
+  const esito = await eseguiGradino(g.gradino.azione);
+  annuncia('log', `sblocco · gradino ${g.gradino.livello} «${g.gradino.azione}»: ${esito.ok ? 'eseguito' : 'FALLITO'} — ${esito.dettaglio}`);
+  try {
+    appendMakerAudit({ ts: ora, venue: 'polymarket', source: 'realloc-scheduler', op: 'sblocco-progressivo',
+      reason: 'autodiagnosi', decision: g.motivo, outcome: `gradino-${g.gradino.livello}-${esito.ok ? 'eseguito' : 'fallito'}`,
+      requested: { azione: g.gradino.azione, livello: g.gradino.livello },
+      observed: { motivi: d.motivi, misure: d.misure, dettaglio: esito.dettaglio, azioniSuggerite } });
+  } catch { /* l'audit non blocca il rimedio */ }
+  scrivi({ at: new Date(ora).toISOString(), tipo: 'sblocco-progressivo', livello: g.gradino.livello,
+    azione: g.gradino.azione, eseguito: esito.ok, dettaglio: esito.dettaglio, motivi: d.motivi, pid: process.pid });
+  return { diagnosi: d, gradino: g.gradino, esito };
 }
 
 /** Il controllo periodico. Costa una lettura di saldo (in cache) e niente altro finche' non scatta. */
@@ -1857,6 +2081,11 @@ function main() {
       + ` · obiettivo di utilizzo ${Math.round(UTIL.TARGET_UTILIZZO * 100)}%, fino a ${TRIG.MAX_MERCATI_PER_GIRO} mercati per giro`
       + ` · se il piano salvato manca, e' vecchio (> ${PIANO_FRESCO_MAX_MS / 60000} min), non ha spazio`
       + ` o ha meno di ${TRIG.SOGLIA_RIGHE_UTILI} righe ancora spendibili, RICOSTRUISCE il piano (leggero a ${FINESTRA_LEGGERA_ORE}h, stessi filtri del ciclo pesante)`);
+    annuncia('log', `autodiagnosi periodica ACCESA — ogni ${TRIG.CADENZA_MS / 1000}s verifica ordini vivi, capitale al lavoro (soglia ${Math.round(SBLOCCO.SOGLIA_AL_LAVORO * 100)}% per ${SBLOCCO.DURATA_SOTTO_SOGLIA_MS / 60000} min), cicli che girano e rinnovi che passano`
+      + ` · se il bot non lavora sale la SCALA DI SBLOCCO: ${SBLOCCO.SCALA.map((g) => g.livello + '·' + g.azione).join(' → ')}`
+      + ` · un gradino ogni ${SBLOCCO.ATTESA_GRADINO_MS / 60000} min, nessuno tocca una regola di rischio, l'ultimo e' FERMA`);
+    annuncia('log', `rifiuti ripetuti ACCESO — ${SBLOCCO.N_RIPETIZIONI} rifiuti identici di fila sulla stessa coppia (mercato, gate) sono un blocco strutturale:`
+      + ' via alternativa se la causa e\' uno stato del bot, esclusione e dichiarazione se e\' una regola di rischio');
     annuncia('log', `sentinella sul vuoto ACCESA — zero ordini a riposo per piu' di ${SENT.SOGLIA_MS / 60000} min`
       + ' con KILL spento e bot AVVIATO e\' un\'ANOMALIA: allarme nel log e nel giornale con la ripartizione del fermo in dollari,'
       + ` e ricostruzione del piano chiesta subito · controllo ogni ${TRIG.CADENZA_MS / 1000}s`
@@ -1869,6 +2098,11 @@ function main() {
       setTimeout(() => {
         setInterval(() => { sorvegliaVuoto().catch((e) => annuncia('error', 'sentinella sul vuoto fallita', { error: e.message })); }, TRIG.CADENZA_MS);
       }, Math.floor(TRIG.CADENZA_MS / 2));
+      // L'autodiagnosi gira sulla stessa cadenza, sfalsata di un quarto di periodo dalle altre due: le
+      // tre leggono cose diverse e non c'è nessun vantaggio a farle partire nello stesso istante.
+      setTimeout(() => {
+        setInterval(() => { autodiagnosiPeriodica().catch((e) => annuncia('error', 'autodiagnosi fallita', { error: e.message })); }, TRIG.CADENZA_MS);
+      }, Math.floor(TRIG.CADENZA_MS / 4));
     }, STARTUP_DELAY_MS);
     // Il sorvegliante dell'interruttore parte SUBITO e non dopo il minuto di grazia: la sua prima
     // esecuzione non piazza niente per costruzione (inizializza l'istante), e serve proprio a essere
@@ -1885,6 +2119,7 @@ if (require.main === module) main();
 
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
+  autodiagnosiPeriodica, eseguiGradino, nozionalePiazzato,
   LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,
   rigaBoardNormalizzata, copiaRegoleNelRipiego, BOARD_NORMALIZZATO, sorvegliaAvvio, scadenzaDalBoard };

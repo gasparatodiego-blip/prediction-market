@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~06:35 UTC.
+Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~07:25 UTC.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -67,6 +67,42 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~06:35 UTC.
 > ripiego, da cui `scadenzaMercato` — che resta **sincrona** — la trova al ciclo dopo. Al più 5 richieste
 > per giro, solo per i mercati con capitale dentro, e mai più dopo la prima riuscita.
 > **Una data non parsabile non viene MAI scritta**: meglio nessuna scadenza che una inventata.
+
+> ## 🤖 IL BOT SI SBLOCCA DA SOLO: RIFIUTI RIPETUTI, COERENZA, SCALA, AUTODIAGNOSI — §5 punti 124-127
+> **Principio: ogni difesa AGISCE, non segnala soltanto** — qui non c'è nessuno a leggere i log. E la
+> metà opposta: **quando l'unica via d'uscita violerebbe una regola di rischio, il bot non agisce e lo
+> dichiara.**
+> **① RIFIUTI RIPETUTI** (`sblocco-progressivo.js`): **5** rifiuti identici di fila sulla stessa coppia
+> (mercato, gate) sono un blocco strutturale, non sfortuna — il 13 agosto sono stati **114**. Le 26
+> famiglie osservate nei giornali sono classificate in tre classi: **`rischio`** (56% dei 43.299
+> rifiuti — `motore-non-conforme`, `mai-primo`, `would-cross`, `end-of-scale`, `venue-rules`,
+> `close-sell-floor`, `manual-order-cap`) ⇒ **nessuna azione, si cambia mercato e si dichiara perché**;
+> **`stato-bot`** ⇒ via alternativa vera (ricarica config, riconcilia esposizione, ripara precondizioni,
+> risveglia feed, ricostruisci piano); **`transitorio`** ⇒ non è un blocco. **Una famiglia sconosciuta è
+> trattata come rischio**: l'incognita non è un via libera.
+> **② COERENZA FRA I MODULI** (`coerenza-soglie.js`): prima di proporre righe si verifica che chi le
+> riceve le accetti, e il capitale **può solo SCENDERE**. Due divergenze misurate: il deadlock $24,00
+> contro $24,50, e — nuova — **il pianificatore non conosce il tetto per ORDINE**: alloca al tetto per
+> mercato ($32,67) e a mid estremo la gamba cara sfonda $21,34. **243 mercati su 321 del board (76%)
+> sfonderebbero al tetto pieno, e il giornale porta 631 `manual-order-cap` in tre giorni.**
+> **③ SCALA DI SBLOCCO**, un gradino ogni **5 minuti**: `ricostruisci-piano` → `ricarica-configurazione`
+> → `riconcilia-esposizione` → `ripara-precondizioni` → `risveglia-feed` → **`fermati-in-sicurezza`**
+> (FERMA + allarme grave). Caso peggiore: FERMA in **~30 minuti**. I rifiuti osservati possono scegliere
+> il gradino di partenza. **Nessun gradino tocca una regola di rischio**, ed è provato per struttura.
+> **④ AUTODIAGNOSI ogni 120 s**: ordini vivi > 0 · capitale al lavoro ≥ **50% per 15 minuti** · un ciclo
+> negli ultimi **20 min** · rinnovi dovuti non fermati oltre l'**80%**. Tutto illeggibile ⇒ **non si
+> giudica** e la scala non parte.
+
+> ## 💵 IL «CAPITALE AL LAVORO» DICEVA L'INTENZIONE, NON IL FATTO — §5 punto 124
+> `impegnatoOra = giro.allocatoUsd`, cioè **il piano del giro**. Misurato il 13 agosto 06:47:52: il giro
+> aveva allocato **$284**, ma di 17 gambe ne sono passate **8** — nozionale reale **$127,79**. La riga
+> «CAPITALE AL LAVORO» dichiarava **$578,40 = 87%** contro un valore onesto di ~63%, e la misura vera
+> del giro dopo diceva **44,3%**. Sbagliava **sempre nella direzione che rassicura**, ed è il numero su
+> cui l'autodiagnosi decide se il bot lavora. Adesso si sommano i nozionali delle sole gambe non
+> rifiutate né saltate, **passate precedenti comprese**; una riga senza `notionalUsd` vale **zero**.
+> ⚠ **Il pannello Polymarket e il bot misurano cose diverse e possono essere entrambi giusti**:
+> «disponibile per il trading» **è il cash** e non sottrae i BUY a riposo, quindi gli «impegnati» del
+> pannello sono le **sole posizioni**; il bot conta **posizioni + ordini a riposo**.
 
 > ## 🧱 I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA — §5 punto 123, BUCO APERTO
 > **$26,30** in cinque residui che il registro raccoglie correttamente e che **niente può chiudere**:
@@ -721,24 +757,24 @@ arrivi. Registro visibile su `GET /api/maker/registro-reward` e nella scheda «a
 Solo voci con evidenza reale nel codice, nei commit o nei file di stato. Chiuso ⇒ si toglie di qui e
 resta una riga nel registro di §5-bis.
 
-### 5.1 · Riavvii pendenti — al 13 agosto 2026, 08:30 UTC
+### 5.1 · Riavvii pendenti — al 13 agosto 2026, 07:25 UTC
 
 | processo | cosa entra in servizio | stato |
 |---|---|---|
-| `agent41-realloc-scheduler` | griglia del piano che arriva al tetto · pavimento per riga · ricostruzione sotto soglia · **sentinella sul vuoto** | **PENDENTE** — finché non riparte, il capitale resta fermo |
-| `agent40-manual-reprice` | recupero della scadenza dal venue ⇒ chiusura forzata a 3 ore di nuovo possibile | **PENDENTE** |
+| `agent41-realloc-scheduler` | nozionale davvero piazzato nel «capitale al lavoro» · coerenza delle soglie prima di proporre · rifiuti ripetuti · scala di sblocco · autodiagnosi periodica | **PENDENTE** |
 
-Comando (agent41 e agent40 hanno entrambi il caricatore di `.env`, quindi la forma semplice basta;
-per agent41 la ricostruzione dell'ambiente da `/proc` non serve più dalla fase 7 dell'8 agosto):
+I riavvii del mattino (griglia, pavimento per riga, ricostruzione sotto soglia, sentinella sul vuoto,
+recupero della scadenza) **sono già in servizio**: agent41 restart 72 e agent40 restart 92, 06:43-06:44 UTC.
 
 ```bash
 pm2 restart agent41-realloc-scheduler
-pm2 restart agent40-manual-reprice
 ```
 
-**Cosa resta inattivo finché non si riavvia**: il mini-ciclo continua a rifiutare ogni riga
-(`spazio $24,00 sotto il minimo di $24,50`), nessun ordine viene piazzato, e la chiusura forzata resta
-spenta sui cinque mercati fuori dal board. **Nessun capitale a rischio**: si fallisce chiuso.
+**Cosa resta inattivo finché non riparte**: il bot continua a dichiarare «capitale al lavoro» sul
+**piano** invece che sul piazzato (sovrastima misurata: 87% contro 44,3% veri), propone righe che il
+tetto per ordine rifiuterà (631 `manual-order-cap` in 3 giorni), e **non ha nessuna reazione ai rifiuti
+ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chiuso, come stanotte.
+**⚠ agent40 non va riavviato per questo lavoro**: nessun file che vive nel suo processo è stato toccato.
 
 ### 5.2 · Aperte
 
@@ -896,6 +932,95 @@ contestata, e serve un test che provi che non si riscatta un mercato non risolto
 **Mitigazione già attiva, e va detta**: la correzione del punto 120 riporta `f_min` da 0,82 a **0,61**,
 cioè un fill parziale lascia un residuo piazzabile molto più spesso. **Riduce il tasso a cui il buco si
 riempie, non chiude il buco.**
+
+### Le voci del 13 agosto 2026, sera
+
+**124 · IL CAPITALE AL LAVORO DICEVA L'INTENZIONE.** Vedi il banner. La correzione vale anche per le
+**passate**: `esito` è solo l'ultima, e senza sommare le precedenti si dichiarerebbe meno del fatto.
+
+**125 · RIFIUTI RIPETUTI: RICONOSCERE E REAGIRE** (`lib/maker/sblocco-progressivo.js`, puro).
+**N = 5**, e il numero viene dai dati: sul giornale 9-13 agosto la stessa coppia (mercato, gate) si è
+ripetuta fino a **3.309 volte di fila**, quindi qualunque soglia sarebbe scattata; il vincolo che
+decide è l'altro lato — un ordine si riprezza ogni ~60 s, quindi 5 ripetizioni identiche sono ~5 minuti
+in cui il libro si è mosso e la risposta non è cambiata. Sotto (2-3) si prenderebbero i rimbalzi di un
+book che oscilla. La serie si azzera su un **successo** (prova che il blocco non c'è più) o dopo
+**15 minuti** di silenzio (una ripetizione a mezz'ora non è un loop). **Famiglie coperte, con la
+reazione:**
+
+| classe | famiglie | reazione |
+|---|---|---|
+| **rischio** (56% dei rifiuti) | `motore-non-conforme` (13.448) · `venue-rules` (5.848) · `end-of-scale` (5.771) · `would-cross` (2.982) · `inseguimento-contro-mai-primo` · `close-sell-floor` · `mai-primo-sul-libro` · `manual-order-cap` | **si cambia mercato e si DICHIARA perché non si è agito.** Mai un aggiramento |
+| **stato-bot** | `idempotent`/`idempotent-duplicate` ⇒ ricarica configurazione · `limit-max-open-notional` ⇒ riconcilia esposizione · `live-min-market-mismatch`/`manual-mode-inactive` ⇒ ripara precondizioni · `rules-unreadable`/`market-unknown`/`refresh-invalid` ⇒ ripara catalogo · `mid-stale`/`mid-not-live`/`stale-book`/`board-vecchio` ⇒ risveglia feed · `piano-senza-righe` ⇒ ricostruisci piano | la via alternativa, che non tocca nessuna regola |
+| **transitorio** | `rate-limited` · `kill-global` · `market-closed` · `market-not-accepting-orders` | nessuna: passa da sé |
+
+**⚠ Una famiglia sconosciuta è trattata come RISCHIO**, non come occasione di inventare una via
+d'uscita — la stessa regola di `ignota` altrove.
+
+**126 · COERENZA FRA I MODULI** (`lib/maker/coerenza-soglie.js`, puro). La classe di difetto: chi
+propone non conosce le soglie di chi riceve, e ogni modulo preso da solo risponde correttamente alla
+propria domanda. **Due divergenze misurate**, la seconda nuova e grossa:
+
+| # | chi propone | chi riceve | misura |
+|---|---|---|---|
+| ① | griglia dell'allocatore ($24,00) | pavimento del mini-ciclo ($24,50) | **114 rifiuti identici, 3 ore di capitale fermo** |
+| ② | tetto per **mercato** ($32,67) | tetto per **ordine** ($21,34) sulla gamba cara | **243 mercati su 321 (76%) sfonderebbero · 631 `manual-order-cap` in 3 giorni** |
+
+L'aritmetica di ②: le due gambe comprano le **stesse share** `Q = capitale/costoCoppia` e costano
+`Q × p` ciascuna ⇒ `capitale ≤ tettoOrdine × costoCoppia / max(p_yes, p_no)`. Il capitale **può solo
+scendere** (è un `Math.min`), quindi nessun tetto viene alzato: la riga smette di essere impossibile
+diventando **più piccola**, non più permessa. Se nemmeno il massimo compatibile regge il pavimento
+premiante, la riga si **scarta e si dichiara** — non si forza una size sotto `min_incentive_size`, dove
+il reward è ZERO. **Il modulo non importa nessuna costante**: le soglie gliele passa chi le possiede, o
+nascerebbe la settima copia del tetto.
+**Altre coppie cercate e già coperte**, quindi non ritoccate: tetto per mercato ↔ Regola 5 del motore
+(costante unica importata da undici consumatori) · `MIN_ALLOCAZIONE_USD` ↔ `capPerMarketUsd` (§107) ·
+`ETA_BOARD_MAX_MS` ↔ `SCAN_INTERVAL_MS` (test che legge il sorgente) · `rateCap` ↔ mercati per giro
+(test) · `minSizeShares` ↔ `BELOW_MIN_SIZE` (cancello in share, non in dollari).
+
+**127 · SCALA DI SBLOCCO E AUTODIAGNOSI.** Vedi il banner per i gradini e le soglie. Le scelte:
+**5 minuti per gradino** perché è il tempo in cui la sentinella vede un vuoto ed è più di due cadenze
+del trigger, quindi un gradino ha avuto le sue occasioni; **50%** di capitale al lavoro come soglia di
+guasto (non il 95% dell'obiettivo: l'obiettivo è una tensione, la soglia è un sintomo) perché sul
+giornale delle 48 h precedenti il regime bloccato stava a 8-40% e quello sano a 44-63%; **15 minuti**
+sotto soglia perché un singolo giro sotto il 50% è normale dopo un ribilanciamento. **L'ultimo gradino
+non è un'azione: è FERMA**, e non tocca le posizioni aperte né l'uscita automatica.
+
+**⚠ VERIFICA STORICA, e il risultato non è quello che si spererebbe.** Sui 102 mini-cicli del 10-13
+agosto ci sono **4 finestre di blocco per 610 minuti totali**: 13/08 01:10→05:56 (**286 min**, 27 giri),
+12/08 13:39→18:15 (276 min, 5 giri), 10/08 02:50→03:32 (42 min), 12/08 23:48→23:54 (6 min). **Tre su
+quattro hanno la stessa causa — il deadlock aritmetico — e per quelle la scala NON avrebbe sbloccato
+niente**: nessuno dei cinque gradini agisce su una soglia incompatibile, e il bot sarebbe arrivato a
+**FERMA in ~30 minuti**. Il guadagno è reale ma va detto per quello che è: **da 286 minuti di finto
+lavoro a 30 minuti e un allarme grave con il bot dichiaratamente fermo**, non a un bot che riparte. A
+sbloccare quelle tre è stata la correzione della **griglia** (§120), non queste difese. **La quarta
+(6 min) sarebbe stata risolta dal gradino 1.** Capitale fermo nei quattro blocchi: ~**6.190 $·ora**.
+
+**128 · RESIDUI SOTTO SOGLIA: NON SI PUÒ IMPEDIRE CHE NASCANO — non implementato, con i numeri.**
+**(a) Il venue non offre un vincolo di esecuzione utile, e la prova è nei tipi dell'SDK.**
+`createAndPostOrder<T extends OrderType.GTC | OrderType.GTD>` — un ordine **a riposo può essere solo
+GTC o GTD**, il sistema di tipi vieta l'alternativa. `FOK`/`FAK` esistono ma **solo** su
+`createAndPostMarketOrder<T extends OrderType.FOK | OrderType.FAK>`, cioè su ordini **market**: eseguono
+subito e **non riposano mai**, quindi maturano **zero reward** — che è l'intero ricavo di questo bot — e
+attraversano lo spread. Nessun parametro di quantità minima eseguibile esiste (`minFill`, `allOrNone`,
+`minExecutable`: **zero occorrenze** nei tipi). ⇒ **(a) è un no definitivo.**
+**(b) Nessuna alternativa lato bot funziona, e la prima è aritmetica.** Il residuo scoperto dopo un
+fill di frazione `f` vale `Q·f` share ed è copribile solo se `Q·f ≥ minSize`: essendo **continuo in
+`f`**, per qualunque size esiste sempre un `f` che lascia un residuo sotto soglia. *Dimensionare gli
+ordini perché il residuo resti sopra soglia è impossibile, non costoso.* *Spezzare in blocchi da
+minimo-venue* non aiuta: un ordine da 20 share può essere riempito per 7. *Completare subito il fill* è
+ciò che il bot **già fa** (Livelli 1-2, chiusura rapida, riposizionamento) e fallisce esattamente
+quando `manca < minSize`, che è il caso in questione.
+**(c) L'unica leva è `f_min`, e va nella direzione OPPOSTA a quella che sembra.** Il residuo si incastra
+quando `f < f_min = minSize × costoCoppia / capitale`: quindi un tetto **più alto** abbassa `f_min` e
+**restringe** la finestra che incastra. La correzione della griglia (§120) ha già portato le righe da
+$24 a $32, cioè `f_min` da **0,817 a 0,600** — il tetto è già al massimo che il tetto per ordine e il
+pavimento premiante consentono. Andare nell'altro verso costa: a `f_min = 1,00` il tetto scenderebbe a
+$19,60 e la size per lato da **$16,34 a $9,80 (−40%)** su ogni mercato, per **13 eventi di residuo in
+3 giorni** e **$35,03** oggi murati (5,3% del portafoglio). Una perdita anche solo del 20% sul
+realistico (~$51/g) costa **più dell'intero capitale murato in tre giorni e mezzo**, e quel capitale non
+è perso — è illiquido fino alla risoluzione. ⇒ **NON implementato: la cura costa più della malattia.**
+**I cinque residui già esistenti restano una questione aperta** (§123): niente li chiude, `redeemPosition`
+continua a non avere chiamanti, e la proposta del redeem dopo la risoluzione resta da decidere.
 
 ### Le classi di difetto che si ripetono — leggerle prima di scrivere codice qui
 
