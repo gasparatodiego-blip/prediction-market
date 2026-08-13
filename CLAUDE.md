@@ -1016,28 +1016,12 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
 
 ### 5.2 · Aperte
 
-17. ✅ **CORRETTO il 13 agosto 2026 (§5-bis p.148)** — il registro ha finalmente un consumatore.
-   Resta la diagnosi, che è il motivo per cui la correzione ha la forma che ha.
-   **IL REGISTRO DEI RESIDUI ERA SCRITTO E MAI RILETTO — misurato il 13 agosto 2026.**
-   `lib/maker/accumulo-residui.js` scrive `data/residui-scoperti.json` a ogni giro (17 voci, aggiornate
-   al minuto) e calcola correttamente il flag `pronto`, che oggi è **true su 6 voci per $105,79 di
-   nozionale**. Ma `residuiPronti` (`accumulo-residui.js:157`) e `capitaleFermoUsd` (riga 162) hanno
-   **zero chiamanti in produzione**: gli unici sono in `lato-scoperto-principio.test.js`. In agent40 il
-   registro si legge in due punti soli — la mano di pulizia del mercato morto (riga 679) e il
-   read-modify-write che REGISTRA (riga 1123) — e in nessuno dei due per **riprovare**.
-   Cioè: il sistema misura quando un residuo torna piazzabile, lo scrive, e non agisce mai.
-   **Non corretto: tocca capitale ed è una decisione dell'operatore.**
-18. ✅ **CORRETTO il 13 agosto 2026 (§5-bis p.147)** — l'esenzione vale su tutti i percorsi che riducono.
-   Resta la diagnosi.
-   **IL TETTO PER ORDINE NON ERA ESENTATO SUL RIPOSIZIONAMENTO — misurato il 13 agosto 2026.**
-   L'esenzione di chiusura (§5 p.76, §5-bis p.133) è dichiarata dal ramo del completamento coppia
-   (`auto-close.js:~1188`, `chiudePosizione: true`) ma **NON** dal ramo `riposizionamento-scoperto`
-   (`auto-close.js:1411-1418`), che chiama `deps.placeOrder` senza quel campo. Conseguenza misurata:
-   una **SELL di 52,6 share già possedute** su `0x791c61d4` rifiutata con
-   `reject-manual-order-cap` — «controvalore $24,72 oltre il tetto per ordine $21,34» — cioè un tetto
-   pensato per limitare le APERTURE che impedisce di **ridurre** un'esposizione già aperta.
-   **1.331 rifiuti `manual-order-cap` nello slice recente.** È la quinta occorrenza della classe
-   «protezione presente su un percorso e assente sul suo gemello». **Non corretto: tocca capitale.**
+17. ✅ **CHIUSO il 13 agosto 2026 — §5-bis p.148.** Il registro dei residui era scritto e mai riletto
+   (`residuiPronti`, `accumulo-residui.js:157`, aveva zero chiamanti in produzione). Diagnosi
+   integrale nella voce di registro e in `git log`.
+18. ✅ **CHIUSO il 13 agosto 2026 — §5-bis p.147.** Il tetto per ordine non era esentato sul ramo
+   `riposizionamento-scoperto`: una SELL di share già possedute veniva rifiutata da un tetto pensato
+   per le APERTURE. Quinta occorrenza della classe «protezione su un percorso, assente sul gemello».
 1. **I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA — buco strutturale, §5-bis p.123.**
    **$26,30** in cinque residui che nessun percorso può chiudere. Proposta scritta, **non implementata**
    perché è capitale: è una decisione dell'operatore.
@@ -1300,8 +1284,6 @@ reward per risparmiare $0,04/giorno.
 **⚠ Incertezza**: il reward osservato poggia su **4 giorni di presenza** e il costo di uscita su **13
 vendite**; la distribuzione nella banda su 17.119 osservazioni ed è il dato solido. Servono **~15
 giorni** di bot acceso per stabilizzare il resto.
-
-<!-- §5.2 p.17 e p.18 sono CHIUSI (§5-bis 147/148): la diagnosi integrale sta lì e nei commit. -->
 
 
 **151 · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — e corregge l'inquadramento di §150.**
