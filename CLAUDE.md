@@ -160,6 +160,30 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~07:25 UTC.
 > tetto di 12 mercati per giro. La quota di scansione è **assicurazione** per quando il board si
 > assottiglia (compatibili osservati fra 20 e 96 al giorno, mediana 46), non la cura di adesso.
 
+> ## 🔓 IL TETTO PER MERCATO NON IMPEDISCE PIÙ DI CHIUDERE — §5 punto 133
+> **Caso vero: 13 agosto 07:45:36, Tel Aviv `0xcb034071`.** Posizione YES di **32,6 share scoperta da
+> un'ora e sopra il minimo del venue**, quindi copribile — e la copertura rifiutata perché «il mercato
+> arriverebbe a **$45,63**: il tetto per mercato è **$32,67**». **Non è isolato: 6.226 righe
+> `tetto-mercato` in 24 ore su sei mercati, tutti con posizione aperta** (Warsaw 2.876, Wellington
+> 1.506, Tel Aviv 633, Ankara 574, Munich 308) — perché una posizione aperta consuma il budget del
+> mercato, e da lì il bot non riesce più né a coprirla né a rinnovare le gambe che ha.
+> **Decisione dell'operatore: le gambe di CHIUSURA possono sforare il tetto per mercato**, perché quel
+> tetto esiste per limitare l'**apertura** di posizioni nuove, e applicarlo a chi chiude significa
+> tenere aperta un'esposizione per rispettare un limite pensato contro le esposizioni.
+> **⚠ NON È UN'ESENZIONE IN BIANCO.** Il tetto non sparisce: sale a un secondo tetto **assoluto e
+> DERIVATO**, `capOrdinario × (1 + 1/costoCoppia)` ≈ **2,02×** = **$65,97**, cioè esattamente «quanto
+> basta a chiudere qualunque posizione che il bot possa aprire, e nulla di più» — la posizione più
+> grande apribile vale $32,67 e comprarne la controparte costa al più $32,67/0,98. Il «2» tondo lasciava
+> scoperto il caso peggiore di 63 centesimi. Sul capitale di oggi vale il **9,9%** del portafoglio.
+> **Vale SOLO per chi chiude, con una PROVA rifatta sull'ordine esatto** (`deps.provaChiusura`, le
+> stesse funzioni del tetto per ordine di §5 p.76: SELL entro il posseduto, BUY entro `manca`) — un BUY
+> così può solo **appaiare**, mai aprire. Prova assente, falsa o che esplode ⇒ tetto ordinario.
+> `sforaOrdinario` viaggia nel verdetto perché chi legge sappia che quella gamba è passata **solo**
+> grazie all'esenzione. **`mai-primo-sul-libro` resta il primo veto e non è toccato**; il **pavimento di
+> profondità** non conosce l'esenzione, e un test lo verifica per assenza.
+> **⚠ E SU TEL AVIV LA COPERTURA PUÒ RESTARE BLOCCATA LO STESSO**: nel suo verdetto concorreva anche
+> `profondita-insufficiente`, che è una regola di rischio e **resta intatta**.
+
 > ## 🧱 I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA — §5 punto 123, BUCO APERTO
 > **$26,30** in cinque residui che il registro raccoglie correttamente e che **niente può chiudere**:
 > `manca` è sotto `min_incentive_size`, quindi né un ripiazzamento né il completamento della coppia sono
