@@ -1277,6 +1277,33 @@ modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà**
 testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
 
+**152 · IL BORDO DELLA BANDA NON CONVIENE, E IL 27% DEI NOSTRI ORDINI CI STA GIÀ.** Misura in
+`data/ricerca/sintesi-posizione-banda.md`; script `perche-pochi-mercati.js` per la parte di giornale.
+**La formula è VERIFICATA sulla documentazione ufficiale viva** (`docs.polymarket.com/market-makers/
+liquidity-rewards`), non ricostruita: `S(v,s) = ((v−s)/v)² · b`, `Q_min` con **c = 3,0**, size in
+**share**, **10.080 campioni per epoca** (campionamento al minuto ⇒ il tempo a libro conta), soglia
+minima **per mercato**, banda **simmetrica**, pagamento giornaliero a mezzanotte UTC.
+**⚠ CONSEGUENZA CHE DECIDE DA SOLA**: al bordo `s → v` ⇒ `S → 0`. Il bordo estremo **non matura quasi
+nulla, per costruzione**.
+**Dove stiamo davvero** (17.119 osservazioni): v = **2,25¢**, distanza mediana **1,0¢** ⇒ s/v = 0,444,
+S = 0,3086. **S medio effettivo 0,2981.**
+**⚠ IL 27% DEI NOSTRI ORDINI STA A s/v 80-100%, CON S = 0,0076** — quaranta volte meno della nostra
+mediana. Non è una scelta: la regola «bordo esterno se soli» **non compare mai nel giornale (0 righe)**.
+È **deriva del mid dopo il piazzamento**, cioè ritardo di riprezzo. Spostare quella coda nella fascia
+dove sta già il 33,8% degli ordini porterebbe S medio da 0,2981 a **0,4580, cioè +53%**.
+**⚠ L'IPOTESI DEL BORDO È SBAGLIATA DI SEGNO**: un fill ci costa **$0,05/giorno** di spread (4,6
+episodi/g, di cui **1,0 vendita/g** a 0,25 ¢/share). Il costo vero è il **capitale immobilizzato**:
+$135 in gambe nude = **$0,91/giorno**, **18× lo spread**. Andare al bordo distruggerebbe il **96%** del
+reward per risparmiare $0,04/giorno.
+**Le leve, per valore**: ① presenza 4/30→29/30 **+$100/mese** · ② togliere la coda al bordo
+**+$68/mese** · ③ sbloccare i $135 **+$27/mese** · ④ posizione verso il bordo **−$96/mese**.
+**⚠ Incertezza**: il reward osservato poggia su **4 giorni di presenza** e il costo di uscita su **13
+vendite**; la distribuzione nella banda su 17.119 osservazioni ed è il dato solido. Servono **~15
+giorni** di bot acceso per stabilizzare il resto.
+
+<!-- §5.2 p.17 e p.18 sono CHIUSI (§5-bis 147/148): la diagnosi integrale sta lì e nei commit. -->
+
+
 **151 · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — e corregge l'inquadramento di §150.**
 Misura in `data/ricerca/sintesi-redeem.md`; script `redeem-esiti.js`. **5.087 redeem su 8 wallet.**
 **⚠ IL CONFONDENTE È STATO ESCLUSO PRIMA DI MISURARE**: si temeva che una posizione risolta a **0** non
