@@ -160,6 +160,28 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~07:25 UTC.
 > tetto di 12 mercati per giro. La quota di scansione è **assicurazione** per quando il board si
 > assottiglia (compatibili osservati fra 20 e 96 al giorno, mediana 46), non la cura di adesso.
 
+> ## 🔁 IL RIAVVIO AUTOMATICO CONDIZIONATO — §5 punto 134
+> Ogni correzione restava inattiva finché un umano non autorizzava un riavvio, e l'operatore non può
+> seguire il bot: **nella sola giornata del 13 agosto sono rimaste inattive per ore** la griglia del
+> piano, la sentinella, il recupero della scadenza, la coerenza delle soglie, l'esenzione del tetto.
+> Adesso il riavvio parte da solo **solo se valgono TUTTE E QUATTRO** le condizioni:
+> ① suite **senza rossi NUOVI** rispetto alla baseline — non «zero rossi», che non accadrebbe mai: si
+> confronta l'**insieme dei nomi**, non il conteggio, quindi nove rossi diversi dai nove noti sono nove
+> regressioni · ② `npm run build` verde (`.next` con `BUILD_ID` **e** `prerender-manifest.json`) ·
+> ③ **KILL spento** · ④ **nessuna posizione scoperta SOPRA il minimo del venue** — sotto il minimo non
+> conta, è uno stato che nessun ciclo può risolvere (§123) e aspettarlo vorrebbe dire non riavviare mai.
+> **⚠ Una condizione non verificabile vale «NO».** Snapshot scaduto, kill illeggibile, esito della suite
+> assente o più vecchio di 30 min ⇒ **non si riavvia**, la modifica resta inattiva e lo si scrive nel log
+> e nel giornale (`op: valutazione`, `outcome: riavvio-non-eseguito`) con **quali** condizioni mancavano.
+> **Sequenziale, mai simultaneo**: `agent24 → agent41 → agent40`, dal più lontano dal capitale al più
+> vicino. Dopo ognuno si verifica **online E stabile** (uptime, e nessun rimbalzo nei contatori) prima
+> di passare al successivo; al primo che non torna su **ci si ferma** e gli altri restano sul codice
+> vecchio, che è uno stato coerente. Ogni riavvio va nel giornale con ora, agent, commit e condizioni.
+> **⚠ LO SCRIPT NON ESEGUE LA SUITE**: `appendMakerAudit` scrive sul giornale VERO, quindi girarla in un
+> percorso automatico sarebbe un'azione di produzione che nessuno ha chiesto (§5.3). Legge l'esito da
+> `data/ultima-suite.json`, che lo scrive chi la esegue. `node scripts/riavvio-automatico.js --prova`
+> lo guarda lavorare senza toccare pm2.
+
 > ## 🔓 IL TETTO PER MERCATO NON IMPEDISCE PIÙ DI CHIUDERE — §5 punto 133
 > **Caso vero: 13 agosto 07:45:36, Tel Aviv `0xcb034071`.** Posizione YES di **32,6 share scoperta da
 > un'ora e sopra il minimo del venue**, quindi copribile — e la copertura rifiutata perché «il mercato

@@ -1459,6 +1459,34 @@ async function cycle() {
     // valutato con quello nuovo al ciclo successivo.
     // IL MOTORE UNICO: una sola valutazione, nessuna biforcazione per profilo.
     valutaMercato: (arg) => valutaMercato(arg),
+    // ── LA PROVA DI CHIUSURA PER IL TETTO PER MERCATO (13 agosto 2026) ───────────────────────────
+    // Senza questa dep l'esenzione scritta in `motore-unico` sarebbe rimasta INERTE — la quinta
+    // occorrenza in questo repo di «una dep col nome giusto che nessuno inietta e' un valore di
+    // difetto che nessuno ha chiesto». Il ricevitore c'era e il mittente no.
+    //
+    // La prova e' quella di `esenzione-chiusura`, cioe' la STESSA del tetto per ordine (§5 p.76):
+    // SELL entro il posseduto, BUY entro `manca`. Il possesso lo legge `leggiCoppiaDetenuta` dallo
+    // snapshot del venue; se lo snapshot non e' fresco la prova non si fa e il tetto resta ordinario.
+    provaChiusura: (order) => {
+      try {
+        if (!order || !order.marketId) return null;
+        const { provaChiusura: prova, leggiCoppiaDetenuta } = require('../lib/maker/esenzione-chiusura');
+        // `leggiCoppiaDetenuta` vuole i due TOKEN, non mercato+lato: le posizioni al venue sono
+        // indicizzate per token, e passargli un marketId restituisce `null` su entrambi i lati — cioè
+        // «possesso non leggibile», cioè esenzione mai concessa. Provato: lo faceva.
+        const rules = resolveMarketRules(order.marketId);
+        if (!rules || rules.readable !== true) return null;
+        const tokenMio = order.book === 'yes' ? rules.tokenIdYes : rules.tokenIdNo;
+        const tokenOpp = order.book === 'yes' ? rules.tokenIdNo : rules.tokenIdYes;
+        const c = leggiCoppiaDetenuta(tokenMio, tokenOpp);
+        if (!c || c.leggibile !== true) return null;
+        const p = prova({
+          side: order.side, size: order.size, chiudePosizione: true,
+          heldSize: c.held, heldSizeOpposto: c.heldOpposto,
+        });
+        return p && p.esente === true ? { ok: true, motivo: p.motivo || 'chiusura provata sullo snapshot del venue' } : null;
+      } catch { return null; }   // una prova che esplode vale «nessuna prova»: tetto ordinario
+    },
     // ── I DUE INGRESSI DELLA REGOLA 5 (il tetto del 20% per mercato) ─────────────────────────────
     // Erano scollegati fino al 6 agosto 2026: la regola c'era, i numeri no, e falliva chiusa a ogni
     // giro con «saldo non leggibile». Il saldo e' quello letto una volta sola per questo giro; le
