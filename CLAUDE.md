@@ -1066,6 +1066,30 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
    Misura completa in `data/ricerca/sintesi-collasso.md`.
 13. **La soglia sulla derivata per la sentinella È misurabile, ed è l'85%** (§5-bis p.140). Non
    implementata: questa era una sessione di sola diagnosi.
+22. **⚑ I MERCATI SBILANCIATI NON RENDONO DI PIÙ, E PER NOI RENDONO MENO — 13 agosto 2026.**
+   **① Il reward per dollaro NON dipende dal livello di prezzo — analitico, non stimato.** `S(v,s)`
+   contiene solo la **distanza dal mid in centesimi**, non il prezzo; e una COPPIA costa **$1 per
+   share-pair a qualunque `p`** (Q share di YES a `p` + Q di NO a `1−p` = Q dollari). Quindi $32,67
+   comprano **32,7 share per lato** sia a mid 0,50 sia a 0,99, e **Q per dollaro è identico**.
+   **② MA Q_min si ROMPE a 0,10 e 0,90, ed è documentato**: dentro `[0,10 · 0,90]` una gamba sola
+   prende `max(Qb,Qa)/3`; **fuori, Q_min = min(Qb,Qa), cioè una gamba nuda matura ZERO.**
+   **③ La ripartizione del capitale è il problema**: a mid 0,90 il **90% del capitale sta sulla gamba
+   CARA** e il 10% su quella economica. Per noi che siamo **nudi il 100% delle volte** (§5-bis p.152)
+   significa la quasi totalità del capitale su una gamba che, sopra 0,90, **non matura niente**.
+   **④ ⚠ IL TASSO DI ERRORE DEL MERCATO A 90+ NON È MISURABILE dal campione che ho.** I sei wallet a
+   basso residuo vincono **+56,6 punti** sopra il prezzo nella fascia 0–0,10: impossibile come
+   proprietà del mercato, è la firma della **selezione** (sono stati scelti perché bravi). L'unica
+   affermazione lecita: **0 perdite su 3.108 redeem sopra 0,97**, che dà un limite superiore al tasso
+   di errore di **~0,1%**. Per la calibrazione vera servirebbe un campione **non selezionato** di
+   mercati risolti con il prezzo pre-risoluzione — non ce l'ho.
+   **⑤ La nostra esposizione**: su 15.055 osservazioni del mid, **96,5% sta dentro `[0,10 · 0,90]`** e
+   **3,5% fuori** — e quel 3,5% è **tutto** nella zona che `end-of-scale` consente.
+   **⚠ LA NOSTRA SOGLIA È PIÙ LARGA DELLA ROTTURA DEL VENUE**: vietiamo sotto **0,03** e sopra
+   **0,97**, ma Q_min si rompe a **0,10** e **0,90**. Fra 0,90 e 0,97 siamo **autorizzati a quotare in
+   una zona dove una gamba nuda matura zero**. Non è un difetto dimostrato — è un disallineamento
+   misurato, e la decisione è dell'operatore.
+   **Punti 3 e 5 (tasso di fill e costo d'uscita per gamba) NON misurati**: il 3,5% di osservazioni in
+   quella zona è un campione troppo piccolo, e non si conclude su code sottili.
 21. **⚑ LE «CANCELLAZIONI CONTINUE» NON SONO UN CICLO DI RIPREZZO — misurato il 13 agosto 2026,
    finestra AVVIA 12:29 → 18:50, ~6,4 h.**
    **L'ipotesi peggiore è FALSA e va detta per prima**: se gli ordini vivessero meno di 60 s non
@@ -1353,31 +1377,20 @@ p.123) non hanno bisogno di un ordine più grande, hanno bisogno del **redeem** 
 **⚠ Limite dichiarato: la nostra riga poggia su 61 episodi in 26 ore** contro migliaia degli altri.
 Le differenze a nostro favore vanno riverificate su una finestra più lunga.
 
-**149 · CHI INCASSA DAVVERO I REWARD — sola ricerca, 30 giorni on-chain (14/07 → 12/08).** Misura
-completa in `data/ricerca/sintesi-incassatori.md`; script `raccogli-distribuzioni.js`,
-`analizza-incassatori.js`, `profila-top.js`.
-**La scala vera**: **7 tx al giorno per ~2.700 destinatari**, non una da 400 — **$3.974.198** in 30
-giorni a **14.836 wallet**. ⚠ Fonte: **Etherscan V2 multichain** (`api.polygonscan.com` v1 è
-**dismesso**, risponde HTML), e la query va **partizionata per blocchi giornalieri** perché il piano
-gratuito tronca a 1.000 righe/pagina e 10.000/query — senza partizione si scambia una pagina troncata
-per l'ultima.
-**La concentrazione**: **172 wallet (1,9%) prendono il 59,2%** del monte a ≥$200/giorno, presenti
-**29 giorni su 30**. I primi 100 prendono il 52,4%.
-**NOI: percentile 39,3** — 5.596° su 9.214, **$17,59** in 30 giorni, presenti **4 giorni su 30**.
-**⚠ IL CONSUNTIVO DEL PANNELLO È CORRETTO, e la catena pure**: ogni importo coincide a quattro
-decimali **sfalsato di un giorno** — il pannello data al giorno MATURATO, la catena al giorno PAGATO
-(mezzanotte successiva). $19,25 − $17,59 = $1,66 = la riga del 12/08, pagata il 13/08.
-**⚠ I TOP SONO DIREZIONALI, non market maker neutrali — verificato prima di concluderlo**: l'API
-`positions` NON compatta i lati opposti (restituisce entrambi gli `outcomeIndex`), quindi «una gamba
-sola» è misurato. **Solo 4 wallet su 50 superano il 5% di mercati appaiati, massimo 12,1%.** Aggregato
-dei primi 50: **$6,74 M in posizione contro $1,65 M di reward** — i premi sono un sottoprodotto del
-tenere size su mercati con una view. ⚠ Il PnL dell'API è **cumulativo** e non ritagliabile sui 30
-giorni: non lo si usa per concludere.
-**⚠ I 21 WALLET DEL MANUALE NON SONO I TOP**: il migliore è **67°**, la maggior parte fra 100° e 400°,
-uno (`Lilybaeum`) è **sparito**. Il manuale descrive la seconda fascia.
-**L'unica differenza replicabile a $650 è la PRESENZA** (4/30 contro 29/30): il taglio dei nostri
-ordini ($10,76 mediano) è già dentro il range dei top ($5,67–$16,86). Scala e direzionalità **non**
-sono replicabili — il primo wallet tiene $1,77 M in posizione, 2.700× il nostro capitale.
+**149 · CHI INCASSA DAVVERO I REWARD — sola ricerca, 30 giorni on-chain (14/07 → 12/08).** Misura in
+`data/ricerca/sintesi-incassatori.md`. **$3.974.198 a 14.836 wallet**, **7 tx/giorno per ~2.700
+destinatari** (non una da 400). ⚠ Fonte **Etherscan V2** (`api.polygonscan.com` v1 è dismesso) e query
+**partizionata per blocchi**: il piano gratuito tronca a 1.000 righe/pagina e 10.000/query.
+**Concentrazione**: **172 wallet (1,9%) prendono il 59,2%** a ≥$200/g, presenti **29/30**; i primi 100
+il 52,4%. **NOI: percentile 39,3**, $17,59, presenti **4/30**.
+**⚠ Il consuntivo del pannello è CORRETTO**: ogni importo coincide a 4 decimali **sfalsato di un
+giorno** — pannello = giorno MATURATO, catena = giorno PAGATO. $19,25 − $17,59 = $1,66 = il 12/08.
+**⚠ I top sono DIREZIONALI**: solo **4 wallet su 50** superano il 5% di mercati appaiati, max 12,1%.
+Aggregato dei primi 50: **$6,74 M in posizione contro $1,65 M di reward**. ⚠ Il PnL dell'API è
+cumulativo e non ritagliabile: non lo si usa per concludere.
+**⚠ I 21 del manuale NON sono i top**: il migliore è **67°**, `Lilybaeum` è sparito.
+**L'unica differenza replicabile a $650 è la PRESENZA** (4/30 contro 29/30): il nostro taglio ordine
+($10,76) è già dentro il range dei top ($5,67–$16,86).
 
 **147 · L'ESENZIONE DAL TETTO PER ORDINE VALE SU TUTTI I PERCORSI CHE RIDUCONO.** Il ramo
 `riposizionamento-scoperto` (`auto-close.js:1412`) era l'unico percorso di chiusura a NON dichiarare
