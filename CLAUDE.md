@@ -160,6 +160,34 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~07:25 UTC.
 > tetto di 12 mercati per giro. La quota di scansione è **assicurazione** per quando il board si
 > assottiglia (compatibili osservati fra 20 e 96 al giorno, mediana 46), non la cura di adesso.
 
+> ## 🩹 LE DIFESE DI STAMATTINA AVEVANO DUE DIFETTI, ED ERANO MIEI — §5 punti 135-136
+> **① `ultimoCicloOk` non veniva mai aggiornato.** Inizializzato al riavvio e mai timbrato: il contatore
+> cresceva all'infinito e l'autodiagnosi dichiarava «nessun ciclo da N minuti» **mentre il bot piazzava
+> 12 gambe su 14**, salendo la scala fino al **gradino 5 ogni mezz'ora**. A un gradino dal mettere il bot
+> su FERMA senza motivo. Adesso si timbra in **tre** punti — quando il giro arriva in fondo con delle
+> scelte, e nei due rami che escono con «nessuna azione», perché **anche un giro che non trova niente HA
+> girato**. Non si timbra all'inizio, o si timbrerebbe un giro che poi esplode.
+> **② `coppia-non-atomica` non era nella mappa delle famiglie.** È **la prima causa di perdita di
+> gambe** — 84 su 129, $1.276 in 24 h — e finiva in «sconosciuta ⇒ rischio ⇒ non si aggira», cioè la
+> difesa non reagiva alla causa più frequente. Censimento dei tre giorni: **30 gate distinti osservati,
+> 10 mancavano**. Aggiunte tutte (37 famiglie): `coppia-non-atomica` e `idempotency-preflight` come
+> **stato-bot**, `mai-primo-non-quotabile`/`chase-target-invalid`/`mid-chase`/`replacement-invalid` come
+> **rischio**, `mid-stantio` come feed, `venue`/`expiry-refresh`/`place`/`replace` come transitori.
+
+> ## 🧹 IL CICLO PESANTE SI FERMAVA PERCHÉ LA FONTE È SPORCA, NON PERCHÉ IL CONTROLLO È STRETTO — §5 punto 137
+> «Dopo 3 ricalcoli il piano contiene ancora mercati che il venue rifiuta»: il ciclo da 6 ore non girava
+> **dal 13 agosto 03:42**. L'esclusione **veniva passata** (`excludeMarketIds`), ma il ricalcolo ripesca
+> dallo **stesso board**, e il board è sporco per una **CLASSE** di mercati, non per uno — il motivo
+> misurato è `premio-crollato`: «il montepremi è sceso da **$100/g a $5/g**, il 5% di quello su cui il
+> piano era stato deciso». Escluso il primo, la passata dopo trova il secondo. **Tre passate contro N
+> mercati sporchi non convergono, e N > 3.**
+> **Si pulisce la fonte, non si allenta il controllo**: la verifica al venue è intatta, ma il suo esito
+> ora **sopravvive al ciclo** (`lib/maker/quarantena-venue.js`). Un mercato bocciato resta fuori dal
+> piano per **20 minuti** — poco più del periodo con cui agent24 riscrive il board (15 min), cioè il
+> tempo che serve alla fonte per aggiornarsi da sé. Più lunga terrebbe fuori un mercato tornato buono;
+> più corta non sopravvivrebbe nemmeno alle tre passate dello stesso ciclo. **Non è un cancello**: se un
+> mercato in quarantena arrivasse al piazzamento, tutti i gate lo giudicherebbero come prima.
+
 > ## 🔁 IL RIAVVIO AUTOMATICO CONDIZIONATO — §5 punto 134
 > Ogni correzione restava inattiva finché un umano non autorizzava un riavvio, e l'operatore non può
 > seguire il bot: **nella sola giornata del 13 agosto sono rimaste inattive per ore** la griglia del

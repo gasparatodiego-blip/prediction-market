@@ -163,6 +163,8 @@ const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot')
 const UTIL = require('../lib/maker/utilizzo-capitale');
 const CAPLAV = require('../lib/maker/capitale-al-lavoro');
 const SENT = require('../lib/maker/sentinella-vuoto');
+const QUAR = require('../lib/maker/quarantena-venue');
+const DATA_DIR_A41 = path.join(__dirname, '..', 'data');
 const COER = require('../lib/maker/coerenza-soglie');
 const SBLOCCO = require('../lib/maker/sblocco-progressivo');
 // Il tetto per ORDINE arriva da dove è già dichiarato una volta sola: non nasce una settima copia qui.
@@ -517,7 +519,31 @@ function annunciaScalaProfondita(piano, dove) {
     });
 }
 
+const QUAR_FILE = path.join(DATA_DIR_A41, 'quarantena-venue.json');
+function leggiQuarantena() {
+  try { return JSON.parse(fs.readFileSync(QUAR_FILE, 'utf8')).mercati || {}; } catch { return {}; }
+}
+function scriviQuarantena(reg) {
+  try {
+    const tmp = `${QUAR_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ at: Date.now(), atIso: new Date().toISOString(), mercati: reg }, null, 1));
+    fs.renameSync(tmp, QUAR_FILE);
+  } catch (e) { annuncia('log', `quarantena non scritta: ${e.message}`); }
+}
+
+// ⚠ LA QUARANTENA ENTRA NEL PIANO. Il ciclo pesante si fermava con «dopo 3 ricalcoli il piano contiene
+// ancora mercati che il venue rifiuta»: l'esclusione veniva passata, ma il ricalcolo ripescava dallo
+// STESSO board, sporco per una CLASSE di mercati (`premio-crollato`: montepremi da $100/g a $5/g), non
+// per uno. Escluso il primo, la passata dopo trovava il secondo. Adesso l'esito della verifica
+// sopravvive al ciclo e il pianificatore non li ripesca. La verifica NON e' toccata: si pulisce la
+// fonte, non si allenta il controllo.
 async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null, excludeMarketIds = null }) {
+  const inQuarantena = QUAR.attivi({ registro: leggiQuarantena() });
+  if (inQuarantena.length) {
+    const u = new Set([...(excludeMarketIds || []), ...inQuarantena]);
+    excludeMarketIds = [...u];
+    annuncia('log', `piano: ${inQuarantena.length} mercato/i in quarantena (il venue li ha bocciati di recente) esclusi a monte`);
+  }
   const piano = await calcolaPianoFuoriProcesso({ capital, maxPerMarketUsd, onlyMarketIds, excludeMarketIds, horizonFilter: true });
   try { annunciaScalaProfondita(piano, onlyMarketIds ? 'piano ristretto' : 'ciclo 6h'); } catch (_) { /* un log non fa cadere un piano */ }
 
@@ -788,6 +814,17 @@ async function eseguiReset({ rows, dryRunOnly }) {
 // ── UN GIRO ─────────────────────────────────────────────────────────────────────────────────────────
 let inCorso = false;
 
+function registraBocciatiDalVenue(esclusi) {
+  try {
+    if (!Array.isArray(esclusi) || !esclusi.length) return 0;
+    const reg = QUAR.aggiorna({ registro: leggiQuarantena(), bocciati: esclusi });
+    scriviQuarantena(reg);
+    annuncia('log', `quarantena: ${esclusi.length} mercato/i bocciati dal venue non torneranno nel piano per ${QUAR.DURATA_MS / 60000} minuti`
+      + ` — ${esclusi.map((x) => `${String(x.marketId || x).slice(0, 10)} ${x.stato || ''}`).join(' · ')}`);
+    return esclusi.length;
+  } catch (e) { annuncia('log', `quarantena non aggiornata: ${e.message}`); return 0; }
+}
+
 async function giro(motivoAvvio) {
   if (inCorso) { annuncia('log', 'giro già in corso, questo si salta'); return null; }
   inCorso = true;
@@ -840,6 +877,10 @@ async function giro(motivoAvvio) {
     annuncia('error', '!!! ECCEZIONE NEL CICLO — nessun ordine toccato', { error: e.message });
   }
 
+  // I mercati che il venue ha bocciato entrano in QUARANTENA: è l'unica cosa che rende utile un
+  // fail-closed che altrimenti si ripeterebbe identico al ciclo dopo, ripescando dallo stesso board.
+  try { registraBocciatiDalVenue((referto && referto.esclusiDalVenue) || []); }
+  catch { /* la quarantena non deve poter far fallire il referto */ }
   scrivi({ at: new Date().toISOString(), tipo: 'ciclo-referto', motivoAvvio, ...referto });
   // Il capitale al lavoro si dice anche qui, non solo nel mini-ciclo: il ciclo da 6h è quello che
   // RIBILANCIA, quindi è il punto in cui la misura cambia di più ed è più utile leggerla.
@@ -1326,6 +1367,9 @@ async function miniCiclo(decisione, deps = {}) {
     }
   }
 
+  // Anche un giro che non trova niente da fare HA girato: non timbrarlo farebbe salire la scala di
+  // sblocco su un bot sano che ha semplicemente il piano gia' pieno.
+  ultimoCicloOk = Date.now();
   if (!giro.scelte.length) {
     return { ...referto, esito: 'nessuna-azione', motivo: giro.motivoStop, fonte,
       esaminate: (giro.esaminate || []).slice(0, 6), utilizzo: utilPrima,
@@ -1577,6 +1621,14 @@ async function miniCiclo(decisione, deps = {}) {
   // Le passate precedenti hanno piazzato anche loro: `esito` è solo l'ULTIMA. Senza sommarle, un giro
   // che piazza in due passate dichiarerebbe meno di quanto ha fatto — l'errore opposto, ma pur sempre
   // un numero che non descrive la realtà.
+  // ── IL BATTITO DEL CICLO ────────────────────────────────────────────────────────────────────────
+  // ⚠ `ultimoCicloOk` era inizializzato al riavvio e MAI aggiornato: il contatore cresceva all'infinito
+  // e l'autodiagnosi dichiarava «nessun ciclo da N minuti» **mentre il bot piazzava 12 gambe su 14**,
+  // salendo la scala di sblocco fino al gradino 5 ogni mezz'ora. Un difetto introdotto stamattina
+  // insieme alla difesa che doveva proteggere: la misura c'era e non veniva alimentata.
+  // Si timbra QUI, cioe' quando il giro e' arrivato in fondo con delle scelte — non all'inizio, o si
+  // timbrerebbe anche un giro che poi esplode.
+  ultimoCicloOk = Date.now();
   const impegnatoOra = +(nozionalePiazzato(esito && esito.results)
     + passate.slice(0, -1).reduce((t, p) => t + (Number(p.nozionaleUsd) || 0), 0)).toFixed(2);
   // ── DERIVATO DALLA MISURA DI PRIMA, NON RICALCOLATO DA CAPO ────────────────────────────────────
