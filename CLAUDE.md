@@ -1066,6 +1066,30 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
    Misura completa in `data/ricerca/sintesi-collasso.md`.
 13. **La soglia sulla derivata per la sentinella È misurabile, ed è l'85%** (§5-bis p.140). Non
    implementata: questa era una sessione di sola diagnosi.
+23. **⚑ QUANTO RENDEREBBE PIÙ CAPITALE — misura, 13 agosto 2026. Due risposte che NON si conciliano,
+   ed è il risultato.**
+   **① EMPIRICAMENTE IL REWARD È PIATTO NEL CAPITALE**: su **604 wallet** (presenti ≥5 giorni), il
+   reward/giorno mediano resta **$45–112 in OGNI decile**, da **$11** a **$365.955** di capitale in
+   posizione. Regressione log-log: **reward ~ capitale^0,015, R² = 0,03**. Un intervallo di **33.000×**
+   di capitale non muove il reward.
+   **⚠ MA È LA VARIABILE SBAGLIATA, e va detto invece di concludere**: `valoreUsd` è il capitale **in
+   posizione**, e i reward li generano gli **ordini a riposo**, che l'API non espone (§5-bis p.144).
+   Un direzionale con $365k in posizione può avere pochi ordini a libro; un maker stretto il contrario.
+   **La forma della curva NON è quindi misurabile da questo campione.**
+   **② STRUTTURALMENTE il vincolo è il BOARD, e ha una rottura netta**: `capPerMarketUsd` **scala**
+   ($32,67 a $650 · $75 a $3.000 · $375 a $15.000) e `MAX_MERCATI = 40`. Quindi **sotto ~$1.307 più
+   capitale = più MERCATI** (tetto fermo a $32,67); **sopra, i mercati restano 40** e cresce la size.
+   Il tetto più alto **sblocca mercati con `minSize` maggiore**: raggiungibili **53/111 a $650** →
+   60 a $3.000 → **100 a $6.000** → **111/111 a $15.000**. Montepremi dei 40 tenuti: **$1.202/g a $650**
+   → $2.264 → $2.454 → $4.192 → **$4.608 a $15.000, e lì SATURA** (oltre non c'è altro board).
+   **③ IL TETTO FISICO**: montepremi totale del board **$8.346/g**; quello effettivamente raggiungibile
+   e tenibile si ferma a **$4.608/g intorno ai $15.000**. **Oltre i $15.000 il dollaro aggiuntivo non
+   trova più mercati nuovi** — può solo ingrossare la size sui 40 già tenuti.
+   **④ ⚠ LE STIME OLTRE ~$3.000 NON SONO DIFENDIBILI, e non le presento come tali.** Il modello
+   ancorato ai nostri $4,40/g (che poggiano su **4 giorni di presenza**) darebbe $193/g a $15.000; ma
+   il campione empirico dice che i wallet con $10–25k di capitale incassano **$73–112/g mediani**.
+   Il modello **sovrastima di ~2×** e non so riconciliare i due, perché mi manca il capitale a libro.
+   **Non traccio la retta.** Servono **~15 giorni di presenza piena** per un ancoraggio solido.
 22. **⚑ I MERCATI SBILANCIATI NON RENDONO DI PIÙ, E PER NOI RENDONO MENO — 13 agosto 2026.**
    **① Il reward per dollaro NON dipende dal livello di prezzo — analitico, non stimato.** `S(v,s)`
    contiene solo la **distanza dal mid in centesimi**, non il prezzo; e una COPPIA costa **$1 per
@@ -1330,52 +1354,29 @@ vendite**; la distribuzione nella banda su 17.119 osservazioni ed è il dato sol
 giorni** di bot acceso per stabilizzare il resto.
 
 
-**151 · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — e corregge l'inquadramento di §150.**
-Misura in `data/ricerca/sintesi-redeem.md`; script `redeem-esiti.js`. **5.087 redeem su 8 wallet.**
-**⚠ IL CONFONDENTE È STATO ESCLUSO PRIMA DI MISURARE**: si temeva che una posizione risolta a **0** non
-generasse l'evento, il che avrebbe reso il conteggio un artefatto da sopravvivenza. Verificato che
-`usdcSize/size` vale **esattamente 0 o 1** e che **gli eventi a 0 esistono** (`size: 300, usdcSize: 0`).
-**Risultato: 4.781 vinte su 5.087 = 94,0%.** Non redimono indistintamente: **sanno**. E il carico
-mostra due modi opposti di sapere:
-· **famiglia A** (`0x2037bb7a`, `0x33bcb6e9`, `0x9977760c`): carico mediano **0,999**, **52-96% degli
-acquisti sopra 97¢**, 100% vinte, PnL +0,19/+0,6%. Comprano esiti **già decisi** per l'ultimo centesimo.
-· **famiglia B** (`0xfb1c3c1a`, `0x0dedae6a`): carico **0,45-0,46**, **0,0% sopra 97¢**, vinte 67-99%,
-PnL +33/+76%. Edge predittivo vero (comprare a 0,58 e vincere il 66,9% vale **+15%**).
-**⚠ CORREZIONE A §150**: avevo scritto «i migliori redimono all'87-98%, noi ~8%» in un modo che
-suggeriva di imitarli. **Il 94% è una proprietà della loro SELEZIONE, non del meccanismo**: i nostri
-residui nascono da fill parziali di coppie neutrali, quindi redimendoli incasseremmo il **valore atteso
-equo, non il 94%**.
-**Quello che resta valido, per una ragione indipendente**: il redeem **non ha size minima**, gli ordini
-sì. Per le 10 posizioni da $50,32 il confronto vero è «redeem al valore equo, zero spread, zero minimo»
-contro **«capitale congelato perché nessun ordine valido esiste»** — e quello si risolve col meccanismo
-a prescindere dal tasso di vittoria altrui.
-**⚠ FATTO COLLATERALE SU UNA NOSTRA REGOLA**: la famiglia A opera **dove `end-of-scale` ci vieta di
-andare** (sotto 3¢ / sopra 97¢). **Non è un'occasione persa**: a 99,9¢ si rischiano 99,9 centesimi per
-guadagnarne 0,1, quindi **un errore cancella ~mille operazioni riuscite**, ed è esattamente il modo di
-fallire contro cui quella regola esiste. Lo si annota perché il costo della regola sia **misurato
-invece che ignoto**, non perché vada cambiata.
+**151 · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — corregge §150.** Misura in
+`data/ricerca/sintesi-redeem.md`. **5.087 redeem su 8 wallet.** ⚠ **Confondente escluso prima di
+misurare**: `usdcSize/size` vale **esattamente 0 o 1** e **gli eventi a 0 esistono**, quindi non c'è
+bias da sopravvivenza. **4.781 vinte = 94,0%: SANNO.** Due modi opposti: **famiglia A** (carico
+**0,999**, 52-96% degli acquisti sopra 97¢, PnL +0,2/+0,6%) compra esiti **già decisi**; **famiglia B**
+(carico **0,45-0,46**, 0% sopra 97¢, vinte 67-99%) ha **edge vero** (+15%).
+**⚠ Il 94% è una proprietà della loro SELEZIONE, non del meccanismo**: i nostri residui nascono da
+fill parziali di coppie neutrali, quindi redimendoli incasseremmo il **valore equo, non il 94%**.
+**Resta valido per altra ragione**: il redeem **non ha size minima**. Per le 10 posizioni da $50,32 il
+confronto è «redeem al valore equo, zero spread» contro **«capitale congelato»**.
+**⚠ La famiglia A opera dove `end-of-scale` ci vieta di andare** — non è occasione persa: a 99,9¢ un
+errore cancella ~mille operazioni riuscite, ed è il modo di fallire contro cui la regola esiste.
 
 **150 · COSA FANNO GLI ALTRI DOPO UN FILL — sola ricerca.** Misura in
-`data/ricerca/sintesi-post-fill.md`; script `post-fill.js`. **82 wallet** (30 top + 30 casuali della
-fascia $10–100/g + i 21 del manuale + noi), **138.894 trade, 35.520 episodi**, finestra ~26 h, 178 s,
-zero rate-limit. Fonte: `data-api.polymarket.com/activity`, paginato, che distingue **TRADE / MERGE /
-REDEEM** — la ricostruzione fill-per-fill È possibile.
-**⚠ NON misurabile, e nessuna conclusione ci poggia**: maker contro taker (`activity` non porta il
-flag) e lo spread puro (il book storico non è ricostruibile: il «costo di uscita» è un limite superiore).
-**Vie d'uscita aggregate**: mai chiusa **37,3%** · vendita 34,4% · **redeem 18,4%** · merge 9,9%.
-**⚠ SIAMO GIÀ MEGLIO SU TRE ASSI SU QUATTRO, misurato**: durata mediana **21,8 min** contro 121,5
-(top30), 167,3 (i21), 489,3 (media) · **merge 43%** contro 1-5% di tutti gli altri · costo di uscita
-**0,25 ¢/share** contro 1,24 dei top30.
-**⚠ L'UNICO PUNTO IN CUI SIAMO PEGGIO SONO I RESIDUI (18,0% contro 8,3-13,4%), E LA CAUSA NON È LA
-SIZE**: la correlazione taglio-ordine ↔ quota-residui è **−0,141**, cioè quasi nulla, e il nostro
-$10,50 è già nella fascia migliore. La causa è **la via d'uscita**: i sei wallet con meno residui
-(0,2-2,6%) escono via **redeem all'87-98%**, e il settimo fa **54% merge in 1,2 min**. La size minima
-di 20 share vincola gli **ORDINI**, non il merge né il redeem — noi abbiamo residui perché proviamo a
-*scambiare* per uscire.
-**Conseguenza operativa**: le 10 posizioni per **$50,32** bloccate sotto il minimo (§5.2 p.1, §5-bis
-p.123) non hanno bisogno di un ordine più grande, hanno bisogno del **redeem** — che non ha minimo.
-**⚠ Limite dichiarato: la nostra riga poggia su 61 episodi in 26 ore** contro migliaia degli altri.
-Le differenze a nostro favore vanno riverificate su una finestra più lunga.
+`data/ricerca/sintesi-post-fill.md`. **82 wallet, 138.894 trade, 35.520 episodi**, ~26 h.
+⚠ **NON misurabile**: maker vs taker (l'API non porta il flag) e lo spread puro.
+**Vie d'uscita**: mai chiusa 37,3% · vendita 34,4% · **redeem 18,4%** · merge 9,9%.
+**⚠ SIAMO GIÀ MEGLIO SU TRE ASSI**: durata mediana **21,8 min** contro 121,5 (top30) e 489,3 (media) ·
+**merge 43%** contro 1-5% · costo di uscita **0,25 ¢/share** contro 1,24 dei top30.
+**⚠ L'unico punto peggiore sono i RESIDUI (18,0% contro 8,3-13,4%), e la causa NON è la size**:
+correlazione taglio↔residui **−0,141**. La causa è **la via d'uscita**: i sei con meno residui escono
+via **redeem all'87-98%**. La size minima di 20 share vincola gli **ORDINI**, non merge né redeem.
+**⚠ Limite: la nostra riga poggia su 61 episodi in 26 ore.**
 
 **149 · CHI INCASSA DAVVERO I REWARD — sola ricerca, 30 giorni on-chain (14/07 → 12/08).** Misura in
 `data/ricerca/sintesi-incassatori.md`. **$3.974.198 a 14.836 wallet**, **7 tx/giorno per ~2.700
