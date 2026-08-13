@@ -1049,25 +1049,16 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
    stessa voce di cache (−32,58335 identico a cinque decimali). Terzo falso positivo su tre.
    Corretto pretendendo che l'istante della lettura del saldo sia **cambiato**. Diagnosi integrale
    nella voce di registro e in `git log`.
-14. **🔴 LA BASELINE DEL GUARDIANO È UNA FOTOGRAFIA VECCHIA, E NON È IL RUMORE — difetto DISTINTO,
-   misurato il 13 agosto 2026. NON corretto, correzione solo proposta.**
-   `data/guardian-baseline.json`: fissata il **2026-08-07T21:27:31Z** con `motivo: "primo avvio"`,
-   **mai più aggiornata — 5,56 giorni**. Conteneva **1 posizione** ($70,30) e saldo $590,26; oggi il
-   portafoglio ha **16 posizioni** e saldo $518,39. Nel frattempo sono entrati **$17,95 di reward
-   REALI** (08/08 $3,68 · 09/08 $8,35 · 10/08 $4,25 · 11/08 $0 · 12/08 $1,66), e la baseline non li
-   conosce. **Quindi il numero che il guardiano chiama «PnL» non è un drawdown: è la variazione
-   cumulata dal 7 agosto**, che mescola perdite di trading con incassi da reward — e non ha nessuna
-   protezione contro depositi o prelievi, che lo sposterebbero di colpo.
-   **⚠ SBAGLIA IN DUE DIREZIONI OPPOSTE, ed è per questo che è un difetto e non una taratura**: i
-   reward in entrata **gonfiano** il totale e fanno scattare il guardiano **più tardi** del dovuto
-   (la performance vera di trading è $17,95 peggiore di quella dichiarata); ma una perdita realizzata
-   **non rientra mai**, quindi col passare dei giorni il guardiano finisce per scattare sulla **storia
-   cumulata** invece che sul calo corrente.
-   **Correzione proposta, NON applicata** (è capitale, ed è una decisione dell'operatore): misurare il
-   drawdown da un **massimo mobile** del totale invece che da una fotografia fissa — è ciò che «perdita
-   del 5%» significa davvero. Va deciso che questo rende il guardiano **più stretto dopo un guadagno**,
-   e va misurato prima di accenderlo. Alternativa più conservativa: tenere la baseline fissa ma
-   **sottrarle i reward incassati e le variazioni di cassa esterne**, così misura solo il trading.
+14. **🔴 LA BASELINE DEL GUARDIANO È UNA FOTOGRAFIA VECCHIA — NON corretto, correzione proposta.**
+   `data/guardian-baseline.json` è fissata al **2026-08-07T21:27:31Z**, «primo avvio», **mai più
+   aggiornata**: conteneva 1 posizione e saldo $590,26, oggi il portafoglio ne ha 16. Nel frattempo
+   sono entrati **$17,95 di reward reali** che la baseline non conosce. **Quindi il «PnL» del guardiano
+   non è un drawdown: è la variazione cumulata dal 7 agosto**, che mescola trading e reward, e non ha
+   protezione contro depositi o prelievi.
+   **⚠ Sbaglia in DUE direzioni opposte**: i reward gonfiano il totale e ritardano lo scatto; una
+   perdita realizzata non rientra mai, quindi col tempo scatta sulla **storia cumulata** invece che sul
+   calo corrente. **Correzione proposta, NON applicata**: drawdown da un **massimo mobile**, oppure
+   baseline fissa **meno** reward incassati e movimenti di cassa. È capitale: decide l'operatore.
 15. **🔴🔴 IL GUARDIANO DECIDE SU UN SEGNALE IL CUI RUMORE SUPERA LA SUA SOGLIA — nuovo, 13 agosto
    2026, misurato. `lib/maker/guardian-perdite.js:121-128`.** Il confronto è **istantaneo**: una sola
    lettura oltre soglia fa scattare il latch, senza nessuna richiesta di **persistenza** (N letture
@@ -1086,19 +1077,36 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
    ritardo introduce su uno scatto vero. Misura completa in `data/ricerca/sintesi-collasso.md`.
 13. **La soglia sulla derivata per la sentinella È misurabile, ed è l'85%** (§5-bis p.140). Non
    implementata: questa era una sessione di sola diagnosi.
-19. **🟡 LA CADENZA ADATTATIVA È SOTTO-RISOLTA, E UN PEZZO RESTA INSPIEGATO — misurato il 13 agosto
-   2026, sola misura.** agent40 classifica **2.392 osservazioni su 2.402 (99,6%)** come «mercato
-   lenta» con **escursione 0,00 tick/ora** ⇒ polling a 10.000 ms invece di 1.000.
-   **La causa parziale è la risoluzione della finestra**: `leggiFinestraTutti` su **15 min** vede
-   `rangeMid = 0` sul **48,8%** dei mercati (12 campioni mediani, perché `mid-history` campiona ogni
-   **75 s**); sugli stessi mercati a **240 min** i fermi scendono al **13,8%** (180 campioni). La
-   finestra corta non ha abbastanza campioni per vedere un movimento che a quattro ore c'è.
-   **⚠ MA IL CONTO NON TORNA DEL TUTTO, e non lo si nasconde**: la fonte a 15 min dice 48,8%, agent40
-   ne logga 99,6%. **Quel divario non è spiegato** e vale una sessione mirata.
-   **⚠ E IL COSTO È PICCOLO, quindi non è questa la leva**: il movimento tipico è ~0,25 tick/ora,
-   quindi 10 s invece di 1 s costano ~0,0007 tick. **La cadenza NON è ciò che manda il 27% degli
-   ordini al bordo della banda** (§5-bis p.152) — la causa va cercata nelle soglie di riprezzo
-   (`minIntervalMs` 30 s, `confirmSamples` 2, `hysteresisTicks` 1), **non misurate**.
+20. **⚑ I NOSTRI FILL ARRIVANO SUL MID FERMO, NON SULLE RAFFICHE — misurato il 13 agosto 2026.
+   Chiude la domanda «il riprezzo è la leva?»: NO.**
+   **Strumento**: il giornale `auto-reprice` porta `observed.scoringMid` a ogni valutazione, cioè una
+   serie del mid a **5 secondi** (mediana 5,009 s, 47 mercati, 15.887 campioni) — **quindici volte più
+   fitta di `mid-history`**, che campiona a 75 s. È la serie giusta per questa domanda.
+   **Il movimento è A RAFFICHE, e la mediana non lo descrive** (14.981 finestre da 60 s):
+   mediana **0,000 tick** · q75 2 · q90 **17** · q95 28 · q99 **72** · max 87.
+   Il mid è **fermo il 65% del tempo** e si muove oltre 1 tick/60 s il **30,5%**. Il **10% di finestre
+   più mosse contiene il 69,2% del movimento totale**.
+   ⚠ **Questo corregge §5.2 p.19**: lì avevo scritto «movimento tipico 0,25 tick/ora» usando una
+   mediana su una distribuzione la cui media è 5,27 tick/60 s. La mediana era priva di significato.
+   **I FILL (1.041 distinti, 607 con serie utilizzabile — il 42% dei mercati non è nella serie densa,
+   dichiarato)**: nei 60 s precedenti il mid era **FERMO (≤0,5 tick) nell'82,4%** dei casi, mosso
+   >1 tick solo nel **13,3%** — contro un tempo-base mosso del 30,5%. **Rapporto 0,44×: i fill sono
+   SOTTO-rappresentati nelle raffiche.** Ci riempie un taker che attraversa lo spread su mercato
+   fermo, che è esattamente ciò che un maker vuole — non selezione avversa da movimento.
+   **⚠ E NELLE RAFFICHE NESSUNA CADENZA BASTEREBBE**: al q90 il mid si sposta di **8,5 tick in 30 s**,
+   cioè **3,8 volte il raggio della banda** (v = 2,25 tick). S residuo **0,0000**. Un movimento più
+   veloce della larghezza della banda non si insegue riprezzando: si insegue solo cancellando.
+   **Conseguenza operativa: `minIntervalMs`, `confirmSamples` e `hysteresisTicks` NON sono la leva**,
+   e il 27% di ordini a s/v 80-100% (§5-bis p.152) è verosimilmente l'**aftermath** delle raffiche.
+   Verifica dell'aggancio raffica→coda-al-bordo **non fatta**: è il prossimo passo naturale.
+19. **🟡 LA CADENZA ADATTATIVA È SOTTO-RISOLTA — sola misura, e il costo è piccolo.** agent40
+   classifica **2.392 osservazioni su 2.402 (99,6%)** come «lenta» con escursione **0,00 tick/ora** ⇒
+   polling a 10.000 ms invece di 1.000. **Causa parziale misurata**: `leggiFinestraTutti` su **15 min**
+   vede `rangeMid = 0` sul **48,8%** dei mercati (12 campioni mediani, perché `mid-history` campiona a
+   **75 s**); a **240 min** i fermi scendono al **13,8%** (180 campioni).
+   **⚠ Il conto non torna del tutto**: la fonte a 15 min dice 48,8%, agent40 ne logga 99,6%. **Divario
+   non spiegato.** ⚠ **Ma non è la leva**: vedi p.20 — nelle raffiche nessuna cadenza basterebbe, e
+   fuori dalle raffiche il mid è fermo.
 9. **🔴 LA SENTINELLA VEDE IL VUOTO, NON IL COLLASSO — buco aperto, misurato il 13 agosto 2026.**
    Il ramo ③ di `lib/maker/sentinella-vuoto.js` dice «`ordiniARiposo > 0` ⇒ il libro non è vuoto» e
    **azzera l'orologio**. Quindi un calo da **23 ordini a 2** — il **91%** — è invisibile: la
