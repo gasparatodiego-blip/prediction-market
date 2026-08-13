@@ -1790,6 +1790,23 @@ async function eseguiGradino(azione) {
       // ⚠ L'ULTIMO GRADINO. Cinque tentativi diversi non hanno sciolto il blocco: il bot non sa cosa
       // sta succedendo, e un bot che non sa cosa sta succedendo non deve piazzare. Non tocca le
       // posizioni aperte e non ferma l'uscita automatica — è FERMA, non KILL.
+      //
+      // ── IL DISARMO, E PERCHÉ IL RAMO RESTA QUI PER INTERO (13 agosto 2026) ──────────────────────
+      // L'armamento è una CONFIGURAZIONE (`SBLOCCO_GRADINO6_ARMATO`, il verso e la semantica stanno in
+      // `lib/maker/sblocco-progressivo`), non una riga di codice commentata: riarmarlo domani è
+      // togliere una riga dall'ecosystem, e il codice che ferma il bot non è mai stato rimosso.
+      //
+      // Disarmato, il gradino fa l'UNICA cosa che serve per decidere se armarlo: dice che **sarebbe**
+      // scattato e perché. Il conteggio si fa sul registro (`tipo: 'sblocco-progressivo'`,
+      // `disarmato: true`) e sull'audit (`outcome: 'gradino-6-disarmato'`), e conta EPISODI non tick —
+      // `prossimoGradino` non riesegue l'ultimo gradino finché la scala non si azzera per ritorno alla
+      // salute, quindi una riga = un blocco che sarebbe finito su FERMA.
+      const arm = SBLOCCO.gradinoSeiArmato();
+      if (!arm.armato) {
+        return { azione, ok: true, disarmato: true, durataMs: Date.now() - t0,
+          dettaglio: `⚠ SAREBBE SCATTATO — il bot NON è stato fermato perché il gradino 6 è ${arm.motivo}.`
+            + ' Il bot resta su AVVIA e continua a piazzare; guardiano delle perdite, sentinella del collasso e KILL restano attivi.' };
+      }
       const r = impostaBot({ enabled: false, by: 'agent41 · sblocco progressivo',
         reason: 'la scala di sblocco ha esaurito i gradini senza sciogliere il blocco: meglio fermo che pericoloso' });
       return fatto(!!(r && r.ok !== false), 'bot messo su FERMA: le posizioni aperte restano gestite, i piazzamenti nuovi si fermano');
@@ -1954,15 +1971,25 @@ async function autodiagnosiPeriodica(deps = {}) {
   annuncia('error', `🔴 AUTODIAGNOSI: il bot NON sta lavorando — ${d.motivi.join(' · ')}`
     + ` ⇒ gradino ${g.gradino.livello}/${SBLOCCO.SCALA.length}: ${g.gradino.cosa}`);
   const esito = await eseguiGradino(g.gradino.azione);
-  annuncia('log', `sblocco · gradino ${g.gradino.livello} «${g.gradino.azione}»: ${esito.ok ? 'eseguito' : 'FALLITO'} — ${esito.dettaglio}`);
+  // ── UN GRADINO DISARMATO NON È «ESEGUITO» E NON È «FALLITO» ────────────────────────────────────
+  // Sono tre esiti, non due, e schiacciarli in due renderebbe impossibile la domanda a cui questo
+  // registro esiste per rispondere: «quante volte il gradino 6 sarebbe intervenuto?». `eseguito:true`
+  // lo confonderebbe con uno scatto vero, `false` con un guasto.
+  const stato = esito.disarmato ? 'DISARMATO (sarebbe scattato)' : (esito.ok ? 'eseguito' : 'FALLITO');
+  annuncia(esito.disarmato ? 'error' : 'log',
+    `sblocco · gradino ${g.gradino.livello} «${g.gradino.azione}»: ${stato} — ${esito.dettaglio}`
+    + (esito.disarmato ? ` · motivi della diagnosi: ${d.motivi.join(' · ')}` : ''));
   try {
     appendMakerAudit({ ts: ora, venue: 'polymarket', source: 'realloc-scheduler', op: 'sblocco-progressivo',
-      reason: 'autodiagnosi', decision: g.motivo, outcome: `gradino-${g.gradino.livello}-${esito.ok ? 'eseguito' : 'fallito'}`,
+      reason: 'autodiagnosi', decision: g.motivo,
+      outcome: `gradino-${g.gradino.livello}-${esito.disarmato ? 'disarmato' : (esito.ok ? 'eseguito' : 'fallito')}`,
       requested: { azione: g.gradino.azione, livello: g.gradino.livello },
-      observed: { motivi: d.motivi, misure: d.misure, dettaglio: esito.dettaglio, azioniSuggerite } });
+      observed: { motivi: d.motivi, misure: d.misure, dettaglio: esito.dettaglio, azioniSuggerite,
+        disarmato: esito.disarmato === true } });
   } catch { /* l'audit non blocca il rimedio */ }
   scrivi({ at: new Date(ora).toISOString(), tipo: 'sblocco-progressivo', livello: g.gradino.livello,
-    azione: g.gradino.azione, eseguito: esito.ok, dettaglio: esito.dettaglio, motivi: d.motivi, pid: process.pid });
+    azione: g.gradino.azione, eseguito: esito.ok, disarmato: esito.disarmato === true,
+    dettaglio: esito.dettaglio, motivi: d.motivi, misure: d.misure, pid: process.pid });
   return { diagnosi: d, gradino: g.gradino, esito };
 }
 

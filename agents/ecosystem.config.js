@@ -235,7 +235,16 @@ module.exports = {
       // without an admin session. Applying an edit here needs the ecosystem file on the restart:
       //   pm2 restart agents/ecosystem.config.js --only dashboard --update-env
       // To disarm hand-placed sends, prefer MANUAL_ORDER_PLACEMENT=dry-run in .env (one switch, one job).
-      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_FUNDING_APPROVED: 'true' },
+      //
+      // ── LA MANOPOLA DELLA DISTANZA VALE ANCHE QUI, ED È DELIBERATO (13 agosto 2026) ──────────────
+      // Il pannello manuale gira IN QUESTO PROCESSO e dichiara `inCoda: true` come le due gambe del
+      // piano (`lib/maker/manual-order.js`), quindi passa dalla stessa `prezzoInCoda`. Se la manopola
+      // vivesse solo su agent40/41, un ordine messo a mano e uno messo dal bot starebbero a due
+      // distanze diverse dal mid sullo stesso libro — la divergenza D1 di §5-bis, per la quale questo
+      // repo ha già pagato cinque volte. Il valore è UNO e sta nei tre processi che decidono un prezzo.
+      // Il verso è conservativo: la manopola può solo ALLONTANARE dal mid, mai avvicinare.
+      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_FUNDING_APPROVED: 'true',
+        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.444' },
     },
     {
       name:          'agent-data-collector',
@@ -627,7 +636,15 @@ module.exports = {
       // NON accende niente: e' un'attestazione umana (il wallet e' finanziato e le approvazioni on-chain
       // ci sono). L'interruttore di invio resta MANUAL_ORDER_PLACEMENT, e restano kill-switch, cap,
       // venue-rules e validateOrder.
-      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_FUNDING_APPROVED: 'true' },
+      //
+      // ── LA MANOPOLA DELLA DISTANZA — QUI È IL RINNOVO CHE LA USA (13 agosto 2026) ────────────────
+      // Questo processo RIPREZZA: `mm-tracking` chiama `planBehindBest` e `auto-reprice` chiama
+      // `prezzoInCoda`, cioè le stesse due funzioni con cui agent41 apre. Senza la variabile qui, ogni
+      // rinnovo riporterebbe l'ordine alla distanza di prima e cancellerebbe il test un ordine per
+      // volta — il valore deve essere lo stesso sui tre processi che decidono un prezzo. Vedi il
+      // blocco di agent41 per la decisione e per il costo misurato.
+      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_FUNDING_APPROVED: 'true',
+        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.444' },
     },
     {
       name:          'agent38-tape-watchdog',
@@ -722,6 +739,48 @@ module.exports = {
         // NON arma niente: è un'attestazione umana. L'interruttore fra «racconta» e «fa» resta la riga
         // qui sopra, e resta a 1.
         MAKER_FUNDING_APPROVED: 'true',
+
+        // ══ IL GRADINO 6 DELLA SCALA DI SBLOCCO: DISARMATO — DECISIONE DELL'OPERATORE, 13/08/2026 ══
+        // Il gradino «fermati-in-sicurezza» è stato cablato oggi (`53b80d8`): prima chiamava
+        // `impostaBot` senza importarlo e moriva con un ReferenceError catturato, quindi la scala
+        // dichiarava di aver fermato il bot mentre il bot restava su AVVIA. Falliva CHIUSO.
+        //
+        // Al primo riavvio quel gradino diventerebbe VERO, e FERMA **non ha riarmo automatico**: il
+        // primo scatto richiederebbe una mano umana per far ripartire il bot. Con la causa a monte
+        // ancora aperta (§5.2 p.21) è verosimile che scatti entro ore. L'operatore vuole il bot
+        // autonomo, quindi il gradino resta disarmato finché non ci sono righe che dicano quanto
+        // spesso sarebbe intervenuto.
+        //
+        // ⚠ DISARMATO NON VUOL DIRE ASSENTE. La scala sale fino a 6 e il gradino REGISTRA che sarebbe
+        // scattato e perché — `data/realloc-scheduler.jsonl` (`tipo:'sblocco-progressivo'`,
+        // `disarmato:true`) e l'audit maker (`outcome:'gradino-6-disarmato'`). È il dato che serve per
+        // decidere se armarlo. Conta EPISODI, non tick: la scala non riesegue l'ultimo gradino finché
+        // non torna sana.
+        //
+        // ⚠ NON TOCCA NESSUNA DIFESA VERA. Guardiano delle perdite (agent43), sentinella del collasso
+        // e KILL non passano da questa scala e restano attivi.
+        //
+        // PER RIARMARLO DOMANI: si cancella questa riga (o si mette qualunque valore diverso da '0') e
+        // si riavvia agent41. Il difetto in assenza della variabile è ARMATO — un env che sparisce non
+        // può spegnere una difesa. La semantica vive in `lib/maker/sblocco-progressivo.gradinoSeiArmato`.
+        SBLOCCO_GRADINO6_ARMATO: '0',
+
+        // ══ LA MANOPOLA DELLA DISTANZA NELLA BANDA: 0,444 — TEST DELL'OPERATORE, 13/08/2026 ════════
+        // Frazione della SEMIAMPIEZZA `v` della banda premiante (`lib/maker/distanza-obiettivo.js`).
+        // Sulla banda modale v = 4,5¢ ⇒ pavimento di **2,0¢** dal mid, contro la posizione mediana
+        // misurata di 1,0¢. NON è un bersaglio: è un pavimento, e il prezzo può solo ALLONTANARSI dal
+        // mid — quindi «mai primo sul libro» è preservato per costruzione, e il bordo premiante resta
+        // il paletto (oltre il bordo l'ordine si ferma AL BORDO, mai fuori).
+        //
+        // VALORE PRECEDENTE: **nessuno** — la manopola era committata e SPENTA (default `null`), cioè
+        // la posizione la decideva `planBehindBest` da sola. Lo 0,222 con cui questo test è stato
+        // descritto è la MEDIANA MISURATA di oggi, non una configurazione: non c'è nessun `0.222` da
+        // nessuna parte, e per tornare indietro si CANCELLA questa riga (non si scrive 0.222).
+        //
+        // IL PREZZO, che l'operatore conosce e ha accettato: S(v,s) = ((v−s)/v)² è quadratica, quindi
+        // 1,0¢ → 2,0¢ porta S da 0,6049 a 0,3086, cioè **−49% di punteggio per ordine**. Il ricavo
+        // atteso non è il reward: è il TASSO DI FILL, che scende perché il prezzo è più lontano dal mid.
+        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.444',
       },
     },
     {
