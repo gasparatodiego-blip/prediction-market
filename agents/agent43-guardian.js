@@ -98,7 +98,12 @@ const audit = (riga) => appendMakerAudit(riga);
 const {
   valutaCapitale, calcolaPnl, decidiScatto, baselineDaScrivere, leggiBaseline, costruisciEventoGuardian,
   valutaLatch, eventoRiarmo, ETA_RIARMO_MS,
+  confermaScatto, LETTURE_CONSECUTIVE_PER_SCATTO,
 } = require('../lib/maker/guardian-perdite');
+
+// ── LO STATO DELLA PERSISTENZA, FRA UN GIRO E L'ALTRO ────────────────────────────────────────────
+// In memoria e non su disco: vedi il commento dentro `poll`. Un riavvio lo azzera, ed e' voluto.
+let statoConferme = null;
 
 const ENV_FILES = ['.env.local', '.env'];
 const RADICE = path.join(__dirname, '..');
@@ -251,14 +256,38 @@ async function poll(deps = {}) {
   const pnl = calcolaPnl({ baselineUsd: baseline.baselineUsd, totaleUsd: capitale.totaleUsd });
   const decisione = decidiScatto({ pnl, sogliaPct: soglie.pct, sogliaAbs: soglie.abs });
 
-  if (!decisione.scatta) {
-    return { azione: 'entro-soglia', pnlUsd: pnl.pnlUsd, pnlPct: pnl.pnlPct, baselineUsd: baseline.baselineUsd,
-      totaleUsd: capitale.totaleUsd, soglie, motivo: decisione.motivo };
+  // ── LA PERSISTENZA: NON SI SCATTA SULLA PRIMA LETTURA ────────────────────────────────────────────
+  // Lo stato vive nel processo e NON su disco, di proposito: se agent43 riparte non ha visto il
+  // campione precedente e non puo' affermare che la perdita persisteva, quindi deve ricominciare a
+  // contare. Un file lo farebbe «ricordare» una cosa che non ha osservato.
+  // Iniettabile da `deps` perche' i test possano guidare la sequenza senza far girare il loop vero.
+  const statoPrima = deps.statoConferme !== undefined ? deps.statoConferme : statoConferme;
+  const conf = confermaScatto({ stato: statoPrima, decisione, pnl, now });
+  if (deps.statoConferme === undefined) statoConferme = conf.stato;
+
+  if (!conf.scatta) {
+    // ⚠ IL PRE-ALLARME SI VEDE. E' esattamente l'evento che prima diventava un latch e adesso no:
+    // se sparisse dal log, la modifica sembrerebbe «il guardiano non vede piu' niente».
+    if (conf.preAllarme) {
+      log(`PRE-ALLARME (${conf.conferme}/${LETTURE_CONSECUTIVE_PER_SCATTO}) — ${decisione.motivo}.`
+        + ` Baseline $${baseline.baselineUsd.toFixed(2)} → adesso $${capitale.totaleUsd.toFixed(2)}.`
+        + ` NON scatto: ${conf.motivo}`);
+    } else if (conf.azzeratoPer === 'rientro') {
+      log(`rientrato — ${conf.motivo}. PnL ${pnl.pnlUsd} USD (${pnl.pnlPct}%)`);
+    }
+    return { azione: conf.preAllarme ? 'pre-allarme' : 'entro-soglia',
+      pnlUsd: pnl.pnlUsd, pnlPct: pnl.pnlPct, baselineUsd: baseline.baselineUsd,
+      totaleUsd: capitale.totaleUsd, soglie, conferme: conf.conferme,
+      statoConferme: conf.stato, azzeratoPer: conf.azzeratoPer,
+      motivo: conf.preAllarme ? conf.motivo : decisione.motivo };
   }
 
   // ── SI SCATTA ─────────────────────────────────────────────────────────────────────────────────────
   log(`SCATTO: ${decisione.motivo}. Baseline $${baseline.baselineUsd.toFixed(2)} → adesso $${capitale.totaleUsd.toFixed(2)}.`
+    + ` CONFERMATO da ${conf.conferme} letture consecutive (${conf.motivo}).`
     + ' Cancello TUTTI gli ordini a riposo su ogni venue, poi metto il bot su FERMA. Le posizioni aperte NON si toccano.');
+  // Lo scatto consuma il contatore: se l'operatore riarma, si riparte da zero conferme.
+  if (deps.statoConferme === undefined) statoConferme = null;
 
   let results = [];
   try {

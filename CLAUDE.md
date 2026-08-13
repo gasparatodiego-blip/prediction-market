@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~09:55 UTC.
+Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~10:30 UTC.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -246,6 +246,55 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~09:55 UTC.
 > profondità** non conosce l'esenzione, e un test lo verifica per assenza.
 > **⚠ E SU TEL AVIV LA COPERTURA PUÒ RESTARE BLOCCATA LO STESSO**: nel suo verdetto concorreva anche
 > `profondita-insufficiente`, che è una regola di rischio e **resta intatta**.
+
+> ## 🛡 IL GUARDIANO NON SCATTA PIÙ SULLA PRIMA LETTURA — §5 punto 141
+> **k = 2 letture CONSECUTIVE oltre soglia**, e consecutive vuol dire anche **contigue**: oltre
+> **120 s** fra una lettura e l'altra il contatore riparte da capo, perché una lettura persa non può
+> fare da ponte. Una lettura **rientrata** azzera; una lettura **non calcolabile** azzera anche lei —
+> «non ho letto» non può confermare che la perdita persisteva.
+> **Le soglie NON sono state toccate**: restano −5% e −$30. Si chiede solo che la perdita **sia ancora
+> lì trenta secondi dopo**. Costo: **un solo giro di ritardo** su uno scatto vero.
+> **⚠ VERIFICA RETROATTIVA su 7.213 letture / 5 giorni, rigiocate con le funzioni VERE: con k=2 gli
+> scatti passano da 2 a ZERO.** Ed **entrambi erano falsi positivi**, con evidenza indipendente:
+> il 09/08 la lettura precedente diceva **+$10,85** e quella successiva alla ripresa della misura
+> (12/08) **+$2,54**, contro i −$39,97 dello scatto; il 13/08 la lettura on-chain 37 minuti dopo dava
+> **−$6,77** contro i −$36,15. ⚠ Il replay **da solo** non potrebbe dirlo — dopo il latch il guardiano
+> smette di misurare, quindi «0 scatti» è un limite inferiore: sono le letture *intorno* a chiudere la
+> questione.
+> **Il pre-allarme si vede**: ogni prima lettura oltre soglia finisce nel log come
+> `PRE-ALLARME (1/2)`, o la modifica sembrerebbe «il guardiano non vede più niente».
+> Lo stato vive **nel processo e non su disco**: un riavvio lo azzera, ed è giusto — un guardiano
+> appena rinato non ha visto il campione precedente e non può affermare che la perdita persisteva.
+
+> ## 📉 LA SENTINELLA SUL COLLASSO DELLA COPERTURA — §5 punto 142, SOLO OSSERVA
+> Chiude §5.2 p.9. **Calo ≥ 85% dal MASSIMO delle ultime 10 minuti**, non differenza fra campioni
+> consecutivi: la cadenza è irregolare (mediana 60,0 s, q99 65,3, max 77,2 su 7.859 intervalli) e un
+> crollo che arriva in due campioni verrebbe **spezzato in due pezzi** ciascuno sotto soglia.
+> **La soglia viene dalla tabella, non dall'intuito** (4,1 giorni, 7.860 campioni): 30% ⇒ 5 veri/183
+> falsi · 40% ⇒ 5/69 · **50% ⇒ 5/20** · 60% ⇒ 5/4 · 70% ⇒ 5/2 · **80% ⇒ 5/0**. Si sceglie **85 e non
+> 80 perché il divario è VUOTO**: fisiologico massimo **75%** (30 → 8, rientrato da solo in 9,5 min),
+> patologico minimo **92,9%** (28 → 2), e fra i due non cade nessun episodio. 85 è il punto medio.
+> **⚠ NON SI AUTO-INGANNA**: il collasso più grande nei dati **l'ha prodotto il guardiano**. Se il
+> latch (`data/guardian-state.json`, campo `at` — lo scrive il guardiano stesso) porta uno scatto nei
+> **15 minuti** precedenti, il calo è **SPIEGATO** e non si arma: si logga `SOSPESO` con il calo
+> comunque misurato. Latch illeggibile ⇒ **non si arma**: meglio muto che bugiardo.
+> **⚠ IN QUESTA FASE SOLO OSSERVA**: log + giornale (`op: sentinella-collasso`,
+> `outcome: collasso-oltre-soglia`, `soloOsservazione: true`). **Non ferma il bot, non cancella
+> ordini, non tocca AVVIA/FERMA** — un test lo verifica **per assenza** dei campi che agirebbero.
+> La promozione ad azione è una decisione dell'operatore. **⚠ Limite: 5 soli eventi positivi in 4,1
+> giorni** — soglia difendibile sui dati che ci sono, campione piccolo.
+
+> ## 🪙 LA GAMBA SORELLA SI ABBASSA DENTRO LA BANDA — §5 punto 143
+> Il Livello 2 prezzava il completamento **sempre al tetto della coppia**, e `fuoriBanda` era calcolato
+> e solo **dichiarato**. Quando il tetto cade **sopra** il bordo alto della banda premiante si può
+> **abbassare** fino al bordo, e conviene **due volte**: la controparte **costa meno** (il margine
+> della coppia cresce) e l'ordine **matura reward mentre aspetta** invece di essere capitale fermo.
+> L'unico prezzo è il **tempo di fill**, ed è lo scambio che l'operatore ha scelto esplicitamente: «a
+> parità di condizioni, il prezzo dentro la banda invece di quello che chiude prima».
+> **⚠ NON ALLENTA NIENTE, per costruzione**: è un `Math.min`, quindi il prezzo può solo **scendere**.
+> Tetto della coppia intatto, «mai primo sul libro» intatto (l'esenzione è quella già esistente e non
+> si allarga), size intatta. Banda non leggibile, o bordo **sopra** il tetto ⇒ prezzo **identico a
+> prima**. Il ritardo di fill è coperto dalla scala di urgenza (§138) e dalla chiusura forzata a 3 ore.
 
 > ## ⏱ LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA — §5 punto 138
 > **Il fatto**: la posizione NO di 58,8 share su `0xcd126ec4` è rimasta scoperta **8,2 ore**.
@@ -988,7 +1037,26 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
 7. **La ricostruzione sotto soglia scatta quasi a ogni giro sul board di oggi** (6 righe utili contro
    una soglia di 12): costa ~13 s di processo figlio ogni 10 minuti. È il comportamento corretto — il
    piano *è* sotto soglia — ma se un domani il board si allargasse stabilmente vale la pena rimisurare.
-12. **🔴🔴 IL GUARDIANO DECIDE SU UN SEGNALE IL CUI RUMORE SUPERA LA SUA SOGLIA — nuovo, 13 agosto
+14. **🔴 LA BASELINE DEL GUARDIANO È UNA FOTOGRAFIA VECCHIA, E NON È IL RUMORE — difetto DISTINTO,
+   misurato il 13 agosto 2026. NON corretto, correzione solo proposta.**
+   `data/guardian-baseline.json`: fissata il **2026-08-07T21:27:31Z** con `motivo: "primo avvio"`,
+   **mai più aggiornata — 5,56 giorni**. Conteneva **1 posizione** ($70,30) e saldo $590,26; oggi il
+   portafoglio ha **16 posizioni** e saldo $518,39. Nel frattempo sono entrati **$17,95 di reward
+   REALI** (08/08 $3,68 · 09/08 $8,35 · 10/08 $4,25 · 11/08 $0 · 12/08 $1,66), e la baseline non li
+   conosce. **Quindi il numero che il guardiano chiama «PnL» non è un drawdown: è la variazione
+   cumulata dal 7 agosto**, che mescola perdite di trading con incassi da reward — e non ha nessuna
+   protezione contro depositi o prelievi, che lo sposterebbero di colpo.
+   **⚠ SBAGLIA IN DUE DIREZIONI OPPOSTE, ed è per questo che è un difetto e non una taratura**: i
+   reward in entrata **gonfiano** il totale e fanno scattare il guardiano **più tardi** del dovuto
+   (la performance vera di trading è $17,95 peggiore di quella dichiarata); ma una perdita realizzata
+   **non rientra mai**, quindi col passare dei giorni il guardiano finisce per scattare sulla **storia
+   cumulata** invece che sul calo corrente.
+   **Correzione proposta, NON applicata** (è capitale, ed è una decisione dell'operatore): misurare il
+   drawdown da un **massimo mobile** del totale invece che da una fotografia fissa — è ciò che «perdita
+   del 5%» significa davvero. Va deciso che questo rende il guardiano **più stretto dopo un guadagno**,
+   e va misurato prima di accenderlo. Alternativa più conservativa: tenere la baseline fissa ma
+   **sottrarle i reward incassati e le variazioni di cassa esterne**, così misura solo il trading.
+15. **🔴🔴 IL GUARDIANO DECIDE SU UN SEGNALE IL CUI RUMORE SUPERA LA SUA SOGLIA — nuovo, 13 agosto
    2026, misurato. `lib/maker/guardian-perdite.js:121-128`.** Il confronto è **istantaneo**: una sola
    lettura oltre soglia fa scattare il latch, senza nessuna richiesta di **persistenza** (N letture
    consecutive) né filtro sulla variazione fra letture. Ma la distribuzione dei salti di PnL a 30 s
@@ -998,8 +1066,8 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
    a trenta secondi di distanza, due volte il 9 agosto). **Il minuto e mezzo dello scatto**: −$1,66 →
    **−$26,46** → **−$1,37** (rientrato per intero, e sotto i $30 non scatta) → −$1,89 → +$8,06 →
    −$4,70 → **−$36,15 SCATTO**. **Lettura on-chain 37 minuti dopo: $653,79 contro baseline $660,56,
-   cioè −$6,77 (−1,02%)** — quindi **~$29 dei $36 erano transitori**. ⚠ **NON CORRETTO E NON DA
-   CORREGGERE DI SLANCIO**: il guardiano è l'ultima difesa sul capitale e allentarlo è la modifica più
+   cioè −$6,77 (−1,02%)** — quindi **~$29 dei $36 erano transitori**. ✅ **CORRETTO il 13 agosto 2026 con k=2** (§5-bis p.141). Restava
+   scritto «non corretto», e non lo è più. Il testo qui sotto resta come diagnosi: il guardiano è l'ultima difesa sul capitale e allentarlo è la modifica più
    pericolosa possibile. La direzione giusta è **aggiungere una condizione, non toglierne**: pretendere
    **k letture consecutive** oltre soglia prima del latch (con k=2 lo scatto del 13 agosto non sarebbe
    avvenuto, e nemmeno il transitorio delle 09:05). Va deciso dall'operatore, e va misurato quanto
@@ -1167,6 +1235,20 @@ complessive, $99,32 di nozionale di picco; $137,80 scoperti nell'istante della m
 modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà** perché fotografavano il
 testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
+
+**141 · IL GUARDIANO NON SCATTA PIÙ SULLA PRIMA LETTURA (k=2).** Vedi il banner.
+`confermaScatto` in `lib/maker/guardian-perdite.js` (puro, stato esplicito) + il cablaggio in
+`agents/agent43-guardian.js`. **Verifica retroattiva**: 7.213 letture su 5 giorni rigiocate con le
+funzioni vere ⇒ **da 2 scatti a 0**, entrambi falsi positivi con evidenza indipendente.
+Script: `scripts/ricerca/verifica-persistenza.js`.
+
+**142 · LA SENTINELLA SUL COLLASSO DELLA COPERTURA (85%), SOLO OSSERVA.** Vedi il banner.
+`lib/maker/sentinella-collasso.js` (puro) + cablaggio in `agent41` accanto alla sentinella sul vuoto.
+Chiude §5.2 p.9. Non agisce: log e giornale soltanto.
+
+**143 · LA GAMBA SORELLA SI ABBASSA DENTRO LA BANDA.** Vedi il banner. `lib/maker/auto-close.js`,
+blocco del Livello 2: `prezzo = min(tetto, bordo alto della banda)`. Il commento che diceva «non si
+può alzare, è algebra» resta vero e resta lì — la domanda nuova era l'opposta, e nessuno l'aveva posta.
 
 **140 · LA SOGLIA SULLA DERIVATA È 85%, E IL DIVARIO FRA LE DUE POPOLAZIONI È VUOTO — sola misura,
 niente implementato.** §5.2 p.9 chiedeva di misurare quanto oscilla normalmente il numero di ordini

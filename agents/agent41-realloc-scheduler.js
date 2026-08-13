@@ -163,6 +163,12 @@ const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot')
 const UTIL = require('../lib/maker/utilizzo-capitale');
 const CAPLAV = require('../lib/maker/capitale-al-lavoro');
 const SENT = require('../lib/maker/sentinella-vuoto');
+// ── LA SENTINELLA SUL COLLASSO DELLA COPERTURA (CLAUDE.md §5.2 p.9) ─────────────────────────────
+// Accanto a quella sul vuoto, non al suo posto: la prima guarda il LIVELLO (zero ordini), questa la
+// DERIVATA (un calo dell'85% dal massimo mobile a 10 minuti). Sono due guasti diversi — «non parte
+// piu' niente» e «e' crollato quello che c'era» — e la prima non puo' vedere il secondo, perche' il
+// suo ramo `ordiniARiposo > 0` azzera l'orologio anche a 2 ordini su 23.
+const COLL = require('../lib/maker/sentinella-collasso');
 const QUAR = require('../lib/maker/quarantena-venue');
 const DATA_DIR_A41 = path.join(__dirname, '..', 'data');
 const COER = require('../lib/maker/coerenza-soglie');
@@ -1768,6 +1774,10 @@ async function eseguiGradino(azione) {
 }
 
 let statoVuoto = null;
+// Lo storico dei campioni per il massimo mobile. In memoria: un riavvio lo svuota e la sentinella
+// riparte senza massimo, cioe' muta finche' non ha di nuovo dieci minuti di storia. E' la direzione
+// giusta — un massimo ereditato da prima del riavvio descriverebbe un altro processo.
+let storicoCollasso = [];
 async function sorvegliaVuoto(deps = {}) {
   const leggiOrdini = deps.listOrders || (() => listManualOrders({}));
   const forza = deps.forza || ((m) => controlloCapitaleFermo({ forzatoDa: m }));
@@ -1789,6 +1799,38 @@ async function sorvegliaVuoto(deps = {}) {
     } catch { quanti = null; }   // illeggibile ⇒ la sentinella si congela, non grida
   }
 
+  // ══ IL COLLASSO DELLA COPERTURA — IN QUESTA FASE SOLO OSSERVA ═══════════════════════════════════
+  // NON ferma il bot, NON cancella ordini, NON tocca AVVIA/FERMA: scrive nel log e nel giornale, e
+  // basta. La promozione ad azione e' una decisione dell'operatore, dopo qualche giorno di righe.
+  //
+  // ⚠ LO SCATTO DEL GUARDIANO SPIEGA IL CALO, e la prova e' il file che il guardiano stesso scrive.
+  // Il collasso piu' grande nei dati (23 -> 2 il 13 agosto) l'ha prodotto il guardiano cancellando 23
+  // ordini: gridare su quello vorrebbe dire segnalare come anomalia un'altra difesa che ha funzionato.
+  // Latch illeggibile ⇒ NON si arma: un calo che non si sa spiegare non diventa un'anomalia solo
+  // perche' manca il dato che lo spiegherebbe. Meglio muto che bugiardo.
+  let guardianScattatoAt = null;
+  try {
+    const g = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'guardian-state.json'), 'utf8'));
+    if (g && g.scattato === true && Number.isFinite(Number(g.at))) guardianScattatoAt = Number(g.at);
+  } catch { guardianScattatoAt = null; }   // assente = non e' scattato; illeggibile = non si arma
+  const c = COLL.valutaCollasso({
+    storico: storicoCollasso, ordiniARiposo: quanti, now: ora,
+    guardianScattatoAt, botAvviato: avviato, killAttivo,
+  });
+  storicoCollasso = c.storico;
+  if (c.sospeso === true) {
+    annuncia('log', `collasso della copertura SOSPESO — ${c.motivo}`);
+  } else if (c.anomalia === true) {
+    annuncia('warn', `⚠ ${c.motivo}`);
+    try {
+      appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'realloc-scheduler',
+        op: 'sentinella-collasso', reason: 'collasso-copertura', decision: c.motivo,
+        outcome: 'collasso-oltre-soglia',
+        observed: { ordiniARiposo: quanti, massimoRecenteOrdini: c.massimo, caloPct: c.caloPct,
+          sogliaCaloPct: COLL.SOGLIA_CALO_PCT, finestraMin: COLL.FINESTRA_MASSIMO_MS / 60000,
+          guardianScattatoAt, soloOsservazione: true } });
+    } catch { /* il giornale non deve poter fermare il giro */ }
+  }
   const v = SENT.valutaVuoto({ stato: statoVuoto, ordiniARiposo: quanti, killAttivo, botAvviato: avviato, now: ora });
   statoVuoto = v.stato;
   if (v.rientrato === true) annuncia('log', `vuoto RIENTRATO — ${v.motivo}`);

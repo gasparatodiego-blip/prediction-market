@@ -1,0 +1,44 @@
+{
+ "generatoIso": "2026-08-13T10:18:49.872Z",
+ "letture": 7213,
+ "sogliaPct": 5,
+ "sogliaAbs": 30,
+ "k1": {
+  "k": 1,
+  "scatti": [
+   {
+    "iso": "2026-08-09T21:46:37.237Z",
+    "pnlUsd": -39.972693,
+    "pnlPct": -6.051312,
+    "conferme": 1
+   },
+   {
+    "iso": "2026-08-13T09:08:33.818Z",
+    "pnlUsd": -36.146124,
+    "pnlPct": -5.472023,
+    "conferme": 1
+   }
+  ],
+  "preallarmi": []
+ },
+ "k2": {
+  "k": 2,
+  "scatti": [],
+  "preallarmi": [
+   {
+    "iso": "2026-08-09T21:46:37.237Z",
+    "pnlUsd": -39.972693,
+    "motivo": "PRE-ALLARME 1/2: oltre soglia, si aspetta la conferma del giro successivo prima di scattare"
+   },
+   {
+    "iso": "2026-08-13T09:08:33.818Z",
+    "pnlUsd": -36.146124,
+    "motivo": "PRE-ALLARME 1/2: oltre soglia, si aspetta la conferma del giro successivo prima di scattare"
+   }
+  ]
+ },
+ "scattiReali": [
+  "2026-08-09T21:46:37.237Z",
+  "2026-08-13T09:08:33.818Z"
+ ]
+}

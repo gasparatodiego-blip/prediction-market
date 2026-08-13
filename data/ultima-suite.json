@@ -1,8 +1,8 @@
 {
- "at": 1786613544427,
- "atIso": "2026-08-13T09:32:24.427Z",
- "eseguiti": 200,
- "verdi": 190,
+ "at": 1786618290737,
+ "atIso": "2026-08-13T10:51:30.737Z",
+ "eseguiti": 201,
+ "verdi": 192,
  "rossi": [
   "lib/leg-order.test.js",
   "lib/maker/dipendenze-collegate.test.js",
@@ -11,7 +11,6 @@
   "lib/maker/scaduto-senza-rinnovo.test.js",
   "lib/rewards/categoria-mercato.test.js",
   "lib/rewards/scadenza-ereditata.test.js",
-  "lib/rewards/velocita-mercato.test.js",
   "lib/venues/__tests__/discriminates.test.js",
   "lib/venues/__tests__/fail-closed.test.js"
  ]
