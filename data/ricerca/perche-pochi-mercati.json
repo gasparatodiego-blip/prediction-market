@@ -1,0 +1,150 @@
+{
+ "generatoIso": "2026-08-13T17:30:12.582Z",
+ "pianoAt": "2026-08-13T12:29:37.242Z",
+ "capitale": 493.097329,
+ "pianificati": 16,
+ "conInvii": 14,
+ "senzaInvii": 2,
+ "perMercato": [
+  {
+   "marketId": "0x8951311347d1a197716621d16e5849e93600c2d34debe50f0e5d42c444b8ad3c",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 411,
+   "gate": {
+    "venue-rules": 242,
+    "venue": 4,
+    "idempotent-duplicate": 315,
+    "would-cross": 1
+   }
+  },
+  {
+   "marketId": "0xcb034071d56a7dde2d5764da4abc8afbf8665a972e2d90814fec08b3a4ec4b8b",
+   "nome": "Will the highest temperatu",
+   "capitale": 20,
+   "inviati": 210,
+   "gate": {
+    "venue-rules": 307,
+    "esenzione-tetto-chiusura": 697,
+    "idempotent-duplicate": 600,
+    "venue": 8,
+    "would-cross": 2
+   }
+  },
+  {
+   "marketId": "0xcd93c73174027be4a37d7bc0af5d0b07714f127cca6c86c14e3ecd3ce252c66a",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 28,
+   "gate": {}
+  },
+  {
+   "marketId": "0xc6944151a70dd1ddc3166432310a4a681aadae7937cb1da7d39d5eca6c69b380",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 17,
+   "gate": {}
+  },
+  {
+   "marketId": "0x77a526bf19b1ee29184625adc8b29c6df3aa6a1497a4b2ffdde289ba943169c4",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 13,
+   "gate": {}
+  },
+  {
+   "marketId": "0xdec7721ef28a5ce0544d7d33bfef68ac352f5e1720b158edf84813c7318186ae",
+   "nome": "Will Donald Trump post 160",
+   "capitale": 32,
+   "inviati": 10,
+   "gate": {}
+  },
+  {
+   "marketId": "0x75adcc4dd4ad5d3a9a72ca565047912f2e8ffdb66fe44b53728f002ad6f034a4",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 10,
+   "gate": {}
+  },
+  {
+   "marketId": "0x9632178147f5f2114e687360976b35d966ca7ea8b44ef7ab850b61902c3932d5",
+   "nome": "Will the highest temperatu",
+   "capitale": 24,
+   "inviati": 9,
+   "gate": {
+    "mai-primo-sul-libro": 1
+   }
+  },
+  {
+   "marketId": "0x30454e288522ce5c9de9bba2a7cc2be5817ee232da8925c940b3e3d033d1cea4",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 8,
+   "gate": {}
+  },
+  {
+   "marketId": "0x7901de05519074904f7a1cf6e3e265af4a3e672321a2e3475277ec6449c41018",
+   "nome": "Will Donald Trump post 180",
+   "capitale": 32,
+   "inviati": 8,
+   "gate": {}
+  },
+  {
+   "marketId": "0x57f5c5db4b73197be290bf9de44d773ce019af324b13ea2fdebf1feb4d3f4ec9",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 7,
+   "gate": {}
+  },
+  {
+   "marketId": "0x8f676366d8bf68a2cac92bd09a2a6d95994057502a172fdf0d40a797869dd10d",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 4,
+   "gate": {
+    "venue-rules": 576,
+    "would-cross": 2
+   }
+  },
+  {
+   "marketId": "0x0c09a52e706281e9c78fa1ad0e09f3fbc9bc26564f28a57e3378851b7b40e468",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 1,
+   "gate": {
+    "mai-primo-sul-libro": 3
+   }
+  },
+  {
+   "marketId": "0xf5693bb4fc792886dfdcb64330eb1dc66a9b4361d97d31998d0b5193d2d01571",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 1,
+   "gate": {
+    "mai-primo-sul-libro": 1
+   }
+  },
+  {
+   "marketId": "0xff7d1982d6bf6f78ac97122c09c741b1d8a178dd48d24d90e938da5d1d34dc93",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 0,
+   "gate": {}
+  },
+  {
+   "marketId": "0xf602cf3bd6990a25dac722b05ed1c4bc02eff1e15f4999e4c5a583eabba8ceb5",
+   "nome": "Will the highest temperatu",
+   "capitale": 32,
+   "inviati": 0,
+   "gate": {}
+  }
+ ],
+ "gateGrezzi": {
+  "venue-rules": 1125,
+  "venue": 12,
+  "idempotent-duplicate": 915,
+  "would-cross": 5,
+  "esenzione-tetto-chiusura": 697,
+  "mai-primo-sul-libro": 5
+ }
+}
