@@ -1,0 +1,891 @@
+{
+ "generatoAl": "2026-08-13T20:36:30.648Z",
+ "capitale": 651.92,
+ "board": 107,
+ "scenari": [
+  {
+   "nome": "tetto attuale $32,67",
+   "tetto": 32.67,
+   "finestraMid": {
+    "lo": 0.36,
+    "hi": 0.64,
+    "tettoOrdine": 21.34
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 5,
+   "finanziabiliNonScartateDaCoerenza": 5,
+   "ridottePerFinestraMid": 4,
+   "utilizzabili": 5,
+   "mercatiPerCapitale": 19,
+   "mercatiCoperti": 5,
+   "capitaleImpiegato": 131.63,
+   "capitaleInCassa": 520.29,
+   "lordoModellatoGiorno": 54.85,
+   "mixMinSize": {
+    "20": 5
+   },
+   "fMinMedio": 0.758,
+   "fMinPerScaglione": {
+    "20": 0.6,
+    "50": 1.5
+   },
+   "mercatiPrimaDelTettoEsposizione": 18,
+   "capitaleMedioPerMercato": 26.33,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 32.67,
+     "usd": 32.502
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 23.11,
+     "usd": 14.554
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 22.49,
+     "usd": 5.914
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 27.14,
+     "usd": 1.483
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 26.22,
+     "usd": 0.397
+    }
+   ]
+  },
+  {
+   "nome": "tetto proposto $61,25",
+   "tetto": 61.25,
+   "finestraMid": {
+    "lo": 0.43,
+    "hi": 0.57,
+    "tettoOrdine": 35.63
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 11,
+   "finanziabiliNonScartateDaCoerenza": 7,
+   "ridottePerFinestraMid": 6,
+   "utilizzabili": 7,
+   "mercatiPerCapitale": 10,
+   "mercatiCoperti": 7,
+   "capitaleImpiegato": 347.36,
+   "capitaleInCassa": 304.56,
+   "lordoModellatoGiorno": 91.13,
+   "mixMinSize": {
+    "20": 5,
+    "50": 2
+   },
+   "fMinMedio": 0.55,
+   "fMinPerScaglione": {
+    "20": 0.32,
+    "50": 0.8
+   },
+   "mercatiPrimaDelTettoEsposizione": 9,
+   "capitaleMedioPerMercato": 49.62,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 61.25,
+     "usd": 46.429
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 38.58,
+     "usd": 20.334
+    },
+    {
+     "slug": "what-will-trump-say-during-remarks-in-new-york",
+     "minSize": 50,
+     "mid": 0.575,
+     "pool": 50,
+     "capitale": 60.73,
+     "usd": 11.69
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 37.55,
+     "usd": 9.149
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 45.32,
+     "usd": 2.431
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 43.78,
+     "usd": 0.659
+    },
+    {
+     "slug": "ballon-dor-winner-2026",
+     "minSize": 50,
+     "mid": 0.5805,
+     "pool": 137,
+     "capitale": 60.15,
+     "usd": 0.435
+    }
+   ]
+  }
+ ],
+ "sweep": [
+  {
+   "nome": "t32.67",
+   "tetto": 32.67,
+   "finestraMid": {
+    "lo": 0.36,
+    "hi": 0.64,
+    "tettoOrdine": 21.34
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 5,
+   "finanziabiliNonScartateDaCoerenza": 5,
+   "ridottePerFinestraMid": 4,
+   "utilizzabili": 5,
+   "mercatiPerCapitale": 19,
+   "mercatiCoperti": 5,
+   "capitaleImpiegato": 131.63,
+   "capitaleInCassa": 520.29,
+   "lordoModellatoGiorno": 54.85,
+   "mixMinSize": {
+    "20": 5
+   },
+   "fMinMedio": 0.758,
+   "fMinPerScaglione": {
+    "20": 0.6,
+    "50": 1.5
+   },
+   "mercatiPrimaDelTettoEsposizione": 18,
+   "capitaleMedioPerMercato": 26.33,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 32.67,
+     "usd": 32.502
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 23.11,
+     "usd": 14.554
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 22.49,
+     "usd": 5.914
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 27.14,
+     "usd": 1.483
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 26.22,
+     "usd": 0.397
+    }
+   ]
+  },
+  {
+   "nome": "t40",
+   "tetto": 40,
+   "finestraMid": {
+    "lo": 0.387,
+    "hi": 0.613,
+    "tettoOrdine": 25
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 5,
+   "finanziabiliNonScartateDaCoerenza": 5,
+   "ridottePerFinestraMid": 4,
+   "utilizzabili": 5,
+   "mercatiPerCapitale": 16,
+   "mercatiCoperti": 5,
+   "capitaleImpiegato": 155.93,
+   "capitaleInCassa": 495.99,
+   "lordoModellatoGiorno": 62.06,
+   "mixMinSize": {
+    "20": 5
+   },
+   "fMinMedio": 0.643,
+   "fMinPerScaglione": {
+    "20": 0.49,
+    "50": 1.225
+   },
+   "mercatiPrimaDelTettoEsposizione": 15,
+   "capitaleMedioPerMercato": 31.19,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 40,
+     "usd": 36.842
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 27.07,
+     "usd": 16.238
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 26.34,
+     "usd": 6.789
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 31.8,
+     "usd": 1.73
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 30.72,
+     "usd": 0.464
+    }
+   ]
+  },
+  {
+   "nome": "t45",
+   "tetto": 45,
+   "finestraMid": {
+    "lo": 0.401,
+    "hi": 0.599,
+    "tettoOrdine": 27.5
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 5,
+   "finanziabiliNonScartateDaCoerenza": 5,
+   "ridottePerFinestraMid": 4,
+   "utilizzabili": 5,
+   "mercatiPerCapitale": 14,
+   "mercatiCoperti": 5,
+   "capitaleImpiegato": 172.53,
+   "capitaleInCassa": 479.39,
+   "lordoModellatoGiorno": 66.53,
+   "mixMinSize": {
+    "20": 5
+   },
+   "fMinMedio": 0.582,
+   "fMinPerScaglione": {
+    "20": 0.436,
+    "50": 1.089
+   },
+   "mercatiPrimaDelTettoEsposizione": 13,
+   "capitaleMedioPerMercato": 34.51,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 45,
+     "usd": 39.451
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 29.78,
+     "usd": 17.301
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 28.98,
+     "usd": 7.369
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 34.98,
+     "usd": 1.896
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 33.79,
+     "usd": 0.51
+    }
+   ]
+  },
+  {
+   "nome": "t50",
+   "tetto": 50,
+   "finestraMid": {
+    "lo": 0.412,
+    "hi": 0.588,
+    "tettoOrdine": 30
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 5,
+   "finanziabiliNonScartateDaCoerenza": 5,
+   "ridottePerFinestraMid": 4,
+   "utilizzabili": 5,
+   "mercatiPerCapitale": 13,
+   "mercatiCoperti": 5,
+   "capitaleImpiegato": 189.13,
+   "capitaleInCassa": 462.79,
+   "lordoModellatoGiorno": 70.67,
+   "mixMinSize": {
+    "20": 5
+   },
+   "fMinMedio": 0.532,
+   "fMinPerScaglione": {
+    "20": 0.392,
+    "50": 0.98
+   },
+   "mercatiPrimaDelTettoEsposizione": 12,
+   "capitaleMedioPerMercato": 37.83,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 50,
+     "usd": 41.82
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 32.49,
+     "usd": 18.299
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 31.61,
+     "usd": 7.931
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 38.16,
+     "usd": 2.062
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 36.87,
+     "usd": 0.556
+    }
+   ]
+  },
+  {
+   "nome": "t55",
+   "tetto": 55,
+   "finestraMid": {
+    "lo": 0.421,
+    "hi": 0.579,
+    "tettoOrdine": 32.5
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 5,
+   "finanziabiliNonScartateDaCoerenza": 5,
+   "ridottePerFinestraMid": 4,
+   "utilizzabili": 5,
+   "mercatiPerCapitale": 11,
+   "mercatiCoperti": 5,
+   "capitaleImpiegato": 205.72,
+   "capitaleInCassa": 446.2,
+   "lordoModellatoGiorno": 74.53,
+   "mixMinSize": {
+    "20": 5
+   },
+   "fMinMedio": 0.49,
+   "fMinPerScaglione": {
+    "20": 0.356,
+    "50": 0.891
+   },
+   "mercatiPrimaDelTettoEsposizione": 10,
+   "capitaleMedioPerMercato": 41.14,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 55,
+     "usd": 43.981
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 35.19,
+     "usd": 19.235
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 34.25,
+     "usd": 8.481
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 41.34,
+     "usd": 2.226
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 39.94,
+     "usd": 0.602
+    }
+   ]
+  },
+  {
+   "nome": "t61.25",
+   "tetto": 61.25,
+   "finestraMid": {
+    "lo": 0.43,
+    "hi": 0.57,
+    "tettoOrdine": 35.63
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 11,
+   "finanziabiliNonScartateDaCoerenza": 7,
+   "ridottePerFinestraMid": 6,
+   "utilizzabili": 7,
+   "mercatiPerCapitale": 10,
+   "mercatiCoperti": 7,
+   "capitaleImpiegato": 347.36,
+   "capitaleInCassa": 304.56,
+   "lordoModellatoGiorno": 91.13,
+   "mixMinSize": {
+    "20": 5,
+    "50": 2
+   },
+   "fMinMedio": 0.55,
+   "fMinPerScaglione": {
+    "20": 0.32,
+    "50": 0.8
+   },
+   "mercatiPrimaDelTettoEsposizione": 9,
+   "capitaleMedioPerMercato": 49.62,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 61.25,
+     "usd": 46.429
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 38.58,
+     "usd": 20.334
+    },
+    {
+     "slug": "what-will-trump-say-during-remarks-in-new-york",
+     "minSize": 50,
+     "mid": 0.575,
+     "pool": 50,
+     "capitale": 60.73,
+     "usd": 11.69
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 37.55,
+     "usd": 9.149
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 45.32,
+     "usd": 2.431
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 43.78,
+     "usd": 0.659
+    },
+    {
+     "slug": "ballon-dor-winner-2026",
+     "minSize": 50,
+     "mid": 0.5805,
+     "pool": 137,
+     "capitale": 60.15,
+     "usd": 0.435
+    }
+   ]
+  },
+  {
+   "nome": "t65",
+   "tetto": 65,
+   "finestraMid": {
+    "lo": 0.435,
+    "hi": 0.565,
+    "tettoOrdine": 37.5
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 11,
+   "finanziabiliNonScartateDaCoerenza": 7,
+   "ridottePerFinestraMid": 6,
+   "utilizzabili": 7,
+   "mercatiPerCapitale": 10,
+   "mercatiCoperti": 7,
+   "capitaleImpiegato": 366.13,
+   "capitaleInCassa": 285.79,
+   "lordoModellatoGiorno": 94.13,
+   "mixMinSize": {
+    "20": 5,
+    "50": 2
+   },
+   "fMinMedio": 0.522,
+   "fMinPerScaglione": {
+    "20": 0.302,
+    "50": 0.754
+   },
+   "mercatiPrimaDelTettoEsposizione": 9,
+   "capitaleMedioPerMercato": 52.3,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 65,
+     "usd": 47.779
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 40.61,
+     "usd": 20.956
+    },
+    {
+     "slug": "what-will-trump-say-during-remarks-in-new-york",
+     "minSize": 50,
+     "mid": 0.575,
+     "pool": 50,
+     "capitale": 63.91,
+     "usd": 12.153
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 39.52,
+     "usd": 9.538
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 47.7,
+     "usd": 2.552
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 46.08,
+     "usd": 0.693
+    },
+    {
+     "slug": "ballon-dor-winner-2026",
+     "minSize": 50,
+     "mid": 0.5805,
+     "pool": 137,
+     "capitale": 63.31,
+     "usd": 0.457
+    }
+   ]
+  },
+  {
+   "nome": "t70",
+   "tetto": 70,
+   "finestraMid": {
+    "lo": 0.44,
+    "hi": 0.56,
+    "tettoOrdine": 40
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 11,
+   "finanziabiliNonScartateDaCoerenza": 7,
+   "ridottePerFinestraMid": 6,
+   "utilizzabili": 7,
+   "mercatiPerCapitale": 9,
+   "mercatiCoperti": 7,
+   "capitaleImpiegato": 391.19,
+   "capitaleInCassa": 260.73,
+   "lordoModellatoGiorno": 97.94,
+   "mixMinSize": {
+    "20": 5,
+    "50": 2
+   },
+   "fMinMedio": 0.489,
+   "fMinPerScaglione": {
+    "20": 0.28,
+    "50": 0.7
+   },
+   "mercatiPrimaDelTettoEsposizione": 8,
+   "capitaleMedioPerMercato": 55.88,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 70,
+     "usd": 49.457
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 43.31,
+     "usd": 21.743
+    },
+    {
+     "slug": "what-will-trump-say-during-remarks-in-new-york",
+     "minSize": 50,
+     "mid": 0.575,
+     "pool": 50,
+     "capitale": 68.17,
+     "usd": 12.757
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 42.15,
+     "usd": 10.045
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 50.88,
+     "usd": 2.713
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 49.15,
+     "usd": 0.738
+    },
+    {
+     "slug": "ballon-dor-winner-2026",
+     "minSize": 50,
+     "mid": 0.5805,
+     "pool": 137,
+     "capitale": 67.53,
+     "usd": 0.488
+    }
+   ]
+  },
+  {
+   "nome": "t80",
+   "tetto": 80,
+   "finestraMid": {
+    "lo": 0.449,
+    "hi": 0.551,
+    "tettoOrdine": 45
+   },
+   "orizzonteOk": 24,
+   "finanziabili": 11,
+   "finanziabiliNonScartateDaCoerenza": 9,
+   "ridottePerFinestraMid": 8,
+   "utilizzabili": 9,
+   "mercatiPerCapitale": 8,
+   "mercatiCoperti": 9,
+   "capitaleImpiegato": 545.39,
+   "capitaleInCassa": 106.53,
+   "lordoModellatoGiorno": 105.2,
+   "mixMinSize": {
+    "20": 5,
+    "50": 4
+   },
+   "fMinMedio": 0.547,
+   "fMinPerScaglione": {
+    "20": 0.245,
+    "50": 0.613
+   },
+   "mercatiPrimaDelTettoEsposizione": 7,
+   "capitaleMedioPerMercato": 60.6,
+   "scelti": [
+    {
+     "slug": "2-paid-app-in-the-us-apple-app-store-on-august",
+     "minSize": 20,
+     "mid": 0.47450000000000003,
+     "pool": 91,
+     "capitale": 80,
+     "usd": 52.45
+    },
+    {
+     "slug": "will-xagusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.095,
+     "pool": 50,
+     "capitale": 48.73,
+     "usd": 23.202
+    },
+    {
+     "slug": "what-will-trump-say-during-remarks-in-new-york",
+     "minSize": 50,
+     "mid": 0.575,
+     "pool": 50,
+     "capitale": 76.7,
+     "usd": 13.909
+    },
+    {
+     "slug": "will-xauusd-hit-week-of-august-10-2026",
+     "minSize": 20,
+     "mid": 0.07,
+     "pool": 50,
+     "capitale": 47.42,
+     "usd": 11.024
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.7705,
+     "pool": 52,
+     "capitale": 57.24,
+     "usd": 3.033
+    },
+    {
+     "slug": "wyoming-governor-republican-primary-winner",
+     "minSize": 20,
+     "mid": 0.2025,
+     "pool": 48,
+     "capitale": 55.3,
+     "usd": 0.829
+    },
+    {
+     "slug": "ballon-dor-winner-2026",
+     "minSize": 50,
+     "mid": 0.5805,
+     "pool": 137,
+     "capitale": 75.97,
+     "usd": 0.548
+    },
+    {
+     "slug": "how-many-fed-rate-cuts-in-2026",
+     "minSize": 50,
+     "mid": 0.8594999999999999,
+     "pool": 116,
+     "capitale": 51.31,
+     "usd": 0.161
+    },
+    {
+     "slug": "ballon-dor-winner-2026",
+     "minSize": 50,
+     "mid": 0.1635,
+     "pool": 41,
+     "capitale": 52.72,
+     "usd": 0.041
+    }
+   ]
+  }
+ ]
+}

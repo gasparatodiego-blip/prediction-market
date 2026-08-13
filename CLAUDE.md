@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~22:30 UTC.
+Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~23:55 UTC.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -54,22 +54,18 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~22:30 UTC.
 > metà opposta: **quando l'unica via d'uscita violerebbe una regola di rischio, il bot non agisce e lo
 > dichiara.**
 > **① RIFIUTI RIPETUTI** (`sblocco-progressivo.js`): **5** rifiuti identici di fila sulla stessa coppia
-> (mercato, gate) sono un blocco strutturale, non sfortuna — il 13 agosto sono stati **114**. Le 26
-> famiglie osservate nei giornali sono classificate in tre classi: **`rischio`** (56% dei 43.299
-> rifiuti — `motore-non-conforme`, `mai-primo`, `would-cross`, `end-of-scale`, `venue-rules`,
-> `close-sell-floor`, `manual-order-cap`) ⇒ **nessuna azione, si cambia mercato e si dichiara perché**;
-> **`stato-bot`** ⇒ via alternativa vera (ricarica config, riconcilia esposizione, ripara precondizioni,
-> risveglia feed, ricostruisci piano); **`transitorio`** ⇒ non è un blocco. **Una famiglia sconosciuta è
-> trattata come rischio**: l'incognita non è un via libera.
+> (mercato, gate) sono un blocco strutturale — il 13 agosto sono stati **114**. Le 37 famiglie sono in
+> tre classi: **`rischio`** (56% dei 43.299 rifiuti) ⇒ **nessuna azione, si cambia mercato e si dichiara
+> perché**; **`stato-bot`** ⇒ via alternativa vera; **`transitorio`** ⇒ non è un blocco. **Una famiglia
+> sconosciuta è trattata come rischio.**
 > **② COERENZA FRA I MODULI** (`coerenza-soglie.js`): prima di proporre righe si verifica che chi le
 > riceve le accetti, e il capitale **può solo SCENDERE**. Due divergenze misurate: il deadlock $24,00
-> contro $24,50, e — nuova — **il pianificatore non conosce il tetto per ORDINE**: alloca al tetto per
-> mercato ($32,67) e a mid estremo la gamba cara sfonda $21,34. **243 mercati su 321 del board (76%)
-> sfonderebbero al tetto pieno, e il giornale porta 631 `manual-order-cap` in tre giorni.**
+> contro $24,50, e **il pianificatore non conosce il tetto per ORDINE** (**243 mercati su 321 lo
+> sfonderebbero al tetto pieno**, e il giornale porta 631 `manual-order-cap` in tre giorni).
 > **③ SCALA DI SBLOCCO**, un gradino ogni **5 minuti**: `ricostruisci-piano` → `ricarica-configurazione`
 > → `riconcilia-esposizione` → `ripara-precondizioni` → `risveglia-feed` → **`fermati-in-sicurezza`**
-> (FERMA + allarme grave). Caso peggiore: FERMA in **~30 minuti**. I rifiuti osservati possono scegliere
-> il gradino di partenza. **Nessun gradino tocca una regola di rischio**, ed è provato per struttura.
+> (FERMA + allarme grave). Caso peggiore: FERMA in **~30 minuti**. **Nessun gradino tocca una regola di
+> rischio**, ed è provato per struttura.
 > **④ AUTODIAGNOSI ogni 120 s**: ordini vivi > 0 · capitale al lavoro ≥ **50% per 15 minuti** · un ciclo
 > negli ultimi **20 min** · rinnovi dovuti non fermati oltre l'**80%**. Tutto illeggibile ⇒ **non si
 > giudica** e la scala non parte.
@@ -87,133 +83,60 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~22:30 UTC.
 
 > ## 🩸 DOVE MUOIONO LE GAMBE: `coppia-non-atomica` È LA PRIMA CAUSA — §5 punti 129-130
 > **Conto esatto sulle 24 ore (33 giri): 284 gambe pianificate · 260 inviate · 155 accettate · 105
-> rifiutate · 24 saltate prima dell'invio ⇒ tasso di accettazione 54,6%.**
->
-> | gambe perse | nozionale | famiglia | recuperabile? |
-> |---|---|---|---|
-> | **84** | **$1.276,13** | **`coppia-non-atomica`** | **SÌ — difetto, corretto** |
-> | 20 | $0 | cap cumulativo raggiunto in sequenza | no: regola di rischio che ha funzionato |
-> | 11 | $268,95 | `manual-order-cap` | SÌ — stessa causa |
-> | 9 | $121,23 | `mai-primo-sul-libro` | **no: regola di rischio, perdita voluta** |
-> | 4 | $129,95 | cap di esposizione ($600) | no: regola di rischio |
->
+> rifiutate · 24 saltate ⇒ tasso di accettazione 54,6%.**
+> **84 gambe perse per $1.276,13 sono `coppia-non-atomica`** (difetto, corretto) · 20 per cap cumulativo
+> · 11 per $268,95 `manual-order-cap` (stessa causa) · 9 per $121,23 `mai-primo-sul-libro` (regola di
+> rischio, perdita voluta) · 4 per $129,95 cap di esposizione.
 > **65% delle gambe perse sono coppie abbandonate INTERE perché UNA gamba sfondava il tetto per
 > ordine** — il precontrollo atomico di §5 p.115 fa il suo mestiere (meglio zero invii che una gamba
 > orfana), ma la causa a monte è che **il pianificatore non conosce il tetto per ordine**.
-> **⚠ E LA CORREZIONE DI STAMATTINA ERA INERTE**: `adattaRighe` girava sul piano **salvato**, e poi la
-> ricostruzione sovrascriveva `righeCandidate` con righe mai passate di lì. Misurato dopo il riavvio
-> delle 07:17: `coerenza: undefined` e **6 `coppia-non-atomica` nello stesso giro**. Adesso è una
-> funzione (`adattaAlleSoglie`) chiamata da **entrambe** le fonti, e un test lo asserisce per nome.
+> **⚠ E LA CORREZIONE DI STAMATTINA ERA INERTE**: `adattaRighe` girava sul piano **salvato**, e la
+> ricostruzione sovrascriveva `righeCandidate` con righe mai passate di lì. Adesso è una funzione
+> (`adattaAlleSoglie`) chiamata da **entrambe** le fonti, e un test lo asserisce per nome.
 
 > ## 💰 IL RISCATTO AUTOMATICO DOPO LA RISOLUZIONE — §5 punto 131
-> `redeemPosition` esisteva, era provata on-chain e **non aveva chiamanti**: il capitale tornava solo se
-> un umano se ne accorgeva. Adesso `lib/maker/riscatto-automatico.js` lo chiama, agganciato alla
-> scansione dei registri di agent40.
+> `redeemPosition` esisteva, era provata on-chain e **non aveva chiamanti**. Adesso
+> `lib/maker/riscatto-automatico.js` lo chiama, agganciato alla scansione dei registri di agent40.
 > **⚠ IL SEGNALE È `payoutDenominator(conditionId) > 0` LETTO ON-CHAIN, non «il mercato è chiuso»**:
-> `closed`/`acceptingOrders` diventano veri **ore prima** che l'oracolo riporti l'esito, e
-> `redeemPositions` esige i payout già riportati — un tentativo prima è un revert che costa gas e non
-> dice niente. **Non letto ⇒ non si riscatta.**
-> **Idempotente** con registro su disco (`data/riscatti.json`): una voce `riuscito` chiude il caso per
-> sempre — non basta guardare la posizione, perché fra l'invio e la sparizione del token passano secondi
-> e in quella finestra un secondo giro riproverebbe. **3 tentativi** con attesa 2/4 s, poi **10 minuti**
+> `closed`/`acceptingOrders` diventano veri **ore prima** che l'oracolo riporti l'esito, e un tentativo
+> prima è un revert che costa gas e non dice niente. **Non letto ⇒ non si riscatta.**
+> **Idempotente** con registro su disco (`data/riscatti.json`): fra l'invio e la sparizione del token
+> passano secondi, e in quella finestra un secondo giro riproverebbe. **3 tentativi**, poi **10 minuti**
 > di backoff per mercato. Al più **3 mercati per giro**: è manutenzione, e ogni transazione costa gas al
-> relayer di terzi. `negRisk` non booleano ⇒ non si tenta (sceglie quale adapter CTF riceve la chiamata).
-> **Misurato adesso: 10 posizioni, `payoutDenominator = 0` su TUTTE ⇒ zero riscattabili oggi.** I
-> mercati risolvono il **14 agosto**: i 5 residui per **$35,03** saranno riscattabili fra ~29-33 ore,
-> **senza intervento umano**.
+> relayer di terzi. `negRisk` non booleano ⇒ non si tenta.
 
 > ## 🔭 IL BOT VEDE 111 MERCATI SU 1.276 PREMIATI — E NON È LUI IL COLLO — §5 punto 132
-> **La catena, misurata dal log di agent24**: la scoperta trova **1.276 mercati premiati** → il taglio
-> `REWARD_MAX_CLOB_MARKETS = 150` ne processa **150** → il board finale ha **111 righe Polymarket**.
-> **1.126 mercati (88%) non vengono mai guardati.**
-> **⚠ Il tetto NON si può alzare**: cronometrato adesso, **2,81-3,41 s/mercato**, cioè 7,0-8,5 min per
-> 150; al ritmo di adesso nel periodo di 15 min ci starebbero **158-192**. Vedere i 1.276 costerebbe
-> **~60 minuti** di sola profondità, contro un limite di freschezza del board di 25 minuti.
+> **La catena**: la scoperta trova **1.276 mercati premiati** → `REWARD_MAX_CLOB_MARKETS = 150` ne
+> processa 150 → il board finale ha **111 righe**. **1.126 (88%) non vengono mai guardati.**
+> **⚠ Il tetto NON si può alzare**: 2,81-3,41 s/mercato misurati; vedere i 1.276 costerebbe **~60 minuti**
+> contro un limite di freschezza di 25.
 > **Il collo vero è l'ORDINAMENTO**: i 150 si scelgono per **montepremi**, e il montepremi alto vive sui
-> `minSize` grandi — 1.000 share chiedono **$1.225 per mercato** contro un tetto di **$32,67**. I meteo
-> giornalieri, `minSize 20`, sono gli unici alla portata e vengono **seppelliti sistematicamente**.
-> **Correzione: metà dei 150 posti è riservata ai mercati con `minSize ≤ 100`**, ordinati fra loro per
-> montepremi; gli altri restano alla classifica di sempre. Il numero processato non cambia, e **la
-> soglia è una costante e non il tetto vero**: la scoperta deve restare disaccoppiata dal conto.
-> **⚠⚠ MA VEDERNE DI PIÙ NON ALZA I MERCATI QUOTATI, OGGI, E VA DETTO.** Il capitale consente
-> `$664,90 / $32,67 = **20 mercati**`, e il board ne offre già **29** che superano tetto + orizzonte.
-> **Il vincolo che morde non è la scoperta: è il tasso di accettazione del 54,6%** (§5 punto 129) e il
-> tetto di 12 mercati per giro. La quota di scansione è **assicurazione** per quando il board si
-> assottiglia (compatibili osservati fra 20 e 96 al giorno, mediana 46), non la cura di adesso.
+> `minSize` grandi — 1.000 share chiedono **$1.225 per mercato**. I meteo giornalieri, `minSize 20`, sono
+> gli unici alla portata e venivano **seppelliti**. **Correzione: metà dei 150 posti è riservata ai
+> mercati con `minSize ≤ 100`**, ordinati fra loro per montepremi.
+> **⚠⚠ MA VEDERNE DI PIÙ NON ALZA I MERCATI QUOTATI, OGGI**: il vincolo che morde non è la scoperta, è il
+> **tasso di accettazione del 54,6%** (§5 p.129) e il tetto di 12 mercati per giro. La quota di scansione
+> è **assicurazione** per quando il board si assottiglia, non la cura di adesso.
 
 > ## 🩹 LE DIFESE DI STAMATTINA AVEVANO DUE DIFETTI, ED ERANO MIEI — §5 punti 135-136
-> **① `ultimoCicloOk` non veniva mai aggiornato.** Inizializzato al riavvio e mai timbrato: il contatore
-> cresceva all'infinito e l'autodiagnosi dichiarava «nessun ciclo da N minuti» **mentre il bot piazzava
-> 12 gambe su 14**, salendo la scala fino al **gradino 5 ogni mezz'ora**. A un gradino dal mettere il bot
-> su FERMA senza motivo. Adesso si timbra in **tre** punti — quando il giro arriva in fondo con delle
+> **① `ultimoCicloOk` non veniva mai aggiornato.** Inizializzato al riavvio e mai timbrato: l'autodiagnosi
+> dichiarava «nessun ciclo da N minuti» **mentre il bot piazzava 12 gambe su 14**, salendo la scala fino al
+> **gradino 5 ogni mezz'ora**. Adesso si timbra in **tre** punti — quando il giro arriva in fondo con delle
 > scelte, e nei due rami che escono con «nessuna azione», perché **anche un giro che non trova niente HA
 > girato**. Non si timbra all'inizio, o si timbrerebbe un giro che poi esplode.
-> **② `coppia-non-atomica` non era nella mappa delle famiglie.** È **la prima causa di perdita di
-> gambe** — 84 su 129, $1.276 in 24 h — e finiva in «sconosciuta ⇒ rischio ⇒ non si aggira», cioè la
-> difesa non reagiva alla causa più frequente. Censimento dei tre giorni: **30 gate distinti osservati,
-> 10 mancavano**. Aggiunte tutte (37 famiglie): `coppia-non-atomica` e `idempotency-preflight` come
-> **stato-bot**, `mai-primo-non-quotabile`/`chase-target-invalid`/`mid-chase`/`replacement-invalid` come
-> **rischio**, `mid-stantio` come feed, `venue`/`expiry-refresh`/`place`/`replace` come transitori.
+> **② `coppia-non-atomica` non era nella mappa delle famiglie.** È **la prima causa di perdita di gambe** e
+> finiva in «sconosciuta ⇒ rischio ⇒ non si aggira». Censimento dei tre giorni: **30 gate osservati, 10
+> mancavano**. Aggiunte tutte (37 famiglie).
 
-> ## 🧹 IL CICLO PESANTE SI FERMAVA PERCHÉ LA FONTE È SPORCA, NON PERCHÉ IL CONTROLLO È STRETTO — §5 punto 137
+> ## 🧹 IL CICLO PESANTE SI FERMAVA PERCHÉ LA FONTE È SPORCA, NON PERCHÉ IL CONTROLLO È STRETTO — §5 p.137
 > «Dopo 3 ricalcoli il piano contiene ancora mercati che il venue rifiuta»: il ciclo da 6 ore non girava
-> **dal 13 agosto 03:42**. L'esclusione **veniva passata** (`excludeMarketIds`), ma il ricalcolo ripesca
-> dallo **stesso board**, e il board è sporco per una **CLASSE** di mercati, non per uno — il motivo
-> misurato è `premio-crollato`: «il montepremi è sceso da **$100/g a $5/g**, il 5% di quello su cui il
-> piano era stato deciso». Escluso il primo, la passata dopo trova il secondo. **Tre passate contro N
-> mercati sporchi non convergono, e N > 3.**
-> **Si pulisce la fonte, non si allenta il controllo**: la verifica al venue è intatta, ma il suo esito
-> ora **sopravvive al ciclo** (`lib/maker/quarantena-venue.js`). Un mercato bocciato resta fuori dal
-> piano per **20 minuti** — poco più del periodo con cui agent24 riscrive il board (15 min), cioè il
-> tempo che serve alla fonte per aggiornarsi da sé. Più lunga terrebbe fuori un mercato tornato buono;
-> più corta non sopravvivrebbe nemmeno alle tre passate dello stesso ciclo. **Non è un cancello**: se un
+> da 03:42. L'esclusione **veniva passata**, ma il ricalcolo ripesca dallo **stesso board**, e il board è
+> sporco per una **CLASSE** di mercati — il motivo misurato è `premio-crollato` («da $100/g a $5/g»).
+> **Tre passate contro N mercati sporchi non convergono, e N > 3.**
+> **Si pulisce la fonte, non si allenta il controllo**: la verifica al venue è intatta, ma il suo esito ora
+> **sopravvive al ciclo** (`lib/maker/quarantena-venue.js`). Un mercato bocciato resta fuori dal piano per
+> **20 minuti** — poco più del periodo con cui agent24 riscrive il board. **Non è un cancello**: se un
 > mercato in quarantena arrivasse al piazzamento, tutti i gate lo giudicherebbero come prima.
-
-> ## 🔁 IL RIAVVIO AUTOMATICO CONDIZIONATO — §5 punto 134
-> Ogni correzione restava inattiva finché un umano non autorizzava un riavvio, e l'operatore non può
-> seguire il bot: **nella sola giornata del 13 agosto sono rimaste inattive per ore** la griglia del
-> piano, la sentinella, il recupero della scadenza, la coerenza delle soglie, l'esenzione del tetto.
-> Adesso il riavvio parte da solo **solo se valgono TUTTE E QUATTRO** le condizioni:
-> ① suite **senza rossi NUOVI** rispetto alla baseline — non «zero rossi», che non accadrebbe mai: si
-> confronta l'**insieme dei nomi**, non il conteggio, quindi nove rossi diversi dai nove noti sono nove
-> regressioni · ② `npm run build` verde (`.next` con `BUILD_ID` **e** `prerender-manifest.json`) ·
-> ③ **KILL spento** · ④ **nessuna posizione scoperta SOPRA il minimo del venue** — sotto il minimo non
-> conta, è uno stato che nessun ciclo può risolvere (§123) e aspettarlo vorrebbe dire non riavviare mai.
-> **⚠ Una condizione non verificabile vale «NO».** Snapshot scaduto, kill illeggibile, esito della suite
-> assente o più vecchio di 30 min ⇒ **non si riavvia**, la modifica resta inattiva e lo si scrive nel log
-> e nel giornale (`op: valutazione`, `outcome: riavvio-non-eseguito`) con **quali** condizioni mancavano.
-> **Sequenziale, mai simultaneo**: `agent24 → agent41 → agent40`, dal più lontano dal capitale al più
-> vicino. Dopo ognuno si verifica **online E stabile** (uptime, e nessun rimbalzo nei contatori) prima
-> di passare al successivo; al primo che non torna su **ci si ferma** e gli altri restano sul codice
-> vecchio, che è uno stato coerente. Ogni riavvio va nel giornale con ora, agent, commit e condizioni.
-> **⚠ LO SCRIPT NON ESEGUE LA SUITE**: `appendMakerAudit` scrive sul giornale VERO, quindi girarla in un
-> percorso automatico sarebbe un'azione di produzione che nessuno ha chiesto (§5.3). Legge l'esito da
-> `data/ultima-suite.json`, che lo scrive chi la esegue. `node scripts/riavvio-automatico.js --prova`
-> lo guarda lavorare senza toccare pm2.
-
-> ## 🔓 IL TETTO PER MERCATO NON IMPEDISCE PIÙ DI CHIUDERE — §5 punto 133
-> **Caso vero: 13 agosto 07:45:36, Tel Aviv `0xcb034071`.** Posizione YES di **32,6 share scoperta da
-> un'ora e sopra il minimo del venue**, quindi copribile — e la copertura rifiutata perché «il mercato
-> arriverebbe a **$45,63**: il tetto per mercato è **$32,67**». **Non è isolato: 6.226 righe
-> `tetto-mercato` in 24 ore su sei mercati, tutti con posizione aperta** (Warsaw 2.876, Wellington
-> 1.506, Tel Aviv 633, Ankara 574, Munich 308) — perché una posizione aperta consuma il budget del
-> mercato, e da lì il bot non riesce più né a coprirla né a rinnovare le gambe che ha.
-> **Decisione dell'operatore: le gambe di CHIUSURA possono sforare il tetto per mercato**, perché quel
-> tetto esiste per limitare l'**apertura** di posizioni nuove, e applicarlo a chi chiude significa
-> tenere aperta un'esposizione per rispettare un limite pensato contro le esposizioni.
-> **⚠ NON È UN'ESENZIONE IN BIANCO.** Il tetto non sparisce: sale a un secondo tetto **assoluto e
-> DERIVATO**, `capOrdinario × (1 + 1/costoCoppia)` ≈ **2,02×** = **$65,97**, cioè esattamente «quanto
-> basta a chiudere qualunque posizione che il bot possa aprire, e nulla di più» — la posizione più
-> grande apribile vale $32,67 e comprarne la controparte costa al più $32,67/0,98. Il «2» tondo lasciava
-> scoperto il caso peggiore di 63 centesimi. Sul capitale di oggi vale il **9,9%** del portafoglio.
-> **Vale SOLO per chi chiude, con una PROVA rifatta sull'ordine esatto** (`deps.provaChiusura`, le
-> stesse funzioni del tetto per ordine di §5 p.76: SELL entro il posseduto, BUY entro `manca`) — un BUY
-> così può solo **appaiare**, mai aprire. Prova assente, falsa o che esplode ⇒ tetto ordinario.
-> `sforaOrdinario` viaggia nel verdetto perché chi legge sappia che quella gamba è passata **solo**
-> grazie all'esenzione. **`mai-primo-sul-libro` resta il primo veto e non è toccato**; il **pavimento di
-> profondità** non conosce l'esenzione, e un test lo verifica per assenza.
-> **⚠ E SU TEL AVIV LA COPERTURA PUÒ RESTARE BLOCCATA LO STESSO**: nel suo verdetto concorreva anche
-> `profondita-insufficiente`, che è una regola di rischio e **resta intatta**.
 
 > ## 🛡 IL GUARDIANO NON SCATTA PIÙ SULLA PRIMA LETTURA — §5 punto 141
 > **k = 2 letture CONSECUTIVE oltre soglia**, e consecutive vuol dire anche **contigue**: oltre
@@ -266,50 +189,23 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~22:30 UTC.
 
 > ## ⏱ LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA — §5 punto 138
 > **Il fatto**: una posizione NO di 58,8 share è rimasta scoperta **8,2 ore**. Nessuna singola regola
-> aveva sbagliato, e il bot **adattava il prezzo** (11 prezzi su 17 mid: NON era il vizio di §120).
-> Sbagliava il **sistema**: la gerarchia di §4.6 ha **un solo orologio**, i 60 min del Livello 2, e
-> alla sua scadenza il Livello 3 ripiega su un'uscita che risponde `no-target` perché la banda è
-> scesa sotto il carico — e da lì **si ripete identica per sempre**.
-> **Soglie dai dati, distribuzione BIMODALE** (24 episodi in 48 h): **7 chiusi**, mediana **10,5 min**,
-> q75 29,3 — contro **17 aperti**, mediana **126,5 min**, max 553,7.
-> **Quattro gradini** (`lib/maker/urgenza-scoperto.js`, puro): **0** (<30 min) niente · **1** (≥30)
-> uscita **fino al carico** (`profitPct: 0`) · **2** (≥120) **chiusura peggiorativa** · **3** (≥240)
-> **anomalia grave** nel giornale, che **non apre una quarta via**.
-> **⚠ Tetto di perdita DOPPIO, il più stretto vince**: **2 tick** e **mai oltre il 5% del carico**.
-> Sul caso reale: **$0,59 su 58,8 share** contro un'esposizione di **$25,28** — **43×**.
-> **⚠ Nessuna regola di rischio toccata**: il modulo produce un **pavimento**, non un prezzo; la
-> concessione vive **dentro** la banda per costruzione. **Orologio non leggibile ⇒ gradino 0.**
-> **⚠ Un gradino a 60 min è stato tolto**: dichiarava un'azione che nessuno consumava.
-
-> ## 📏 LA BANDA PREMIANTE ERA LARGA LA METÀ DI QUELLA VERA — §5-bis p.155, CORRETTO
-> `v` è la **semiampiezza dal mid**, cioè **`v = max_spread`**, non `max_spread/2`. La documentazione
-> ufficiale viva lo definisce «Max spread from midpoint (in cents)», e **l'esempio ufficiale lo dimostra
-> senza bisogno di interpretare la frase**: con `max_spread = 3¢` e mid `0.50`, un bid a `0.48` — **2¢
-> dal mid, cioè oltre `max_spread/2 = 1,5`** — vale `((3−2)/3)²·200 = 22,22`. Con la lettura dimezzata
-> varrebbe **zero**. Le due letture non sono entrambe difendibili.
-> **Contro-prova sul libro vivo** (104 mercati, `scripts/ricerca/banda-competitivita.js`): su **11
-> mercati** il venue pubblica `market_competitiveness > 0` mentre la lettura dimezzata vede il libro
-> premiante **VUOTO**; **zero** mercati mostrano la contraddizione opposta. Il **64,3%** del punteggio
-> premiante di un mercato sta nell'anello `max_spread/2 < s ≤ max_spread` che il bot dichiarava nullo.
-> **⚠ `v` NON È UNA MANOPOLA NOSTRA**: il venue ha **sempre** pagato con `v = max_spread`, anche mentre
-> il codice credeva il contrario. Correggere **non cambia di un centesimo** quanto matura un ordine già
-> a libro — cambia le **decisioni**. Chi legge il consuntivo non deve aspettarsi che si muova.
-> **⚠ E LA PREMESSA «ABBIAMO BUTTATO FUORI ORDINI CHE IL VENUE PAGAVA» È FALSA, misurata**: dei **3.622**
-> giudizi «fuori banda» su ordini ancora dentro quella vera (167 ordini, 62 mercati, 8 giorni),
-> **ZERO** hanno prodotto una cancellazione — 3.040 finiscono in `skip-motore-non-conforme` e il resto in
-> altri `skip`. Gli ordini **sono rimasti a libro e hanno continuato a maturare**. Il costo di quel
-> canale è **zero**.
-> **IL COSTO VERO È A MONTE, nella quotabilità**: «un tick dietro il migliore» cadeva fuori dalla banda
-> stretta e il mercato veniva **scartato**. Sul board vivo: **41 mercati passano da non-quotabile a
-> quotabile**, e fra i soli **finanziabili** l'insieme di scelta va da **28 a 51**. Nessun mercato
-> diventa meno quotabile: la correzione è **monotona**.
-> **⚠ UNA REGRESSIONE STRUTTURALE ESISTE E VA SAPUTA**: il ramo «soli sul lato ⇒ bordo ESTERNO della
-> banda» ora mira a `±max_spread`, dove `S → 0`, invece che a `±max_spread/2`, dove `S(vero) = 0,25`. La
-> banda stretta faceva da **disciplina di prossimità per sbaglio**. Il ramo però **non compare mai nel
-> giornale (0 righe)**, quindi oggi è inerte. **Non è stata aggiunta nessuna manopola**: sarebbe un
-> parametro nuovo, e quello lo decide l'operatore.
-> **⚠ CORREGGE ANCHE §5-bis p.152**, che cita la definizione giusta e poi applica `v = 2,25¢`: il «27%
-> dei nostri ordini a S = 0,0076» è in realtà **S ≈ 0,31**, e la leva ② vale **+13,5%**, non +53%.
+> aveva sbagliato, e il bot **adattava anche il prezzo** (11 prezzi su 17 mid distinti). Sbagliava il
+> **sistema** in un punto solo: **nessuno guardava da quanto tempo la posizione era scoperta** — la
+> gerarchia di §4.6 ha **un solo orologio**, i 60 min del Livello 2.
+> **Le soglie vengono dai dati, e la distribuzione è BIMODALE** (24 episodi, 48 h): **7 chiusi**, mediana
+> **10,5 min** — contro **17 aperti**, mediana **126,5 min**, massimo 553,7. Una scopertura sana si
+> chiude in dieci minuti; oltre l'ora non si chiude quasi più da sola.
+> **La scala** (`lib/maker/urgenza-scoperto.js`, puro): **0** (<30 min) niente · **1** (≥30) l'uscita può
+> scendere **fino al carico** (`profitPct: 0`) · **2** (≥120) **chiusura peggiorativa** entro il tetto ·
+> **3** (≥240) **anomalia grave** nel log, che **non apre una quarta via**: al gradino 2 sono già tutte
+> aperte, e il bot dichiara di non farcela invece di tacere.
+> **⚠ IL TETTO DI PERDITA È DOPPIO E IL PIÙ STRETTO VINCE**: **2 tick** e **mai oltre il 5% del carico**
+> (su un token da 10¢ due tick sarebbero il 20%). Misurato: **$0,59 su 58,8 share** contro un'esposizione
+> direzionale di **$25,28**, cioè **43×**.
+> **⚠ NESSUNA REGOLA DI RISCHIO È TOCCATA**: il modulo non produce prezzi, produce un **pavimento**; il
+> prezzo lo sceglie il motore, che applica «mai primo» come sempre. E la concessione **non esce dalla
+> banda**. **⚠ OROLOGIO NON LEGGIBILE ⇒ GRADINO 0.** **⚠ L'orologio si azzera a ogni nuovo ingresso in
+> modalità chiusura**: sul caso reale diceva 168 min contro 492 veri — **sbaglia per difetto**.
 
 > ## 🧱 I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA — §5.2 p.1, §5-bis p.123, BUCO APERTO
 > **$26,30** in cinque residui che il registro raccoglie correttamente e che **niente può chiudere**:
@@ -617,8 +513,9 @@ book appena cambiato non aspetta dieci secondi.
 **Nessun numero cablato: il tetto DERIVA da `f_min`.**
 
 ```
-tetto per mercato = minSize_tipico × costoCoppia / f_min_obiettivo = 20 × 0,98 / 0,60 = $32,67
-tetto per ordine  = tetto/2 + $5                                                     = $21,34
+tetto per mercato = pavimentoPremiante(SCAGLIONE_FINANZIABILE) = 50 × 0,98 × 1,25   = $61,25
+                    ⇒ f_min NON è più l'ingresso: è la conseguenza, e vale 0,32
+tetto per ordine  = tetto/2 + $5                                                     = $35,63
 pavimento premiante(minSize) = minSize × 0,98 × 1,25   ⇒ 20/50/100/200 = $24,50/$61,25/$122,50/$245
 ```
 
@@ -1020,6 +917,22 @@ pm2 restart agent41-realloc-scheduler
 > **p.15/16 guardiano k=2 + letture distinte** → §5-bis p.141 e p.145 · **p.17 registro residui senza
 > consumatore** → p.148 · **p.18 tetto per ordine sul riposizionamento scoperto** → p.147.
 
+24. **🔴 MERCATI PER GIRO E TETTO PER MERCATO NON SONO PIÙ COERENTI — test rosso VOLUTO.**
+   `MAX_NUOVI_PER_GIRO = 12` contro un tetto di $61,25 chiede **$735** a un capitale di **~$662**.
+   Il numero coerente è **10** (`mercatiSostenibili($652)`). **Non cambiato**: è un secondo parametro, e
+   la sessione del 13 agosto ne muove uno solo per avere 24 ore su una variabile sola.
+   **Cosa succede intanto**: il knapsack resta limitato da `budgetUsd`, quindi non si impegna più
+   capitale di quanto ce ne sia — le ultime righe del giro finiscono in `saltati` invece che in un piano
+   più corto. Degradazione dichiarata, non rischio di capitale.
+   Rosso in `lib/maker/tetti-per-giro-e-scope.test.js`, con il motivo scritto accanto all'asserzione.
+25. **🔴 IL TETTO ASSOLUTO DI CHIUSURA VALE ORA IL 18,6% DEL CAPITALE (era 9,9%) — test rosso VOLUTO.**
+   È DERIVATO dal tetto ordinario (`× (1 + 1/costoCoppia)` = 2,02×), quindi è passato da $65,97 a
+   **$123,75**. La soglia dell'11% in `tetto-chiusura.test.js` fu tarata sul 9,9% di §5-bis p.133.
+   **Non alzata**: alzarla sarebbe trasformare una leva sul tetto in un allentamento silenzioso di un
+   limite di concentrazione. **⚠ Va detto anche cosa NON è**: l'esenzione vale SOLO per chi RIDUCE, con
+   la prova rifatta sull'ordine esatto, quindi quel 18,6% è capitale impegnato per **completare una
+   coppia** — esposizione direzionale ~zero — non capitale a rischio. Tre vie: accettare il 18,6%,
+   ritarare la soglia, o disaccoppiare il tetto di chiusura da quello ordinario. Decide l'operatore.
 21. **🔴 IL PAVIMENTO DI PROFONDITÀ TRATTA UN RINNOVO COME UN'APERTURA — difetto annotato, NON
    corretto (13 agosto 2026, sera).** Stessa forma dei due chiusi stamattina (§5-bis p.133 tetto per
    mercato, p.147 tetto per ordine): una regola nata per limitare l'**apertura** di esposizione nuova,
@@ -1287,6 +1200,28 @@ funzione di `bot-enabled` è chiamata senza essere importata»), non la stringa;
 prima e dopo**, fallendo se è cambiato di un byte (§5 punto 1). Verificato che **fallisce sul codice
 vecchio** — l'unica prova che un test serva a qualcosa.
 
+**156 · IL TETTO PER MERCATO PASSA A $61,25, E SMETTE DI DERIVARE DA `f_min`.**
+Vedi il banner per i numeri. Qui la forma. `lib/rewards/concentration.js`: `SCAGLIONE_FINANZIABILE = 50`
+⇒ `TETTO_BASE_USD = pavimentoPremiante(50) = $61,25`, e `F_MIN_OBIETTIVO` diventa **derivato** (`0,32`).
+**L'identità regge nei due versi** — `tetto = minSize × costo / f_min` — quindi i consumatori che
+leggevano `F_MIN_OBIETTIVO` non si rompono. `fin` è stato spostato in cima al file: `TETTO_BASE_USD`
+chiama `pavimentoPremiante`, che lo usa, e un `const` dichiarato dopo lo lasciava nella zona morta.
+**Le derivate si muovono da sole** e nessuno le ricopia: tetto per ordine **$21,34 → $35,63**, tetto
+assoluto di chiusura **$65,97 → $123,75**, finestra di mid **[0,36·0,64] → [0,43·0,57]**, mercati
+sostenibili **19 → 10**, soglia di carico **$1.306 → $2.450**.
+**⚠ `MAKER_LIVE_MIN_CAP_USD` NON ESISTE PIÙ**, verificato in `ecosystem.config.js` e in
+`/proc/<pid>/environ` di agent40 e agent41: il vincolo a $30 descritto in `safety-risk-limits.json` se
+n'è andato con `agent35-maker` il 9 agosto. Se ci fosse ancora, una gamba da $30,63 sarebbe stata
+rifiutata e il bot avrebbe smesso di piazzare — è il primo controllo che è stato fatto.
+**⚠ `maxOpenNotionalUsd = $600` NON limita quanti mercati si quotano**: conta i fill **riconciliati**
+(`lib/safety/fills.js`), non gli ordini a riposo. Oggi 22 posizioni per $139.
+**Test**: `lib/rewards/tetto-derivato-dallo-scaglione.test.js`, 25 asserzioni — fissa il tetto, le
+derivate, il fatto che `f_min < 1` per costruzione, e che **nessun modulo cabli il valore** (stessa
+forma di `banda-premiante.test.js`: filtra commenti e letterali di stringa).
+**8 test rimessi in scala, non ammorbiditi**: le loro fixture erano tarate sul tetto vecchio. Dove il
+test riproduce un INCIDENTE storico (`piano-non-si-svuota`, il deadlock del 13 agosto) il numero di
+allora è ora un **letterale dichiarato**, perché un fatto storico non può dipendere dal valore di oggi.
+
 **155 · LA BANDA PREMIANTE ERA LARGA LA METÀ — `v = max_spread`, NON `max_spread/2`.**
 Vedi il banner per la prova e per le tre conseguenze. Qui restano i numeri e la forma della correzione.
 **La SSOT**: `lib/banda-premiante.js` — `raggioBandaCents` · `raggioBandaPrezzo` · `dentroBanda` ·
@@ -1319,25 +1254,17 @@ credenziali L2 torna `maker_address: 0x000…` e zeri. **Cablarlo passa dall'ada
 superficie che sa piazzare**: è una decisione dell'operatore, non un dettaglio.
 
 **154 · IL FILTRO DI PROFONDITÀ NON STA AFFAMANDO IL PIANO — sola misura, niente toccato.**
-Misura in `data/ricerca/sintesi-profondita.md`; script `scripts/ricerca/taratura-profondita.js` e
-`esiti-contro-gate.js`. **q = 0,60 è `realistic-estimate.DEFAULTS.maxCredibleShare`
-(`realistic-estimate.js:74`), che il modulo etichetta da sé come ASSUNZIONE e non come misura**
-(«0.60 is where "you are the dominant maker" turns into "you ARE the book"»); misurato fu il **punto
-di applicazione**, non il valore.
-**La soglia NON dipende dal capitale, per scelta dichiarata**: `escluso ⟺ minSize_venue > depth·q/(1−q)`.
-**⚠ E `q/(1−q)` è CRESCENTE: abbassare q STRINGE il filtro** — q=0,60 è già il più permissivo dei
-cinque valori richiesti.
-**Sui 46 mercati finanziabili il filtro ne esclude 5 e ne lascia 41 contro 16 minimi (2,6×): la
-precondizione di sicurezza dichiarata dal modulo REGGE.** E **da q=0,50 a q=0,90 il numero non cambia,
-perché tutti gli esclusi hanno `depth` ESATTAMENTE 0** ⇒ `S_max = 0` per qualunque q: **la manopola è
-inerte**. Stabile rispetto alla finestra dei campioni (15/60/240 min ⇒ 39/41/43 ammessi).
-**Dove sta il capitale**: 13 posizioni su 22 ($73,35) in mercati AMMESSI, **1 sola ($2,19) in un
-mercato escluso dalla profondità**, 4 ($33,99) in mercati **non finanziabili**. **I residui nascono sui
-book SPESSI**: 14 su 25 in mercati ammessi, con profondità 71,9-1.298,7 share; 2 in mercati esclusi
-contro un tasso base del 10,9% — **nessuna differenza rilevabile, e su n=16 non lo sarebbe comunque**.
-**⚠ NON misurabile, e nessuna conclusione ci poggia**: fill/costo di uscita/tempo di chiusura sui
-mercati ESCLUSI (non ci abbiamo mai quotato) e reward per dollaro PER MERCATO (§4.12: il venue paga un
-bonifico aggregato, le righe REWARD hanno `conditionId` vuoto).
+`data/ricerca/sintesi-profondita.md`. **q = 0,60 è `realistic-estimate.DEFAULTS.maxCredibleShare`, che
+il modulo etichetta da sé come ASSUNZIONE**: misurato fu il punto di applicazione, non il valore.
+La soglia **non dipende dal capitale**, per scelta: `escluso ⟺ minSize_venue > depth·q/(1−q)`.
+**⚠ `q/(1−q)` è CRESCENTE: abbassare q STRINGE il filtro** — 0,60 è già il più permissivo dei cinque
+valori richiesti. **Sui 46 mercati finanziabili ne esclude 5 e ne lascia 41 contro 16 minimi (2,6×): la
+precondizione dichiarata dal modulo REGGE.** E **da q=0,50 a q=0,90 il numero non cambia, perché tutti
+gli esclusi hanno `depth` ESATTAMENTE 0** ⇒ la manopola è **inerte**. **Dove sta il capitale**: 13
+posizioni su 22 ($73,35) in mercati AMMESSI, **1 sola ($2,19)** in un mercato escluso dalla profondità.
+**I residui nascono sui book SPESSI**, e su n=16 nessuna differenza sarebbe rilevabile comunque.
+**⚠ NON misurabile**: fill e costo di uscita sui mercati ESCLUSI (non ci abbiamo mai quotato), e reward
+per dollaro PER MERCATO (§4.12: il venue paga un bonifico aggregato).
 
 ### Le tre voci del 13 agosto 2026
 
@@ -1424,45 +1351,44 @@ leva ① **presenza 4/30→29/30, +$100/mese**, che resta la più grande.
 vendite**. Servono **~15 giorni** di bot acceso per stabilizzare il resto.
 
 
-**151 · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — corregge §150.** Misura in
-`data/ricerca/sintesi-redeem.md`. **5.087 redeem su 8 wallet.** ⚠ **Confondente escluso prima di
-misurare**: `usdcSize/size` vale **esattamente 0 o 1** e **gli eventi a 0 esistono**, quindi non c'è
-bias da sopravvivenza. **4.781 vinte = 94,0%: SANNO.** Due modi opposti: **famiglia A** (carico
-**0,999**, 52-96% degli acquisti sopra 97¢, PnL +0,2/+0,6%) compra esiti **già decisi**; **famiglia B**
-(carico **0,45-0,46**, 0% sopra 97¢, vinte 67-99%) ha **edge vero** (+15%).
-**⚠ Il 94% è una proprietà della loro SELEZIONE, non del meccanismo**: i nostri residui nascono da
-fill parziali di coppie neutrali, quindi redimendoli incasseremmo il **valore equo, non il 94%**.
+**151 · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — corregge §150.**
+`data/ricerca/sintesi-redeem.md`. **5.087 redeem su 8 wallet.** ⚠ Confondente escluso prima di
+misurare: `usdcSize/size` vale esattamente 0 o 1 e **gli eventi a 0 esistono**, quindi niente bias da
+sopravvivenza. **4.781 vinte = 94,0%: SANNO.** Due modi opposti: **famiglia A** (carico 0,999, 52-96%
+degli acquisti sopra 97¢, PnL +0,2/+0,6%) compra esiti **già decisi**; **famiglia B** (carico
+0,45-0,46, 0% sopra 97¢, vinte 67-99%) ha **edge vero** (+15%).
+**⚠ Il 94% è una proprietà della loro SELEZIONE, non del meccanismo**: i nostri residui nascono da fill
+parziali di coppie neutrali, quindi redimendoli incasseremmo il **valore equo, non il 94%**.
 **Resta valido per altra ragione**: il redeem **non ha size minima**. Per le 10 posizioni da $50,32 il
 confronto è «redeem al valore equo, zero spread» contro **«capitale congelato»**.
-**⚠ La famiglia A opera dove `end-of-scale` ci vieta di andare** — non è occasione persa: a 99,9¢ un
-errore cancella ~mille operazioni riuscite, ed è il modo di fallire contro cui la regola esiste.
+**⚠ La famiglia A opera dove `end-of-scale` ci vieta di andare** — a 99,9¢ un errore cancella ~mille
+operazioni riuscite, ed è il modo di fallire contro cui la regola esiste.
 
-**150 · COSA FANNO GLI ALTRI DOPO UN FILL — sola ricerca.** Misura in
-`data/ricerca/sintesi-post-fill.md`; script `post-fill.js`. **82 wallet, 138.894 trade, 35.520
-episodi.** Vie d'uscita: mai chiusa 37,3% · vendita 34,4% · **redeem 18,4%** · merge 9,9%.
+**150 · COSA FANNO GLI ALTRI DOPO UN FILL — sola ricerca.** `data/ricerca/sintesi-post-fill.md`.
+**82 wallet, 138.894 trade, 35.520 episodi.** Vie d'uscita: mai chiusa 37,3% · vendita 34,4% ·
+**redeem 18,4%** · merge 9,9%.
 **⚠ SIAMO GIÀ MEGLIO SU TRE ASSI SU QUATTRO**: durata mediana **21,8 min** contro 121,5-489,3 ·
 **merge 43%** contro 1-5% · costo di uscita **0,25 ¢/share** contro 1,24 dei top30.
 **⚠ L'UNICO PUNTO IN CUI SIAMO PEGGIO SONO I RESIDUI (18,0% contro 8,3-13,4%), E LA CAUSA NON È LA
 SIZE**: correlazione taglio-ordine ↔ quota-residui **−0,141**, e il nostro $10,50 è già nella fascia
-migliore. La causa è **la via d'uscita**: chi ha meno residui esce via **redeem** (87-98%) o **merge**.
-La size minima di 20 share vincola gli **ORDINI**, non il merge né il redeem — noi abbiamo residui
-perché proviamo a *scambiare* per uscire. ⇒ le posizioni murate sotto il minimo (§5-bis p.123) non
-hanno bisogno di un ordine più grande, hanno bisogno del **redeem**, che non ha minimo.
-**⚠ Limite: la nostra riga poggia su 61 episodi in 26 ore** contro migliaia degli altri; e maker-vs-
-taker non è misurabile (`activity` non porta il flag), quindi nessuna conclusione ci poggia.
+migliore. La causa è la **via d'uscita**: chi ha meno residui esce via **redeem** (87-98%) o **merge**.
+⇒ le posizioni murate sotto il minimo (§5-bis p.123) non hanno bisogno di un ordine più grande, hanno
+bisogno del **redeem**, che non ha minimo.
+**⚠ Limite: la nostra riga poggia su 61 episodi in 26 ore** contro migliaia degli altri; maker-vs-taker
+non è misurabile (`activity` non porta il flag).
 
-**149 · CHI INCASSA DAVVERO I REWARD — sola ricerca, 30 giorni on-chain.** Misura in
+**149 · CHI INCASSA DAVVERO I REWARD — sola ricerca, 30 giorni on-chain.**
 `data/ricerca/sintesi-incassatori.md`. **$3.974.198 in 30 giorni a 14.836 wallet**, 7 tx/giorno a
 ~2.700 destinatari. ⚠ Fonte: **Etherscan V2 multichain** (`api.polygonscan.com` v1 è dismesso), e la
 query va **partizionata per blocchi giornalieri** o si scambia una pagina troncata per l'ultima.
 **172 wallet (1,9%) prendono il 59,2%**, presenti 29 giorni su 30. **NOI: percentile 39,3**, $17,59,
 presenti **4 giorni su 30**. **⚠ Il consuntivo del pannello è CORRETTO**: coincide a quattro decimali
 **sfalsato di un giorno** (il pannello data al giorno maturato, la catena al giorno pagato).
-**⚠ I TOP SONO DIREZIONALI, verificato prima di concluderlo** (l'API `positions` non compatta i lati
-opposti): solo **4 wallet su 50** superano il 5% di mercati appaiati. $6,74 M in posizione contro
-$1,65 M di reward — i premi sono un sottoprodotto. **⚠ I 21 del manuale NON sono i top**: il migliore
-è 67°. **L'unica differenza replicabile a $650 è la PRESENZA** (4/30 contro 29/30): il taglio dei
-nostri ordini ($10,76 mediano) è già dentro il range dei top ($5,67–$16,86).
+**⚠ I TOP SONO DIREZIONALI, verificato prima di concluderlo**: solo **4 wallet su 50** superano il 5% di
+mercati appaiati; $6,74 M in posizione contro $1,65 M di reward — i premi sono un sottoprodotto.
+**⚠ I 21 del manuale NON sono i top**: il migliore è 67°. **L'unica differenza replicabile a $650 è la
+PRESENZA** (4/30 contro 29/30): il taglio dei nostri ordini ($10,76 mediano) è già dentro il range dei
+top ($5,67–$16,86).
 
 **147 · L'ESENZIONE DAL TETTO PER ORDINE VALE SU TUTTI I PERCORSI CHE RIDUCONO.** Il ramo
 `riposizionamento-scoperto` (`auto-close.js:1412`) era l'unico percorso di chiusura a NON dichiarare
