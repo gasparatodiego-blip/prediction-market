@@ -1,0 +1,222 @@
+{
+ "capitale": 650,
+ "tetto": 245,
+ "pavimentoGiorni": 0.5,
+ "pavimentoOre": 12,
+ "pavimentoVeroDelModulo": 0.75,
+ "boardGeneratoIso": "2026-08-13T20:31:42.821Z",
+ "boardScrittoIso": "2026-08-13T20:31:58.836Z",
+ "universo": {
+  "withPot": 107,
+  "evaluated": 100,
+  "chosen": 9,
+  "restrictedTo": null,
+  "excluded": null,
+  "horizonFilter": true,
+  "horizonRejected": 17,
+  "horizonUnknown": 0,
+  "horizonUnknownAll": 0,
+  "note": "Universo = tutti i mercati con montepremi sul board reward, non la lista abilitata a mano: la selezione manuale non entra in questo calcolo."
+ },
+ "scelti": 9,
+ "capitaleUsato": 650,
+ "fermo": 0,
+ "lordoGiorno": 439.57,
+ "realisticoGiorno": 271.0822,
+ "montepremiCoperto": 906,
+ "orizzontiScelti": [
+  0.644,
+  0.644,
+  0.644,
+  0.644,
+  0.644,
+  0.644,
+  0.644,
+  0.644,
+  0.644
+ ],
+ "conteggi": {
+  "SCELTO": 9,
+  "profondita-sottile": 12,
+  "battuto": 44,
+  "orizzonte": 17,
+  "netto-negativo": 15,
+  "netto-ignoto": 3,
+  "senza-storico": 7
+ },
+ "selezione": {
+  "punteggioPosizione": true,
+  "pesoNonApplicato": 0,
+  "tettoCredibilita": true,
+  "maxCredibleShare": 0.6,
+  "mercatiCapati": 11,
+  "profonditaVerificata": true,
+  "profonditaNonVerificata": 0,
+  "filtroProfondita": true,
+  "profonditaSoglia": 0.6,
+  "profonditaSottili": 12,
+  "profonditaSottiliLordoApparenteUsd": 1254.96,
+  "profonditaSottiliPotUsd": 1315,
+  "profonditaSottiliQuotaMediana": 1,
+  "profonditaSuperstiti": 70,
+  "profonditaMinimiPerCoprire": 3,
+  "profonditaRidotti": 13,
+  "profonditaRidottiCapitaleTagliatoUsd": 1209,
+  "profonditaTroppoSottili": 12,
+  "profonditaSottoMinimo": 0,
+  "bookVuotiVerificati": 9,
+  "capVuotiFrac": 0.3,
+  "capCodaLungaFrac": 0.12,
+  "codaLungaBudgetUsd": 0,
+  "codaLungaUsd": 0,
+  "codaLungaFrazione": 0,
+  "vuotiOltreIlTetto": 0,
+  "nota": "il netto con cui i mercati sono ordinati è pesato dal punteggio del venue alla distanza reale di un tick — su tick 0,001 vale ~3× che su tick 0,01, a parità di banda"
+ },
+ "righe": [
+  {
+   "nome": "Will the lowest temperature in Hong Kong be 27°C on August 14?",
+   "capitale": 39,
+   "minSize": 20,
+   "pot": 79,
+   "quota": 59,
+   "lordo": 46.61,
+   "giorni": {
+    "state": "ok",
+    "days": 0.6440027430555556,
+    "payback": 0.02991529938327367,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will the highest temperature in Busan be 32°C on August 14?",
+   "capitale": 117,
+   "minSize": 100,
+   "pot": 111,
+   "quota": 40.52,
+   "lordo": 44.98,
+   "giorni": {
+    "state": "ok",
+    "days": 0.6440027430555556,
+    "payback": 0.04250884876423165,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will the highest temperature in Taipei be 36°C on August 14?",
+   "capitale": 117,
+   "minSize": 100,
+   "pot": 101,
+   "quota": 45.33,
+   "lordo": 45.78,
+   "giorni": {
+    "state": "ok",
+    "days": 0.6440027430555556,
+    "payback": 0.0020856222971649897,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will the highest temperature in Seoul (Incheon) be 31°C on August 14?",
+   "capitale": 117,
+   "minSize": 100,
+   "pot": 197,
+   "quota": 59.88,
+   "lordo": 117.96,
+   "giorni": {
+    "state": "ok",
+    "days": 0.6440027430555556,
+    "payback": 0.013562232839177943,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will the highest temperature in Beijing be 32°C on August 14?",
+   "capitale": 104,
+   "minSize": 100,
+   "pot": 86,
+   "quota": 41.43,
+   "lordo": 35.63,
+   "giorni": {
+    "state": "ok",
+    "days": 0.6440027430555556,
+    "payback": 0.1487188602357477,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will the highest temperature in Mexico City be 25°C on August 14?",
+   "capitale": 39,
+   "minSize": 20,
+   "pot": 54,
+   "quota": 24,
+   "lordo": 12.96,
+   "giorni": {
+    "state": "ok",
+    "days": 0.6440027430555556,
+    "payback": 0,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will the lowest temperature in New York City be between 72-73°F on August 14?",
+   "capitale": 39,
+   "minSize": 20,
+   "pot": 48,
+   "quota": 27.85,
+   "lordo": 13.37,
+   "giorni": {
+    "state": "ok",
+    "days": 0.6440027430555556,
+    "payback": 0,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will the highest temperature in Chicago be between 78-79°F on August 14?",
+   "capitale": 52,
+   "minSize": 20,
+   "pot": 50,
+   "quota": 39.3,
+   "lordo": 19.65,
+   "giorni": {
+    "state": "ok",
+    "days": 0.6440027430555556,
+    "payback": 0,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will the lowest temperature in Seoul (Incheon) be 24°C on August 14?",
+   "capitale": 26,
+   "minSize": 20,
+   "pot": 180,
+   "quota": 57.02,
+   "lordo": 102.63,
+   "giorni": {
+    "state": "ok",
+    "days": 0.6440027430555556,
+    "payback": 0.23586744767947165,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  }
+ ]
+}

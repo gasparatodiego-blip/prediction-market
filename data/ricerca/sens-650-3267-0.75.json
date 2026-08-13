@@ -1,0 +1,119 @@
+{
+ "capitale": 650,
+ "tetto": 32.67,
+ "pavimentoGiorni": 0.75,
+ "pavimentoOre": 18,
+ "pavimentoVeroDelModulo": 0.75,
+ "boardGeneratoIso": "2026-08-13T20:27:57.821Z",
+ "boardScrittoIso": "2026-08-13T20:17:13.600Z",
+ "universo": {
+  "withPot": 107,
+  "evaluated": 102,
+  "chosen": 3,
+  "restrictedTo": null,
+  "excluded": null,
+  "horizonFilter": true,
+  "horizonRejected": 78,
+  "horizonUnknown": 0,
+  "horizonUnknownAll": 0,
+  "note": "Universo = tutti i mercati con montepremi sul board reward, non la lista abilitata a mano: la selezione manuale non entra in questo calcolo."
+ },
+ "scelti": 3,
+ "capitaleUsato": 96,
+ "fermo": 554,
+ "lordoGiorno": 64.1,
+ "realisticoGiorno": 42.0583,
+ "montepremiCoperto": 258,
+ "orizzontiScelti": [
+  0.813,
+  1.022,
+  1.146
+ ],
+ "conteggi": {
+  "SCELTO": 3,
+  "orizzonte": 78,
+  "profondita-sottile": 1,
+  "min-size": 18,
+  "netto-negativo": 2,
+  "senza-storico": 5
+ },
+ "selezione": {
+  "punteggioPosizione": true,
+  "pesoNonApplicato": 0,
+  "tettoCredibilita": true,
+  "maxCredibleShare": 0.6,
+  "mercatiCapati": 6,
+  "profonditaVerificata": true,
+  "profonditaNonVerificata": 0,
+  "filtroProfondita": true,
+  "profonditaSoglia": 0.6,
+  "profonditaSottili": 6,
+  "profonditaSottiliLordoApparenteUsd": 300,
+  "profonditaSottiliPotUsd": 584,
+  "profonditaSottiliQuotaMediana": 1,
+  "profonditaSuperstiti": 23,
+  "profonditaMinimiPerCoprire": 20,
+  "profonditaRidotti": 1,
+  "profonditaRidottiCapitaleTagliatoUsd": 4,
+  "profonditaTroppoSottili": 6,
+  "profonditaSottoMinimo": 0,
+  "bookVuotiVerificati": 6,
+  "capVuotiFrac": 0.3,
+  "capCodaLungaFrac": 0.12,
+  "codaLungaBudgetUsd": 13.090909,
+  "codaLungaUsd": 0,
+  "codaLungaFrazione": 0,
+  "vuotiOltreIlTetto": 0,
+  "nota": "il netto con cui i mercati sono ordinati è pesato dal punteggio del venue alla distanza reale di un tick — su tick 0,001 vale ~3× che su tick 0,01, a parità di banda"
+ },
+ "righe": [
+  {
+   "nome": "Will Donald Trump post 160-179 Truth Social posts from August 7 to August 14, 2026?",
+   "capitale": 32,
+   "minSize": 20,
+   "pot": 108,
+   "quota": 44.94,
+   "lordo": 48.54,
+   "giorni": {
+    "state": "ok",
+    "days": 0.8133068287037037,
+    "payback": 0.12566592341112676,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will Gold (XAUUSD) hit (HIGH) $4,450 Week of August 10 2026?",
+   "capitale": 32,
+   "minSize": 20,
+   "pot": 50,
+   "quota": 14.97,
+   "lordo": 7.48,
+   "giorni": {
+    "state": "ok",
+    "days": 1.021640162037037,
+    "payback": 0,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will Shadowrocket be #1 Paid App in the US Apple App Store on August 14?",
+   "capitale": 32,
+   "minSize": 20,
+   "pot": 100,
+   "quota": 8.07,
+   "lordo": 8.07,
+   "giorni": {
+    "state": "ok",
+    "days": 1.1459457175925927,
+    "payback": 0,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  }
+ ]
+}

@@ -1,0 +1,121 @@
+{
+ "capitale": 650,
+ "tetto": 245,
+ "pavimentoGiorni": 0.75,
+ "pavimentoOre": 18,
+ "pavimentoVeroDelModulo": 0.75,
+ "boardGeneratoIso": "2026-08-13T20:31:42.821Z",
+ "boardScrittoIso": "2026-08-13T20:31:58.836Z",
+ "universo": {
+  "withPot": 107,
+  "evaluated": 100,
+  "chosen": 3,
+  "restrictedTo": null,
+  "excluded": null,
+  "horizonFilter": true,
+  "horizonRejected": 77,
+  "horizonUnknown": 0,
+  "horizonUnknownAll": 0,
+  "note": "Universo = tutti i mercati con montepremi sul board reward, non la lista abilitata a mano: la selezione manuale non entra in questo calcolo."
+ },
+ "scelti": 3,
+ "capitaleUsato": 650,
+ "fermo": 0,
+ "lordoGiorno": 67.55,
+ "realisticoGiorno": 54.9817,
+ "montepremiCoperto": 200,
+ "orizzontiScelti": [
+  1.144,
+  1.019,
+  1.144
+ ],
+ "conteggi": {
+  "SCELTO": 3,
+  "orizzonte": 77,
+  "profondita-sottile": 2,
+  "quota-coda-lunga": 1,
+  "battuto": 7,
+  "netto-negativo": 9,
+  "netto-ignoto": 1,
+  "senza-storico": 7
+ },
+ "selezione": {
+  "punteggioPosizione": true,
+  "pesoNonApplicato": 0,
+  "tettoCredibilita": true,
+  "maxCredibleShare": 0.6,
+  "mercatiCapati": 11,
+  "profonditaVerificata": true,
+  "profonditaNonVerificata": 0,
+  "filtroProfondita": true,
+  "profonditaSoglia": 0.6,
+  "profonditaSottili": 12,
+  "profonditaSottiliLordoApparenteUsd": 1254.96,
+  "profonditaSottiliPotUsd": 1315,
+  "profonditaSottiliQuotaMediana": 1,
+  "profonditaSuperstiti": 21,
+  "profonditaMinimiPerCoprire": 3,
+  "profonditaRidotti": 13,
+  "profonditaRidottiCapitaleTagliatoUsd": 1209,
+  "profonditaTroppoSottili": 12,
+  "profonditaSottoMinimo": 0,
+  "bookVuotiVerificati": 9,
+  "capVuotiFrac": 0.3,
+  "capCodaLungaFrac": 0.12,
+  "codaLungaBudgetUsd": 0,
+  "codaLungaUsd": 0,
+  "codaLungaFrazione": 0,
+  "vuotiOltreIlTetto": 0,
+  "nota": "il netto con cui i mercati sono ordinati è pesato dal punteggio del venue alla distanza reale di un tick — su tick 0,001 vale ~3× che su tick 0,01, a parità di banda"
+ },
+ "righe": [
+  {
+   "nome": "Israel closes its airspace by August 15?",
+   "capitale": 182,
+   "minSize": 50,
+   "pot": 50,
+   "quota": 0.6,
+   "lordo": 0.3,
+   "giorni": {
+    "state": "ok",
+    "days": 1.1443091666666667,
+    "payback": 0,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will Gold (XAUUSD) hit (HIGH) $4,450 Week of August 10 2026?",
+   "capitale": 234,
+   "minSize": 20,
+   "pot": 50,
+   "quota": 56.28,
+   "lordo": 28.14,
+   "giorni": {
+    "state": "ok",
+    "days": 1.0193091666666667,
+    "payback": 0,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  },
+  {
+   "nome": "Will Shadowrocket be #1 Paid App in the US Apple App Store on August 14?",
+   "capitale": 234,
+   "minSize": 100,
+   "pot": 100,
+   "quota": 39.11,
+   "lordo": 39.11,
+   "giorni": {
+    "state": "ok",
+    "days": 1.1436147222222222,
+    "payback": 0,
+    "paybackNever": false,
+    "source": "market",
+    "endDateKnown": true
+   }
+  }
+ ]
+}

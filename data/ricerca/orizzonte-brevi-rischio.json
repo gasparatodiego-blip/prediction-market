@@ -1,0 +1,364 @@
+{
+ "generatoIso": "2026-08-13T20:29:16.205Z",
+ "sogliaOre": 18,
+ "A_ventunoMaker": {
+  "ingressiTotali": 2172,
+  "ritiriTotali": 1601,
+  "appaiati": 1563,
+  "appaiatiPremianti": 120,
+  "bucket": [
+   {
+    "nome": "premianti · ingresso SOTTO 18 h",
+    "casi": 88,
+    "conMisura": 88,
+    "uscitiDOPOlaRisoluzione": 13,
+    "fraseDopo": 14.8,
+    "tenutaOreMediana": 6.43,
+    "tenutaOreQ1": 1.42,
+    "tenutaOreQ3": 7.66,
+    "anticipoOreMediano": 3,
+    "anticipoOreQ1": 0.2,
+    "anticipoOreQ3": 6
+   },
+   {
+    "nome": "premianti · ingresso SOPRA 18 h",
+    "casi": 32,
+    "conMisura": 32,
+    "uscitiDOPOlaRisoluzione": 0,
+    "fraseDopo": 0,
+    "tenutaOreMediana": 22.9,
+    "tenutaOreQ1": 21.03,
+    "tenutaOreQ3": 24.39,
+    "anticipoOreMediano": 21.5,
+    "anticipoOreQ1": 6.1,
+    "anticipoOreQ3": 23.9
+   },
+   {
+    "nome": "premianti · ingresso sotto 6 h",
+    "casi": 37,
+    "conMisura": 37,
+    "uscitiDOPOlaRisoluzione": 13,
+    "fraseDopo": 35.1,
+    "tenutaOreMediana": 0.32,
+    "tenutaOreQ1": 0.22,
+    "tenutaOreQ3": 2.27,
+    "anticipoOreMediano": 0.1,
+    "anticipoOreQ1": 0,
+    "anticipoOreQ3": 1.3
+   },
+   {
+    "nome": "premianti · 6–12 h",
+    "casi": 36,
+    "conMisura": 36,
+    "uscitiDOPOlaRisoluzione": 0,
+    "fraseDopo": 0,
+    "tenutaOreMediana": 6.575,
+    "tenutaOreQ1": 6.51,
+    "tenutaOreQ3": 7.34,
+    "anticipoOreMediano": 5.3,
+    "anticipoOreQ1": 3.5,
+    "anticipoOreQ3": 6.2
+   },
+   {
+    "nome": "premianti · 12–18 h",
+    "casi": 15,
+    "conMisura": 15,
+    "uscitiDOPOlaRisoluzione": 0,
+    "fraseDopo": 0,
+    "tenutaOreMediana": 15.29,
+    "tenutaOreQ1": 13.24,
+    "tenutaOreQ3": 16.43,
+    "anticipoOreMediano": 8.1,
+    "anticipoOreQ1": 5.8,
+    "anticipoOreQ3": 11.6
+   },
+   {
+    "nome": "premianti · 18–48 h",
+    "casi": 32,
+    "conMisura": 32,
+    "uscitiDOPOlaRisoluzione": 0,
+    "fraseDopo": 0,
+    "tenutaOreMediana": 22.9,
+    "tenutaOreQ1": 21.03,
+    "tenutaOreQ3": 24.39,
+    "anticipoOreMediano": 21.5,
+    "anticipoOreQ1": 6.1,
+    "anticipoOreQ3": 23.9
+   },
+   {
+    "nome": "premianti · oltre 48 h",
+    "casi": 0,
+    "conMisura": 0,
+    "uscitiDOPOlaRisoluzione": 0,
+    "fraseDopo": null,
+    "tenutaOreMediana": null,
+    "tenutaOreQ1": null,
+    "tenutaOreQ3": null,
+    "anticipoOreMediano": null,
+    "anticipoOreQ1": null,
+    "anticipoOreQ3": null
+   },
+   {
+    "nome": "NON premianti (tutti gli orizzonti)",
+    "casi": 1443,
+    "conMisura": 1443,
+    "uscitiDOPOlaRisoluzione": 431,
+    "fraseDopo": 29.9,
+    "tenutaOreMediana": 1.31,
+    "tenutaOreQ1": 0.24,
+    "tenutaOreQ3": 7.11,
+    "anticipoOreMediano": 0.8,
+    "anticipoOreQ1": 0,
+    "anticipoOreQ3": 5.5
+   }
+  ]
+ },
+ "B_nostrePosizioni": {
+  "posizioniGrezze": 22,
+  "mercatiConEsposizione": 22,
+  "nudi": 22,
+  "coppieComplete": 0,
+  "nozionaleTotale": 138.8,
+  "conScadenzaLeggibile": 17,
+  "fuoriDalBoard": 5,
+  "sottoSoglia18h": 17,
+  "sopraSoglia18h": 0,
+  "gia_scaduti": 0,
+  "oreMediana": 15.51,
+  "elenco": [
+   {
+    "conditionId": "0xcd126ec4303c964869007c0d2d44cd88f630dd42d66f55ad24e1911c4249e7c5",
+    "titolo": "Will the highest temperature in Wellington be 14°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 15.88,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 100
+   },
+   {
+    "conditionId": "0x51217d9e9ca71329723a710f4353d1310c64d515313fe3a70fd8173cdb05d0bf",
+    "titolo": "Will the lowest temperature in New York City be between 72-73°F on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 13.53,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0xe89a852299081c3d0bd2ef823194f9b13e82102737e35cef301b569391e161c9",
+    "titolo": "Will the highest temperature in Karachi be 32°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 10.66,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 100
+   },
+   {
+    "conditionId": "0x3286f89e21af780f451cb654c59aa11d1d8ad25dc573deec411c9e89a2227016",
+    "titolo": "Will the highest temperature in Warsaw be 26°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 8.9,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0xe0ef25593ef48357bef11f60fe81d1cd9a5427b6fdcfcbff9878ef01fee677bf",
+    "titolo": "Will the highest temperature in Munich be 33°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 10.96,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0x8a49d18088a8d4ea5e44a96604618dd12339c1a7667012605575fe7b6d5986cd",
+    "titolo": "Will the highest temperature in Houston be between 92-93°F on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 8.47,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0x13e7b146388e5674d5ea55eda8dfb1e3526999651ddb5e6959f29ba5ee2a6770",
+    "titolo": "Will the highest temperature in Busan be 32°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 5.05,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 100
+   },
+   {
+    "conditionId": "0x774d64b6680a79b8bd8aba93ee6e91407b973b6516efa252b5814373eb24f20d",
+    "titolo": "Will the highest temperature in Paris be 39°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 4.05,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0x8f676366d8bf68a2cac92bd09a2a6d95994057502a172fdf0d40a797869dd10d",
+    "titolo": "Will the highest temperature in Los Angeles be between 76-77°F on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 5.45,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0xcb034071d56a7dde2d5764da4abc8afbf8665a972e2d90814fec08b3a4ec4b8b",
+    "titolo": "Will the highest temperature in Tel Aviv be 33°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 3.01,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0x4e9a6db00c9657342b6cd4b43e751a753b09290151c8cd63c8a6d865e8cd316f",
+    "titolo": "Will the highest temperature in Istanbul be 26°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 4.97,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0xe9b3e28d9cec225de730d73474af946f9115af100e5abd0d9213e77381badd9f",
+    "titolo": "Will the lowest temperature in Hong Kong be 27°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 2.16,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0xd5b476e72a3ac6b93dd9eace9fd138117bcaf5614006ed95ab41f2544e23e6b5",
+    "titolo": "Will the highest temperature in London be 33°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 2.66,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0x5f79e4f9d51b73ffb7e885de3829a7e0f59925c353bf9b41e2e16b8cc1be2fa8",
+    "titolo": "Will the highest temperature in Helsinki be 21°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 2.61,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0x791c61d4f1857d398d7a004cb19a6994f47eea58606b90b15d0d63d55b38778c",
+    "titolo": "Will the highest temperature in Shanghai be 29°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 3.3,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 100
+   },
+   {
+    "conditionId": "0xdf9409b468e1df8122c3c9448a1e3a4bed1cf525762dc7f848a5b1957b91b975",
+    "titolo": "Will the highest temperature in Mexico City be 25°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 1.07,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0xe49a4030650f5d5d614ffe5a549542bd016ac29525ac943b7310f940060e9ee4",
+    "titolo": "Will the highest temperature in Cape Town be 18°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 0.68,
+    "oreAllaScadenza": 15.51,
+    "sulBoard": true,
+    "minSize": 20
+   },
+   {
+    "conditionId": "0xf2b0c93903a116cc841c2be960d4f5309153d4b93d6901f69a82f34259365770",
+    "titolo": "Will Ben Butler be the Republican nominee for FL-09?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 10.12,
+    "oreAllaScadenza": null,
+    "sulBoard": false,
+    "minSize": null
+   },
+   {
+    "conditionId": "0x78aa9e27a63e36ff0d6f137312fd032643b8154665454be9ba60e61e81f7fc42",
+    "titolo": "Will the highest temperature in Sao Paulo be 26°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 4.88,
+    "oreAllaScadenza": null,
+    "sulBoard": false,
+    "minSize": null
+   },
+   {
+    "conditionId": "0x8ecb894479a12f0bd9a345aba34ae9139ea37fb2b7c7b3cc9af3d590e86d99f8",
+    "titolo": "Will White House post 180-199 posts from August 7 to August 14, 2026?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 11.85,
+    "oreAllaScadenza": null,
+    "sulBoard": false,
+    "minSize": null
+   },
+   {
+    "conditionId": "0x9b5b71436a4b38c0818670ff2143bc4fc2ce380299d94624360d0bb76d50ab8f",
+    "titolo": "Will the highest temperature in Ankara be 28°C on August 14?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 5.81,
+    "oreAllaScadenza": null,
+    "sulBoard": false,
+    "minSize": null
+   },
+   {
+    "conditionId": "0x936dd1749d15d03dcef0713d01a5e5d39783153261ddb34dba9043c2efb128e8",
+    "titolo": "Will Ted Cruz post 160-179 posts from August 7 to August 14, 2026?",
+    "gambe": 1,
+    "nuda": true,
+    "nozionale": 2.73,
+    "oreAllaScadenza": null,
+    "sulBoard": false,
+    "minSize": null
+   }
+  ]
+ },
+ "C_nostriResidui": {
+  "totali": 25,
+  "sottoIlMinimoDelVenue": 21,
+  "nozionaleBloccato": 145.07,
+  "nozionaleSottoMinimo": 106.06,
+  "frazioneDelMinimoMediana": 0.45,
+  "perMercato": {
+   "mercatiDistinti": 25,
+   "fuoriDalBoard": 7,
+   "sotto18h": 18,
+   "sopra18h": 0
+  }
+ }
+}

@@ -1,0 +1,4598 @@
+{
+ "generatoIso": "2026-08-13T20:25:29.385Z",
+ "fonte": "data/history/rewards-poly (fotografie agent24, ~1 ogni 42 min)",
+ "finestraGiorni": 7,
+ "finestraDa": "2026-08-06T20:17:13.603Z",
+ "finestraA": "2026-08-13T20:17:13.603Z",
+ "fotografie": 256,
+ "minHorizonDays": 0.75,
+ "costoCoppiaUsato": 0.98,
+ "perFotoMediane": {
+  "mercatiCortiMediano": 19,
+  "mercatiCortiMin": 0,
+  "mercatiCortiMax": 95,
+  "mercatiAmmessiMediano": 80.5,
+  "montepremiCortiMediano": 3494.333333,
+  "montepremiAmmessiMediano": 4380.5,
+  "senzaDataMediano": 0
+ },
+ "mercatiDistinti": {
+  "totali": 1384,
+  "toccatiDallaFasciaCorta": 1011,
+  "natiCorti": 450,
+  "soloCodaTagliata": 561
+ },
+ "riassunti": [
+  {
+   "nome": "tutti i corti",
+   "mercati": 1011,
+   "montepremiSommaUsdGiorno": 230760.67,
+   "montepremiMediano": 73,
+   "montepremiQ1": 53,
+   "montepremiQ3": 110,
+   "montepremiMax": 7500
+  },
+  {
+   "nome": "NATI CORTI (mai sopra il pavimento)",
+   "mercati": 450,
+   "montepremiSommaUsdGiorno": 185706.67,
+   "montepremiMediano": 96.75,
+   "montepremiQ1": 57,
+   "montepremiQ3": 333.333333,
+   "montepremiMax": 7500
+  },
+  {
+   "nome": "solo coda tagliata",
+   "mercati": 561,
+   "montepremiSommaUsdGiorno": 45054,
+   "montepremiMediano": 59,
+   "montepremiQ1": 52.5,
+   "montepremiQ3": 94.5,
+   "montepremiMax": 526
+  }
+ ],
+ "pavimentoPremiante": {
+  "distribuzioneMinSize": {
+   "20": 377,
+   "50": 213,
+   "100": 407,
+   "200": 13,
+   "500": 1
+  },
+  "finanziabiliASoglia": {
+   "50": 590,
+   "98": 997,
+   "32.67": 377,
+   "61.25": 590
+  },
+  "nota": "pavimento = minSize × 0,98; su tick 0,001 sarebbe ×0,998, +1,8% — non sposta nessuna soglia qui"
+ },
+ "banda": {
+  "cortiMediana": 4.5,
+  "cortiQ1": 4.5,
+  "cortiQ3": 4.5,
+  "ammessiMediana": 4.5,
+  "ammessiQ1": 4.5,
+  "ammessiQ3": 4.5
+ },
+ "profonditaUsdTotaleBook": {
+  "cortiMediana": 200,
+  "cortiQ1": 69.5,
+  "cortiQ3": 496,
+  "ammessiMediana": 503,
+  "ammessiQ1": 124,
+  "ammessiQ3": 2924,
+  "nota": "existingLiquidityUsd = book TOTALE, non la profondità in banda che il pianificatore usa"
+ },
+ "vitaUtile": {
+  "natiCortiOreMediana": 5.863003055555556,
+  "natiCortiOreQ1": 2.2704205555555554,
+  "natiCortiOreQ3": 10.505974166666666,
+  "natiCortiOreMin": 0.00004166666666666667,
+  "natiCortiOreMax": 17.97038277777778,
+  "soloCodaOreSopraPavimentoMediana": 11.031889166666668,
+  "soloCodaOreTagliate": 18
+ },
+ "elencoNatiCorti": [
+  {
+   "titolo": "Bitcoin Up or Down - August 8, 10:00PM-10:15PM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.1,
+   "depthUsd": 62,
+   "mid": 0.38
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 9, 8:00PM-8:15PM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 709,
+   "mid": 0.965
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 9, 10:00PM-10:15PM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 6,
+   "mid": 0.025
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 9, 10:30PM-10:45PM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 574,
+   "mid": 0.87
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 9, 11:15PM-11:30PM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 1636,
+   "mid": 0.985
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 10, 5:45AM-6:00AM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 31,
+   "mid": 0.019
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 10, 11:45AM-12:00PM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 51,
+   "mid": 0.065
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 10, 1:30PM-1:45PM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 541,
+   "mid": 0.73
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 10, 9:45PM-10:00PM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 1425,
+   "mid": 0.975
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 11, 3:30AM-3:45AM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 10878,
+   "mid": 0.9944999999999999
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 11, 4:15AM-4:30AM ET",
+   "pot": 7500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 424,
+   "mid": 0.705
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 8, 8:00PM-12:00AM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1.8,
+   "depthUsd": 63,
+   "mid": 0.10625000000000001
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 9, 8:00PM-12:00AM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.8,
+   "depthUsd": 612.5,
+   "mid": 0.5825
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 10, 12:00AM-4:00AM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.7,
+   "depthUsd": 1019,
+   "mid": 0.85375
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 10, 4:00AM-8:00AM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 15,
+   "mid": 0.004999999999999999
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 10, 8:00AM-12:00PM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.8,
+   "depthUsd": 18.5,
+   "mid": 0.00825
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 10, 12:00PM-4:00PM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 320,
+   "mid": 0.10500000000000001
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 10, 4:00PM-8:00PM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.8,
+   "depthUsd": 338,
+   "mid": 0.555
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 10, 8:00PM-12:00AM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 3505,
+   "mid": 0.9984999999999999
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 11, 12:00AM-4:00AM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 287,
+   "mid": 0.315
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 11, 4:00AM-8:00AM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 955,
+   "mid": 0.8375
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 11, 12:00PM-4:00PM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.2,
+   "depthUsd": 62,
+   "mid": 0.0075
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 11, 4:00PM-8:00PM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2,
+   "depthUsd": 792,
+   "mid": 0.895
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 11, 8:00PM-12:00AM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.5,
+   "depthUsd": 185,
+   "mid": 0.925
+  },
+  {
+   "titolo": "Bitcoin Up or Down - August 12, 4:00AM-8:00AM ET",
+   "pot": 1666.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 383,
+   "mid": 0.92
+  },
+  {
+   "titolo": "Will David Crowley win the Wisconsin Democratic Governor primary by 0.2–0.4%?",
+   "pot": 1000,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 18,
+   "depthUsd": 829,
+   "mid": 0.185
+  },
+  {
+   "titolo": "Will David Crowley win the Wisconsin Democratic Governor primary by 0.4–0.6%?",
+   "pot": 1000,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 18,
+   "depthUsd": 900,
+   "mid": 0.735
+  },
+  {
+   "titolo": "Will David Crowley win the Wisconsin Democratic Governor primary by less than 0.2%?",
+   "pot": 1000,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 13,
+   "depthUsd": 434,
+   "mid": 0.0325
+  },
+  {
+   "titolo": "Will David Crowley win the Wisconsin Democratic Governor primary by 0.6–0.8%?",
+   "pot": 1000,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 13,
+   "depthUsd": 688.5,
+   "mid": 0.02725
+  },
+  {
+   "titolo": "Will David Crowley win the Wisconsin Democratic Governor primary by 0.8–1%?",
+   "pot": 1000,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 13,
+   "depthUsd": 496,
+   "mid": 0.01375
+  },
+  {
+   "titolo": "Will David Crowley win the Wisconsin Democratic Governor primary by 1–1.2%?",
+   "pot": 1000,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 13,
+   "depthUsd": 226,
+   "mid": 0.011
+  },
+  {
+   "titolo": "XRP Up or Down - August 9, 1:00AM-1:15AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 66,
+   "mid": 0.92
+  },
+  {
+   "titolo": "Solana Up or Down - August 9, 5:15PM-5:30PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 41,
+   "mid": 0.885
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 9, 8:00PM-8:15PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 54,
+   "mid": 0.98
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 9, 10:00PM-10:15PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 7,
+   "mid": 0.065
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 9, 10:30PM-10:45PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 205,
+   "mid": 0.835
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 10, 3:00AM-3:15AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 3,
+   "mid": 0.575
+  },
+  {
+   "titolo": "Solana Up or Down - August 10, 3:30AM-3:45AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 133,
+   "mid": 0.935
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 10, 6:30AM-6:45AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 20,
+   "mid": 0.375
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 7:45AM-8:00AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 16,
+   "mid": 0.76
+  },
+  {
+   "titolo": "Solana Up or Down - August 10, 7:45AM-8:00AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 209,
+   "mid": 0.96
+  },
+  {
+   "titolo": "Solana Up or Down - August 10, 8:15AM-8:30AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 6,
+   "mid": 0.18
+  },
+  {
+   "titolo": "Solana Up or Down - August 10, 9:00AM-9:15AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 158,
+   "mid": 0.935
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 9:30AM-9:45AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 2,
+   "mid": 0.06
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 10:15AM-10:30AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 13,
+   "mid": 0.185
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 11:00AM-11:15AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 35,
+   "mid": 0.305
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 1:30PM-1:45PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 24,
+   "mid": 0.5650000000000001
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 2:15PM-2:30PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 44,
+   "mid": 0.69
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 2:45PM-3:00PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 75,
+   "mid": 0.31
+  },
+  {
+   "titolo": "Solana Up or Down - August 10, 3:30PM-3:45PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 0,
+   "mid": 0.835
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 4:00PM-4:15PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 88,
+   "mid": 0.755
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 5:30PM-5:45PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 76,
+   "mid": 0.52
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 5:30PM-5:45PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 135,
+   "mid": 0.355
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 6:00PM-6:15PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 311,
+   "mid": 0.695
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 7:15PM-7:30PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 0,
+   "mid": 0.33
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 8:30PM-8:45PM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 11,
+   "mid": 0.16499999999999998
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 11, 1:00AM-1:15AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 57,
+   "mid": 0.71
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 11, 2:15AM-2:30AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 16,
+   "mid": 0.20500000000000002
+  },
+  {
+   "titolo": "XRP Up or Down - August 11, 2:45AM-3:00AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 44,
+   "mid": 0.049999999999999996
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 11, 3:30AM-3:45AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 1837,
+   "mid": 0.9944999999999999
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 11, 4:15AM-4:30AM ET",
+   "pot": 833.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 41,
+   "mid": 0.705
+  },
+  {
+   "titolo": "Will Kai and Speed beat the Minecraft challenge by August 12?",
+   "pot": 500,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 3.8,
+   "depthUsd": 10921.5,
+   "mid": 0.77425
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 9, 11:15PM-11:30PM ET",
+   "pot": 416.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 89,
+   "mid": 0.9844999999999999
+  },
+  {
+   "titolo": "BNB Up or Down - August 10, 4:00PM-4:15PM ET",
+   "pot": 416.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 61,
+   "mid": 0.8500000000000001
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 10, 4:45PM-5:00PM ET",
+   "pot": 416.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 50,
+   "mid": 0.72
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 10, 5:30PM-5:45PM ET",
+   "pot": 416.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 23,
+   "mid": 0.33999999999999997
+  },
+  {
+   "titolo": "BNB Up or Down - August 10, 6:00PM-6:15PM ET",
+   "pot": 416.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 59,
+   "mid": 0.555
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 10, 6:00PM-6:15PM ET",
+   "pot": 416.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0,
+   "depthUsd": 61,
+   "mid": 0.575
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 8, 8:00PM-12:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.3,
+   "depthUsd": 137,
+   "mid": 0.575
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 9, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 143,
+   "mid": 0.715
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 9, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.2,
+   "depthUsd": 29,
+   "mid": 0.5800000000000001
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 9, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.5,
+   "depthUsd": 22,
+   "mid": 0.485
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 9, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.5,
+   "depthUsd": 57,
+   "mid": 0.295
+  },
+  {
+   "titolo": "XRP Up or Down - August 9, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.5,
+   "depthUsd": 7,
+   "mid": 0.006999999999999999
+  },
+  {
+   "titolo": "Solana Up or Down - August 9, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.5,
+   "depthUsd": 2,
+   "mid": 0.009
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 9, 8:00PM-12:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3,
+   "depthUsd": 91.5,
+   "mid": 0.8225
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.3,
+   "depthUsd": 124,
+   "mid": 0.7125
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 10, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.3,
+   "depthUsd": 70,
+   "mid": 0.605
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.8,
+   "depthUsd": 624,
+   "mid": 0.979
+  },
+  {
+   "titolo": "Solana Up or Down - August 10, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.8,
+   "depthUsd": 1018.5,
+   "mid": 0.93475
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 10, 4:00AM-8:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.2,
+   "depthUsd": 101,
+   "mid": 0.505
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 4:00AM-8:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.2,
+   "depthUsd": 49,
+   "mid": 0.135
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 4:00AM-8:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.8,
+   "depthUsd": 2,
+   "mid": 0.006500000000000001
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 8:00AM-12:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 24.5,
+   "mid": 0.08975
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 10, 8:00AM-12:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 15,
+   "mid": 0.135
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 8:00AM-12:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.3,
+   "depthUsd": 1,
+   "mid": 0.011000000000000001
+  },
+  {
+   "titolo": "Solana Up or Down - August 10, 8:00AM-12:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.8,
+   "depthUsd": 0.5,
+   "mid": 0.029
+  },
+  {
+   "titolo": "Solana Up or Down - August 10, 12:00PM-4:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1.5,
+   "depthUsd": 203,
+   "mid": 0.6950000000000001
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 12:00PM-4:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1.5,
+   "depthUsd": 60,
+   "mid": 0.295
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 12:00PM-4:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1.5,
+   "depthUsd": 10,
+   "mid": 0.10500000000000001
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 10, 12:00PM-4:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.3,
+   "depthUsd": 400,
+   "mid": 0.9944999999999999
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.8,
+   "depthUsd": 76,
+   "mid": 0.55
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 10, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3,
+   "depthUsd": 32.5,
+   "mid": 0.20275
+  },
+  {
+   "titolo": "Solana Up or Down - August 10, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3,
+   "depthUsd": 308,
+   "mid": 0.75
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1.3,
+   "depthUsd": 4,
+   "mid": 0.0055
+  },
+  {
+   "titolo": "Solana Up or Down - August 10, 8:00PM-12:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.5,
+   "depthUsd": 522,
+   "mid": 0.875
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 10, 8:00PM-12:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2,
+   "depthUsd": 569,
+   "mid": 0.9795
+  },
+  {
+   "titolo": "XRP Up or Down - August 10, 8:00PM-12:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.7,
+   "depthUsd": 356.5,
+   "mid": 0.92275
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 11, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.8,
+   "depthUsd": 92,
+   "mid": 0.16999999999999998
+  },
+  {
+   "titolo": "XRP Up or Down - August 11, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1,
+   "depthUsd": 12,
+   "mid": 0.03
+  },
+  {
+   "titolo": "Solana Up or Down - August 11, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.3,
+   "depthUsd": 4,
+   "mid": 0.003
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 11, 4:00AM-8:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 446,
+   "mid": 0.595
+  },
+  {
+   "titolo": "Solana Up or Down - August 11, 4:00AM-8:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.5,
+   "depthUsd": 568,
+   "mid": 0.981
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 11, 12:00PM-4:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1,
+   "depthUsd": 0,
+   "mid": 0.59
+  },
+  {
+   "titolo": "XRP Up or Down - August 11, 12:00PM-4:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1,
+   "depthUsd": 196,
+   "mid": 0.974
+  },
+  {
+   "titolo": "Solana Up or Down - August 11, 12:00PM-4:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.2,
+   "depthUsd": 1400,
+   "mid": 0.9984999999999999
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 11, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2,
+   "depthUsd": 119,
+   "mid": 0.595
+  },
+  {
+   "titolo": "Solana Up or Down - August 11, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1,
+   "depthUsd": 1438.5,
+   "mid": 0.98575
+  },
+  {
+   "titolo": "XRP Up or Down - August 11, 4:00PM-8:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.2,
+   "depthUsd": 613,
+   "mid": 0.9984999999999999
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 11, 8:00PM-12:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.7,
+   "depthUsd": 73,
+   "mid": 0.42000000000000004
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 11, 8:00PM-12:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3,
+   "depthUsd": 80,
+   "mid": 0.485
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 12, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.2,
+   "depthUsd": 37,
+   "mid": 0.5700000000000001
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 12, 12:00AM-4:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.5,
+   "depthUsd": 55.5,
+   "mid": 0.55
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 12, 4:00AM-8:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 74,
+   "mid": 0.695
+  },
+  {
+   "titolo": "XRP Up or Down - August 12, 4:00AM-8:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.7,
+   "depthUsd": 29,
+   "mid": 0.32
+  },
+  {
+   "titolo": "Ethereum Up or Down - August 12, 4:00AM-8:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1.5,
+   "depthUsd": 696,
+   "mid": 0.9795
+  },
+  {
+   "titolo": "Solana Up or Down - August 12, 4:00AM-8:00AM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.2,
+   "depthUsd": 1655,
+   "mid": 0.9944999999999999
+  },
+  {
+   "titolo": "Hyperliquid Up or Down - August 12, 8:00AM-12:00PM ET",
+   "pot": 333.333333,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.9,
+   "depthUsd": 80,
+   "mid": 0.535
+  },
+  {
+   "titolo": "Will monthly inflation increase by 0.1% or more in July?",
+   "pot": 268,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 13.2,
+   "depthUsd": 3191.5,
+   "mid": 0.715
+  },
+  {
+   "titolo": "Will Core CPI YoY be 2.4% in July?",
+   "pot": 247,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 13.2,
+   "depthUsd": 1126,
+   "mid": 0.43
+  },
+  {
+   "titolo": "Will Core CPI YoY be 2.5% in July?",
+   "pot": 247,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 12.7,
+   "depthUsd": 750,
+   "mid": 0.435
+  },
+  {
+   "titolo": "Will monthly inflation stay flat (0.0%) in July?",
+   "pot": 227,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 12.7,
+   "depthUsd": 855,
+   "mid": 0.25
+  },
+  {
+   "titolo": "Will the lowest temperature in Seoul (Incheon) be 26°C on August 11?",
+   "pot": 220,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 15,
+   "depthUsd": 143,
+   "mid": 0.5700000000000001
+  },
+  {
+   "titolo": "Will the highest temperature in New York City be between 88-89°F on August 11?",
+   "pot": 217.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.5,
+   "depthUsd": 736.5,
+   "mid": 0.5800000000000001
+  },
+  {
+   "titolo": "Will the highest temperature in Los Angeles be between 76-77°F on August 11?",
+   "pot": 212,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 4.3,
+   "depthUsd": 369,
+   "mid": 0.51
+  },
+  {
+   "titolo": "Will the lowest temperature in Seoul (Incheon) be 22°C on August 12?",
+   "pot": 209,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 15,
+   "depthUsd": 98,
+   "mid": 0.96
+  },
+  {
+   "titolo": "Will the highest temperature in Shanghai be 28°C on August 11?",
+   "pot": 208,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 10,
+   "depthUsd": 28,
+   "mid": 0.62
+  },
+  {
+   "titolo": "Will the highest temperature in Shanghai be 27°C on August 12?",
+   "pot": 208,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.2,
+   "depthUsd": 539,
+   "mid": 0.9127500000000001
+  },
+  {
+   "titolo": "Will the lowest temperature in Seoul (Incheon) be 22°C on August 13?",
+   "pot": 206,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 15.8,
+   "depthUsd": 11,
+   "mid": 0.07
+  },
+  {
+   "titolo": "Will the lowest temperature in New York City be between 74-75°F on August 11?",
+   "pot": 200,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 15,
+   "depthUsd": 95,
+   "mid": 0.45
+  },
+  {
+   "titolo": "Will Francesca Hong win the Wisconsin Democratic Governor primary by 0.4–0.6%?",
+   "pot": 200,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 18,
+   "depthUsd": 69,
+   "mid": 0.49
+  },
+  {
+   "titolo": "Will Francesca Hong win the Wisconsin Democratic Governor primary by 0.2–0.4%?",
+   "pot": 200,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 18,
+   "depthUsd": 69,
+   "mid": 0.49
+  },
+  {
+   "titolo": "Will David Crowley win the Wisconsin Democratic Governor primary by 1.2–1.4%?",
+   "pot": 200,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 18,
+   "depthUsd": 69,
+   "mid": 0.48
+  },
+  {
+   "titolo": "Will David Crowley win the Wisconsin Democratic Governor primary by at least 2%?",
+   "pot": 200,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 18,
+   "depthUsd": 62,
+   "mid": 0.44
+  },
+  {
+   "titolo": "Will the highest temperature in Shenzhen be 36°C on August 13?",
+   "pot": 200,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 5,
+   "depthUsd": 37,
+   "mid": 0.98
+  },
+  {
+   "titolo": "Will the lowest temperature in Shanghai be 28°C on August 11?",
+   "pot": 191,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 10.5,
+   "depthUsd": 62.5,
+   "mid": 0.3425
+  },
+  {
+   "titolo": "Will the lowest temperature in New York City be between 72-73°F on August 11?",
+   "pot": 187,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 22.5,
+   "mid": 0.3975
+  },
+  {
+   "titolo": "Will the lowest temperature in New York City be between 74-75°F on August 10?",
+   "pot": 181.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.3,
+   "depthUsd": 104.5,
+   "mid": 0.9199999999999999
+  },
+  {
+   "titolo": "Will the lowest temperature in New York City be between 72-73°F on August 10?",
+   "pot": 180,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 2.5,
+   "depthUsd": 8.5,
+   "mid": 0.065
+  },
+  {
+   "titolo": "Will the highest temperature in Los Angeles be between 74-75°F on August 13?",
+   "pot": 173,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 3.7,
+   "depthUsd": 186,
+   "mid": 0.4125
+  },
+  {
+   "titolo": "Will the lowest temperature in New York City be between 72-73°F on August 12?",
+   "pot": 167.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 4.7,
+   "depthUsd": 12.5,
+   "mid": 0.09
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 8, 8:00PM-12:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.3,
+   "depthUsd": 86,
+   "mid": 0.3275
+  },
+  {
+   "titolo": "BNB Up or Down - August 8, 8:00PM-12:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.3,
+   "depthUsd": 76,
+   "mid": 0.755
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 9, 12:00AM-4:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 63,
+   "mid": 0.575
+  },
+  {
+   "titolo": "BNB Up or Down - August 9, 12:00AM-4:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.8,
+   "depthUsd": 74,
+   "mid": 0.735
+  },
+  {
+   "titolo": "BNB Up or Down - August 9, 4:00PM-8:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.5,
+   "depthUsd": 71.5,
+   "mid": 0.2915
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 9, 8:00PM-12:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1.8,
+   "depthUsd": 88.5,
+   "mid": 0.94825
+  },
+  {
+   "titolo": "BNB Up or Down - August 10, 12:00AM-4:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.3,
+   "depthUsd": 81,
+   "mid": 0.685
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 10, 12:00AM-4:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.3,
+   "depthUsd": 413,
+   "mid": 0.9944999999999999
+  },
+  {
+   "titolo": "BNB Up or Down - August 10, 4:00AM-8:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.2,
+   "depthUsd": 69,
+   "mid": 0.615
+  },
+  {
+   "titolo": "BNB Up or Down - August 10, 8:00AM-12:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 0,
+   "mid": 0.20800000000000002
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 10, 8:00AM-12:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1.5,
+   "depthUsd": 57,
+   "mid": 0.10350000000000001
+  },
+  {
+   "titolo": "BNB Up or Down - August 10, 12:00PM-4:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 36,
+   "mid": 0.355
+  },
+  {
+   "titolo": "BNB Up or Down - August 10, 4:00PM-8:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1.8,
+   "depthUsd": 31,
+   "mid": 0.21500000000000002
+  },
+  {
+   "titolo": "BNB Up or Down - August 10, 8:00PM-12:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.3,
+   "depthUsd": 72,
+   "mid": 0.715
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 10, 8:00PM-12:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 0.7,
+   "depthUsd": 51.5,
+   "mid": 0.98475
+  },
+  {
+   "titolo": "BNB Up or Down - August 11, 12:00AM-4:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 53.5,
+   "mid": 0.515
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 11, 12:00AM-4:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.2,
+   "depthUsd": 45,
+   "mid": 0.445
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 11, 4:00AM-8:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 101,
+   "mid": 0.71
+  },
+  {
+   "titolo": "BNB Up or Down - August 11, 4:00AM-8:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 84,
+   "mid": 0.835
+  },
+  {
+   "titolo": "BNB Up or Down - August 11, 12:00PM-4:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1,
+   "depthUsd": 77,
+   "mid": 0.765
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 11, 12:00PM-4:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1,
+   "depthUsd": 67,
+   "mid": 0.665
+  },
+  {
+   "titolo": "BNB Up or Down - August 11, 4:00PM-8:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.7,
+   "depthUsd": 66,
+   "mid": 0.625
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 11, 4:00PM-8:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 1.5,
+   "depthUsd": 63,
+   "mid": 0.5375
+  },
+  {
+   "titolo": "BNB Up or Down - August 11, 8:00PM-12:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.7,
+   "depthUsd": 53.5,
+   "mid": 0.525
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 11, 8:00PM-12:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3,
+   "depthUsd": 97.5,
+   "mid": 0.675
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 12, 12:00AM-4:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.2,
+   "depthUsd": 41.5,
+   "mid": 0.41000000000000003
+  },
+  {
+   "titolo": "BNB Up or Down - August 12, 12:00AM-4:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.5,
+   "depthUsd": 73,
+   "mid": 0.545
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 12, 4:00AM-8:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 62.5,
+   "mid": 0.49
+  },
+  {
+   "titolo": "BNB Up or Down - August 12, 4:00AM-8:00AM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.5,
+   "depthUsd": 59,
+   "mid": 0.595
+  },
+  {
+   "titolo": "Dogecoin Up or Down - August 12, 8:00AM-12:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 3.7,
+   "depthUsd": 55.5,
+   "mid": 0.42500000000000004
+  },
+  {
+   "titolo": "BNB Up or Down - August 12, 8:00AM-12:00PM ET",
+   "pot": 166.666667,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 1.5,
+   "oreVita": 2.9,
+   "depthUsd": 7,
+   "mid": 0.215
+  },
+  {
+   "titolo": "Will the highest temperature in Los Angeles be between 78-79°F on August 12?",
+   "pot": 163,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 4,
+   "depthUsd": 162,
+   "mid": 0.27
+  },
+  {
+   "titolo": "Will the highest temperature in New York City be between 88-89°F on August 12?",
+   "pot": 162,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.2,
+   "depthUsd": 280,
+   "mid": 0.395
+  },
+  {
+   "titolo": "Will Khamenei post 15-19 posts from August 4 to August 11, 2026?",
+   "pot": 152,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 2.5,
+   "depthUsd": 6,
+   "mid": 0.015000000000000001
+  },
+  {
+   "titolo": "Will the lowest temperature in Shanghai be 25°C on August 12?",
+   "pot": 152,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 14,
+   "depthUsd": 6,
+   "mid": 0.1
+  },
+  {
+   "titolo": "Will the lowest temperature in Paris be 18°C on August 12?",
+   "pot": 144.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 13.5,
+   "depthUsd": 83,
+   "mid": 0.63025
+  },
+  {
+   "titolo": "Will the highest temperature in Busan be 32°C on August 11?",
+   "pot": 133,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 5,
+   "depthUsd": 2,
+   "mid": 0.014499999999999999
+  },
+  {
+   "titolo": "Will the highest temperature in Chengdu be 38°C on August 12?",
+   "pot": 133,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 4,
+   "depthUsd": 65,
+   "mid": 0.915
+  },
+  {
+   "titolo": "Will the highest temperature in Tel Aviv be 36°C on August 12?",
+   "pot": 133,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.2,
+   "depthUsd": 3,
+   "mid": 0.365
+  },
+  {
+   "titolo": "Will the lowest temperature in Hong Kong be 30°C on August 13?",
+   "pot": 123.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 10.5,
+   "depthUsd": 108,
+   "mid": 0.735
+  },
+  {
+   "titolo": "Will the most viewed TV show for the week of August 3 - August 9 have between 8.5 million and 9 million viewers?",
+   "pot": 122.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 13.2,
+   "depthUsd": 26.5,
+   "mid": 0.5225
+  },
+  {
+   "titolo": "Will the highest temperature in Tokyo be 32°C on August 11?",
+   "pot": 120,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8.7,
+   "depthUsd": 5,
+   "mid": 0.11
+  },
+  {
+   "titolo": "Will the highest temperature in Tokyo be 30°C on August 12?",
+   "pot": 120,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6,
+   "depthUsd": 12,
+   "mid": 0.04
+  },
+  {
+   "titolo": "Will fewer than 180 ships transit the Bab el-Mandeb Strait between August 3-August 9?",
+   "pot": 116,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 12,
+   "depthUsd": 63.5,
+   "mid": 0.535
+  },
+  {
+   "titolo": "Will the highest temperature in New York City be between 90-91°F on August 11?",
+   "pot": 114,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.5,
+   "depthUsd": 28,
+   "mid": 0.22
+  },
+  {
+   "titolo": "Will the highest temperature in Tokyo be 29°C on August 12?",
+   "pot": 111.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.5,
+   "depthUsd": 216,
+   "mid": 0.9400000000000001
+  },
+  {
+   "titolo": "Will the highest temperature in Kuala Lumpur be 35°C on August 10?",
+   "pot": 111,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 4.8,
+   "depthUsd": 3,
+   "mid": 0.11
+  },
+  {
+   "titolo": "Will the highest temperature in Tokyo be 30°C on August 11?",
+   "pot": 110,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 9.3,
+   "depthUsd": 111,
+   "mid": 0.001
+  },
+  {
+   "titolo": "Will the highest temperature in Shenzhen be 37°C on August 11?",
+   "pot": 109.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 5.5,
+   "depthUsd": 59.5,
+   "mid": 0.4525
+  },
+  {
+   "titolo": "Will the highest temperature in Ankara be 32°C on August 9?",
+   "pot": 109,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.5,
+   "depthUsd": 30,
+   "mid": 0.675
+  },
+  {
+   "titolo": "Will the highest temperature in Tokyo be 31°C on August 11?",
+   "pot": 108.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8.7,
+   "depthUsd": 146,
+   "mid": 0.885
+  },
+  {
+   "titolo": "Will the highest temperature in Lucknow be 32°C on August 10?",
+   "pot": 108,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 3.2,
+   "depthUsd": 40,
+   "mid": 0.585
+  },
+  {
+   "titolo": "Will the highest temperature in Milan be 34°C on August 10?",
+   "pot": 108,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.5,
+   "depthUsd": 28.5,
+   "mid": 0.5
+  },
+  {
+   "titolo": "Will the highest temperature in Amsterdam be 23°C on August 11?",
+   "pot": 108,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.3,
+   "depthUsd": 175,
+   "mid": 0.54
+  },
+  {
+   "titolo": "Will the highest temperature in Busan be 32°C on August 10?",
+   "pot": 107,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.3,
+   "depthUsd": 274,
+   "mid": 0.9450000000000001
+  },
+  {
+   "titolo": "Will the highest temperature in London be 24°C on August 11?",
+   "pot": 106,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 146,
+   "mid": 0.495
+  },
+  {
+   "titolo": "Will the highest temperature in Atlanta be between 92-93°F on August 10?",
+   "pot": 105.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.3,
+   "depthUsd": 198.5,
+   "mid": 0.4925
+  },
+  {
+   "titolo": "Will the highest temperature in Paris be 34°C on August 9?",
+   "pot": 105,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.5,
+   "depthUsd": 181,
+   "mid": 0.44999999999999996
+  },
+  {
+   "titolo": "Will the highest temperature in Panama City be 33°C on August 10?",
+   "pot": 105,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 3.8,
+   "depthUsd": 719,
+   "mid": 0.545
+  },
+  {
+   "titolo": "Will the highest temperature in Lucknow be 35°C on August 12?",
+   "pot": 104.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 17,
+   "depthUsd": 1231,
+   "mid": 0.44
+  },
+  {
+   "titolo": "Will the highest temperature in Atlanta be between 92-93°F on August 11?",
+   "pot": 104,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.5,
+   "depthUsd": 581,
+   "mid": 0.46249999999999997
+  },
+  {
+   "titolo": "Will UK GDP growth in Q2 2026 be between 0.4% and 0.5%?",
+   "pot": 104,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.7,
+   "depthUsd": 213,
+   "mid": 0.59
+  },
+  {
+   "titolo": "Will the highest temperature in Denver be between 94-95°F on August 12?",
+   "pot": 104,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.2,
+   "depthUsd": 474,
+   "mid": 0.45
+  },
+  {
+   "titolo": "Will the highest temperature in New York City be between 86-87°F on August 11?",
+   "pot": 103,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 3.5,
+   "depthUsd": 100,
+   "mid": 0.21000000000000002
+  },
+  {
+   "titolo": "Will the highest temperature in Manila be 32°C on August 10?",
+   "pot": 102,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.7,
+   "depthUsd": 387,
+   "mid": 0.9430000000000001
+  },
+  {
+   "titolo": "Will the highest temperature in Warsaw be 22°C on August 11?",
+   "pot": 102,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.3,
+   "depthUsd": 314,
+   "mid": 0.47
+  },
+  {
+   "titolo": "Will the highest temperature in Madrid be 36°C on August 11?",
+   "pot": 101,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.8,
+   "depthUsd": 130,
+   "mid": 0.49
+  },
+  {
+   "titolo": "Will Donald Trump post 200+ Truth Social posts from August 4 to August 11, 2026?",
+   "pot": 101,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 15.3,
+   "depthUsd": 34,
+   "mid": 0.28
+  },
+  {
+   "titolo": "Will the highest temperature in San Francisco be between 70-71°F on August 11?",
+   "pot": 101,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 4.3,
+   "depthUsd": 797,
+   "mid": 0.435
+  },
+  {
+   "titolo": "Will the highest temperature in Istanbul be 27°C on August 11?",
+   "pot": 100.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 14.3,
+   "depthUsd": 544,
+   "mid": 0.4525
+  },
+  {
+   "titolo": "S&P 500 (SPX) Opens Up or Down on August 10?",
+   "pot": 100,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 3.5,
+   "oreVita": 14.7,
+   "depthUsd": 179.5,
+   "mid": 0.6625
+  },
+  {
+   "titolo": "Will the highest temperature in Istanbul be 29°C on August 10?",
+   "pot": 100,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.5,
+   "depthUsd": 10,
+   "mid": 0.165
+  },
+  {
+   "titolo": "Will the highest temperature in Helsinki be 24°C on August 10?",
+   "pot": 100,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 1.3,
+   "depthUsd": 6,
+   "mid": 0.36
+  },
+  {
+   "titolo": "Will the highest temperature in Sao Paulo be 17°C on August 11?",
+   "pot": 100,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 8.7,
+   "depthUsd": 5948,
+   "mid": 0.45
+  },
+  {
+   "titolo": "S&P 500 (SPX) Opens Up or Down on August 11?",
+   "pot": 100,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7,
+   "depthUsd": 193,
+   "mid": 0.905
+  },
+  {
+   "titolo": "Will Rebecca Cooke be the WI-03 Democratic nominee?",
+   "pot": 100,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 3,
+   "depthUsd": 1936,
+   "mid": 0.9435
+  },
+  {
+   "titolo": "Will the lowest temperature in Hong Kong be 30°C on August 12?",
+   "pot": 100,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 11,
+   "depthUsd": 281,
+   "mid": 0.8915
+  },
+  {
+   "titolo": "Will the highest temperature in Qingdao be 33°C on August 12?",
+   "pot": 100,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.2,
+   "depthUsd": 3,
+   "mid": 0.12000000000000001
+  },
+  {
+   "titolo": "Will Nigel Farage win the 2026 Clacton by-election by 30% or more?",
+   "pot": 100,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 17.2,
+   "depthUsd": 2737.5,
+   "mid": 0.92925
+  },
+  {
+   "titolo": "Will the highest temperature in Wuhan be 29°C on August 12?",
+   "pot": 100,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 5.2,
+   "depthUsd": 8,
+   "mid": 0.135
+  },
+  {
+   "titolo": "Will the highest temperature in Kuala Lumpur be 35°C on August 12?",
+   "pot": 100,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 4.7,
+   "depthUsd": 17,
+   "mid": 0.011000000000000001
+  },
+  {
+   "titolo": "Will the lowest temperature in Miami be between 82-83°F on August 11?",
+   "pot": 99,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.5,
+   "depthUsd": 42,
+   "mid": 0.44
+  },
+  {
+   "titolo": "Will the highest temperature in New York City be between 88-89°F on August 10?",
+   "pot": 97,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6.7,
+   "depthUsd": 131,
+   "mid": 0.255
+  },
+  {
+   "titolo": "Will the highest temperature in Chicago be between 84-85°F on August 10?",
+   "pot": 97,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 3.8,
+   "depthUsd": 1151,
+   "mid": 0.43
+  },
+  {
+   "titolo": "Will the highest temperature in Manila be 28°C on August 13?",
+   "pot": 96.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 9,
+   "depthUsd": 153,
+   "mid": 0.797
+  },
+  {
+   "titolo": "Will the highest temperature in Guangzhou be 38°C on August 11?",
+   "pot": 96,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.5,
+   "depthUsd": 37,
+   "mid": 0.10500000000000001
+  },
+  {
+   "titolo": "Will the highest temperature in Ankara be 30°C on August 10?",
+   "pot": 95,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 14.5,
+   "depthUsd": 157,
+   "mid": 0.44
+  },
+  {
+   "titolo": "Will the highest temperature in Austin be between 98-99°F on August 10?",
+   "pot": 95,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6,
+   "depthUsd": 146,
+   "mid": 0.43999999999999995
+  },
+  {
+   "titolo": "Will the lowest temperature in Tokyo be 22°C on August 12?",
+   "pot": 95,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 15.7,
+   "depthUsd": 16,
+   "mid": 0.205
+  },
+  {
+   "titolo": "Will the highest temperature in Wuhan be 28°C on August 12?",
+   "pot": 93.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.7,
+   "depthUsd": 36,
+   "mid": 0.68
+  },
+  {
+   "titolo": "Will the highest temperature in Moscow be 24°C on August 11?",
+   "pot": 93,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 14.3,
+   "depthUsd": 303,
+   "mid": 0.45999999999999996
+  },
+  {
+   "titolo": "Will the highest temperature in Hong Kong be 35°C on August 12?",
+   "pot": 92,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 12.2,
+   "depthUsd": 33,
+   "mid": 0.4275
+  },
+  {
+   "titolo": "Will the highest temperature in Sao Paulo be 17°C on August 10?",
+   "pot": 90,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 939,
+   "mid": 0.41000000000000003
+  },
+  {
+   "titolo": "Will the highest temperature in Milan be 35°C on August 11?",
+   "pot": 90,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.3,
+   "depthUsd": 93,
+   "mid": 0.31999999999999995
+  },
+  {
+   "titolo": "Will the lowest temperature in Miami be between 80-81°F on August 11?",
+   "pot": 90,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 0.5,
+   "depthUsd": 6,
+   "mid": 0.055
+  },
+  {
+   "titolo": "Will the lowest temperature in Tokyo be 22°C on August 11?",
+   "pot": 89.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 15.8,
+   "depthUsd": 5.5,
+   "mid": 0.08
+  },
+  {
+   "titolo": "Will the highest temperature in Shenzhen be 38°C on August 11?",
+   "pot": 89,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 4.3,
+   "depthUsd": 2,
+   "mid": 0.032
+  },
+  {
+   "titolo": "Will the highest temperature in Paris be 36°C on August 12?",
+   "pot": 89,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.5,
+   "depthUsd": 68.5,
+   "mid": 0.2975
+  },
+  {
+   "titolo": "Will the lowest temperature in Paris be 18°C on August 11?",
+   "pot": 88,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 11.3,
+   "depthUsd": 60,
+   "mid": 0.36
+  },
+  {
+   "titolo": "Will the highest temperature in Manila be 32°C on August 11?",
+   "pot": 87.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.5,
+   "depthUsd": 10.5,
+   "mid": 0.10999999999999999
+  },
+  {
+   "titolo": "Will the highest temperature in Manila be 33°C on August 10?",
+   "pot": 87,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.7,
+   "depthUsd": 8,
+   "mid": 0.037500000000000006
+  },
+  {
+   "titolo": "Will the highest temperature in Chicago be between 80-81°F on August 11?",
+   "pot": 87,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6.2,
+   "depthUsd": 133,
+   "mid": 0.37
+  },
+  {
+   "titolo": "Will the highest temperature in Buenos Aires be 13°C on August 12?",
+   "pot": 87,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 549.5,
+   "mid": 0.36
+  },
+  {
+   "titolo": "Will the highest temperature in Warsaw be 32°C on August 10?",
+   "pot": 86,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.3,
+   "depthUsd": 641,
+   "mid": 0.38
+  },
+  {
+   "titolo": "Will the highest temperature in Austin be between 100-101°F on August 11?",
+   "pot": 86,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6.2,
+   "depthUsd": 193,
+   "mid": 0.405
+  },
+  {
+   "titolo": "Will the highest temperature in London be 32°C on August 9?",
+   "pot": 85,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.5,
+   "depthUsd": 331,
+   "mid": 0.405
+  },
+  {
+   "titolo": "Will the highest temperature in Chicago be between 80-81°F on August 13?",
+   "pot": 85,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5,
+   "depthUsd": 221,
+   "mid": 0.38
+  },
+  {
+   "titolo": "Will the highest temperature in Guangzhou be 33°C on August 13?",
+   "pot": 84.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 10.5,
+   "depthUsd": 16.5,
+   "mid": 0.5015000000000001
+  },
+  {
+   "titolo": "Will the highest temperature in Tel Aviv be 36°C on August 11?",
+   "pot": 84,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 14.3,
+   "depthUsd": 258,
+   "mid": 0.27
+  },
+  {
+   "titolo": "Will the highest temperature in Denver be between 94-95°F on August 11?",
+   "pot": 84,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.5,
+   "depthUsd": 162,
+   "mid": 0.23249999999999998
+  },
+  {
+   "titolo": "Will the highest temperature in Sao Paulo be 16°C on August 11?",
+   "pot": 83.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 8,
+   "depthUsd": 297,
+   "mid": 0.395
+  },
+  {
+   "titolo": "Will the highest temperature in Helsinki be 17°C on August 12?",
+   "pot": 83,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 0.2,
+   "depthUsd": 158,
+   "mid": 0.72
+  },
+  {
+   "titolo": "Will the highest temperature in Dallas be between 102-103°F on August 12?",
+   "pot": 82.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6.5,
+   "depthUsd": 115,
+   "mid": 0.27
+  },
+  {
+   "titolo": "Will the highest temperature in Chengdu be 39°C on August 12?",
+   "pot": 81.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 4,
+   "depthUsd": 4,
+   "mid": 0.262
+  },
+  {
+   "titolo": "Will the lowest temperature in Hong Kong be 28°C on August 11?",
+   "pot": 81,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 15.8,
+   "depthUsd": 55,
+   "mid": 0.075
+  },
+  {
+   "titolo": "Will the highest temperature in Milan be 36°C on August 13?",
+   "pot": 81,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 13,
+   "depthUsd": 26,
+   "mid": 0.245
+  },
+  {
+   "titolo": "Will the highest temperature in Austin be between 102-103°F on August 13?",
+   "pot": 80.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.8,
+   "depthUsd": 184.5,
+   "mid": 0.235
+  },
+  {
+   "titolo": "Will the highest temperature in Busan be 31°C on August 11?",
+   "pot": 80,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 11.3,
+   "depthUsd": 56,
+   "mid": 0.54
+  },
+  {
+   "titolo": "Will the highest temperature in Tokyo be 33°C or higher on August 11?",
+   "pot": 80,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 3,
+   "mid": 0.037
+  },
+  {
+   "titolo": "Will the highest temperature in Karachi be 32°C on August 12?",
+   "pot": 80,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 16.2,
+   "depthUsd": 314,
+   "mid": 0.36
+  },
+  {
+   "titolo": "Will the highest temperature in Toronto be 26°C on August 12?",
+   "pot": 80,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.2,
+   "depthUsd": 546,
+   "mid": 0.33499999999999996
+  },
+  {
+   "titolo": "Will the highest temperature in Seoul (Incheon) be 30°C on August 13?",
+   "pot": 79,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 11,
+   "depthUsd": 6,
+   "mid": 0.47000000000000003
+  },
+  {
+   "titolo": "Will the highest temperature in Lucknow be 35°C on August 11?",
+   "pot": 78.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 17,
+   "depthUsd": 50.5,
+   "mid": 0.265
+  },
+  {
+   "titolo": "Will the highest temperature in Houston be between 92-93°F on August 11?",
+   "pot": 78.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.5,
+   "depthUsd": 298,
+   "mid": 0.355
+  },
+  {
+   "titolo": "Will the highest temperature in Seattle be between 76-77°F on August 11?",
+   "pot": 78,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 4.3,
+   "depthUsd": 234,
+   "mid": 0.355
+  },
+  {
+   "titolo": "Will the highest temperature in Busan be 33°C on August 10?",
+   "pot": 77,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.3,
+   "depthUsd": 8,
+   "mid": 0.046
+  },
+  {
+   "titolo": "Will the highest temperature in Mexico City be 23°C on August 10?",
+   "pot": 77,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.5,
+   "depthUsd": 30,
+   "mid": 0.355
+  },
+  {
+   "titolo": "Will the highest temperature in Qingdao be 29°C on August 13?",
+   "pot": 77,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 21,
+   "mid": 0.5549999999999999
+  },
+  {
+   "titolo": "Will the highest temperature in Qingdao be 30°C on August 11?",
+   "pot": 76.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 11.3,
+   "depthUsd": 29.5,
+   "mid": 0.43
+  },
+  {
+   "titolo": "Will the highest temperature in Helsinki be 18°C on August 11?",
+   "pot": 76,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 14.3,
+   "depthUsd": 513,
+   "mid": 0.33999999999999997
+  },
+  {
+   "titolo": "Will the highest temperature in Chicago be between 80-81°F on August 12?",
+   "pot": 76,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6,
+   "depthUsd": 258,
+   "mid": 0.32
+  },
+  {
+   "titolo": "Will the highest temperature in Beijing be 25°C on August 12?",
+   "pot": 75.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 17.7,
+   "depthUsd": 15.5,
+   "mid": 0.30500000000000005
+  },
+  {
+   "titolo": "Will the highest temperature in Lucknow be 33°C on August 11?",
+   "pot": 75,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 3.5,
+   "depthUsd": 74,
+   "mid": 0.001
+  },
+  {
+   "titolo": "Will the highest temperature in Wuhan be 30°C on August 11?",
+   "pot": 74.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 10.5,
+   "depthUsd": 29,
+   "mid": 0.365
+  },
+  {
+   "titolo": "Will the highest temperature in San Francisco be between 68-69°F on August 10?",
+   "pot": 74,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 3.8,
+   "depthUsd": 216.5,
+   "mid": 0.325
+  },
+  {
+   "titolo": "Will the highest temperature in Los Angeles be between 80-81°F on August 10?",
+   "pot": 74,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 1.3,
+   "depthUsd": 153,
+   "mid": 0.16999999999999998
+  },
+  {
+   "titolo": "Will the highest temperature in Cape Town be 20°C on August 11?",
+   "pot": 74,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 8,
+   "depthUsd": 139,
+   "mid": 0.355
+  },
+  {
+   "titolo": "Will the highest temperature in Warsaw be 22°C on August 12?",
+   "pot": 74,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 0.2,
+   "depthUsd": 5,
+   "mid": 0.385
+  },
+  {
+   "titolo": "Will the highest temperature in Guangzhou be 34°C on August 13?",
+   "pot": 73.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 11,
+   "depthUsd": 32,
+   "mid": 0.2375
+  },
+  {
+   "titolo": "Will the highest temperature in Ankara be 32°C on August 10?",
+   "pot": 73,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 0,
+   "depthUsd": 6,
+   "mid": 0.485
+  },
+  {
+   "titolo": "Will the highest temperature in Paris be 33°C on August 11?",
+   "pot": 73,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 152,
+   "mid": 0.255
+  },
+  {
+   "titolo": "Will the highest temperature in Chengdu be 34°C on August 11?",
+   "pot": 73,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 10.5,
+   "depthUsd": 59,
+   "mid": 0.215
+  },
+  {
+   "titolo": "Will the highest temperature in Panama City be 35°C on August 11?",
+   "pot": 73,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6.2,
+   "depthUsd": 100,
+   "mid": 0.3525
+  },
+  {
+   "titolo": "Will the highest temperature in Tokyo be 28°C on August 12?",
+   "pot": 73,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.2,
+   "depthUsd": 113,
+   "mid": 0.001
+  },
+  {
+   "titolo": "Will the highest temperature in Sao Paulo be 25°C on August 12?",
+   "pot": 72,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 236.5,
+   "mid": 0.31
+  },
+  {
+   "titolo": "Will the highest temperature in New York City be between 84-85°F on August 13?",
+   "pot": 72,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.8,
+   "depthUsd": 39,
+   "mid": 0.2
+  },
+  {
+   "titolo": "Will voter turnout be between 60% and 70% in the first round of the 2026 Zambian presidential elections?",
+   "pot": 71.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 12.7,
+   "depthUsd": 60.5,
+   "mid": 0.565
+  },
+  {
+   "titolo": "Will the highest temperature in Seoul (Incheon) be 31°C on August 11?",
+   "pot": 71,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 9.3,
+   "depthUsd": 14.5,
+   "mid": 0.2
+  },
+  {
+   "titolo": "Will the highest temperature in Munich be 31°C on August 12?",
+   "pot": 71,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.5,
+   "depthUsd": 144,
+   "mid": 0.315
+  },
+  {
+   "titolo": "Will the highest temperature in Moscow be 23°C on August 10?",
+   "pot": 70,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 14.5,
+   "depthUsd": 105,
+   "mid": 0.24
+  },
+  {
+   "titolo": "Will the highest temperature in Chicago be between 82-83°F on August 10?",
+   "pot": 70,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.5,
+   "depthUsd": 408,
+   "mid": 0.325
+  },
+  {
+   "titolo": "Will the highest temperature in Miami be between 90-91°F on August 13?",
+   "pot": 70,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.4,
+   "depthUsd": 208,
+   "mid": 0.20500000000000002
+  },
+  {
+   "titolo": "Will the highest temperature in Toronto be 27°C on August 12?",
+   "pot": 69.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.2,
+   "depthUsd": 163.5,
+   "mid": 0.33499999999999996
+  },
+  {
+   "titolo": "Will the lowest temperature in Miami be between 84-85°F on August 11?",
+   "pot": 69,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 4.3,
+   "depthUsd": 26,
+   "mid": 0.16075
+  },
+  {
+   "titolo": "Will the highest temperature in Singapore be 31°C on August 13?",
+   "pot": 69,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 13,
+   "mid": 0.23
+  },
+  {
+   "titolo": "Will the highest temperature in Panama City be 32°C on August 12?",
+   "pot": 68.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6.5,
+   "depthUsd": 56,
+   "mid": 0.3125
+  },
+  {
+   "titolo": "Will the highest temperature in Seoul (Incheon) be 35°C on August 11?",
+   "pot": 68,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 16.3,
+   "depthUsd": 127,
+   "mid": 0.175
+  },
+  {
+   "titolo": "Will the highest temperature in Lucknow be 34°C on August 13?",
+   "pot": 68,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 15.8,
+   "depthUsd": 85,
+   "mid": 0.32
+  },
+  {
+   "titolo": "Will the highest temperature in Jeddah be 41°C on August 11?",
+   "pot": 67.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 3.5,
+   "depthUsd": 16,
+   "mid": 0.3925
+  },
+  {
+   "titolo": "Will the highest temperature in Panama City be 32°C on August 13?",
+   "pot": 66.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.8,
+   "depthUsd": 12,
+   "mid": 0.275
+  },
+  {
+   "titolo": "Will the highest temperature in Paris be 33°C on August 9?",
+   "pot": 66,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.5,
+   "depthUsd": 200,
+   "mid": 0.3
+  },
+  {
+   "titolo": "Will the highest temperature in Toronto be 29°C on August 11?",
+   "pot": 65.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.5,
+   "depthUsd": 248.5,
+   "mid": 0.28500000000000003
+  },
+  {
+   "titolo": "Will the highest temperature in Taipei be 34°C on August 10?",
+   "pot": 65,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 13.3,
+   "depthUsd": 28,
+   "mid": 0.265
+  },
+  {
+   "titolo": "Will the highest temperature in Cape Town be 23°C on August 12?",
+   "pot": 65,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.5,
+   "depthUsd": 95,
+   "mid": 0.315
+  },
+  {
+   "titolo": "Will the highest temperature in Istanbul be 29°C on August 12?",
+   "pot": 65,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.5,
+   "depthUsd": 171,
+   "mid": 0.1975
+  },
+  {
+   "titolo": "Will the highest temperature in Shenzhen be 37°C on August 10?",
+   "pot": 64,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.8,
+   "depthUsd": 104,
+   "mid": 0.29500000000000004
+  },
+  {
+   "titolo": "Will the highest temperature in Buenos Aires be 11°C on August 11?",
+   "pot": 63,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 8.7,
+   "depthUsd": 251,
+   "mid": 0.29500000000000004
+  },
+  {
+   "titolo": "Will the highest temperature in Moscow be 17°C on August 12?",
+   "pot": 63,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 14.5,
+   "depthUsd": 148,
+   "mid": 0.265
+  },
+  {
+   "titolo": "Will the highest temperature in Jeddah be 40°C on August 12?",
+   "pot": 63,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 14,
+   "depthUsd": 202,
+   "mid": 0.305
+  },
+  {
+   "titolo": "Will the highest temperature in London be 34°C on August 13?",
+   "pot": 63,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 121,
+   "mid": 0.33
+  },
+  {
+   "titolo": "Will the highest temperature in Sao Paulo be 16°C on August 10?",
+   "pot": 62,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 0,
+   "depthUsd": 55,
+   "mid": 0.28
+  },
+  {
+   "titolo": "Will the highest temperature in Austin be between 102-103°F on August 12?",
+   "pot": 62,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.7,
+   "depthUsd": 184,
+   "mid": 0.19
+  },
+  {
+   "titolo": "Will the highest temperature in Moscow be 15°C on August 13?",
+   "pot": 62,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 14.3,
+   "depthUsd": 131,
+   "mid": 0.275
+  },
+  {
+   "titolo": "Will annual inflation be 3.5% in July?",
+   "pot": 61,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 13.2,
+   "depthUsd": 896.5,
+   "mid": 0.15000000000000002
+  },
+  {
+   "titolo": "Will the highest temperature in New York City be between 84-85°F on August 12?",
+   "pot": 61,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.2,
+   "depthUsd": 303,
+   "mid": 0.175
+  },
+  {
+   "titolo": "Will the highest temperature in Seattle be between 74-75°F on August 12?",
+   "pot": 61,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 4.7,
+   "depthUsd": 216.5,
+   "mid": 0.3275
+  },
+  {
+   "titolo": "Will the lowest temperature in Miami be between 78-79°F on August 12?",
+   "pot": 61,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 3.5,
+   "depthUsd": 28,
+   "mid": 0.27
+  },
+  {
+   "titolo": "Will the highest temperature in Lucknow be 30°C on August 14?",
+   "pot": 61,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 15.7,
+   "depthUsd": 176,
+   "mid": 0.275
+  },
+  {
+   "titolo": "Will the highest temperature in Atlanta be between 90-91°F on August 12?",
+   "pot": 60.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6.5,
+   "depthUsd": 86.5,
+   "mid": 0.2675
+  },
+  {
+   "titolo": "Will the lowest temperature in Paris be 17°C on August 10?",
+   "pot": 60,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 13.3,
+   "depthUsd": 8,
+   "mid": 0.25
+  },
+  {
+   "titolo": "Will the highest temperature in Houston be between 92-93°F on August 10?",
+   "pot": 60,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 1.3,
+   "depthUsd": 13,
+   "mid": 0.235
+  },
+  {
+   "titolo": "Will the highest temperature in Wuhan be 28°C on August 11?",
+   "pot": 60,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 8,
+   "depthUsd": 5,
+   "mid": 0.495
+  },
+  {
+   "titolo": "Will the highest temperature in Warsaw be 21°C on August 11?",
+   "pot": 60,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.3,
+   "depthUsd": 9,
+   "mid": 0.37
+  },
+  {
+   "titolo": "Will the highest temperature in Shenzhen be 37°C on August 12?",
+   "pot": 60,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.5,
+   "depthUsd": 11,
+   "mid": 0.115
+  },
+  {
+   "titolo": "Will the highest temperature in San Francisco be between 72-73°F on August 12?",
+   "pot": 60,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.7,
+   "depthUsd": 57,
+   "mid": 0.25
+  },
+  {
+   "titolo": "Will the highest temperature in Ankara be 33°C on August 12?",
+   "pot": 59.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 14.5,
+   "depthUsd": 65,
+   "mid": 0.20500000000000002
+  },
+  {
+   "titolo": "Will the highest temperature in Karachi be 32°C on August 10?",
+   "pot": 59,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 16.3,
+   "depthUsd": 140,
+   "mid": 0.22999999999999998
+  },
+  {
+   "titolo": "Will the highest temperature in Atlanta be between 90-91°F on August 11?",
+   "pot": 59,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 3.5,
+   "depthUsd": 330,
+   "mid": 0.28500000000000003
+  },
+  {
+   "titolo": "Will the highest temperature in Amsterdam be 27°C on August 12?",
+   "pot": 59,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 6,
+   "depthUsd": 17,
+   "mid": 0.255
+  },
+  {
+   "titolo": "Will the highest temperature in Karachi be 31°C on August 14?",
+   "pot": 59,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 16.4,
+   "depthUsd": 160,
+   "mid": 0.2
+  },
+  {
+   "titolo": "Will the highest temperature in San Francisco be between 72-73°F on August 11?",
+   "pot": 58,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.3,
+   "depthUsd": 344,
+   "mid": 0.2725
+  },
+  {
+   "titolo": "Will the highest temperature in Manila be 29°C on August 13?",
+   "pot": 58,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 9,
+   "mid": 0.195
+  },
+  {
+   "titolo": "Will Angie Craig win Dakota County in the Minnesota Democratic Senate primary?",
+   "pot": 57,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 11.5,
+   "depthUsd": 362.5,
+   "mid": 0.9025000000000001
+  },
+  {
+   "titolo": "Will the highest temperature in Chicago be between 82-83°F on August 11?",
+   "pot": 57,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.3,
+   "depthUsd": 1975.5,
+   "mid": 0.2575
+  },
+  {
+   "titolo": "Will the highest temperature in Amsterdam be 29°C on August 12?",
+   "pot": 57,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13.5,
+   "depthUsd": 62,
+   "mid": 0.2575
+  },
+  {
+   "titolo": "Will the highest temperature in Milan be 36°C on August 12?",
+   "pot": 57,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 13.5,
+   "depthUsd": 23,
+   "mid": 0.25
+  },
+  {
+   "titolo": "Will the highest temperature in London be 32°C on August 12?",
+   "pot": 57,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 12.2,
+   "depthUsd": 513.5,
+   "mid": 0.261
+  },
+  {
+   "titolo": "Will the highest temperature in Tel Aviv be 32°C on August 13?",
+   "pot": 57,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 9.5,
+   "depthUsd": 28,
+   "mid": 0.115
+  },
+  {
+   "titolo": "Will the highest temperature in Chongqing be 35°C on August 12?",
+   "pot": 56,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 17,
+   "depthUsd": 81.5,
+   "mid": 0.27
+  },
+  {
+   "titolo": "Will the highest temperature in Amsterdam be 34°C on August 13?",
+   "pot": 56,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 13,
+   "depthUsd": 178,
+   "mid": 0.27
+  },
+  {
+   "titolo": "Will the highest temperature in Buenos Aires be 10°C on August 13?",
+   "pot": 55.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 1.7,
+   "depthUsd": 152.5,
+   "mid": 0.235
+  },
+  {
+   "titolo": "Will the highest temperature in Dallas be between 98-99°F on August 13?",
+   "pot": 55,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5,
+   "depthUsd": 425.5,
+   "mid": 0.13
+  },
+  {
+   "titolo": "Will the highest temperature in London be 30°C on August 12?",
+   "pot": 54.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 3.5,
+   "depthUsd": 60,
+   "mid": 0.20500000000000002
+  },
+  {
+   "titolo": "Will Peggy Flanagan win Dakota County in the Minnesota Democratic Senate primary?",
+   "pot": 54,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 11.5,
+   "depthUsd": 23,
+   "mid": 0.115
+  },
+  {
+   "titolo": "Will the highest temperature in San Francisco be between 70-71°F on August 13?",
+   "pot": 54,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.4,
+   "depthUsd": 154,
+   "mid": 0.265
+  },
+  {
+   "titolo": "Will the highest temperature in Jeddah be 39°C on August 12?",
+   "pot": 53.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.5,
+   "depthUsd": 15.5,
+   "mid": 0.2775
+  },
+  {
+   "titolo": "Will the highest temperature in Sao Paulo be 26°C on August 12?",
+   "pot": 53,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 14,
+   "mid": 0.21000000000000002
+  },
+  {
+   "titolo": "Will the highest temperature in Atlanta be between 92-93°F on August 13?",
+   "pot": 51.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7,
+   "depthUsd": 37.5,
+   "mid": 0.22499999999999998
+  },
+  {
+   "titolo": "Will the highest temperature in Amsterdam be 32°C on August 13?",
+   "pot": 51,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 13,
+   "depthUsd": 35,
+   "mid": 0.22
+  },
+  {
+   "titolo": "Will the highest temperature in Milan be 34°C on August 13?",
+   "pot": 51,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 9,
+   "depthUsd": 10,
+   "mid": 0.28
+  },
+  {
+   "titolo": "Will the highest temperature in Chengdu be 35°C on August 13?",
+   "pot": 51,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.8,
+   "depthUsd": 8,
+   "mid": 0.468
+  },
+  {
+   "titolo": "Will the highest temperature in Denver be between 78-79°F on August 13?",
+   "pot": 51,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 4.5,
+   "depthUsd": 813.5,
+   "mid": 0.25749999999999995
+  },
+  {
+   "titolo": "Will the highest temperature in Shenzhen be 35°C on August 13?",
+   "pot": 50.5,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 53.5,
+   "mid": 0.21750000000000003
+  },
+  {
+   "titolo": "Will the highest temperature in Lucknow be 33°C on August 14?",
+   "pot": 50.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 17,
+   "depthUsd": 77.5,
+   "mid": 0.1875
+  },
+  {
+   "titolo": "Will Casemiro attend Cristiano Ronaldo's wedding?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 60,
+   "mid": 0.1
+  },
+  {
+   "titolo": "Will Sir Alex Ferguson attend Cristiano Ronaldo's wedding?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 601,
+   "mid": 0.15000000000000002
+  },
+  {
+   "titolo": "Will Ricardo Quaresma attend Cristiano Ronaldo's wedding?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 106.5,
+   "mid": 0.275
+  },
+  {
+   "titolo": "Will Joao Felix attend Cristiano Ronaldo's wedding?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 143,
+   "mid": 0.2675
+  },
+  {
+   "titolo": "Will Sergio Ramos attend Cristiano Ronaldo's wedding?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.1,
+   "depthUsd": 33,
+   "mid": 0.16
+  },
+  {
+   "titolo": "Will Marcelo attend Cristiano Ronaldo's wedding?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 0.8,
+   "depthUsd": 8,
+   "mid": 0.29000000000000004
+  },
+  {
+   "titolo": "Will Edu Aguirre attend Cristiano Ronaldo's wedding?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 0.1,
+   "depthUsd": 161,
+   "mid": 0.315
+  },
+  {
+   "titolo": "Will Luan Santana attend Cristiano Ronaldo's wedding?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 0.1,
+   "depthUsd": 113,
+   "mid": 0.12
+  },
+  {
+   "titolo": "Will Diogo Dalot attend Cristiano Ronaldo's wedding?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 0.1,
+   "depthUsd": 114,
+   "mid": 0.16
+  },
+  {
+   "titolo": "Will Baela Targaryen die in the House of the Dragon Season 3 finale?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 14.5,
+   "depthUsd": 5,
+   "mid": 0.051
+  },
+  {
+   "titolo": "Will Mysaria die in the House of the Dragon Season 3 finale?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8.7,
+   "depthUsd": 15,
+   "mid": 0.07
+  },
+  {
+   "titolo": "S&P 500 (SPY) closes above $775 on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.5,
+   "depthUsd": 179,
+   "mid": 0.3125
+  },
+  {
+   "titolo": "S&P 500 (SPY) closes above $770 on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.5,
+   "depthUsd": 2189,
+   "mid": 0.9299999999999999
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $81 on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 326,
+   "mid": 0.18
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $80 on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 231,
+   "mid": 0.395
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $78 on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 1981,
+   "mid": 0.89
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $77 on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 1628,
+   "mid": 0.9450000000000001
+  },
+  {
+   "titolo": "Rocket Lab (RKLB) Up or Down on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.5,
+   "depthUsd": 75,
+   "mid": 0.675
+  },
+  {
+   "titolo": "Gold (XAUUSD) Up or Down on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 515,
+   "mid": 0.465
+  },
+  {
+   "titolo": "Silver (XAGUSD) Up or Down on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 353,
+   "mid": 0.585
+  },
+  {
+   "titolo": "Natural Gas (NG) Up or Down on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8.5,
+   "depthUsd": 241.5,
+   "mid": 0.945
+  },
+  {
+   "titolo": "Amazon (AMZN) Up or Down on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 946,
+   "mid": 0.51
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $82 on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.8,
+   "depthUsd": 147,
+   "mid": 0.07899999999999999
+  },
+  {
+   "titolo": "Palantir (PLTR) Up or Down on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 429,
+   "mid": 0.615
+  },
+  {
+   "titolo": "Airbnb (ABNB) Up or Down on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 100,
+   "mid": 0.395
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $79 on August 10?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.5,
+   "depthUsd": 1269,
+   "mid": 0.855
+  },
+  {
+   "titolo": "S&P 500 (SPY) closes above $775 on August 11?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7,
+   "depthUsd": 126,
+   "mid": 0.42500000000000004
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $85 on August 11?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8,
+   "depthUsd": 95,
+   "mid": 0.05
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $84 on August 11?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8,
+   "depthUsd": 59,
+   "mid": 0.12
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $82 on August 11?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8,
+   "depthUsd": 419,
+   "mid": 0.665
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $81 on August 11?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8,
+   "depthUsd": 1737,
+   "mid": 0.8454999999999999
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $80 on August 11?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8,
+   "depthUsd": 1051,
+   "mid": 0.94025
+  },
+  {
+   "titolo": "Natural Gas (NG) Up or Down on August 11?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 8,
+   "depthUsd": 734,
+   "mid": 0.705
+  },
+  {
+   "titolo": "Will Pixelworks (PXLW) beat quarterly earnings?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.2,
+   "depthUsd": 103,
+   "mid": 0.22
+  },
+  {
+   "titolo": "Will Cava say \"Catering\" during earnings call?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 4.9,
+   "depthUsd": 203,
+   "mid": 0.745
+  },
+  {
+   "titolo": "Will Cava say \"Shrimp\" during earnings call?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 2.5,
+   "depthUsd": 1106,
+   "mid": 0.995
+  },
+  {
+   "titolo": "Will the highest temperature in Milan be 34°C on August 12?",
+   "pot": 50,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 7.7,
+   "depthUsd": 113,
+   "mid": 0.21500000000000002
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $87 on August 12?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 147,
+   "mid": 0.05
+  },
+  {
+   "titolo": "Will anyone say \"Power\" 5+ times during Big Brother E18?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 10.9,
+   "depthUsd": 73,
+   "mid": 0.72
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $86 on August 12?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.9,
+   "depthUsd": 185,
+   "mid": 0.04
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $85 on August 12?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.9,
+   "depthUsd": 143,
+   "mid": 0.05
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $84 on August 12?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.9,
+   "depthUsd": 425,
+   "mid": 0.1875
+  },
+  {
+   "titolo": "Rocket Lab (RKLB) Up or Down on August 12?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6.9,
+   "depthUsd": 159,
+   "mid": 0.47
+  },
+  {
+   "titolo": "Gold (XAUUSD) Up or Down on August 12?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.9,
+   "depthUsd": 735,
+   "mid": 0.94
+  },
+  {
+   "titolo": "Silver (XAGUSD) Up or Down on August 12?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.9,
+   "depthUsd": 792,
+   "mid": 0.9425
+  },
+  {
+   "titolo": "Natural Gas (NG) Up or Down on August 12?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.9,
+   "depthUsd": 913,
+   "mid": 0.935
+  },
+  {
+   "titolo": "Will anyone say \"Evict\" during Big Brother E18?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 10.2,
+   "depthUsd": 88,
+   "mid": 0.86
+  },
+  {
+   "titolo": "Will the highest temperature in Wuhan be 26°C on August 13?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 13.7,
+   "depthUsd": 86,
+   "mid": 0.27
+  },
+  {
+   "titolo": "Will Cisco say \"Fiscal\" 10+ times during earnings call?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 3,
+   "depthUsd": 198,
+   "mid": 0.99
+  },
+  {
+   "titolo": "Will Cisco say \"Chip\" during earnings call?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 2.3,
+   "depthUsd": 1898,
+   "mid": 0.999
+  },
+  {
+   "titolo": "Will Cisco say \"Europe\" during earnings call?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 2.3,
+   "depthUsd": 1,
+   "mid": 0.0055
+  },
+  {
+   "titolo": "Will Cisco say \"Capacity\" during earnings call?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 2.3,
+   "depthUsd": 1,
+   "mid": 0.0055
+  },
+  {
+   "titolo": "Will Cisco say \"Tariff\" during earnings call?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 2.3,
+   "depthUsd": 47,
+   "mid": 0.9
+  },
+  {
+   "titolo": "Will the highest temperature in Helsinki be 19°C on August 13?",
+   "pot": 50,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 157,
+   "mid": 0.19
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $82 on August 13?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 12.7,
+   "depthUsd": 248,
+   "mid": 0.12000000000000001
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $81 on August 13?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 12.7,
+   "depthUsd": 375,
+   "mid": 0.6
+  },
+  {
+   "titolo": "WTI Crude Oil (WTI) closes above $80 on August 13?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 12.7,
+   "depthUsd": 313,
+   "mid": 0.845
+  },
+  {
+   "titolo": "Silver (XAGUSD) Up or Down on August 13?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 12,
+   "depthUsd": 100.5,
+   "mid": 0.23
+  },
+  {
+   "titolo": "Will Bullish (BLSH) beat quarterly earnings?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 2.2,
+   "depthUsd": 0,
+   "mid": 0.0205
+  },
+  {
+   "titolo": "Will Yeti say \"Bag\" 10+ times during earnings call?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 10.7,
+   "depthUsd": 1,
+   "mid": 0.01
+  },
+  {
+   "titolo": "Will Yeti say \"Dividend\" during earnings call?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 10.7,
+   "depthUsd": 1,
+   "mid": 0.0055
+  },
+  {
+   "titolo": "Natural Gas (NG) Up or Down on August 13?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7.7,
+   "depthUsd": 158,
+   "mid": 0.11
+  },
+  {
+   "titolo": "Palantir (PLTR) Up or Down on August 13?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 6,
+   "depthUsd": 2884,
+   "mid": 0.9199999999999999
+  },
+  {
+   "titolo": "Gold (XAUUSD) Up or Down on August 13?",
+   "pot": 50,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 7,
+   "depthUsd": 20.5,
+   "mid": 0.10750000000000001
+  },
+  {
+   "titolo": "Will Yeti say \"Gear\" during earnings call?",
+   "pot": 50,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 9.4,
+   "depthUsd": 4,
+   "mid": 0.04
+  },
+  {
+   "titolo": "Will the highest temperature in Seattle be between 78-79°F on August 12?",
+   "pot": 49.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 2.2,
+   "depthUsd": 233.5,
+   "mid": 0.23249999999999998
+  },
+  {
+   "titolo": "Will Russell Fry win the first round of the South Carolina Republican Senate special primary?",
+   "pot": 49,
+   "minSize": 200,
+   "pavimentoUsd": 196,
+   "maxSpread": 4.5,
+   "oreVita": 11.7,
+   "depthUsd": 596,
+   "mid": 0.07450000000000001
+  },
+  {
+   "titolo": "Will the highest temperature in Kuala Lumpur be 32°C on August 13?",
+   "pot": 48,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 15.8,
+   "depthUsd": 27,
+   "mid": 0.22
+  },
+  {
+   "titolo": "Will MrBeast's next video get between 20 and 25 million views on day 1?",
+   "pot": 47,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 0.1,
+   "depthUsd": 6,
+   "mid": 0.085
+  },
+  {
+   "titolo": "Will the highest temperature in Toronto be 28°C on August 12?",
+   "pot": 44,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 0.2,
+   "depthUsd": 30,
+   "mid": 0.175
+  },
+  {
+   "titolo": "Will the highest temperature in Austin be between 98-99°F on August 12?",
+   "pot": 43.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 5.2,
+   "depthUsd": 47.5,
+   "mid": 0.145
+  },
+  {
+   "titolo": "Will the highest temperature in Atlanta be between 94-95°F on August 12?",
+   "pot": 43,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 1,
+   "depthUsd": 33,
+   "mid": 0.16999999999999998
+  },
+  {
+   "titolo": "Will the highest temperature in Moscow be 17°C on August 13?",
+   "pot": 42,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 168,
+   "mid": 0.21000000000000002
+  },
+  {
+   "titolo": "Will the highest temperature in Lucknow be 31°C on August 14?",
+   "pot": 42,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 16.4,
+   "depthUsd": 12,
+   "mid": 0.185
+  },
+  {
+   "titolo": "Will the highest temperature in Atlanta be between 94-95°F on August 14?",
+   "pot": 41,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 17.7,
+   "depthUsd": 321.5,
+   "mid": 0.36
+  },
+  {
+   "titolo": "Will the highest temperature in Seattle be between 78-79°F on August 14?",
+   "pot": 40,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 17,
+   "depthUsd": 29,
+   "mid": 0.30000000000000004
+  },
+  {
+   "titolo": "Will the highest temperature in Guangzhou be 37°C on August 13?",
+   "pot": 39.5,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 1045,
+   "mid": 0.1875
+  },
+  {
+   "titolo": "Will the highest temperature in Chengdu be 35°C on August 14?",
+   "pot": 37,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 16.4,
+   "depthUsd": 82,
+   "mid": 0.18
+  },
+  {
+   "titolo": "Will the highest temperature in Panama City be 34°C on August 12?",
+   "pot": 36,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 0.2,
+   "depthUsd": 5,
+   "mid": 0.18
+  },
+  {
+   "titolo": "Will the highest temperature in Chongqing be 34°C on August 13?",
+   "pot": 34,
+   "minSize": 100,
+   "pavimentoUsd": 98,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 27,
+   "mid": 0.10500000000000001
+  },
+  {
+   "titolo": "Will IShowSpeed attend Cristiano Ronaldo's wedding?",
+   "pot": 20,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 685,
+   "mid": 0.03475
+  },
+  {
+   "titolo": "Will Dana White attend Cristiano Ronaldo's wedding?",
+   "pot": 20,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 265,
+   "mid": 0.038000000000000006
+  },
+  {
+   "titolo": "Will Wayne Rooney attend Cristiano Ronaldo's wedding?",
+   "pot": 20,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 579,
+   "mid": 0.026750000000000003
+  },
+  {
+   "titolo": "Will Leonardo Bonucci attend Cristiano Ronaldo's wedding?",
+   "pot": 20,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 82,
+   "mid": 0.05025
+  },
+  {
+   "titolo": "Will Giorgio Chiellini attend Cristiano Ronaldo's wedding?",
+   "pot": 20,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 183,
+   "mid": 0.065
+  },
+  {
+   "titolo": "Will Luka Modric attend Cristiano Ronaldo's wedding?",
+   "pot": 20,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 73,
+   "mid": 0.03125
+  },
+  {
+   "titolo": "Will Gareth Bale attend Cristiano Ronaldo's wedding?",
+   "pot": 20,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 56,
+   "mid": 0.065
+  },
+  {
+   "titolo": "Will Drake attend Cristiano Ronaldo's wedding?",
+   "pot": 20,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 27,
+   "mid": 0.0825
+  },
+  {
+   "titolo": "Will m0NESY attend Cristiano Ronaldo's wedding?",
+   "pot": 20,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.8,
+   "depthUsd": 427.5,
+   "mid": 0.026500000000000003
+  },
+  {
+   "titolo": "Will Paulo Dybala attend Cristiano Ronaldo's wedding?",
+   "pot": 20,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 6.1,
+   "depthUsd": 58,
+   "mid": 0.074
+  },
+  {
+   "titolo": "Will the most viewed TV show for the week of August 3 - August 9 have between 9 million and 9.5 million viewers?",
+   "pot": 16,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 1,
+   "mid": 0.010499999999999999
+  },
+  {
+   "titolo": "Will the number of votes cast in the 2026 Clacton by-election be between 10,000-20,000?",
+   "pot": 15,
+   "minSize": 50,
+   "pavimentoUsd": 49,
+   "maxSpread": 4.5,
+   "oreVita": 12.5,
+   "depthUsd": 22.5,
+   "mid": 0.06725
+  },
+  {
+   "titolo": "Will Brian Mundubile win the 2026 Zambian presidential elections?",
+   "pot": 15,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 15.9,
+   "depthUsd": 97.5,
+   "mid": 0.0775
+  },
+  {
+   "titolo": "Will Hakainde Hichilema win the 2026 Zambian presidential elections?",
+   "pot": 10,
+   "minSize": 20,
+   "pavimentoUsd": 19.6,
+   "maxSpread": 5.5,
+   "oreVita": 15.9,
+   "depthUsd": 8864,
+   "mid": 0.925
+  },
+  {
+   "titolo": "Dota 2: Amaru Gaming vs Team Jenz (BO3) - EPL Masters Group A",
+   "pot": 9,
+   "minSize": 500,
+   "pavimentoUsd": 490,
+   "maxSpread": 2.5,
+   "oreVita": 8.3,
+   "depthUsd": 3277.5,
+   "mid": 0.52
+  }
+ ]
+}

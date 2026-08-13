@@ -669,7 +669,7 @@ restano confrontabili numero per numero.
 
 | filtro | dove | regola |
 |---|---|---|
-| **orizzonte** | `horizon.js` | `[MIN_HORIZON_DAYS 0,75 · MAX_HORIZON_DAYS 150]`, confini **inclusivi da entrambi i lati**. Il pavimento in ore (18 h) è **derivato** in `market-validity`, non ripetuto. **Scadenza non determinabile ⇒ ESCLUDE** |
+| **orizzonte** | `horizon.js` | `[MIN_HORIZON_DAYS 0,75 · MAX_HORIZON_DAYS 150]`, confini **inclusivi da entrambi i lati**. Il pavimento in ore (18 h) è **derivato** in `market-validity`, non ripetuto. **Scadenza non determinabile ⇒ ESCLUDE**. ⚠ **È il filtro che taglia di più**: 78 mercati su 102 valutati il 13/8 alle 20:17, e il gradino è tutto fra 12 h e 18 h — vedi §5 punto 129 prima di toccarlo o di lasciarlo com'è |
 | **quota coda lunga** | `allocator.js` | il capitale oltre `LONG_TAIL_DAYS 7` non supera il **12%** del piano. **Due passate**, non una potatura: la fascia corta gira col budget pieno, la coda riceve `S·q/(1−q)` — non `S·q`, che sbaglierebbe in difetto perché la quota è sul totale e il totale contiene la coda. Fascia corta vuota ⇒ la coda non ottiene niente |
 | **profondità** | `profondita-minima.js` | **scala la size**, non toglie il mercato: `S_max = cQ · q/(1−q)` a `q = 0,60`, cioè `1,5 · cQ`. Esclude solo dove **nessuna size piazzabile** regge, con due motivi distinti (`escluso-troppo-sottile` / `escluso-sotto-minimo`). ⚠ **VINCOLO ASSOLUTO: mai forzare la size al minimo del venue oltre la quota sicura** — è strutturale (i due rami di esclusione restituiscono `tenuti` senza toccarlo), non promesso |
 | **quotabilità** | `allocator.js` | chiama `planBehindBest`, **la stessa funzione del piazzamento**, su **entrambi** i lati (una riga con una gamba sola è esposizione direzionale). Fail-open: dati mancanti ⇒ `ignota`, il mercato resta. «Nessun concorrente» **non** è un dato mancante: è il ramo «soli», quotabilissimo |
@@ -1604,6 +1604,46 @@ realistico (~$51/g) costa **più dell'intero capitale murato in tre giorni e mez
 è perso — è illiquido fino alla risoluzione. ⇒ **NON implementato: la cura costa più della malattia.**
 **I cinque residui già esistenti restano una questione aperta** (§123): niente li chiude, `redeemPosition`
 continua a non avere chiamanti, e la proposta del redeem dopo la risoluzione resta da decidere.
+
+**129 · IL FILTRO ORIZZONTE COSTA 5,4× E NON PROTEGGE DA CIÒ CHE DICHIARA — misurato, NON implementato.**
+Sola misura: `scripts/ricerca/orizzonte-{popolazione,sensibilita,brevi-rischio,maturazione}.js`, referto
+in `data/ricerca/sintesi-orizzonte.md`. **`MIN_HORIZON_DAYS` resta 0,75** — `orizzonte-sensibilita.js`
+sostituisce `horizonVerdict` **in memoria nel proprio processo figlio**, prima che `allocator.js:78` lo
+destrutturi; il resto della catena è il codice di produzione.
+**(a) IL COSTO, sulla stessa fotografia del board (20:17:13, $650, tetto $32,67).** Pavimento **0,75 g ⇒
+3 mercati, $96 al lavoro, $554 fermi, $64,10/g**; pavimento **0,50 g ⇒ 21 mercati, $648 al lavoro,
+$347,68/g**. Il gradino è **tutto fra 12 h e 18 h** (63 mercati); 0,25 / 0,40 / 0,50 danno il **piano
+identico**, cioè il pianoro di insensibilità oggi è **6–12 h** e 18 h sta sull'altro lato. **Il rapporto
+5,4× regge al taglio prudente delle quote a 15% (5,5×: $31,75 → $173,51/g)** — è l'unico numero della
+misura che non dipende dal credere alle quote alte. Il livello no: **metà del lordo viene da 3 righe con
+quota modellata 45–59%** su book sottili.
+**(b) L'ORIGINE DELLA SOGLIA è documentata e derivata** (commit `123d812`, intestazione di `horizon.js`):
+mediana **22,7 h** sugli ingressi premianti dei 21 maker contro 2,2 h sui non premianti, e 18 h scelte
+perché **fra 12,4 h e 19,6 h il campione premiante era VUOTO**. Tre limiti dichiarati: il file stesso la
+chiama «**un'assunzione**»; è tarata su **cosa fanno i vincitori**, non su cosa ci costa; e il commit
+scriveva «**EFFETTO MISURATO: zero, oggi**» — oggi la stessa soglia toglie il **76%** del board, e il
+vuoto 12,4–19,6 h su cui poggiava l'argomento **non esiste più**.
+**(c) IL RISCHIO VERO STA A 6 ORE, NON A 18.** 21 maker, 120 coppie ingresso→ritiro premianti: uscite
+**dopo** la risoluzione **35,1% sotto 6 h** (13/37), **0% fra 6 e 12 h** (0/36), **0% fra 12 e 18 h**
+(0/15), **0% fra 18 e 48 h** (0/32). Regola del tre: 0/15 ammette fino a ~18%.
+**(d) IL FILTRO AGISCE ALL'INGRESSO, IL RISCHIO ARRIVA DALL'INVECCHIAMENTO.** `nostro:` **22 gambe su 22
+mercati, 22 NUDE, zero coppie complete**; delle 17 con scadenza leggibile **17 sono sotto le 18 h**
+(tutte a 15,51 h). `modalita-chiusura`: 18 coppie su 23 con la sorella **mai piazzata**, età mediana
+**9,5 h**. Residui: 25, **21 sotto il minimo del venue**, $145,07 murati, **18 dei 25 mercati sotto le
+18 h e ZERO sopra**. Stiamo già correndo per intero il rischio da cui il filtro dovrebbe proteggere.
+**(e) LA MATURAZIONE NON È IL VINCOLO.** Il venue campiona **1.440 volte al giorno** (uno al minuto —
+già citato in `auto-reprice-config.js`): 6 h = 360 campioni = 25% di una giornata. Alla quota mediana
+del piano (~14%) **il costo del giro rientra in meno di un'ora**.
+**(f) L'ORIZZONTE VALE PIÙ DEL TETTO, E VANNO MOSSI UNO ALLA VOLTA.** Stessa fotografia: tetto $32,67→$245
+a pavimento 0,75 fa **+5%** ($64,10 → $67,55: riempie il capitale e non muove il lordo, perché con 3
+mercati il capitale in più va contro il tetto di credibilità); pavimento 0,75→0,50 a tetto fermo fa
+**+442%**. E sotto il taglio prudente il tetto alto **si inverte** ($245 ⇒ $135,90/g contro $173,51/g a
+$32,67), perché concentra su 9 righe con quote 24–60%. ⇒ **l'orizzonte per primo, il tetto non insieme.**
+**(g) ⚠ IL COSTO VARIA DI ORA IN ORA.** Sulle 33 fotografie del 13 agosto i mercati corti vanno da **2
+(15:16)** a **88 (18:18)**: un piano calcolato alle 16:00 e uno alle 20:00 vedono due board diversi, e
+qualunque misura su una fotografia sola va marcata con l'ora. Deriva fra due giri identici: **~3%**.
+**NON MISURATO:** il nostro tasso di fill per orizzonte (servirebbe lo stream del giornale maker da
+340 MB con il join tokenId→conditionId). I nostri numeri ereditano i **4 giorni di presenza su 30**.
 
 ### Le classi di difetto che si ripetono — leggerle prima di scrivere codice qui
 
