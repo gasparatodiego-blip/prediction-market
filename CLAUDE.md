@@ -265,48 +265,21 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~19:40 UTC.
 > prima**. Il ritardo di fill è coperto dalla scala di urgenza (§138) e dalla chiusura forzata a 3 ore.
 
 > ## ⏱ LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA — §5 punto 138
-> **Il fatto**: la posizione NO di 58,8 share su `0xcd126ec4` è rimasta scoperta **8,2 ore**.
-> **Nessuna singola regola aveva sbagliato**, e il bot **adattava anche il prezzo** (11 prezzi distinti
-> su 17 mid distinti: NON era il vizio dei 114 rifiuti identici di §120). Il tetto per mercato
-> rifiutava la gamba NO — che **apre**, ed è giusto; il pavimento di profondità rifiutava la gamba YES,
-> e il libro era davvero sottile per tutte le sette ore (mediana `depth/pavimento` **0,28** su 157
-> campioni). Sbagliava il **sistema**, in un punto solo: **nessuno guardava da quanto tempo la
-> posizione era scoperta.** La gerarchia di §4.6 ha **un solo orologio** — i 60 min del Livello 2 — e
-> alla sua scadenza il Livello 3 ripiega sull'uscita ordinaria, che risponde `no-target` perché la
-> banda è scesa sotto il carico. Da lì **si ripete identica per sempre**: `merge-livello-3` con
-> `attesaMin` che cresce 60,3 → 66,4 e la stessa azione a ogni giro.
-> **Le soglie vengono dai dati, e la distribuzione è BIMODALE** (24 episodi su 19 mercati in 48 h):
-> **7 chiusi**, mediana **10,5 min**, q75 **29,3** — contro **17 ancora aperti**, mediana **126,5 min**,
-> massimo **553,7** (9,2 h). Una scopertura sana si chiude in dieci minuti; oltre l'ora non si chiude
-> quasi più da sola.
-> **La scala, tre soglie e quattro gradini** (`lib/maker/urgenza-scoperto.js`, puro):
-> **0** (<30 min) niente di nuovo · **1** (≥30) l'uscita può scendere **fino al carico**
-> (`profitPct: 0`): è il gradino che scioglie il caso reale, dove il bordo della banda era
-> **esattamente** il carico e un `<=` produceva `no-target` · **2** (≥120) **chiusura peggiorativa**
-> entro il tetto dichiarato · **3** (≥240) **anomalia grave** nel log e nel giornale
-> (`outcome: scoperto-oltre-soglia-grave`), che **non apre una quarta via**: al gradino 2 sono già
-> tutte aperte, e il bot dichiara di non farcela invece di tacere.
-> **⚠ IL TETTO DI PERDITA È DOPPIO E IL PIÙ STRETTO VINCE**: **2 tick** (in tick e non in percentuale,
-> perché il prezzo vive su una griglia) **e mai oltre il 5% del carico** (su un token da 10¢ due tick
-> sarebbero il 20%). Misurato sul caso reale: **$0,59 su 58,8 share**, contro un'esposizione
-> direzionale di **$25,28** — cioè **43×**. È la concessione **più piccola** già in uso: §4.6 accetta
-> una coppia fino a 120¢, cioè 20¢/share.
-> **⚠ NESSUNA REGOLA DI RISCHIO È TOCCATA, ed è per costruzione**: il modulo non produce prezzi, produce
-> un **pavimento**; il prezzo lo sceglie il motore, che applica «mai primo sul libro» come sempre. E la
-> concessione **non esce dalla banda**: ci si arriva solo quando il bordo **alto** della banda sta sotto
-> il carico, quindi un prezzo fra i due è dentro la banda. La concessione **autorizza, non peggiora**:
-> il prezzo resta `b.hi`, il migliore disponibile.
-> **⚠ OROLOGIO NON LEGGIBILE ⇒ GRADINO 0**, cioè il comportamento di prima: la concessione costa
-> capitale reale e non si paga contro un dato che non si è letto. Stessa direzione di `ignota` altrove.
-> **⚠ L'OROLOGIO NON È NUOVO**: è il timestamp della **modalità chiusura**, che nasce col fill, è già
-> persistito e viene cancellato da `esciDaChiusura`. Non serviva un secondo registro. **Ma si azzera a
-> ogni nuovo ingresso in modalità chiusura**: su `0xcd126ec4` diceva 168 min contro 492 veri, cioè
-> **sbaglia per difetto** — sottostima l'urgenza, non la sopravvaluta.
-> **⚠ UN GRADINO È STATO TOLTO IN CORSA, E VA SAPUTO**: la prima stesura ne aveva uno a 60 min che
-> «non abbandonava la copertura a riposo», e non serviva a niente — nel ramo `no-target` il ciclo esce
-> con `continue` **prima** della cancellazione del completamento. Era un campo dichiarato e consumato
-> da nessuno, cioè «dep non cablata» vista dall'altro verso. **Un gradino che non apre una via non è un
-> gradino.** Un test lo verifica **per assenza** del campo.
+> **Il fatto**: una posizione NO di 58,8 share è rimasta scoperta **8,2 ore**. Nessuna singola regola
+> aveva sbagliato, e il bot **adattava il prezzo** (11 prezzi su 17 mid: NON era il vizio di §120).
+> Sbagliava il **sistema**: la gerarchia di §4.6 ha **un solo orologio**, i 60 min del Livello 2, e
+> alla sua scadenza il Livello 3 ripiega su un'uscita che risponde `no-target` perché la banda è
+> scesa sotto il carico — e da lì **si ripete identica per sempre**.
+> **Soglie dai dati, distribuzione BIMODALE** (24 episodi in 48 h): **7 chiusi**, mediana **10,5 min**,
+> q75 29,3 — contro **17 aperti**, mediana **126,5 min**, max 553,7.
+> **Quattro gradini** (`lib/maker/urgenza-scoperto.js`, puro): **0** (<30 min) niente · **1** (≥30)
+> uscita **fino al carico** (`profitPct: 0`) · **2** (≥120) **chiusura peggiorativa** · **3** (≥240)
+> **anomalia grave** nel giornale, che **non apre una quarta via**.
+> **⚠ Tetto di perdita DOPPIO, il più stretto vince**: **2 tick** e **mai oltre il 5% del carico**.
+> Sul caso reale: **$0,59 su 58,8 share** contro un'esposizione di **$25,28** — **43×**.
+> **⚠ Nessuna regola di rischio toccata**: il modulo produce un **pavimento**, non un prezzo; la
+> concessione vive **dentro** la banda per costruzione. **Orologio non leggibile ⇒ gradino 0.**
+> **⚠ Un gradino a 60 min è stato tolto**: dichiarava un'azione che nessuno consumava.
 
 > ## 🧱 I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA — §5.2 p.1, §5-bis p.123, BUCO APERTO
 > **$26,30** in cinque residui che il registro raccoglie correttamente e che **niente può chiudere**:
@@ -1065,6 +1038,25 @@ pm2 restart agent41-realloc-scheduler
    baseline fissa **meno** reward incassati e movimenti di cassa. È capitale: decide l'operatore.
 13. **La soglia sulla derivata per la sentinella È misurabile, ed è l'85%** (§5-bis p.140). Non
    implementata: questa era una sessione di sola diagnosi.
+24. **⚑ IL MERCATO È CALIBRATO AGLI ESTREMI — misura, 13 agosto 2026.** Universo: **mercati**, non
+   trader, quindi senza la selezione che invalidava §5-bis p.151. Gamma `closed=true` **partizionato
+   per finestre di `end_date`** (⚠ Gamma tronca a ~3.000 record per query: senza partizione si copre
+   meno di UN giorno) + `clob/prices-history` a **24 h prima di `endDate`**, volume ≥ $2.000.
+   **2.293 mercati raccolti, 1.248 con prezzo utilizzabile** (1.045 senza storia nella finestra:
+   scartati, non approssimati). Scadenze da **2026-05-16** a oggi.
+   **Aggregando per superare le 200 osservazioni** — le fasce strette non le concludo:
+   `0,95–1,00` **n=819, 99,39% contro 99,21% atteso, +0,18 pt (±0,53)** ⇒ **CALIBRATO**;
+   `0,97–1,00` n=750, 99,60% contro 99,51%, +0,09 (±0,45) ⇒ **CALIBRATO**;
+   `0,90–1,00` n=892, 98,54% contro 98,66%, −0,12 (±0,79) ⇒ **CALIBRATO**.
+   **⚠ Fasce sotto le 200 osservazioni, NON concluse**: 0,90–0,95 (n=73, 89,0% contro 92,5%),
+   0,95–0,97 (n=69), 0,97–0,99 (n=141), 0,50–0,70 (n=139).
+   **EV di comprare la gamba cara**, netto di **1¢ di spread ipotizzato** (dichiarato, non misurato):
+   0,95–0,97 **+0,12%** · 0,97–0,99 **−0,59%** · 0,99–1,00 **−0,98%**. **Lo spread d'ingresso mangia
+   l'intero margine agli estremi**: a 0,998 l'EV lordo è +0,0002/share contro 0,01 di spread.
+   **Varianza su 50 operazioni** ($1/op): a 0,99+ il 95° percentile è **1 perdita** e il PnL **−$1,41**;
+   a 0,90–0,95 sono **9 perdite** e **−$6,23**, con **−$8,39** al 99°.
+   **Nessuna raccomandazione**: il mercato non sbaglia sistematicamente agli estremi, e il costo è lo
+   spread, non la calibrazione.
 23. **⚑ QUANTO RENDEREBBE PIÙ CAPITALE — misura, 13 agosto 2026. Due risposte che NON si conciliano,
    ed è il risultato.**
    **① EMPIRICAMENTE IL REWARD È PIATTO NEL CAPITALE**: su **604 wallet** (presenti ≥5 giorni), il
@@ -1352,29 +1344,19 @@ testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga d
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
 
 **152 · IL BORDO DELLA BANDA NON CONVIENE, E IL 27% DEI NOSTRI ORDINI CI STA GIÀ.** Misura in
-`data/ricerca/sintesi-posizione-banda.md`; script `perche-pochi-mercati.js` per la parte di giornale.
-**La formula è VERIFICATA sulla documentazione ufficiale viva** (`docs.polymarket.com/market-makers/
-liquidity-rewards`), non ricostruita: `S(v,s) = ((v−s)/v)² · b`, `Q_min` con **c = 3,0**, size in
-**share**, **10.080 campioni per epoca** (campionamento al minuto ⇒ il tempo a libro conta), soglia
-minima **per mercato**, banda **simmetrica**, pagamento giornaliero a mezzanotte UTC.
-**⚠ CONSEGUENZA CHE DECIDE DA SOLA**: al bordo `s → v` ⇒ `S → 0`. Il bordo estremo **non matura quasi
-nulla, per costruzione**.
-**Dove stiamo davvero** (17.119 osservazioni): v = **2,25¢**, distanza mediana **1,0¢** ⇒ s/v = 0,444,
-S = 0,3086. **S medio effettivo 0,2981.**
-**⚠ IL 27% DEI NOSTRI ORDINI STA A s/v 80-100%, CON S = 0,0076** — quaranta volte meno della nostra
-mediana. Non è una scelta: la regola «bordo esterno se soli» **non compare mai nel giornale (0 righe)**.
-È **deriva del mid dopo il piazzamento**, cioè ritardo di riprezzo. Spostare quella coda nella fascia
-dove sta già il 33,8% degli ordini porterebbe S medio da 0,2981 a **0,4580, cioè +53%**.
-**⚠ L'IPOTESI DEL BORDO È SBAGLIATA DI SEGNO**: un fill ci costa **$0,05/giorno** di spread (4,6
-episodi/g, di cui **1,0 vendita/g** a 0,25 ¢/share). Il costo vero è il **capitale immobilizzato**:
-$135 in gambe nude = **$0,91/giorno**, **18× lo spread**. Andare al bordo distruggerebbe il **96%** del
-reward per risparmiare $0,04/giorno.
-**Le leve, per valore**: ① presenza 4/30→29/30 **+$100/mese** · ② togliere la coda al bordo
-**+$68/mese** · ③ sbloccare i $135 **+$27/mese** · ④ posizione verso il bordo **−$96/mese**.
-**⚠ Incertezza**: il reward osservato poggia su **4 giorni di presenza** e il costo di uscita su **13
-vendite**; la distribuzione nella banda su 17.119 osservazioni ed è il dato solido. Servono **~15
-giorni** di bot acceso per stabilizzare il resto.
-
+`data/ricerca/sintesi-posizione-banda.md`. **Formula VERIFICATA sulla documentazione ufficiale viva**:
+`S(v,s) = ((v−s)/v)²`, `Q_min` con **c = 3,0**, size in **share**, **10.080 campioni per epoca**
+(campionamento al minuto), soglia minima **per mercato**, banda **simmetrica**, pagamento a mezzanotte
+UTC. **⚠ Al bordo `s → v` ⇒ `S → 0`: non matura quasi nulla, per costruzione.**
+**Dove stiamo** (17.119 osservazioni): v = **2,25¢**, distanza mediana **1,0¢**, S = 0,3086, **S medio
+effettivo 0,2981**. **⚠ Il 27% degli ordini sta a s/v 80-100% con S = 0,0076** — quaranta volte meno
+della mediana. Non è una scelta (la regola «bordo se soli» non compare mai nel giornale): è **deriva
+del mid**. Spostare quella coda porterebbe S da 0,2981 a **0,4580, +53%**.
+**⚠ L'ipotesi del bordo è sbagliata di segno**: un fill costa **$0,05/giorno** di spread, il capitale
+immobilizzato **$0,91/giorno**, 18×. Al bordo si distruggerebbe il **96%** del reward per $0,04/g.
+**Le leve**: presenza 4/30→29/30 **+$100/mese** · togliere la coda al bordo **+$68/mese** · sbloccare
+i $135 **+$27/mese** · posizione verso il bordo **−$96/mese**.
+**⚠ Il reward osservato poggia su 4 giorni di presenza**: servono ~15 giorni.
 
 **151 · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — corregge §150.** Misura in
 `data/ricerca/sintesi-redeem.md`. **5.087 redeem su 8 wallet.** ⚠ **Confondente escluso prima di
@@ -1418,18 +1400,11 @@ nostri ordini ($10,76 mediano) è già dentro il range dei top ($5,67–$16,86).
 
 **147 · L'ESENZIONE DAL TETTO PER ORDINE VALE SU TUTTI I PERCORSI CHE RIDUCONO.** Il ramo
 `riposizionamento-scoperto` (`auto-close.js:1412`) era l'unico percorso di chiusura a NON dichiarare
-`chiudePosizione: true`, e gestisce proprio la posizione NUDA quando la banda sta sotto il carico.
-Misurato: una **SELL di 52,6 share GIÀ POSSEDUTE** rifiutata con «controvalore $24,72 oltre il tetto
-per ordine $21,34», e **1.331 rifiuti `manual-order-cap`** nello slice recente. Quinta occorrenza della
-classe «protezione presente su un percorso e assente sul suo gemello».
-**⚠ L'ESENZIONE NON È UNA DICHIARAZIONE DI CUI CI SI FIDA**, e il guard esisteva già ed è sul percorso:
-`deps.placeOrder` arriva all'imbuto di piazzamento del pannello, e il suo GATE 4
-(`manual-order.js:1202-1224`) rifà l'aritmetica con `provaChiusura` sullo snapshot del venue — SELL
-oltre il posseduto o BUY oltre `manca` **non** vengono esentate — e il tetto di `safety-risk-limits`
-resta intatto: si esenta solo il cap live-min, e solo quando è lui a mordere. Snapshot illeggibile ⇒
-nessuna esenzione, cioè capitale fermo, che è il verso giusto in cui sbagliare.
-**I sette percorsi che ora dichiarano la chiusura sono TUTTI in riduzione**, e un test lo difende sia
-per conteggio sia per proprietà (`bulk-allocate`, la corsia che APRE, non la dichiara mai).
+`chiudePosizione: true`. Misurato: una **SELL di 52,6 share GIÀ POSSEDUTE** rifiutata, e **1.331
+rifiuti `manual-order-cap`**. ⚠ **Il guard esisteva già ed è sul percorso**: il GATE 4 rifà
+l'aritmetica con `provaChiusura` sullo snapshot del venue — SELL oltre il posseduto o BUY oltre `manca`
+**non** vengono esentate — e il tetto di safety resta intatto. **I sette percorsi sono TUTTI in
+riduzione**, difeso da un test anche per proprietà (`bulk-allocate` non la dichiara mai).
 
 **148 · IL REGISTRO DEI RESIDUI HA FINALMENTE UN CONSUMATORE.** `lib/maker/ritenta-residui.js` (puro)
 + cablaggio in `agent40` dentro `closeTask`: i mercati con una voce `pronto: true` entrano
@@ -1444,22 +1419,13 @@ riavvio lo azzera e si ritenta prima, che è la direzione innocua.
 Ogni tentativo va nel giornale (`op: ritenta-residuo`, esiti `residuo-pronto-rivisitato` /
 `residuo-ripiazzato` / `residuo-ancora-bloccato`), così l'osservatore lo vede.
 
-**145 · LE DUE CONFERME DEVONO ESSERE DUE OSSERVAZIONI, NON DUE COPIE.** Il terzo scatto (13 agosto
-11:24:15Z) è avvenuto **con k=2 già attivo**: le due letture erano lo stesso numero, −32,58335 USD e
-totale $627,98, identici a cinque decimali, perché `SALDO_CACHE_TTL_MS = 45_000` contro
-`GUARDIAN_POLL_MS = 30_000` ⇒ due giri consecutivi cadono nella stessa finestra di cache.
-**La correzione**: `confermaScatto` riceve `osservazione.saldoLetturaAt` (`now − etaMs`, che È
-l'istante in cui la voce di cache è stata scritta) e conta la conferma **solo se quell'istante è
-cambiato**. Se è uguale, o non è leggibile, il contatore **resta dov'è** e si aspetta un dato fresco.
-**⚠ SCARTATA la strada di abbassare il TTL**: quella cache è condivisa con agent40 (che gira ogni
-~5 s), col trigger a capitale fermo e con agent45 — abbassarla moltiplicherebbe le `eth_call` del
-consumatore più intenso per risolvere il problema di quello meno intenso. Questa condizione vive solo
-nel guardiano e non cambia una riga per nessun altro.
-**Costo**: nel caso peggiore la conferma arriva a 60 s invece che a 30 s (il TTL è 45 s).
-**Verifica retroattiva su 7.249 letture / 5 giorni**: senza la condizione la simulazione riproduce
-**esattamente** lo scatto vero delle 11:24 (1 scatto), con la condizione ne restano **ZERO** — e i tre
-scatti cadono per ragioni diverse: 21:46 e 09:08 perché la lettura dopo era già rientrata (k=2 basta),
-11:24 perché la seconda lettura veniva dalla **stessa voce di cache**.
+**145 · LE DUE CONFERME DEVONO ESSERE DUE OSSERVAZIONI, NON DUE COPIE.** Il terzo scatto (11:24:15Z)
+è avvenuto **con k=2 attivo**: le due letture erano lo stesso numero (−32,58335, $627,98) perché
+`SALDO_CACHE_TTL_MS = 45_000` contro `GUARDIAN_POLL_MS = 30_000`. **La correzione**: `confermaScatto`
+riceve `osservazione.saldoLetturaAt` (`now − etaMs`) e conta la conferma **solo se cambiato**; se
+uguale o illeggibile il contatore **resta dov'è**. ⚠ **Scartato abbassare il TTL**: la cache è
+condivisa con agent40 (~5 s), col trigger e con agent45. **Verifica su 7.249 letture: senza la
+condizione la simulazione riproduce esattamente lo scatto vero, con la condizione ne restano ZERO.**
 Script: `scripts/ricerca/verifica-letture-distinte.js`.
 
 **146 · I RESIDUI BLOCCATI, MISURATI — sola diagnosi.** 16 posizioni a gamba singola per **$158,44**
