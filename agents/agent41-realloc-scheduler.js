@@ -268,7 +268,14 @@ const TRIGGER_ATTIVO = process.env.TRIGGER_CAPITALE_FERMO !== '0';
 // Due interruttori per la stessa decisione sono peggio di quello sbagliato da solo, perché chi ne
 // spegne uno crede di aver spento la cosa. Se `bot-enabled` non è leggibile la risposta è FERMO — il
 // ripiego è già dentro quel modulo e non ha bisogno di una seconda variabile che lo duplichi.
-const { statoBot, botAttivo, apertureDallAvvio, registraMercatoAperto, FILE: FILE_INTERRUTTORE } = require('../lib/maker/bot-enabled');
+// ⚠ `impostaBot` È PARTE DI QUESTO IMPORT, E LA SUA ASSENZA È COSTATA IL GRADINO 6. Fino al 13 agosto
+// 2026 la destrutturazione si fermava a `registraMercatoAperto`: il gradino «fermati-in-sicurezza»
+// chiamava `impostaBot` da uno scope che non lo conteneva, quindi ogni volta che la scala arrivava in
+// fondo l'ultima difesa moriva con un ReferenceError catturato dal `try` che la avvolge — e il bot
+// restava su AVVIA credendo di essersi fermato. Misurato: raggiunto 2 volte in 11h20m, sempre fallito.
+// Falliva CHIUSO (nessun rischio di capitale), ma il gradino non esisteva. `bot-enabled.test.js` non
+// poteva vederlo: la funzione c'era, mancava il filo. Vedi §5-bis p.153.
+const { statoBot, botAttivo, impostaBot, apertureDallAvvio, registraMercatoAperto, FILE: FILE_INTERRUTTORE } = require('../lib/maker/bot-enabled');
 const DASHBOARD = (process.env.REALLOC_DASHBOARD_BASE || 'http://127.0.0.1:3000').replace(/\/+$/, '');
 const CLOB_BASE = process.env.POLY_CLOB_BASE || 'https://clob.polymarket.com';
 // Un ciclo non parte mai nel primo minuto di vita del processo: un riavvio in serie di pm2 non deve
@@ -1711,6 +1718,26 @@ let sottoSogliaDa = null;
 let ultimoCicloOk = Date.now();
 
 /**
+ * IL MESSAGGIO DEL GRADINO 5, e perché è una funzione invece di un'interpolazione.
+ *
+ * `writeCollectorPriority` restituisce DUE campi che sembrano intercambiabili e non lo sono:
+ * `marketIds` è l'elenco degli id, `mercati` è l'elenco delle VOCI (oggetti con id, motivo, rank…).
+ * Il gradino 5 interpolava `mercati` dentro un template, cioè chiedeva a un array di oggetti di
+ * descriversi da solo: `[object Object],[object Object],…` per sessanta volte, e il numero che
+ * interessava — quanti mercati — non compariva da nessuna parte. Il ciclo normale (riga ~571) usava
+ * già `marketIds.length`: era una divergenza fra due letture dello stesso valore di ritorno.
+ *
+ * Qui si conta, e si conta da `marketIds` come fa l'altro chiamante. Una lettura mancante vale 0 e lo
+ * dice: `Number(null) === 0` è il difetto più ricorrente di questo repo (§5.3), quindi lo zero
+ * dell'assenza e lo zero misurato NON si scrivono uguali.
+ */
+function messaggioFeedRiseminato(pr) {
+  const ids = pr && Array.isArray(pr.marketIds) ? pr.marketIds : null;
+  if (ids === null) return 'corsia calda riseminata: conteggio dei mercati non leggibile';
+  return `corsia calda riseminata: ${ids.length} mercati`;
+}
+
+/**
  * L'ESECUTORE DEI GRADINI. Ogni voce è un'azione che rimette in sincronia lo STATO del bot con la
  * realtà; **nessuna tocca una regola di rischio** — non alza tetti, non allarga bande, non consente di
  * stare primi sul libro, non salta la chiusura forzata. Il gradino finale non è un'azione: è fermarsi.
@@ -1757,7 +1784,7 @@ async function eseguiGradino(azione) {
       const pr = writeCollectorPriority(piano && piano.ok ? { rows: piano.righe || [] } : { rows: [] }, {
         candidati: candidatiPerIlFeed(), posizioni: mercatiConPosizione(),
       });
-      return fatto(!!(pr && pr.ok !== false), `corsia calda riseminata: ${(pr && pr.mercati) || 0} mercati`);
+      return fatto(!!(pr && pr.ok !== false), messaggioFeedRiseminato(pr));
     }
     if (azione === 'fermati-in-sicurezza') {
       // ⚠ L'ULTIMO GRADINO. Cinque tentativi diversi non hanno sciolto il blocco: il bot non sa cosa
@@ -2217,7 +2244,7 @@ if (require.main === module) main();
 
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
-  autodiagnosiPeriodica, eseguiGradino, nozionalePiazzato,
+  autodiagnosiPeriodica, eseguiGradino, messaggioFeedRiseminato, nozionalePiazzato,
   LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,
   rigaBoardNormalizzata, copiaRegoleNelRipiego, BOARD_NORMALIZZATO, sorvegliaAvvio, scadenzaDalBoard };
