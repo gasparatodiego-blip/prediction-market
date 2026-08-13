@@ -860,6 +860,36 @@ module.exports = {
       // lo si lanci, anche a mano.
       env:           { NODE_ENV: 'production', HOME: '/root' },
     },
+    {
+      name:          'agent45-osservatore',
+      script:        './agents/agent45-osservatore.js',
+      cwd:           '/root/prediction-market',
+      // ── L'OSSERVATORE MUTO. CAMPIONA, SCRIVE, NIENT'ALTRO. ──────────────────────────────────────
+      // Un campione ogni 60 s in data/osservatore/: ordini a riposo, mercati coperti, posizioni,
+      // saldo, PnL del guardiano, stato degli interruttori. Piu' un giornale in italiano con gli
+      // eventi (pre-allarme, scatto, collasso, transizioni di copertura, merge, cancellazioni).
+      //
+      // ── PERCHE' E' SEMPRE VIVO, a differenza di agent44 ─────────────────────────────────────────
+      // agent44 fotografa il CODICE, che fra una notte e l'altra non cambia da solo: puo' girare una
+      // volta al giorno e uscire. Questo fotografa lo STATO, che cambia di minuto in minuto, e una
+      // serie temporale con dei buchi non e' una serie temporale. Il costo e' quello di un processo
+      // che dorme 59 secondi su 60 e legge qualche file: misurabile in pm2, non in percentuale di CPU.
+      //
+      // ── PERCHE' PUO' RIAVVIARSI DA SOLO SENZA CHIEDERE (§2 regola 2) ────────────────────────────
+      // La regola 2 chiede conferma perche' un riavvio puo' cambiare cosa il bot FA. Questo processo
+      // non fa niente: non piazza, non cancella, non tocca AVVIA/FERMA/KILL, e scrive esclusivamente
+      // sotto data/osservatore/. Un test (`lib/osservatore/campionamento.test.js`) cammina il suo
+      // albero dei `require` e fallisce se qualcuno ci trascina dentro l'adapter, il signer,
+      // manual-order, cancel-all, bot-enabled o il kill switch. Riavviarlo puo' al piu' produrre un
+      // buco nella serie — che il campione successivo DICHIARA come salto invece di nasconderlo.
+      autorestart:   true,
+      // 150M e' il taglio dei processi leggeri di questo repo (agent38, agent44): non introduce una
+      // scala nuova. L'osservatore tiene in memoria l'ultima ora di campioni e poco altro; la coda del
+      // giornale maker la legge in modo incrementale, con un tetto di 8 MB per giro.
+      max_memory_restart: '150M',
+      watch:         false,
+      env:           { NODE_ENV: 'production', HOME: '/root' },
+    },
   ],
 };
 

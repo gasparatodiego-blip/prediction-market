@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~10:30 UTC.
+Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~11:45 UTC.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -540,6 +540,7 @@ più nel repo né in `ecosystem.config.js`. Finché non vengono eseguiti i due `
 | `agent24-liquidity-rewards` | Scanner dei mercati con reward: ogni 15 min legge Gamma + book e assegna il punteggio con la formula quadratica esatta del venue. | `agents/agent24-liquidity-rewards.js` |
 | `agent27-news-guard` | Guardia notizie/volatilità: segnala che il prezzo sta per muoversi, così le quote si ritirano prima del fill avverso. | `agents/agent27-news-guard.js` |
 | `agent43-guardian` | **Guardiano delle perdite economiche** — vedi la scheda sotto. In servizio dalle 21:27:31 del 7 agosto 2026 (allora col nome `agent42-guardian`), baseline **$660,56**, nessuno scatto. **Rinominato l'8 agosto 2026: il processo pm2 vivo porta ancora il nome vecchio finché non lo si ricrea — §5 punto 15.** | `agents/agent43-guardian.js` |
+| `agent45-osservatore` | **L'osservatore muto** (13 agosto 2026). Un campione ogni **60 s** in `data/osservatore/`: ordini a riposo, mercati con posizione (coppie vs gambe nude), posizioni e valore, saldo, totale, PnL del guardiano, stato degli interruttori, reward di giornata. Più un **giornale in italiano** con gli eventi: pre-allarme, scatto, collasso, transizioni coperta⇄scoperta **con la durata**, merge, cancellazioni. **Non decide, non agisce, non avvisa.** Rotazione giornaliera, 30 giorni. Strutturalmente incapace di toccare capitale — un test cammina il suo albero dei `require`. **Read-only ⇒ riavviabile senza conferma.** | `agents/agent45-osservatore.js` + `lib/osservatore/campionamento.js` |
 | `agent-monitor` | Sorveglia la flotta via heartbeat e riavvia gli agenti fermi, con circuit breaker per agente. | `agents/agent-monitor.js` |
 | `dashboard` | Il Next.js che serve pannello e `/api/*` sulla porta 3000. Il **pannello ordini manuali gira dentro questo processo**. | `npm start -- --port 3000` |
 
@@ -1037,6 +1038,24 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
 7. **La ricostruzione sotto soglia scatta quasi a ogni giro sul board di oggi** (6 righe utili contro
    una soglia di 12): costa ~13 s di processo figlio ogni 10 minuti. È il comportamento corretto — il
    piano *è* sotto soglia — ma se un domani il board si allargasse stabilmente vale la pena rimisurare.
+16. **🔴🔴🔴 k=2 CONFERMA CONTRO UNA COPIA DI SE STESSO — difetto NUOVO, osservato DAL VIVO il 13
+   agosto 2026 alle 11:24:15Z. NON corretto (vietato toccare `guardian-perdite.js` in quella sessione).**
+   Il terzo scatto del guardiano è avvenuto **con k=2 già in produzione**, e il meccanismo ha fatto
+   meccanicamente il suo mestiere — `PRE-ALLARME (1/2)` alle 11:23:45, `SCATTO … CONFERMATO da 2
+   letture consecutive` alle 11:24:15. **Ma le due letture erano lo STESSO numero**: `−32.58335` USD e
+   totale `$627.98`, identici a cinque decimali. Non è una coincidenza, è **aritmetica**:
+   `SALDO_CACHE_TTL_MS = 45_000` (`lib/maker/saldo-cache.js:30`) contro
+   `GUARDIAN_POLL_MS = 30_000` (`agents/agent43-guardian.js:128`) ⇒ **due giri consecutivi del
+   guardiano cadono SEMPRE dentro la stessa finestra di cache del saldo**, quindi la seconda lettura
+   non è una seconda osservazione: è una copia della prima. **k=2 non aggiunge nessuna indipendenza.**
+   **⚠ ED ERA DI NUOVO UN FALSO POSITIVO**: `agent45-osservatore`, dieci minuti dopo lo scatto, misura
+   **−$9,20 (−1,39%)** contro i −$32,58 su cui ha latchato. Terzo falso positivo su tre scatti.
+   **La correzione NON è alzare k** — con la cache com'è, k=3 confermerebbe tre volte lo stesso
+   numero. Serve che le due letture siano **osservazioni distinte**: o si pretende che il timestamp
+   della lettura del saldo (e l'età dello snapshot posizioni) sia **cambiato** fra le due conferme, o
+   si porta il TTL della cache **sotto** la cadenza del guardiano. La prima è più sicura: non tocca
+   nessun'altra costante e fallisce chiuso (se non si sa quando è stata letta, non si conferma).
+   Decisione dell'operatore.
 14. **🔴 LA BASELINE DEL GUARDIANO È UNA FOTOGRAFIA VECCHIA, E NON È IL RUMORE — difetto DISTINTO,
    misurato il 13 agosto 2026. NON corretto, correzione solo proposta.**
    `data/guardian-baseline.json`: fissata il **2026-08-07T21:27:31Z** con `motivo: "primo avvio"`,
@@ -1235,6 +1254,17 @@ complessive, $99,32 di nozionale di picco; $137,80 scoperti nell'istante della m
 modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà** perché fotografavano il
 testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
+
+**144 · L'OSSERVATORE MUTO (agent45).** Vedi §3. `lib/osservatore/campionamento.js` è puro e testato
+(47 asserzioni); l'agente importa SOLO `saldo-cache` (eth_call senza signer), lo snapshot posizioni e
+`guardian-perdite` (puro). **Ordini a riposo e nozionale a book sono RICOSTRUITI** e il campo lo
+dichiara: leggerli dal venue richiede una chiamata autenticata che passa dall'adapter, cioè dalla
+stessa superficie che sa piazzare, e quella proprietà vale più della freschezza del campo.
+**`ordiniPerMercato` resta `null` per sempre** con la strumentazione di oggi: il giornale REDIGE
+`requested.marketId` sulle righe di elenco. Stessa famiglia di §5.2 p.10.
+⚠ Il suo primo test ha trovato un `Number(null) === 0` **nel codice nuovo** (`curPrice` assente che
+diventava una posizione da $0): settima occorrenza, e di nuovo trovata da una prova e non dal
+ragionamento.
 
 **141 · IL GUARDIANO NON SCATTA PIÙ SULLA PRIMA LETTURA (k=2).** Vedi il banner.
 `confermaScatto` in `lib/maker/guardian-perdite.js` (puro, stato esplicito) + il cablaggio in

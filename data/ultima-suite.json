@@ -1,8 +1,8 @@
 {
- "at": 1786618290737,
- "atIso": "2026-08-13T10:51:30.737Z",
- "eseguiti": 201,
- "verdi": 192,
+ "at": 1786621188763,
+ "atIso": "2026-08-13T11:39:48.763Z",
+ "eseguiti": 202,
+ "verdi": 193,
  "rossi": [
   "lib/leg-order.test.js",
   "lib/maker/dipendenze-collegate.test.js",

@@ -366,3 +366,6 @@ data/modalita-chiusura.json
 
 # Serie grezza rigenerabile da scripts/ricerca/estrai-serie-copertura.js (1,1 MB)
 data/ricerca/serie-copertura.json
+
+# Giornale dell osservatore: rigenerato in continuo, non va in git
+data/osservatore/
