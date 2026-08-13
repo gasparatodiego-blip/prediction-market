@@ -1277,6 +1277,31 @@ modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà**
 testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
 
+**151 · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — e corregge l'inquadramento di §150.**
+Misura in `data/ricerca/sintesi-redeem.md`; script `redeem-esiti.js`. **5.087 redeem su 8 wallet.**
+**⚠ IL CONFONDENTE È STATO ESCLUSO PRIMA DI MISURARE**: si temeva che una posizione risolta a **0** non
+generasse l'evento, il che avrebbe reso il conteggio un artefatto da sopravvivenza. Verificato che
+`usdcSize/size` vale **esattamente 0 o 1** e che **gli eventi a 0 esistono** (`size: 300, usdcSize: 0`).
+**Risultato: 4.781 vinte su 5.087 = 94,0%.** Non redimono indistintamente: **sanno**. E il carico
+mostra due modi opposti di sapere:
+· **famiglia A** (`0x2037bb7a`, `0x33bcb6e9`, `0x9977760c`): carico mediano **0,999**, **52-96% degli
+acquisti sopra 97¢**, 100% vinte, PnL +0,19/+0,6%. Comprano esiti **già decisi** per l'ultimo centesimo.
+· **famiglia B** (`0xfb1c3c1a`, `0x0dedae6a`): carico **0,45-0,46**, **0,0% sopra 97¢**, vinte 67-99%,
+PnL +33/+76%. Edge predittivo vero (comprare a 0,58 e vincere il 66,9% vale **+15%**).
+**⚠ CORREZIONE A §150**: avevo scritto «i migliori redimono all'87-98%, noi ~8%» in un modo che
+suggeriva di imitarli. **Il 94% è una proprietà della loro SELEZIONE, non del meccanismo**: i nostri
+residui nascono da fill parziali di coppie neutrali, quindi redimendoli incasseremmo il **valore atteso
+equo, non il 94%**.
+**Quello che resta valido, per una ragione indipendente**: il redeem **non ha size minima**, gli ordini
+sì. Per le 10 posizioni da $50,32 il confronto vero è «redeem al valore equo, zero spread, zero minimo»
+contro **«capitale congelato perché nessun ordine valido esiste»** — e quello si risolve col meccanismo
+a prescindere dal tasso di vittoria altrui.
+**⚠ FATTO COLLATERALE SU UNA NOSTRA REGOLA**: la famiglia A opera **dove `end-of-scale` ci vieta di
+andare** (sotto 3¢ / sopra 97¢). **Non è un'occasione persa**: a 99,9¢ si rischiano 99,9 centesimi per
+guadagnarne 0,1, quindi **un errore cancella ~mille operazioni riuscite**, ed è esattamente il modo di
+fallire contro cui quella regola esiste. Lo si annota perché il costo della regola sia **misurato
+invece che ignoto**, non perché vada cambiata.
+
 **150 · COSA FANNO GLI ALTRI DOPO UN FILL — sola ricerca.** Misura in
 `data/ricerca/sintesi-post-fill.md`; script `post-fill.js`. **82 wallet** (30 top + 30 casuali della
 fascia $10–100/g + i 21 del manuale + noi), **138.894 trade, 35.520 episodi**, finestra ~26 h, 178 s,
