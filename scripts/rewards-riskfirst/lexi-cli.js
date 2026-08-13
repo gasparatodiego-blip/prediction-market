@@ -7,6 +7,7 @@
 const fs = require('fs');
 const { loadWindow } = require('../rewards-worstcase/lib/data');
 const { allocateAt, maxQuiet } = require('./lib/lexi');
+const { raggioBandaCents } = require('../../lib/banda-premiante');
 
 const money = (x) => (x == null ? '—' : (x < 0 ? '-$' : '$') + Math.abs(x).toFixed(2));
 const pct = (x) => (x == null ? '—' : x > 200 ? '>200%/yr' : x.toFixed(1) + '%/yr');
@@ -37,7 +38,7 @@ async function main() {
   else console.log('  invariant net ≤ gross: HOLDS');
 
   // RISK-FIRST GRID: (capital tolerance) × (offset), band-honest — objective (1) then (2), reward within
-  console.log('\nRISK-FIRST GRID (tolerance = max structural loss %; offset = fill lever; band-honest: offset > maxSpread/2 excludes the market):');
+  console.log('\nRISK-FIRST GRID (tolerance = max structural loss %; offset = fill lever; band-honest: offset > raggioBandaCents(maxSpread) excludes the market):');
   console.log('  tol   offset  deploy   markets  bandXcl  bound     net/day   fills   price-of-safety vs reward-only');
   const grid = [[0.50, 1], [0.50, 2], [0.25, 1], [0.25, 2], [0.10, 1]];
   for (const [tol, off] of grid) {

@@ -46,6 +46,7 @@ const { resolveFunder } = require('../lib/venues/polymarket-clob-maker/funder');
 const { JsonRpcProvider, Contract, formatUnits } = require('ethers');
 const { PUSD, DEFAULT_RPC } = require('../lib/poly-contracts');
 const { httpGet } = require('../lib/httpGet');
+const { raggioBandaCents } = require('../lib/banda-premiante');
 
 const HARD_USD_CAP = 5;      // this script REFUSES any order whose notional ≥ $5 (task: under $5)
 const TTL_SECONDS = 60;      // clamps UP to the venue's 120s GTD floor
@@ -140,14 +141,14 @@ async function main() {
     if (!market) { line('REFUSE: no liquid market with a fundable (<$5) band-edge order was found right now.'); process.exit(2); }
     const venueTickSize = await venueTick(market.tokenId);
     const tick = Number.isFinite(venueTickSize) ? venueTickSize : market.tick;   // authoritative venue tick
-    const price = +(Math.round((market.mid - (market.maxSpreadCents / 2) / 100) / tick) * tick).toFixed(6);
+    const price = +(Math.round((market.mid - (raggioBandaCents(market.maxSpreadCents)) / 100) / tick) * tick).toFixed(6);
     const sizeArg = (process.argv.find(a => a.startsWith('--size=')) || '').split('=')[1];
     const size = sizeArg && Number(sizeArg) >= market.minSize ? Number(sizeArg) : market.minSize;
     const notional = +(price * size).toFixed(4);
     line('\n[order]');
     line('  market  :', market.marketId);
     line('  token   :', market.tokenId);
-    line('  live mid:', market.mid, '| best bid/ask:', market.bestBid, '/', market.bestAsk, '| band ±', (market.maxSpreadCents / 2).toFixed(2), '¢');
+    line('  live mid:', market.mid, '| best bid/ask:', market.bestBid, '/', market.bestAsk, '| band ±', (raggioBandaCents(market.maxSpreadCents)).toFixed(2), '¢');
     line('  side    : BUY (post-only)  price:', price, `(${((market.mid - price) * 100).toFixed(2)}¢ below mid, deep in book)`);
     line('  size    :', size, 'shares (= min_incentive_size)  tick:', tick);
     line('  notional:', `$${notional.toFixed(4)}`);

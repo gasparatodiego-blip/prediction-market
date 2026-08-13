@@ -1,0 +1,134 @@
+{
+ "generatoAl": "2026-08-13T20:04:05.466Z",
+ "capitale": 650,
+ "tettoPerMercato": 32.67,
+ "MAX_MERCATI": 40,
+ "mercatiSulBoard": 97,
+ "mercatiFinanziabili": 43,
+ "mercatiScartatiDalPavimento": 54,
+ "mercatiFinanziabiliCapitale": 19,
+ "conBandaStretta": [
+  {
+   "distanzaC": 0.5,
+   "S": 0.7901,
+   "mercatiUsabili": 43,
+   "mercatiCoperti": 19,
+   "mercatiAlTettoDiCredibilita": 1,
+   "capitalePerMercato": 32.67,
+   "capitaleImpiegato": 620.73,
+   "rewardTotaleGiorno": 523.487,
+   "rewardMedioPerMercato": 27.5519
+  },
+  {
+   "distanzaC": 1.5,
+   "S": 0.4444,
+   "mercatiUsabili": 43,
+   "mercatiCoperti": 19,
+   "mercatiAlTettoDiCredibilita": 1,
+   "capitalePerMercato": 32.67,
+   "capitaleImpiegato": 620.73,
+   "rewardTotaleGiorno": 405.649,
+   "rewardMedioPerMercato": 21.35
+  },
+  {
+   "distanzaC": 2.5,
+   "S": 0.1975,
+   "mercatiUsabili": 0,
+   "mercatiCoperti": 0,
+   "mercatiAlTettoDiCredibilita": 0,
+   "capitalePerMercato": 32.67,
+   "capitaleImpiegato": 0,
+   "rewardTotaleGiorno": 0,
+   "rewardMedioPerMercato": 0
+  },
+  {
+   "distanzaC": 3.5,
+   "S": 0.0494,
+   "mercatiUsabili": 0,
+   "mercatiCoperti": 0,
+   "mercatiAlTettoDiCredibilita": 0,
+   "capitalePerMercato": 32.67,
+   "capitaleImpiegato": 0,
+   "rewardTotaleGiorno": 0,
+   "rewardMedioPerMercato": 0
+  }
+ ],
+ "conBandaVera": [
+  {
+   "distanzaC": 0.5,
+   "S": 0.7901,
+   "mercatiUsabili": 43,
+   "mercatiCoperti": 19,
+   "mercatiAlTettoDiCredibilita": 1,
+   "capitalePerMercato": 32.67,
+   "capitaleImpiegato": 620.73,
+   "rewardTotaleGiorno": 523.487,
+   "rewardMedioPerMercato": 27.5519
+  },
+  {
+   "distanzaC": 1.5,
+   "S": 0.4444,
+   "mercatiUsabili": 43,
+   "mercatiCoperti": 19,
+   "mercatiAlTettoDiCredibilita": 1,
+   "capitalePerMercato": 32.67,
+   "capitaleImpiegato": 620.73,
+   "rewardTotaleGiorno": 405.649,
+   "rewardMedioPerMercato": 21.35
+  },
+  {
+   "distanzaC": 2.5,
+   "S": 0.1975,
+   "mercatiUsabili": 43,
+   "mercatiCoperti": 19,
+   "mercatiAlTettoDiCredibilita": 1,
+   "capitalePerMercato": 32.67,
+   "capitaleImpiegato": 620.73,
+   "rewardTotaleGiorno": 283.975,
+   "rewardMedioPerMercato": 14.946
+  },
+  {
+   "distanzaC": 3.5,
+   "S": 0.0494,
+   "mercatiUsabili": 43,
+   "mercatiCoperti": 19,
+   "mercatiAlTettoDiCredibilita": 0,
+   "capitalePerMercato": 32.67,
+   "capitaleImpiegato": 620.73,
+   "rewardTotaleGiorno": 112.574,
+   "rewardMedioPerMercato": 5.925
+  }
+ ],
+ "ancorato": {
+  "rewardMisuratoGiorno": 4.4,
+  "distanzaAttualeC": 1,
+  "sAttuale": 0.6049,
+  "avvertenza": "il livello eredita 4 giorni di presenza su 30; il rapporto fra posizioni no",
+  "serie": [
+   {
+    "distanzaC": 0.5,
+    "S": 0.7901,
+    "rapportoVsOggi": 1.306,
+    "usdGiornoAncorato": 5.75
+   },
+   {
+    "distanzaC": 1.5,
+    "S": 0.4444,
+    "rapportoVsOggi": 0.735,
+    "usdGiornoAncorato": 3.23
+   },
+   {
+    "distanzaC": 2.5,
+    "S": 0.1975,
+    "rapportoVsOggi": 0.326,
+    "usdGiornoAncorato": 1.44
+   },
+   {
+    "distanzaC": 3.5,
+    "S": 0.0494,
+    "rapportoVsOggi": 0.082,
+    "usdGiornoAncorato": 0.36
+   }
+  ]
+ }
+}

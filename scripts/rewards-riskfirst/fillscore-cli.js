@@ -10,6 +10,7 @@ const { marketFeatures } = require('./lib/features');
 const { computeFillScores, auc } = require('./lib/fillscore');
 const { perMarketNetAtSize } = require('../../lib/rewards/allocator');
 const { reconstructTapeFillsForMarket } = require('../rewards-replay/lib/tape');
+const { raggioBandaCents } = require('../../lib/banda-premiante');
 
 const NOW = 1785160829000;
 const num = (x, d = 2) => (x == null ? '—' : x.toFixed(d));
@@ -65,7 +66,7 @@ async function main() {
 
   // OFFSET FRONTIER — the measurable lever
   console.log('\nOFFSET FRONTIER (the measurable fill-avoidance lever; $1000/side, all markets):');
-  console.log('  offset  total-fills  fills-avoided-vs-0c   gross-in-band/d  reward-lost/d (band dropout: offset > maxSpread/2)');
+  console.log('  offset  total-fills  fills-avoided-vs-0c   gross-in-band/d  reward-lost/d (band dropout: offset > raggioBandaCents(maxSpread))');
   // gross per market at $1000/side (offset does not change gross in the S=1 ceiling; band membership does)
   const grossByMid = new Map();
   for (const [mid, rows] of D.byMarket.entries()) {
@@ -80,13 +81,13 @@ async function main() {
     let fills = 0;
     for (const [mid, rows] of D.byMarket.entries()) { if (!D.potByCond.has(mid)) continue; const trades = (D.marketTokens.get(mid) && D.tapeByToken.get(D.marketTokens.get(mid))) || []; fills += reconstructTapeFillsForMarket(rows, trades, { offsetCents: off, sizeUsd: 1000, maxInventoryUsd: 5000 }).fills.length; }
     fillsAt[off] = fills;
-    // reward retained: markets whose band radius (maxSpread/2 cents) still contains the offset
+    // reward retained: markets whose band radius (maxSpread cents) still contains the offset
     let inBand = 0, lost = 0;
     for (const v of grossByMid.values()) { const radius = v.band != null ? v.band / 2 : null; if (radius != null && off <= radius + 1e-9) inBand += v.gross; else lost += v.gross; }
     console.log('  ' + (off + '¢').padStart(6) + '  ' + String(fills).padStart(11) + '  ' + String(fillsAt[0] != null ? fillsAt[0] - fills : '—').padStart(19) + '   ' + money(inBand).padStart(15) + '  ' + money(lost).padStart(12));
   }
   console.log('\n  → widening the offset is the ONE fill-avoidance lever we can MEASURE: fills collapse fast, but past');
-  console.log('    each market’s band radius (maxSpread/2) the order leaves the reward band and its gross drops to 0.');
+  console.log('    each market’s band radius (raggioBandaCents(maxSpread)) the order leaves the reward band and its gross drops to 0.');
   console.log('    Where the score is unvalidated, this trade is real and quantified.');
 }
 main().catch((e) => { console.error('HARD FAIL:', e.message); process.exit(1); });

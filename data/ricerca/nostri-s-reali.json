@@ -1,0 +1,75 @@
+{
+ "generatoAl": "2026-08-13T19:57:54.264Z",
+ "righeLette": 3890766,
+ "osservazioni": 42834,
+ "raggiOsservati": [
+  2.25,
+  2.75,
+  3.25
+ ],
+ "sMedio": {
+  "letturaStretta": 0.2491,
+  "letturaVera": 0.4951
+ },
+ "rapporto": 1.988,
+ "ordiniGiudicatiFuoriBanda": {
+  "letturaStretta": 5813,
+  "letturaVera": 2191
+ },
+ "tabella": [
+  {
+   "fascia": "0-20%",
+   "osservazioni": 1396,
+   "quotaPct": 3.3,
+   "sMedioLetturaStretta": 0.793,
+   "sMedioLetturaVera": 0.893
+  },
+  {
+   "fascia": "20-40%",
+   "osservazioni": 9682,
+   "quotaPct": 22.6,
+   "sMedioLetturaStretta": 0.5974,
+   "sMedioLetturaVera": 0.7856
+  },
+  {
+   "fascia": "40-60%",
+   "osservazioni": 7963,
+   "quotaPct": 18.6,
+   "sMedioLetturaStretta": 0.2986,
+   "sMedioLetturaVera": 0.5974
+  },
+  {
+   "fascia": "60-80%",
+   "osservazioni": 11970,
+   "quotaPct": 27.9,
+   "sMedioLetturaStretta": 0.1108,
+   "sMedioLetturaVera": 0.4441
+  },
+  {
+   "fascia": "80-100%",
+   "osservazioni": 6010,
+   "quotaPct": 14,
+   "sMedioLetturaStretta": 0.0122,
+   "sMedioLetturaVera": 0.3082
+  },
+  {
+   "fascia": "oltre 100% (fuori dalla banda stretta)",
+   "osservazioni": 5813,
+   "quotaPct": 13.6,
+   "sMedioLetturaStretta": 0,
+   "sMedioLetturaVera": 0.0741
+  }
+ ],
+ "levaCodaAlBordo": {
+  "conLetturaStretta": {
+   "da": 0.2491,
+   "a": 0.3312,
+   "guadagnoPct": 33
+  },
+  "conLetturaVera": {
+   "da": 0.4951,
+   "a": 0.5621,
+   "guadagnoPct": 13.5
+  }
+ }
+}

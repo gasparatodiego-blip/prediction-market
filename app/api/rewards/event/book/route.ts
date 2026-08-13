@@ -3,6 +3,7 @@ import fs from 'fs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
+import { raggioBandaCents } from '../../../../../lib/banda-premiante';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -157,8 +158,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // The reward band, from the SAME half-width convention the validator uses (radius = maxSpread/2).
-  const bandRadiusCents = maxSpreadCents != null ? maxSpreadCents / 2 : null;
+  // The reward band, from the SAME half-width convention the validator uses (radius = maxSpread).
+  const bandRadiusCents = maxSpreadCents != null ? raggioBandaCents(maxSpreadCents) : null;
   const bandLo = scoringMid != null && bandRadiusCents != null ? scoringMid - bandRadiusCents / 100 : null;
   const bandHi = scoringMid != null && bandRadiusCents != null ? scoringMid + bandRadiusCents / 100 : null;
 

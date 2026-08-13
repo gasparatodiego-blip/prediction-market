@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { getIsPaid, redactForTier } from '@/lib/paid-gating';
 import { PUSD, USDCE, CTF, EXCHANGES, oracleName } from '@/lib/poly-contracts';
 import { readChainState } from '@/lib/poly-chain-read';
+import { raggioBandaCents } from '../../../../lib/banda-premiante';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -123,9 +124,9 @@ export async function GET(req: NextRequest) {
     minOrderSize,
     minIncentiveSize,
     maxSpreadCents,
-    // The EFFECTIVE reward band is mid ± maxSpread/2 — the divide-by-two is the scorer's own v = the
+    // The EFFECTIVE reward band is mid ± maxSpread — the divide-by-two is the scorer's own v = the
     // half-band, and it is the same radius lib/maker/venue-rules validates against. Stated, not implied.
-    bandRadiusCents: maxSpreadCents != null ? maxSpreadCents / 2 : null,
+    bandRadiusCents: maxSpreadCents != null ? raggioBandaCents(maxSpreadCents) : null,
     dailyPotUsd,
     acceptingOrders: typeof clob?.accepting_orders === 'boolean' ? clob.accepting_orders : null,
     enableOrderBook: typeof clob?.enable_order_book === 'boolean' ? clob.enable_order_book : null,

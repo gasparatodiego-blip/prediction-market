@@ -17,7 +17,7 @@ require('../lib/safety/carica-env').caricaEnv({
 //   1. Fetches all active Gamma markets with clobRewards[0].rewardsDailyRate > 0
 //   2. For each, reads the CLOB order book.
 //   3. Scores resting orders with Polymarket's exact quadratic formula:
-//        S(v, s) = ((v - s) / v)^2,  v = rewardsMaxSpread/2 (cents), s = dist from mid (cents)
+//        S(v, s) = ((v - s) / v)^2,  v = rewardsMaxSpread (cents), s = dist from mid (cents)
 //      Q_competitors = Q_min(Q_bids, Q_asks) per the two-sided formula (c=3).
 //   4. Estimates LP reward share for THREE capital levels: $500, $5k, $50k.
 //        Typical placement: s = v/2 (half the half-band, S=0.25) — HEADLINE estimate.
@@ -41,6 +41,7 @@ const { writeCombinedSnapshot } = require('../lib/rewards-normalize');
 // Depth-at-touch suppression floor — shared SSOT (also used by lib/rewards-normalize and
 // re-exported to TS via lib/reward-gating.ts). Configurable via REWARD_DEPTH_TOUCH_FLOOR_USD.
 const { competitorDepthUsd, belowDepthFloor, depthFloorUsd } = require('../lib/reward-depth-floor');
+const { raggioBandaPrezzo } = require('../lib/banda-premiante');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS  = 15 * 60_000;
@@ -410,7 +411,7 @@ async function measureBookDepth(tokenId, rewardsMaxSpread, minSize, fallbackMid)
     const bookSprd = parseFloat((bestAsk - bestBid).toFixed(4));
 
     // Dollar notional (kept for UI display; NOT used for share math)
-    const halfBand = rewardsMaxSpread / 2 / 100;
+    const halfBand = raggioBandaPrezzo(rewardsMaxSpread);
     const qBidsUsd = bids.filter(b => b.price >= plainMid - halfBand).reduce((acc, b) => acc + b.price * b.size, 0);
     const qAsksUsd = asks.filter(a => a.price <= plainMid + halfBand).reduce((acc, a) => acc + a.price * a.size, 0);
     const existingDepthUsd = Math.round(qBidsUsd + qAsksUsd);
@@ -514,7 +515,7 @@ function classifyVol(stdev, range, endDateStr, rewardsMaxSpread) {
   if (daysLeft <= NEAR_EXPIRY_DAYS) return 'HIGH';
 
   const v        = stdev ?? range ?? 0;
-  const halfBand = rewardsMaxSpread / 2 / 100;
+  const halfBand = raggioBandaPrezzo(rewardsMaxSpread);
 
   if (v > halfBand)          return 'HIGH';
   if (v > halfBand * 0.25)   return 'MEDIUM';

@@ -48,6 +48,7 @@ import { motiviBlocco } from '@/lib/maker/motivi-blocco';
 // Un campo vuoto NON vale zero: `Number('')` fa 0, e uno zero in un riepilogo d'ordine si legge come un
 // prezzo. Stessa funzione già usata dal pannello manuale.
 import { numeroDigitato } from '@/lib/campo-numerico';
+import { raggioBandaCents } from '../../lib/banda-premiante';
 
 // Il rinnovo del permesso, e la soglia di freschezza che il pannello PROMETTE al server quando conferma.
 //
@@ -594,7 +595,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
   // passare una sostituzione per un dato del venue.
   const scoringMid = view && fin(view.scoringMid) ? view.scoringMid : mid;
   const scoringMidIsSubstitute = !!(view && !fin(view.scoringMid) && fin(mid));
-  const bandRadiusCents = fin(maxSpreadCents) ? maxSpreadCents / 2 : null;
+  const bandRadiusCents = fin(maxSpreadCents) ? raggioBandaCents(maxSpreadCents) : null;
   // IL MID DEL MOTORE — sempre quello del book YES, qualunque lato si stia guardando. Il tracking quota
   // entrambi i lati a partire da li', e il motore giudica la banda contro il mid di SCORING: l'anteprima
   // deve parlare quella lingua, non quella della vista.
@@ -1123,7 +1124,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
             <div className="op-mkt-c"><span className="op-mkt-k">size min</span><span className="op-mkt-v" data-op-minsize>{minSize ?? 'N/D'}</span></div>
             <div className="op-mkt-c">
               <span className="op-mkt-k">banda</span>
-              <span className="op-mkt-v" data-op-band>{fin(maxSpreadCents) ? `±${(maxSpreadCents / 2).toFixed(2)}¢` : 'N/D'}</span>
+              <span className="op-mkt-v" data-op-band>{fin(maxSpreadCents) ? `±${(raggioBandaCents(maxSpreadCents)).toFixed(2)}¢` : 'N/D'}</span>
               {fin(target.rewardsDailyRate) && <span className="op-mkt-s">{money(target.rewardsDailyRate, 0)}/g</span>}
             </div>
             {/* IL SALDO fra i dati di mercato, non altrove: e' il numero che decide quanto si puo'
@@ -1257,7 +1258,7 @@ export default function OrderPanel({ target, balanceUsd, onClose, onEnabled, onP
             <div className="op-book-foot" data-op-book-foot>
               <span>spread <b className="ex-n">{fin(spreadCents) ? `${spreadCents.toFixed(1)}¢` : 'N/D'}</b></span>
               <span>tick <b className="ex-n">{tick ?? 'N/D'}</b></span>
-              <span>banda <b className="ex-n">{fin(maxSpreadCents) ? `±${(maxSpreadCents / 2).toFixed(2)}¢` : 'N/D'}</b></span>
+              <span>banda <b className="ex-n">{fin(maxSpreadCents) ? `±${(raggioBandaCents(maxSpreadCents)).toFixed(2)}¢` : 'N/D'}</b></span>
               <span>size min <b className="ex-n">{minSize ?? 'N/D'}</b></span>
               {fin(target.rewardsDailyRate) && <span>reward/g <b className="ex-n ex-up">{money(target.rewardsDailyRate, 0)}</b></span>}
               {view && (

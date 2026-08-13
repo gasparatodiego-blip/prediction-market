@@ -21,6 +21,7 @@
 // PURE: no I/O, no Date/Math.random, deterministic given input. Missing pool/depth ⇒ dailyUsd null.
 
 import { computeLiquidityYield } from './liquidity-yield';
+import { dentroBanda, punteggio } from './banda-premiante';
 
 export const ONE_SIDED_PENALTY = 3;     // Polymarket ÷3 credit when quoting a single side (mid in band)
 export const MID_BAND_LO_C     = 10;    // cents — below this (or above HI) Polymarket REQUIRES two sides
@@ -61,10 +62,12 @@ const finite = (x: unknown): x is number => typeof x === 'number' && Number.isFi
 /** Quadratic in-band proximity for a single order. 1 at the mid, 0 at the band edge and beyond. */
 function proximity(priceCents: number, midCents: number, maxSpreadC: number, venue: Venue): number {
   const s = Math.abs(priceCents - midCents);
-  if (!(maxSpreadC > 0) || s > maxSpreadC) return 0;          // out of band ⇒ earns nothing
+  // La geometria della banda viene dalla SSOT (lib/banda-premiante), non da un'aritmetica locale:
+  // questo modulo aveva già la lettura giusta di v mentre il resto del repo ne aveva un'altra, ed è
+  // esattamente la divergenza che la SSOT esiste per rendere impossibile.
+  if (!dentroBanda(s, maxSpreadC)) return 0;                   // out of band ⇒ earns nothing
   if (venue === 'kalshi') return 1;                            // flat pro-rata: no distance weighting
-  const p = (maxSpreadC - s) / maxSpreadC;                     // Polymarket quadratic ((v−s)/v)²
-  return Math.max(0, Math.min(1, p * p));
+  return Math.max(0, Math.min(1, punteggio(s, maxSpreadC)));   // Polymarket quadratic ((v−s)/v)²
 }
 
 function sideScore(levels: LevelAlloc[], midCents: number, maxSpreadC: number, venue: Venue): number {

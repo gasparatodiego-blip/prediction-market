@@ -3,7 +3,7 @@
 // PriceLadder — one market's price geometry as a single horizontal bar.
 //
 // WHAT IT DRAWS, and nothing else:
-//   • the REWARD BAND as a shaded region (mid ± maxSpread/2) — the zone that actually pays
+//   • the REWARD BAND as a shaded region (mid ± maxSpread) — the zone that actually pays
 //   • the scoring MID as the centre line
 //   • best BID and best ASK as ticks on the track
 //   • YOUR resting orders as dots, green when they are earning, red when they are not

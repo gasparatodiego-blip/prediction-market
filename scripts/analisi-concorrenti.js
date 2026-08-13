@@ -26,6 +26,7 @@ const readline = require('readline');
 
 const RADICE = path.join(__dirname, '..');
 const RS = require(path.join(RADICE, 'lib', 'rewardScore.js'));
+const { raggioBandaCents } = require('../lib/banda-premiante');
 
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
 const PIANO = arg('--piano', '/tmp/claude-0/-root-rewards-bot/ef771b3e-673a-4dc5-8ef8-b35ba59b0e7a/scratchpad/piano.json');
@@ -96,14 +97,14 @@ function livelliInBanda(r) {
 // Non si «recupera» Q dai livelli pubblicati: si CALCOLA sulla scala vera, con la stessa
 // `scoreOrder` del repo, che è la S(v,s) del venue. Più diretto e senza inversioni.
 function qConcorrenti(liv, mid, maxSpreadCents) {
-  const v = maxSpreadCents / 2;
+  const v = raggioBandaCents(maxSpreadCents);
   const somma = (lato) => lato.reduce((s, x) => s + RS.scoreOrder(Math.max(0, x.distanzaC), v) * x.size, 0);
   const qb = somma(liv.bid); const qa = somma(liv.ask);
   return { qBid: qb, qAsk: qa, q: RS.qMin(qb, qa, mid) };
 }
 
 function nostroQ(prezzoBid, prezzoAsk, shares, mid, maxSpreadCents) {
-  const v = maxSpreadCents / 2;
+  const v = raggioBandaCents(maxSpreadCents);
   const dB = Math.max(0, (mid - prezzoBid) * 100);
   const dA = Math.max(0, (prezzoAsk - mid) * 100);
   const qb = RS.scoreOrder(dB, v) * shares;

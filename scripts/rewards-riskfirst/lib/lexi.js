@@ -24,7 +24,7 @@ function expectedFills(allocation, D, offsetCents, maxInventoryUsd) {
 
 /**
  * One allocation point: a (tolerance, offset) choice. Deploy ≤ 2·t·budget → bound ≤ t·budget. Honest offset:
- * a market only earns if the offset fits inside its reward band, i.e. offsetCents ≤ maxSpread/2. Markets
+ * a market only earns if the offset fits inside its reward band, i.e. offsetCents ≤ maxSpread. Markets
  * whose band cannot contain the offset (or whose maxSpread is unknown) are EXCLUDED and counted — this is
  * what makes a wider offset cost reward (the allocator's gross is otherwise the offset-independent S=1
  * ceiling). `maxSpreadByMarket` maps conditionId → maxSpread cents.

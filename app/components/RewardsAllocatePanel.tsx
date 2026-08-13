@@ -29,6 +29,7 @@ import ConfermaEPiazza from './ConfermaEPiazza';
 // dentro un componente si può verificare solo con una regex sul sorgente, cioè non si può verificare.
 import { righePerId as costruisciRighe } from '@/lib/rewards/righe-piano';
 import type { OrderTarget } from '@/app/components/OrderPanel';
+import { raggioBandaCents } from '../../lib/banda-premiante';
 
 type Balance = {
   proxy: string | null; proxySource: string | null; signer: string | null;
@@ -1586,7 +1587,7 @@ export default function RewardsAllocatePanel(
             {' vs '}<b>{plan.annualisedRealistic.pct == null ? '—' : `${plan.annualisedRealistic.pct.toFixed(0)}%`}</b> realistico.
             Cifre a tre o quattro zeri = capitale piccolo rispetto ai pot dei mercati sottili: <b>run-rate</b>.
           </div>
-          <div className="alloc-sub" style={{ marginTop: 6 }}>{plan.annualisedGross.label}. Il netto per-mercato è “—” dove non è stato osservato alcun fill reale. Un offset oltre il raggio di banda (maxSpread/2) porta il lordo a $0: la riga lo dice, non mostra un piccolo positivo.</div>
+          <div className="alloc-sub" style={{ marginTop: 6 }}>{plan.annualisedGross.label}. Il netto per-mercato è “—” dove non è stato osservato alcun fill reale. Un offset oltre il raggio di banda (raggioBandaCents(maxSpread)) porta il lordo a $0: la riga lo dice, non mostra un piccolo positivo.</div>
 
           {/* ── ESEGUI ALLOCAZIONE ─────────────────────────────────────────────────────────────────
               Due passi obbligatori: prima l'anteprima (che percorre la stessa aritmetica del cap senza

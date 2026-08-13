@@ -12,7 +12,7 @@
 // computes the operator's own inputs, it does not propose different ones.
 //
 // EVERY value is a real read or "—". Nothing is defaulted to zero, inferred from a sibling field, or
-// carried over from a stale snapshot without its age. The band is stated as mid ± maxSpread/2 because
+// carried over from a stale snapshot without its age. The band is stated as mid ± maxSpread because
 // that is the half-width the shared validator (lib/maker/venue-rules) actually enforces.
 //
 // READ-ONLY: this page loads no credential and can reach no order path.
@@ -332,11 +332,11 @@ export default function EventTerminal({ marketId, embedded = false }: { marketId
             </KV>
           </div>
 
-          {/* The band — stated with its /2, because that /2 is what the validator enforces. */}
+          {/* La banda, dichiarata come la applica il venue: ± max_spread pieno dal mid. */}
           <div className="evt-band">
             <span className="evt-band-t">Banda premiante effettiva</span>
             <span className="evt-band-f">
-              punto medio di scoring <strong>±&nbsp;max_spread / 2</strong>
+              punto medio di scoring <strong>±&nbsp;max_spread</strong>
             </span>
             <span className="evt-band-v">
               <Redacted value={fin(rules?.bandRadiusCents) ? rules.bandRadiusCents : null} isPaid={isPaid}>
@@ -347,9 +347,10 @@ export default function EventTerminal({ marketId, embedded = false }: { marketId
               ) : null}
             </span>
             <p className="evt-foot">
-              Il <strong>/2</strong> non è una convenzione di questa pagina: il punteggio pubblicato usa
-              v = max_spread/2 come semi-banda, ed è lo stesso raggio che il validatore condiviso applica.
-              Un ordine esattamente sul bordo vale 0.
+              Il raggio non è una convenzione di questa pagina: la documentazione del venue definisce
+              <strong> v</strong> come «max spread <em>dal punto medio</em>», cioè la semiampiezza piena,
+              ed è lo stesso raggio che il validatore condiviso applica. Un ordine esattamente sul bordo
+              vale 0.
             </p>
             <p className="evt-foot">
               <strong>Distanza minima dal mid:</strong> nessuna regola ne impone una. Il limite è di

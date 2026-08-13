@@ -16,6 +16,7 @@ const { scoreBook, adjustedMid, parseOrders, quadraticUserShare } = REWARD;
 // multi-price configuration with the SAME math the panel uses, never a second implementation.
 const LAYERED = require(path.join(__dirname, '..', '..', '..', 'lib', 'reward-layered'));
 const LAYERS = require(path.join(__dirname, '..', '..', '..', 'lib', 'reward-layers'));
+const { raggioBandaCents } = require('../../../lib/banda-premiante');
 
 function clampPrice(mid) { return Math.max(0.01, Math.min(0.99, mid)); }
 
@@ -123,7 +124,7 @@ function measureFromBook(book, rewardsMaxSpread, minSize) {
   const mid = adjustedMid(bids, asks, minSize, null);
   if (mid == null) return { ok: false, reason: 'mid unscoreable (no ≥minSize touch)' };
   const qs = scoreBook({ bids, asks }, rewardsMaxSpread, minSize, mid); // { Qbids, Qasks, Qmin, mid }
-  const r = (rewardsMaxSpread / 2) / 100;
+  const r = (raggioBandaCents(rewardsMaxSpread)) / 100;
   const inbandUsd = (arr) => arr.filter((o) => o.size >= minSize && o.price >= mid - r - 1e-12 && o.price <= mid + r + 1e-12)
     .reduce((a, o) => a + o.price * o.size, 0);
   return {

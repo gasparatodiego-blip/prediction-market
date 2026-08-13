@@ -1,3 +1,4 @@
+import { raggioBandaCents } from './banda-premiante';
 // lib/rewards-estimate.ts — pure, auditable liquidity-reward estimator.
 //
 // ONE function of record for "what would I earn posting a limit order near the mid
@@ -34,7 +35,7 @@
 
 // ── Tunable constants (task + honest-engine defaults) ────────────────────────
 export const TIME_BASE            = 0.83;   // fraction of the UTC day an order rests if never filled
-export const REF_PROXIMITY        = 0.75;   // existing makers assumed at distance ≈ maxSpread/2 → 1-0.25
+export const REF_PROXIMITY        = 0.75;   // existing makers assumed at distance ≈ raggioBandaCents(maxSpread) → 1-0.25
 export const MIN_PAYOUT_USD       = 1.0;    // Polymarket/Kalshi do not pay below $1/day
 export const ANNUALIZED_CAP_PCT   = 200;    // honest-engine annualized ceiling
 export const FILL_PROB_CAP        = 0.90;   // a resting maker is never ~certain to be adversely filled

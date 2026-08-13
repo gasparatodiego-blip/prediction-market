@@ -49,6 +49,7 @@ const { decideDrift } = require('../lib/rewards-drift');
 const { loadNewsGuardConfig } = require('../lib/news-guard/config');
 const { appendDriftShadowRecord } = require('../lib/news-guard/shadow-log');
 const { estRewardForgone } = require('../lib/news-guard/action');
+const { raggioBandaCents } = require('../lib/banda-premiante');
 
 // ── config ──
 const WATCHLIST_FILE = '/root/prediction-market/data/liquidity-rewards.json'; // agent24 output
@@ -788,7 +789,7 @@ function buildSnapshot() {
     // Market-level mid/band anchor on the YES token (the reward book), matching agent24.
     const mid = yes.adjustedMid;
     const plainMid = yes.plainMid;
-    const bandRadiusC = meta.maxSpread != null ? meta.maxSpread / 2 : null;
+    const bandRadiusC = meta.maxSpread != null ? raggioBandaCents(meta.maxSpread) : null;
     // The divergence, MEASURED not acted on: adjusted − plain, in cents.
     const midAdjVsPlainC = (mid != null && plainMid != null) ? Math.round((mid - plainMid) * 1000) / 10 : null;
     markets[meta.conditionId] = {
@@ -1056,7 +1057,7 @@ function sampleMidHistory() {
       plainMid = (bestBid != null && bestAsk != null) ? Math.round(((bestBid + bestAsk) / 2) * 1e6) / 1e6 : null;
       const am = adjustedMid(bids, asks, sizeCutoff(meta.minSize), null);
       adjMid = am != null ? Math.round(am * 1e6) / 1e6 : null;
-      const bandRadiusC = meta.maxSpread != null ? meta.maxSpread / 2 : null;
+      const bandRadiusC = meta.maxSpread != null ? raggioBandaCents(meta.maxSpread) : null;
       const d = inBandDepth(bids, asks, adjMid, bandRadiusC, meta.minSize);
       bidDepthInBand = d.bidDepthInBand; askDepthInBand = d.askDepthInBand;
       bandLow = d.bandLow; bandHigh = d.bandHigh;

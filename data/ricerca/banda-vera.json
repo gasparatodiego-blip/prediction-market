@@ -1,0 +1,1346 @@
+{
+ "generatoAl": "2026-08-13T19:48:26.828Z",
+ "domanda": "la banda vera è ±max_spread o ±max_spread/2?",
+ "mercatiLetti": 110,
+ "mercatiFalliti": 0,
+ "profilo": [
+  {
+   "da": 0,
+   "a": 0.05,
+   "shareMedioPerMercato": 25438.1,
+   "qualMedioPerMercato": 25401.4,
+   "mercati": 10
+  },
+  {
+   "da": 0.05,
+   "a": 0.1,
+   "shareMedioPerMercato": 15029.3,
+   "qualMedioPerMercato": 15026,
+   "mercati": 14
+  },
+  {
+   "da": 0.1,
+   "a": 0.15,
+   "shareMedioPerMercato": 33058.3,
+   "qualMedioPerMercato": 33039.8,
+   "mercati": 59
+  },
+  {
+   "da": 0.15,
+   "a": 0.2,
+   "shareMedioPerMercato": 13472.4,
+   "qualMedioPerMercato": 13458.4,
+   "mercati": 14
+  },
+  {
+   "da": 0.2,
+   "a": 0.25,
+   "shareMedioPerMercato": 4219.7,
+   "qualMedioPerMercato": 4201.8,
+   "mercati": 41
+  },
+  {
+   "da": 0.25,
+   "a": 0.3,
+   "shareMedioPerMercato": 13451.9,
+   "qualMedioPerMercato": 13437.7,
+   "mercati": 16
+  },
+  {
+   "da": 0.3,
+   "a": 0.35,
+   "shareMedioPerMercato": 8091.5,
+   "qualMedioPerMercato": 8084.7,
+   "mercati": 65
+  },
+  {
+   "da": 0.35,
+   "a": 0.4,
+   "shareMedioPerMercato": 97362.5,
+   "qualMedioPerMercato": 97343.5,
+   "mercati": 14
+  },
+  {
+   "da": 0.4,
+   "a": 0.45,
+   "shareMedioPerMercato": 45050,
+   "qualMedioPerMercato": 45041.4,
+   "mercati": 52
+  },
+  {
+   "da": 0.45,
+   "a": 0.5,
+   "shareMedioPerMercato": 89469.9,
+   "qualMedioPerMercato": 89449.1,
+   "mercati": 16
+  },
+  {
+   "da": 0.5,
+   "a": 0.55,
+   "shareMedioPerMercato": 21551.4,
+   "qualMedioPerMercato": 21535.3,
+   "mercati": 14
+  },
+  {
+   "da": 0.55,
+   "a": 0.6,
+   "shareMedioPerMercato": 11178,
+   "qualMedioPerMercato": 11173.9,
+   "mercati": 62
+  },
+  {
+   "da": 0.6,
+   "a": 0.65,
+   "shareMedioPerMercato": 17554.1,
+   "qualMedioPerMercato": 17545.9,
+   "mercati": 17
+  },
+  {
+   "da": 0.65,
+   "a": 0.7,
+   "shareMedioPerMercato": 27576.8,
+   "qualMedioPerMercato": 27567.9,
+   "mercati": 45
+  },
+  {
+   "da": 0.7,
+   "a": 0.75,
+   "shareMedioPerMercato": 165922,
+   "qualMedioPerMercato": 165917,
+   "mercati": 20
+  },
+  {
+   "da": 0.75,
+   "a": 0.8,
+   "shareMedioPerMercato": 29805.5,
+   "qualMedioPerMercato": 29796.3,
+   "mercati": 63
+  },
+  {
+   "da": 0.8,
+   "a": 0.85,
+   "shareMedioPerMercato": 10460.1,
+   "qualMedioPerMercato": 10437.1,
+   "mercati": 16
+  },
+  {
+   "da": 0.85,
+   "a": 0.9,
+   "shareMedioPerMercato": 9684.4,
+   "qualMedioPerMercato": 9673.7,
+   "mercati": 43
+  },
+  {
+   "da": 0.9,
+   "a": 0.95,
+   "shareMedioPerMercato": 110237.9,
+   "qualMedioPerMercato": 110230.6,
+   "mercati": 13
+  },
+  {
+   "da": 0.95,
+   "a": 1,
+   "shareMedioPerMercato": 69202.3,
+   "qualMedioPerMercato": 69190.9,
+   "mercati": 49
+  },
+  {
+   "da": 1,
+   "a": 1.05,
+   "shareMedioPerMercato": 259986.4,
+   "qualMedioPerMercato": 259981,
+   "mercati": 48
+  },
+  {
+   "da": 1.05,
+   "a": 1.1,
+   "shareMedioPerMercato": 5460.1,
+   "qualMedioPerMercato": 5430.1,
+   "mercati": 13
+  },
+  {
+   "da": 1.1,
+   "a": 1.15,
+   "shareMedioPerMercato": 1394.9,
+   "qualMedioPerMercato": 1388.1,
+   "mercati": 39
+  },
+  {
+   "da": 1.15,
+   "a": 1.2,
+   "shareMedioPerMercato": 8509.5,
+   "qualMedioPerMercato": 8496.8,
+   "mercati": 16
+  },
+  {
+   "da": 1.2,
+   "a": 1.25,
+   "shareMedioPerMercato": 2999.8,
+   "qualMedioPerMercato": 2986.9,
+   "mercati": 52
+  },
+  {
+   "da": 1.25,
+   "a": 1.3,
+   "shareMedioPerMercato": 39054.9,
+   "qualMedioPerMercato": 39009.6,
+   "mercati": 17
+  },
+  {
+   "da": 1.3,
+   "a": 1.35,
+   "shareMedioPerMercato": 715,
+   "qualMedioPerMercato": 699.9,
+   "mercati": 35
+  },
+  {
+   "da": 1.35,
+   "a": 1.4,
+   "shareMedioPerMercato": 4630.7,
+   "qualMedioPerMercato": 4613.4,
+   "mercati": 15
+  },
+  {
+   "da": 1.4,
+   "a": 1.45,
+   "shareMedioPerMercato": 1520.1,
+   "qualMedioPerMercato": 1503.2,
+   "mercati": 48
+  },
+  {
+   "da": 1.45,
+   "a": 1.5,
+   "shareMedioPerMercato": 3295,
+   "qualMedioPerMercato": 3246.6,
+   "mercati": 11
+  },
+  {
+   "da": 1.5,
+   "a": 1.55,
+   "shareMedioPerMercato": 2470.5,
+   "qualMedioPerMercato": 2448.1,
+   "mercati": 14
+  },
+  {
+   "da": 1.55,
+   "a": 1.6,
+   "shareMedioPerMercato": 38488.9,
+   "qualMedioPerMercato": 38481.2,
+   "mercati": 39
+  },
+  {
+   "da": 1.6,
+   "a": 1.65,
+   "shareMedioPerMercato": 165.4,
+   "qualMedioPerMercato": 0,
+   "mercati": 1
+  }
+ ],
+ "aggregati": {
+  "shareDentroBandaStretta": 344643.6,
+  "shareFraStrettaELarga": 473172.49999999994,
+  "shareOltreBandaLarga": 368525.80000000005
+ },
+ "perMercato": [
+  {
+   "conditionId": "0x5db999fad322cea2914535aae5517060c3f80ad6d8c0231cde2124a434d16846",
+   "slug": "will-the-us-invade-iran-before-2027",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.175,
+   "dentroStretta": 840974,
+   "fraLeDue": 1252122,
+   "oltreLarga": 4217656
+  },
+  {
+   "conditionId": "0xcd2640464754b9a894ffec98ac11554fdd507ea89ca01237eabb3a6de4a606e6",
+   "slug": "2026-f1-drivers-champion",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.7444999999999999,
+   "dentroStretta": 1218560,
+   "fraLeDue": 760458,
+   "oltreLarga": 23245515
+  },
+  {
+   "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "slug": "how-many-fed-rate-cuts-in-2026",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.8594999999999999,
+   "dentroStretta": 128853,
+   "fraLeDue": 60810,
+   "oltreLarga": 10222701
+  },
+  {
+   "conditionId": "0x747dc809fb79e1b05be09c42d6179459a58de2ef3e40f02484a4e1260f741f75",
+   "slug": "will-the-us-confirm-that-aliens-exist-before-2027",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.045,
+   "dentroStretta": 1048836,
+   "fraLeDue": 1473175,
+   "oltreLarga": 379095
+  },
+  {
+   "conditionId": "0x7ad403c3508f8e3912940fd1a913f227591145ca0614074208e0b962d5fcc422",
+   "slug": "presidential-election-winner-2028",
+   "maxSpread": 5.5,
+   "minSize": 200,
+   "mid": 0.2305,
+   "dentroStretta": 219702,
+   "fraLeDue": 401107,
+   "oltreLarga": 16695433
+  },
+  {
+   "conditionId": "0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d",
+   "slug": "putin-out-before-2027",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.07500000000000001,
+   "dentroStretta": 746157,
+   "fraLeDue": 829983,
+   "oltreLarga": 3868026
+  },
+  {
+   "conditionId": "0xbb4d51e6364066d92eb6f9b8413dd7193de70966736044463b205834805a1f3b",
+   "slug": "will-the-iranian-regime-fall-by-the-end-of-2026",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.065,
+   "dentroStretta": 1090100,
+   "fraLeDue": 905616,
+   "oltreLarga": 2162439
+  },
+  {
+   "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+   "slug": "republican-presidential-nominee-2028",
+   "maxSpread": 5.5,
+   "minSize": 50,
+   "mid": 0.4505,
+   "dentroStretta": 47508,
+   "fraLeDue": 141128,
+   "oltreLarga": 23368764
+  },
+  {
+   "conditionId": "0x0f49db97f71c68b1e42a6d16e3de93d85dbf7d4148e3f018eb79e88554be9f75",
+   "slug": "democratic-presidential-nominee-2028",
+   "maxSpread": 5.5,
+   "minSize": 200,
+   "mid": 0.1695,
+   "dentroStretta": 217585,
+   "fraLeDue": 158722,
+   "oltreLarga": 19549745
+  },
+  {
+   "conditionId": "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+   "slug": "largest-company-end-of-december-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.725,
+   "dentroStretta": 16747,
+   "fraLeDue": 24051,
+   "oltreLarga": 2619860
+  },
+  {
+   "conditionId": "0x74dba1ce1ae9dd535414e85f2d9ab5ea32c0fb1acc9b7130b67e6d91217e24e1",
+   "slug": "democratic-presidential-nominee-2028",
+   "maxSpread": 5.5,
+   "minSize": 200,
+   "mid": 0.1555,
+   "dentroStretta": 187838,
+   "fraLeDue": 175365,
+   "oltreLarga": 15366770
+  },
+  {
+   "conditionId": "0xd9fb1184af0064e5e34b129f5b79afa5a17b7e32f2953ab05efed82315fee6d4",
+   "slug": "will-china-invade-taiwan-before-2027",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.037,
+   "dentroStretta": 593970,
+   "fraLeDue": 5851889,
+   "oltreLarga": 12712898
+  },
+  {
+   "conditionId": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+   "slug": "ballon-dor-winner-2026",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.164,
+   "dentroStretta": 265973,
+   "fraLeDue": 161917,
+   "oltreLarga": 13719771
+  },
+  {
+   "conditionId": "0xe6bcc2f1dd025ce5e1833190f7c60a71171c94f805df55b9ab0ded695ec93565",
+   "slug": "democratic-presidential-nominee-2028",
+   "maxSpread": 5.5,
+   "minSize": 200,
+   "mid": 0.1875,
+   "dentroStretta": 71800,
+   "fraLeDue": 93595,
+   "oltreLarga": 19793536
+  },
+  {
+   "conditionId": "0xf232b565995e4b3a3e7fa6cef775eeff1cecd20ad7c013cb9fc8dadabfe279a9",
+   "slug": "presidential-election-winner-2028",
+   "maxSpread": 5.5,
+   "minSize": 200,
+   "mid": 0.1275,
+   "dentroStretta": 97203,
+   "fraLeDue": 277805,
+   "oltreLarga": 14083632
+  },
+  {
+   "conditionId": "0xd66eadbd64b3e815e31c7994470b44fe15c7ef1146f78937d0cfaa4c04fcfda7",
+   "slug": "wisconsin-governor-winner-2026",
+   "maxSpread": 4.5,
+   "minSize": 200,
+   "mid": 0.225,
+   "dentroStretta": 98678,
+   "fraLeDue": 33932,
+   "oltreLarga": 1069959
+  },
+  {
+   "conditionId": "0x15d2e66dcf1d63c5695d6d0e9e2f8e06dd246d00fd5dfc254f2b22baa33bfa1b",
+   "slug": "will-mitch-mcconnell-resign-from-the-senate-before-his-term-ends",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.235,
+   "dentroStretta": 36814,
+   "fraLeDue": 37292,
+   "oltreLarga": 171225
+  },
+  {
+   "conditionId": "0x3849e1d62e0807801913d3e2427e8caf3cc6dd1c8ef42d8d5c08c6f9c449dc5e",
+   "slug": "openai-ipo-closing-market-cap",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.83,
+   "dentroStretta": 39525,
+   "fraLeDue": 44158,
+   "oltreLarga": 47863
+  },
+  {
+   "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+   "slug": "how-many-fed-rate-cuts-in-2026",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.095,
+   "dentroStretta": 90714,
+   "fraLeDue": 175071,
+   "oltreLarga": 2417719
+  },
+  {
+   "conditionId": "0x15f442103bfad36b0dcc569d9698b4d020d12a2c935b9ac9050bb190a9238ec6",
+   "slug": "which-country-will-join-abraham-accords-before-2027",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.065,
+   "dentroStretta": 24328,
+   "fraLeDue": 33001,
+   "oltreLarga": 106798
+  },
+  {
+   "conditionId": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+   "slug": "fed-rate-hike-in-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.525,
+   "dentroStretta": 46815,
+   "fraLeDue": 160529,
+   "oltreLarga": 1967325
+  },
+  {
+   "conditionId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+   "slug": "ballon-dor-winner-2026",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.5805,
+   "dentroStretta": 29650,
+   "fraLeDue": 149754,
+   "oltreLarga": 12155982
+  },
+  {
+   "conditionId": "0x086445ea07954a360aeeddc96c292160832662b0227bdc8f07bc353dd511966f",
+   "slug": "minnesota-governor-winner-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.935,
+   "dentroStretta": 12055,
+   "fraLeDue": 38090,
+   "oltreLarga": 1081347
+  },
+  {
+   "conditionId": "0x3d2672cf923137040f05180615b059ee1c88a446639e026727a485af402312f1",
+   "slug": "lowest-temperature-in-seoul-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.835,
+   "dentroStretta": 57,
+   "fraLeDue": 71,
+   "oltreLarga": 1209
+  },
+  {
+   "conditionId": "0xda019e8ec08fc7afa92daa3c6525f15d8ce9672b086cfbe9ebd05bdd0ab4d97f",
+   "slug": "highest-temperature-in-seoul-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.445,
+   "dentroStretta": 96,
+   "fraLeDue": 29900,
+   "oltreLarga": 5513
+  },
+  {
+   "conditionId": "0x191bf58f2f8cd122281780f5cd29b2f0872d872a37b45acc06a24882c17249dc",
+   "slug": "lowest-temperature-in-seoul-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.135,
+   "dentroStretta": 46,
+   "fraLeDue": 160,
+   "oltreLarga": 1284
+  },
+  {
+   "conditionId": "0x49db9e6f5d76f2cd6f4c1256d3d82bb2bc71dceea94d4bb1c03dd8010a8570de",
+   "slug": "highest-temperature-in-seoul-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.365,
+   "dentroStretta": 14910,
+   "fraLeDue": 19790,
+   "oltreLarga": 10853
+  },
+  {
+   "conditionId": "0x09522b2f862de1558020ac6ddf8fa721e42dda0a5c1026422e37b5e0ef0451e0",
+   "slug": "highest-temperature-in-shanghai-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.37,
+   "dentroStretta": 15439,
+   "fraLeDue": 293,
+   "oltreLarga": 12736
+  },
+  {
+   "conditionId": "0xb80d9d28218a1c3861bdeca1994fa04ccda91491ab631b378afc2281d82281be",
+   "slug": "highest-temperature-in-shanghai-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.33,
+   "dentroStretta": 633,
+   "fraLeDue": 15219,
+   "oltreLarga": 14470
+  },
+  {
+   "conditionId": "0x791c61d4f1857d398d7a004cb19a6994f47eea58606b90b15d0d63d55b38778c",
+   "slug": "highest-temperature-in-shanghai-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.28500000000000003,
+   "dentroStretta": 17076,
+   "fraLeDue": 1600,
+   "oltreLarga": 13680
+  },
+  {
+   "conditionId": "0x13e7b146388e5674d5ea55eda8dfb1e3526999651ddb5e6959f29ba5ee2a6770",
+   "slug": "highest-temperature-in-busan-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.495,
+   "dentroStretta": 294,
+   "fraLeDue": 2002,
+   "oltreLarga": 13290
+  },
+  {
+   "conditionId": "0xe89a852299081c3d0bd2ef823194f9b13e82102737e35cef301b569391e161c9",
+   "slug": "highest-temperature-in-karachi-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.67,
+   "dentroStretta": 256,
+   "fraLeDue": 13059,
+   "oltreLarga": 12521
+  },
+  {
+   "conditionId": "0x6ca8f87c8e7f2461b3bb70233c7903ef9d7f47a6884b845224371de3381defe6",
+   "slug": "highest-temperature-in-singapore-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.485,
+   "dentroStretta": 379,
+   "fraLeDue": 16446,
+   "oltreLarga": 11252
+  },
+  {
+   "conditionId": "0xb8b0f53099db7f35790ffa87601a223e70ec5e7f9cdfd53f14b4eb43a13369d2",
+   "slug": "highest-temperature-in-kuala-lumpur-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.46499999999999997,
+   "dentroStretta": 17,
+   "fraLeDue": 161,
+   "oltreLarga": 11979
+  },
+  {
+   "conditionId": "0x30454e288522ce5c9de9bba2a7cc2be5817ee232da8925c940b3e3d033d1cea4",
+   "slug": "highest-temperature-in-taipei-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.455,
+   "dentroStretta": 286,
+   "fraLeDue": 19824,
+   "oltreLarga": 11833
+  },
+  {
+   "conditionId": "0x236a86e125f4c9810cd57517885e46e5d406fde6fa0c9357832d166a2d233317",
+   "slug": "1-paid-app-in-the-us-apple-app-store-on-august-14-20260807164053296",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.924,
+   "dentroStretta": 538,
+   "fraLeDue": 247,
+   "oltreLarga": 15309
+  },
+  {
+   "conditionId": "0xd2206570fb4afd91f2e8fc158117813ac56cfd3a384c1ff0bd50901a224d5a7b",
+   "slug": "spx-opens-up-or-down-on-august-14-2026",
+   "maxSpread": 2.5,
+   "minSize": 100,
+   "mid": 0.545,
+   "dentroStretta": 384,
+   "fraLeDue": 520,
+   "oltreLarga": 2036
+  },
+  {
+   "conditionId": "0x72f70e5bbab2c40c72f90052a77d6d70f9565958630d7e74f4222c3e6eb440e2",
+   "slug": "highest-temperature-in-chongqing-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.415,
+   "dentroStretta": 4173,
+   "fraLeDue": 7324,
+   "oltreLarga": 8613
+  },
+  {
+   "conditionId": "0x6c9e8f3a58bae2bc2fc74c65706e48df892e92cd814d1502ff8148a15d874182",
+   "slug": "2-paid-app-in-the-us-apple-app-store-on-august-14-20260807164128303",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.42,
+   "dentroStretta": 120,
+   "fraLeDue": 0,
+   "oltreLarga": 10235
+  },
+  {
+   "conditionId": "0xd99edda0110e08a1e5b59677ddb7df4d06932c835876456626c2d738fda835cd",
+   "slug": "highest-temperature-in-manila-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.39,
+   "dentroStretta": 6387,
+   "fraLeDue": 16413,
+   "oltreLarga": 5764
+  },
+  {
+   "conditionId": "0x524e0c15ac0398682e5b9a97b9d1909c6a2c08cc2326fda8b986f59003d936a2",
+   "slug": "highest-temperature-in-shenzhen-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.395,
+   "dentroStretta": 2521,
+   "fraLeDue": 1162,
+   "oltreLarga": 12567
+  },
+  {
+   "conditionId": "0xf602cf3bd6990a25dac722b05ed1c4bc02eff1e15f4999e4c5a583eabba8ceb5",
+   "slug": "highest-temperature-in-beijing-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.385,
+   "dentroStretta": 3214,
+   "fraLeDue": 20122,
+   "oltreLarga": 9942
+  },
+  {
+   "conditionId": "0x64c2d16b12b39617ee7a834b1655c34cfaf5c74b4748b9704197f1d61f198a63",
+   "slug": "highest-temperature-in-wuhan-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.36,
+   "dentroStretta": 282,
+   "fraLeDue": 11928,
+   "oltreLarga": 11235
+  },
+  {
+   "conditionId": "0xb472fd15641ad873769f15fe4e2fb1c7ee1f6905b44e3b66f8838bc3cbd0e9f3",
+   "slug": "highest-temperature-in-tokyo-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.375,
+   "dentroStretta": 4835,
+   "fraLeDue": 3274,
+   "oltreLarga": 8372
+  },
+  {
+   "conditionId": "0x4033530db0e982f7fe404cd486d6d13676c732d90dbe3fc36a52eed956b8e6e6",
+   "slug": "highest-temperature-in-chengdu-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.355,
+   "dentroStretta": 51,
+   "fraLeDue": 5634,
+   "oltreLarga": 8839
+  },
+  {
+   "conditionId": "0xcb5ba5efa209f484e047dd47e6834ac98d3fd4ddd6cf9b41ddc5fec54c64f460",
+   "slug": "highest-temperature-in-qingdao-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.375,
+   "dentroStretta": 4954,
+   "fraLeDue": 16738,
+   "oltreLarga": 2031
+  },
+  {
+   "conditionId": "0x0351e16df996c3527ff913267b99327b3e8ac45580ee0f12ca628f1f5893e90b",
+   "slug": "highest-temperature-in-qingdao-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.365,
+   "dentroStretta": 1038,
+   "fraLeDue": 19689,
+   "oltreLarga": 4807
+  },
+  {
+   "conditionId": "0x1b5e5c29ad8a7db00df95a586bc15750b320d50f2f699cd00b1d0c4f22e1cd0f",
+   "slug": "highest-temperature-in-guangzhou-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.27,
+   "dentroStretta": 25,
+   "fraLeDue": 12965,
+   "oltreLarga": 14792
+  },
+  {
+   "conditionId": "0x75adcc4dd4ad5d3a9a72ca565047912f2e8ffdb66fe44b53728f002ad6f034a4",
+   "slug": "highest-temperature-in-tokyo-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.355,
+   "dentroStretta": 360,
+   "fraLeDue": 1372,
+   "oltreLarga": 16757
+  },
+  {
+   "conditionId": "0xe9b3e28d9cec225de730d73474af946f9115af100e5abd0d9213e77381badd9f",
+   "slug": "lowest-temperature-in-hong-kong-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.36,
+   "dentroStretta": 122,
+   "fraLeDue": 330,
+   "oltreLarga": 2200
+  },
+  {
+   "conditionId": "0xe305f232a0bd50b0d2c3ac6ffd4a5236d41305a4069c374048e1d6c188a4d988",
+   "slug": "highest-temperature-in-wuhan-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.30000000000000004,
+   "dentroStretta": 13,
+   "fraLeDue": 4844,
+   "oltreLarga": 13016
+  },
+  {
+   "conditionId": "0x137fa7443739f6bbc4771857466bb0d8e37ec6f7869048951ce961e17e1321f0",
+   "slug": "highest-temperature-in-singapore-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.325,
+   "dentroStretta": 610,
+   "fraLeDue": 13854,
+   "oltreLarga": 10325
+  },
+  {
+   "conditionId": "0xa72e0576b49d68825ac10bbb4437a9d4d9b62bae63e04f772219440056b10f39",
+   "slug": "highest-temperature-in-beijing-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.32,
+   "dentroStretta": 14061,
+   "fraLeDue": 3401,
+   "oltreLarga": 9651
+  },
+  {
+   "conditionId": "0x1b0db3a7ab38b0d61a55f8897c95b78461c864485c02f33da240f9205b5aff88",
+   "slug": "highest-temperature-in-shenzhen-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.33999999999999997,
+   "dentroStretta": 996,
+   "fraLeDue": 577,
+   "oltreLarga": 15782
+  },
+  {
+   "conditionId": "0x4a62622757f833689274692bba5b71f6c8839c54bd1c7ba3db92a8f58608a571",
+   "slug": "highest-temperature-in-lucknow-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.265,
+   "dentroStretta": 702,
+   "fraLeDue": 8462,
+   "oltreLarga": 11240
+  },
+  {
+   "conditionId": "0x38b660498b489c8ec62a54da4709c8371f701ad5c3ddf4a9c2fee5d8fac2c1bd",
+   "slug": "highest-temperature-in-guangzhou-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.315,
+   "dentroStretta": 32,
+   "fraLeDue": 4259,
+   "oltreLarga": 11685
+  },
+  {
+   "conditionId": "0xee9afd21fd3dc805fff09b504e5456bbb60744ec27654cc1c6b6bda3fc00d9c9",
+   "slug": "highest-temperature-in-lucknow-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.345,
+   "dentroStretta": 359,
+   "fraLeDue": 1002,
+   "oltreLarga": 11386
+  },
+  {
+   "conditionId": "0x9ef2cc0f0a884217b1b69554ef36935f9fb1930339379422d68cb419019a5d42",
+   "slug": "highest-temperature-in-hong-kong-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.33499999999999996,
+   "dentroStretta": 51,
+   "fraLeDue": 1908,
+   "oltreLarga": 13847
+  },
+  {
+   "conditionId": "0xcba87e4b9317b81dc064746b1dd80d57219f7ffebc843d781b9242d13c29383d",
+   "slug": "highest-temperature-in-manila-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.29000000000000004,
+   "dentroStretta": 3086,
+   "fraLeDue": 15549,
+   "oltreLarga": 9782
+  },
+  {
+   "conditionId": "0x75f5e3500ff23fc06ec2a47c54f097b6f5dec6502ebcc8e056566de2013b0b3f",
+   "slug": "highest-temperature-in-wellington-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.25,
+   "dentroStretta": 811,
+   "fraLeDue": 9293,
+   "oltreLarga": 12891
+  },
+  {
+   "conditionId": "0x429402c9f26979151858fecc8628d975d0afb6c87dbecd5789a1b4f3326a64de",
+   "slug": "highest-temperature-in-taipei-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.315,
+   "dentroStretta": 332,
+   "fraLeDue": 14235,
+   "oltreLarga": 10731
+  },
+  {
+   "conditionId": "0x050d23883c6ea738e9ed17723a2aa033ffc75dbb3d5f0eabed60a5978bee1af4",
+   "slug": "highest-temperature-in-madrid-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.615,
+   "dentroStretta": 578,
+   "fraLeDue": 1041,
+   "oltreLarga": 19648
+  },
+  {
+   "conditionId": "0x656fcffde67c2d641d050ebe65f9b93515df07ed58bccce2138e2b40146520d7",
+   "slug": "lowest-temperature-in-london-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.54,
+   "dentroStretta": 248,
+   "fraLeDue": 205,
+   "oltreLarga": 8815
+  },
+  {
+   "conditionId": "0x20f36d87414044e47e611b142c03a8d10ab97ab113356939aebab889c9cbcdb1",
+   "slug": "highest-temperature-in-karachi-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.2,
+   "dentroStretta": 663,
+   "fraLeDue": 8178,
+   "oltreLarga": 10268
+  },
+  {
+   "conditionId": "0xcd93c73174027be4a37d7bc0af5d0b07714f127cca6c86c14e3ecd3ce252c66a",
+   "slug": "highest-temperature-in-dallas-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.485,
+   "dentroStretta": 1125,
+   "fraLeDue": 1117,
+   "oltreLarga": 23918
+  },
+  {
+   "conditionId": "0xd5b476e72a3ac6b93dd9eace9fd138117bcaf5614006ed95ab41f2544e23e6b5",
+   "slug": "highest-temperature-in-london-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.48,
+   "dentroStretta": 152,
+   "fraLeDue": 619,
+   "oltreLarga": 19442
+  },
+  {
+   "conditionId": "0x5f79e4f9d51b73ffb7e885de3829a7e0f59925c353bf9b41e2e16b8cc1be2fa8",
+   "slug": "highest-temperature-in-helsinki-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.54,
+   "dentroStretta": 1127,
+   "fraLeDue": 6526,
+   "oltreLarga": 12557
+  },
+  {
+   "conditionId": "0x9632178147f5f2114e687360976b35d966ca7ea8b44ef7ab850b61902c3932d5",
+   "slug": "highest-temperature-in-moscow-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.45,
+   "dentroStretta": 17209,
+   "fraLeDue": 1089,
+   "oltreLarga": 12160
+  },
+  {
+   "conditionId": "0x91d2a043a00e19fa8af7befe79982d86d1b77f4fdc65ecc72871e2ddbdcaba5a",
+   "slug": "highest-temperature-in-nyc-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.49,
+   "dentroStretta": 1613,
+   "fraLeDue": 547,
+   "oltreLarga": 20563
+  },
+  {
+   "conditionId": "0x774d64b6680a79b8bd8aba93ee6e91407b973b6516efa252b5814373eb24f20d",
+   "slug": "highest-temperature-in-paris-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.53,
+   "dentroStretta": 24,
+   "fraLeDue": 430,
+   "oltreLarga": 17703
+  },
+  {
+   "conditionId": "0xe0ef25593ef48357bef11f60fe81d1cd9a5427b6fdcfcbff9878ef01fee677bf",
+   "slug": "highest-temperature-in-munich-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.59,
+   "dentroStretta": 588,
+   "fraLeDue": 1018,
+   "oltreLarga": 19751
+  },
+  {
+   "conditionId": "0x3286f89e21af780f451cb654c59aa11d1d8ad25dc573deec411c9e89a2227016",
+   "slug": "highest-temperature-in-warsaw-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.545,
+   "dentroStretta": 3439,
+   "fraLeDue": 19189,
+   "oltreLarga": 15908
+  },
+  {
+   "conditionId": "0x8951311347d1a197716621d16e5849e93600c2d34debe50f0e5d42c444b8ad3c",
+   "slug": "highest-temperature-in-austin-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.485,
+   "dentroStretta": 1013,
+   "fraLeDue": 487,
+   "oltreLarga": 23008
+  },
+  {
+   "conditionId": "0xdf9409b468e1df8122c3c9448a1e3a4bed1cf525762dc7f848a5b1957b91b975",
+   "slug": "highest-temperature-in-mexico-city-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.485,
+   "dentroStretta": 400,
+   "fraLeDue": 698,
+   "oltreLarga": 31501
+  },
+  {
+   "conditionId": "0xa19bd9e0f03937b71d8c7db2d041234947435a55f3cd6a8bc3767437266dfcf8",
+   "slug": "clacton-by-election-turnout-20260717155703438",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.37,
+   "dentroStretta": 0,
+   "fraLeDue": 0,
+   "oltreLarga": 1797
+  },
+  {
+   "conditionId": "0x7803c2989fedefac0503a0ea22d2afd536bba112c64be1850054b69195215d06",
+   "slug": "highest-temperature-in-milan-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.47,
+   "dentroStretta": 911,
+   "fraLeDue": 582,
+   "oltreLarga": 18581
+  },
+  {
+   "conditionId": "0x0c09a52e706281e9c78fa1ad0e09f3fbc9bc26564f28a57e3378851b7b40e468",
+   "slug": "highest-temperature-in-buenos-aires-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.46499999999999997,
+   "dentroStretta": 133,
+   "fraLeDue": 836,
+   "oltreLarga": 25127
+  },
+  {
+   "conditionId": "0xfa0c5842b8335b8849cfa18dad31d55ec22fc649b220cfb8dfed41e155356e0c",
+   "slug": "highest-temperature-in-miami-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.63,
+   "dentroStretta": 1049,
+   "fraLeDue": 786,
+   "oltreLarga": 28912
+  },
+  {
+   "conditionId": "0x8f676366d8bf68a2cac92bd09a2a6d95994057502a172fdf0d40a797869dd10d",
+   "slug": "highest-temperature-in-los-angeles-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.595,
+   "dentroStretta": 740,
+   "fraLeDue": 1670,
+   "oltreLarga": 23099
+  },
+  {
+   "conditionId": "0x9b5b71436a4b38c0818670ff2143bc4fc2ce380299d94624360d0bb76d50ab8f",
+   "slug": "highest-temperature-in-ankara-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.53,
+   "dentroStretta": 276,
+   "fraLeDue": 5149,
+   "oltreLarga": 17303
+  },
+  {
+   "conditionId": "0x4e9a6db00c9657342b6cd4b43e751a753b09290151c8cd63c8a6d865e8cd316f",
+   "slug": "highest-temperature-in-istanbul-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.59,
+   "dentroStretta": 236,
+   "fraLeDue": 8238,
+   "oltreLarga": 14464
+  },
+  {
+   "conditionId": "0x31b48f719675d0ed161ef1f96933dbabcedb63725970ed5535e5c3f521b4e3da",
+   "slug": "lowest-temperature-in-paris-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.435,
+   "dentroStretta": 84,
+   "fraLeDue": 20,
+   "oltreLarga": 3918
+  },
+  {
+   "conditionId": "0xfd982995adebea06b36b3087324e2f4cbbc6318812d05401219b7917f65513d8",
+   "slug": "highest-temperature-in-tel-aviv-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.37,
+   "dentroStretta": 11731,
+   "fraLeDue": 706,
+   "oltreLarga": 18157
+  },
+  {
+   "conditionId": "0xcb034071d56a7dde2d5764da4abc8afbf8665a972e2d90814fec08b3a4ec4b8b",
+   "slug": "highest-temperature-in-tel-aviv-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.63,
+   "dentroStretta": 11912,
+   "fraLeDue": 433,
+   "oltreLarga": 11809
+  },
+  {
+   "conditionId": "0xfa818ba38c05575d8a0b6e931861e4f39c01555654ead39cc9beb1acdee509ec",
+   "slug": "highest-temperature-in-panama-city-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.43,
+   "dentroStretta": 935,
+   "fraLeDue": 116,
+   "oltreLarga": 19678
+  },
+  {
+   "conditionId": "0xdbaa19c72378f7eb2fc01c0b40404857a1b1e68e3561ce5bbe792a24ce79377e",
+   "slug": "israel-closes-its-airspace-by",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.0175,
+   "dentroStretta": 1299420,
+   "fraLeDue": 5356,
+   "oltreLarga": 135050
+  },
+  {
+   "conditionId": "0x823cef1166031e3c36af50894ebf4c31dc216b0b91e208c0b716cd209583e8e5",
+   "slug": "will-xauusd-hit-week-of-august-10-2026",
+   "maxSpread": 5.5,
+   "minSize": 20,
+   "mid": 0.075,
+   "dentroStretta": 654,
+   "fraLeDue": 391,
+   "oltreLarga": 203
+  },
+  {
+   "conditionId": "0xc8f6e8ab6cc4958b4145e89d650f5163c7392d2d9e616a6a27641f4dd6a42d1d",
+   "slug": "will-xagusd-hit-week-of-august-10-2026",
+   "maxSpread": 5.5,
+   "minSize": 20,
+   "mid": 0.095,
+   "dentroStretta": 447,
+   "fraLeDue": 223,
+   "oltreLarga": 550
+  },
+  {
+   "conditionId": "0x0ca639fce40d15fadbeac7041aeba009617a6d53fa8598914d49d64833767e53",
+   "slug": "what-will-trump-say-during-remarks-in-new-york-20260811183234678",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.545,
+   "dentroStretta": 540,
+   "fraLeDue": 1106,
+   "oltreLarga": 14098
+  },
+  {
+   "conditionId": "0xdc39d10e7e646c4ccd5096cf3c48b80a40483a16ae4410d84645a3982fd17e05",
+   "slug": "lowest-temperature-in-hong-kong-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.24,
+   "dentroStretta": 59,
+   "fraLeDue": 40,
+   "oltreLarga": 2297
+  },
+  {
+   "conditionId": "0xe49a4030650f5d5d614ffe5a549542bd016ac29525ac943b7310f940060e9ee4",
+   "slug": "highest-temperature-in-cape-town-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.41500000000000004,
+   "dentroStretta": 422,
+   "fraLeDue": 12876,
+   "oltreLarga": 14761
+  },
+  {
+   "conditionId": "0x7bd44304c8f38d43b55e09862aac4d8593349ff832dcf79ba892850ddc1d65ee",
+   "slug": "highest-temperature-in-chongqing-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.22,
+   "dentroStretta": 545,
+   "fraLeDue": 7829,
+   "oltreLarga": 14775
+  },
+  {
+   "conditionId": "0xb7e17058fc48450f890d802ba5e7279c525566dbde812352d87e8bf5dc0a9892",
+   "slug": "highest-temperature-in-amsterdam-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.41000000000000003,
+   "dentroStretta": 96,
+   "fraLeDue": 285,
+   "oltreLarga": 18652
+  },
+  {
+   "conditionId": "0x57f5c5db4b73197be290bf9de44d773ce019af324b13ea2fdebf1feb4d3f4ec9",
+   "slug": "highest-temperature-in-toronto-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.435,
+   "dentroStretta": 1105,
+   "fraLeDue": 857,
+   "oltreLarga": 26814
+  },
+  {
+   "conditionId": "0x51217d9e9ca71329723a710f4353d1310c64d515313fe3a70fd8173cdb05d0bf",
+   "slug": "lowest-temperature-in-nyc-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.415,
+   "dentroStretta": 337,
+   "fraLeDue": 71,
+   "oltreLarga": 4793
+  },
+  {
+   "conditionId": "0x802e58fa887402aea8b33dcaf655f6f5b992475f8549f5bc06bb1bf261befb01",
+   "slug": "highest-temperature-in-san-francisco-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.395,
+   "dentroStretta": 420,
+   "fraLeDue": 1160,
+   "oltreLarga": 21309
+  },
+  {
+   "conditionId": "0x77a526bf19b1ee29184625adc8b29c6df3aa6a1497a4b2ffdde289ba943169c4",
+   "slug": "highest-temperature-in-milan-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.46499999999999997,
+   "dentroStretta": 300,
+   "fraLeDue": 1162,
+   "oltreLarga": 19205
+  },
+  {
+   "conditionId": "0x9510242cc15b084a816895f09859b9b3e65231f6daeca2a167d7e409851cc1a0",
+   "slug": "highest-temperature-in-sao-paulo-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.365,
+   "dentroStretta": 4205,
+   "fraLeDue": 3084,
+   "oltreLarga": 23931
+  },
+  {
+   "conditionId": "0x67bd8703483b9dbc2f7bfdbaf5ad2a942c3607f1c7abdb5650d4b0d5fa2ccd4e",
+   "slug": "highest-temperature-in-chicago-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.395,
+   "dentroStretta": 3706,
+   "fraLeDue": 594,
+   "oltreLarga": 24781
+  },
+  {
+   "conditionId": "0x8a49d18088a8d4ea5e44a96604618dd12339c1a7667012605575fe7b6d5986cd",
+   "slug": "highest-temperature-in-houston-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.395,
+   "dentroStretta": 1186,
+   "fraLeDue": 688,
+   "oltreLarga": 20503
+  },
+  {
+   "conditionId": "0x7116ff4535a291b9ecee9d130cef7d1eac650e5c0c43ade8553c4e4ee3431f2e",
+   "slug": "lowest-temperature-in-paris-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.345,
+   "dentroStretta": 55,
+   "fraLeDue": 189,
+   "oltreLarga": 7121
+  },
+  {
+   "conditionId": "0xff7d1982d6bf6f78ac97122c09c741b1d8a178dd48d24d90e938da5d1d34dc93",
+   "slug": "highest-temperature-in-los-angeles-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.355,
+   "dentroStretta": 1865,
+   "fraLeDue": 1754,
+   "oltreLarga": 28967
+  },
+  {
+   "conditionId": "0xc6944151a70dd1ddc3166432310a4a681aadae7937cb1da7d39d5eca6c69b380",
+   "slug": "highest-temperature-in-atlanta-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.32,
+   "dentroStretta": 915,
+   "fraLeDue": 153,
+   "oltreLarga": 28910
+  },
+  {
+   "conditionId": "0x992a4e7a9dcbc68e329c490ca4dd960093a959873614871c84f59a7e0287bed3",
+   "slug": "highest-temperature-in-denver-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.355,
+   "dentroStretta": 3728,
+   "fraLeDue": 2973,
+   "oltreLarga": 24173
+  },
+  {
+   "conditionId": "0x7a5d60bfbc841d82b1e8db1257dd5ef81fb41538c5be8470b0547ee4791ef5b1",
+   "slug": "highest-temperature-in-houston-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.345,
+   "dentroStretta": 1036,
+   "fraLeDue": 563,
+   "oltreLarga": 25363
+  },
+  {
+   "conditionId": "0xfb481845055afdf15febad269fcb534be4c5e79d5789b72659a036660b46e11b",
+   "slug": "wyoming-governor-republican-primary-winner",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.8025,
+   "dentroStretta": 2351,
+   "fraLeDue": 3461,
+   "oltreLarga": 130843
+  },
+  {
+   "conditionId": "0x88b42339ad6b8f13798d19dfa2bb9931edf1eeb3c7cd897f0ac65d1cbeb0fd3b",
+   "slug": "highest-temperature-in-istanbul-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.325,
+   "dentroStretta": 43,
+   "fraLeDue": 3788,
+   "oltreLarga": 17592
+  },
+  {
+   "conditionId": "0xc4d9d0998c41c88ee8ee702b0525967ec18f5e97e8b0eb152b7fc376bf63b9f9",
+   "slug": "lowest-temperature-in-miami-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.38,
+   "dentroStretta": 144,
+   "fraLeDue": 140,
+   "oltreLarga": 3591
+  },
+  {
+   "conditionId": "0x27f6bc2a33f6ca886cc2ea1f0fc37124da402f54b04dc328287ededfecb41454",
+   "slug": "highest-temperature-in-seattle-on-august-14-2026",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.295,
+   "dentroStretta": 528,
+   "fraLeDue": 574,
+   "oltreLarga": 28849
+  },
+  {
+   "conditionId": "0xa875e0b4802818c2ed51fa4a44eeb303d2a11b1df946de66c0444d80468e78b6",
+   "slug": "wyoming-governor-republican-primary-winner",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.1925,
+   "dentroStretta": 7839,
+   "fraLeDue": 1578,
+   "oltreLarga": 193594
+  }
+ ]
+}

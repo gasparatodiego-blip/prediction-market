@@ -1,0 +1,2190 @@
+{
+ "generatoAl": "2026-08-13T19:49:48.590Z",
+ "mercati": 104,
+ "candidati": [
+  {
+   "nome": "competitivita / Qsomma  (v = maxSpread)",
+   "n": 104,
+   "mediana": 0.0049,
+   "q1": 0.003,
+   "q3": 0.0066,
+   "dispersioneIQR": 0.7313
+  },
+  {
+   "nome": "competitivita / Qmin    (v = maxSpread)",
+   "n": 104,
+   "mediana": 0.0181,
+   "q1": 0.0105,
+   "q3": 0.0286,
+   "dispersioneIQR": 1.0039
+  },
+  {
+   "nome": "competitivita / Qsomma  (v = maxSpread/2)",
+   "n": 93,
+   "mediana": 0.0263,
+   "q1": 0.0107,
+   "q3": 0.084,
+   "dispersioneIQR": 2.7866
+  },
+  {
+   "nome": "competitivita / Qmin    (v = maxSpread/2)",
+   "n": 93,
+   "mediana": 0.073,
+   "q1": 0.035,
+   "q3": 0.37,
+   "dispersioneIQR": 4.5871
+  }
+ ],
+ "contraddizioni": {
+  "letturaStretta_vuotaMaVenueCompetitivo": 11,
+  "letturaLarga_vuotaMaVenueCompetitivo": 0,
+  "esempiStretta": [
+   {
+    "slug": "lowest-temperature-in-seoul-on-august-14-2026-25c",
+    "maxSpread": 4.5,
+    "minSize": 20,
+    "competitivitaVenue": 0.007188,
+    "qStretta": 0,
+    "qLarga": 9.1
+   },
+   {
+    "slug": "highest-temperature-in-seoul-on-august-14-2026-31c",
+    "maxSpread": 4.5,
+    "minSize": 100,
+    "competitivitaVenue": 9.70791,
+    "qStretta": 0,
+    "qLarga": 5451.8
+   },
+   {
+    "slug": "highest-temperature-in-shanghai-on-august-14-2026-28c",
+    "maxSpread": 4.5,
+    "minSize": 100,
+    "competitivitaVenue": 7.168016,
+    "qStretta": 0,
+    "qLarga": 2957.1
+   },
+   {
+    "slug": "highest-temperature-in-karachi-on-august-14-2026-32c",
+    "maxSpread": 4.5,
+    "minSize": 100,
+    "competitivitaVenue": 2.255474,
+    "qStretta": 0,
+    "qLarga": 767.2
+   },
+   {
+    "slug": "highest-temperature-in-wuhan-on-august-14-2026-29c",
+    "maxSpread": 4.5,
+    "minSize": 100,
+    "competitivitaVenue": 0.660127,
+    "qStretta": 0,
+    "qLarga": 657.2
+   },
+   {
+    "slug": "highest-temperature-in-chengdu-on-august-14-2026-36c",
+    "maxSpread": 4.5,
+    "minSize": 100,
+    "competitivitaVenue": 0.117309,
+    "qStretta": 0,
+    "qLarga": 607.5
+   },
+   {
+    "slug": "highest-temperature-in-wuhan-on-august-14-2026-30c",
+    "maxSpread": 4.5,
+    "minSize": 100,
+    "competitivitaVenue": 0.291204,
+    "qStretta": 0,
+    "qLarga": 59.3
+   },
+   {
+    "slug": "highest-temperature-in-guangzhou-on-august-14-2026-31c",
+    "maxSpread": 4.5,
+    "minSize": 100,
+    "competitivitaVenue": 1.001338,
+    "qStretta": 0,
+    "qLarga": 204.1
+   }
+  ]
+ },
+ "righe": [
+  {
+   "slug": "will-the-us-invade-iran-before-2027",
+   "conditionId": "0x5db999fad322cea2914535aae5517060c3f80ad6d8c0231cde2124a434d16846",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.175,
+   "competitivitaVenue": 386.565698,
+   "larga": {
+    "qBids": 265752.08489795955,
+    "qAsks": 173643.5559183672,
+    "somma": 439395.6408163267,
+    "min": 173643.5559183672
+   },
+   "stretta": {
+    "qBids": 15076.233265306251,
+    "qAsks": 84741.84734693868,
+    "somma": 99818.08061224493,
+    "min": 15076.233265306251
+   }
+  },
+  {
+   "slug": "will-kimi-antonelli-be-the-2026-f1-drivers-champion",
+   "conditionId": "0xcd2640464754b9a894ffec98ac11554fdd507ea89ca01237eabb3a6de4a606e6",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.7445,
+   "competitivitaVenue": 1084.481847,
+   "larga": {
+    "qBids": 38262.22768395072,
+    "qAsks": 448548.97956049076,
+    "somma": 486811.2072444415,
+    "min": 38262.22768395072
+   },
+   "stretta": {
+    "qBids": 15786.6947160495,
+    "qAsks": 38422.048632097976,
+    "somma": 54208.74334814747,
+    "min": 15786.6947160495
+   }
+  },
+  {
+   "slug": "will-no-fed-rate-cuts-happen-in-2026",
+   "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.8595,
+   "competitivitaVenue": 265.792584,
+   "larga": {
+    "qBids": 68491.6357913582,
+    "qAsks": 19650.12223209867,
+    "somma": 88141.75802345687,
+    "min": 19650.12223209867
+   },
+   "stretta": {
+    "qBids": 45812.790024691625,
+    "qAsks": 9480.814301234499,
+    "somma": 55293.60432592612,
+    "min": 9480.814301234499
+   }
+  },
+  {
+   "slug": "will-the-us-confirm-that-aliens-exist-before-2027-789-924-249",
+   "conditionId": "0x747dc809fb79e1b05be09c42d6179459a58de2ef3e40f02484a4e1260f741f75",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.045,
+   "competitivitaVenue": 1705.885761,
+   "larga": {
+    "qBids": 378686.7020408163,
+    "qAsks": 239640.95836734682,
+    "somma": 618327.6604081631,
+    "min": 239640.95836734682
+   },
+   "stretta": {
+    "qBids": 174573.78816326536,
+    "qAsks": 139631.07408163257,
+    "somma": 314204.86224489793,
+    "min": 139631.07408163257
+   }
+  },
+  {
+   "slug": "will-jd-vance-win-the-2028-us-presidential-election",
+   "conditionId": "0x7ad403c3508f8e3912940fd1a913f227591145ca0614074208e0b962d5fcc422",
+   "maxSpread": 5.5,
+   "minSize": 200,
+   "mid": 0.2305,
+   "competitivitaVenue": 864.933526,
+   "larga": {
+    "qBids": 122158.13777107438,
+    "qAsks": 69079.32373057856,
+    "somma": 191237.46150165296,
+    "min": 69079.32373057856
+   },
+   "stretta": {
+    "qBids": 44235.38968595037,
+    "qAsks": 33432.20117685957,
+    "somma": 77667.59086280994,
+    "min": 33432.20117685957
+   }
+  },
+  {
+   "slug": "putin-out-before-2027-346",
+   "conditionId": "0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.075,
+   "competitivitaVenue": 974.923195,
+   "larga": {
+    "qBids": 239407.41959183651,
+    "qAsks": 225981.83673469405,
+    "somma": 465389.2563265306,
+    "min": 225981.83673469405
+   },
+   "stretta": {
+    "qBids": 93542.43326530603,
+    "qAsks": 127625.59346938794,
+    "somma": 221168.02673469397,
+    "min": 93542.43326530603
+   }
+  },
+  {
+   "slug": "will-the-iranian-regime-fall-by-the-end-of-2026",
+   "conditionId": "0xbb4d51e6364066d92eb6f9b8413dd7193de70966736044463b205834805a1f3b",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.065,
+   "competitivitaVenue": 910.606258,
+   "larga": {
+    "qBids": 386546.37306122435,
+    "qAsks": 214123.2759183673,
+    "somma": 600669.6489795917,
+    "min": 214123.2759183673
+   },
+   "stretta": {
+    "qBids": 150457.71224489788,
+    "qAsks": 105629.49897959176,
+    "somma": 256087.21122448964,
+    "min": 105629.49897959176
+   }
+  },
+  {
+   "slug": "will-jd-vance-win-the-2028-republican-presidential-nomination",
+   "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+   "maxSpread": 5.5,
+   "minSize": 50,
+   "mid": 0.4505,
+   "competitivitaVenue": 157.526737,
+   "larga": {
+    "qBids": 16145.933874380147,
+    "qAsks": 15252.811533057878,
+    "somma": 31398.745407438026,
+    "min": 15252.811533057878
+   },
+   "stretta": {
+    "qBids": 3979.8167272727173,
+    "qAsks": 3754.1343471074442,
+    "somma": 7733.951074380162,
+    "min": 3754.1343471074442
+   }
+  },
+  {
+   "slug": "will-gavin-newsom-win-the-2028-democratic-presidential-nomination-568",
+   "conditionId": "0x0f49db97f71c68b1e42a6d16e3de93d85dbf7d4148e3f018eb79e88554be9f75",
+   "maxSpread": 5.5,
+   "minSize": 200,
+   "mid": 0.1695,
+   "competitivitaVenue": 837.978936,
+   "larga": {
+    "qBids": 107501.30296528924,
+    "qAsks": 46345.93154710747,
+    "somma": 153847.2345123967,
+    "min": 46345.93154710747
+   },
+   "stretta": {
+    "qBids": 41001.886413223096,
+    "qAsks": 23790.76314710748,
+    "somma": 64792.649560330574,
+    "min": 23790.76314710748
+   }
+  },
+  {
+   "slug": "will-nvidia-be-the-largest-company-in-the-world-by-market-cap-on-december-31-244",
+   "conditionId": "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.725,
+   "competitivitaVenue": 71.894222,
+   "larga": {
+    "qBids": 5672.852345679006,
+    "qAsks": 6244.932839506166,
+    "somma": 11917.785185185172,
+    "min": 5672.852345679006
+   },
+   "stretta": {
+    "qBids": 1817.9590123456762,
+    "qAsks": 1441.9216049382683,
+    "somma": 3259.8806172839445,
+    "min": 1441.9216049382683
+   }
+  },
+  {
+   "slug": "will-jon-ossoff-win-the-2028-democratic-presidential-nomination-885",
+   "conditionId": "0x74dba1ce1ae9dd535414e85f2d9ab5ea32c0fb1acc9b7130b67e6d91217e24e1",
+   "maxSpread": 5.5,
+   "minSize": 200,
+   "mid": 0.1555,
+   "competitivitaVenue": 723.455644,
+   "larga": {
+    "qBids": 67175.97493884299,
+    "qAsks": 43803.91588595039,
+    "somma": 110979.89082479337,
+    "min": 43803.91588595039
+   },
+   "stretta": {
+    "qBids": 25281.054148760308,
+    "qAsks": 26748.870862809898,
+    "somma": 52029.9250115702,
+    "min": 25281.054148760308
+   }
+  },
+  {
+   "slug": "will-china-invade-taiwan-before-2027",
+   "conditionId": "0xd9fb1184af0064e5e34b129f5b79afa5a17b7e32f2953ab05efed82315fee6d4",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.037,
+   "competitivitaVenue": 1434.350418,
+   "larga": {
+    "qBids": 370533.8937714285,
+    "qAsks": 157763.19868571422,
+    "somma": 528297.0924571427,
+    "min": 157763.19868571422
+   },
+   "stretta": {
+    "qBids": 167139.05887346942,
+    "qAsks": 84094.91462040815,
+    "somma": 251233.97349387757,
+    "min": 84094.91462040815
+   }
+  },
+  {
+   "slug": "will-lamine-yamal-win-the-2026-ballon-dor",
+   "conditionId": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.164,
+   "competitivitaVenue": 963.839324,
+   "larga": {
+    "qBids": 98537.58109135789,
+    "qAsks": 22554.401906172854,
+    "somma": 121091.98299753075,
+    "min": 22554.401906172854
+   },
+   "stretta": {
+    "qBids": 8831.398464197497,
+    "qAsks": 9765.082261728421,
+    "somma": 18596.480725925918,
+    "min": 8831.398464197497
+   }
+  },
+  {
+   "slug": "will-alexandria-ocasio-cortez-win-the-2028-democratic-presidential-nomination-653",
+   "conditionId": "0xe6bcc2f1dd025ce5e1833190f7c60a71171c94f805df55b9ab0ded695ec93565",
+   "maxSpread": 5.5,
+   "minSize": 200,
+   "mid": 0.1875,
+   "competitivitaVenue": 241.255528,
+   "larga": {
+    "qBids": 38086.68691322314,
+    "qAsks": 19811.519947107437,
+    "somma": 57898.206860330574,
+    "min": 19811.519947107437
+   },
+   "stretta": {
+    "qBids": 21890.388125619822,
+    "qAsks": 14650.186168595044,
+    "somma": 36540.574294214864,
+    "min": 14650.186168595044
+   }
+  },
+  {
+   "slug": "will-alexandria-ocasio-cortez-win-the-2028-us-presidential-election",
+   "conditionId": "0xf232b565995e4b3a3e7fa6cef775eeff1cecd20ad7c013cb9fc8dadabfe279a9",
+   "maxSpread": 5.5,
+   "minSize": 200,
+   "mid": 0.1275,
+   "competitivitaVenue": 652.166111,
+   "larga": {
+    "qBids": 31906.188462809925,
+    "qAsks": 38050.01791570249,
+    "somma": 69956.20637851242,
+    "min": 31906.188462809925
+   },
+   "stretta": {
+    "qBids": 13969.41429421487,
+    "qAsks": 26955.201798347112,
+    "somma": 40924.616092561984,
+    "min": 13969.41429421487
+   }
+  },
+  {
+   "slug": "will-the-republicans-win-the-wisconsin-governor-race-in-2026",
+   "conditionId": "0xd66eadbd64b3e815e31c7994470b44fe15c7ef1146f78937d0cfaa4c04fcfda7",
+   "maxSpread": 4.5,
+   "minSize": 200,
+   "mid": 0.225,
+   "competitivitaVenue": 81.326638,
+   "larga": {
+    "qBids": 14477.199999999995,
+    "qAsks": 55589.10419753086,
+    "somma": 70066.30419753086,
+    "min": 14477.199999999995
+   },
+   "stretta": {
+    "qBids": 5492.293827160485,
+    "qAsks": 36199.377530864185,
+    "somma": 41691.67135802467,
+    "min": 5492.293827160485
+   }
+  },
+  {
+   "slug": "will-mitch-mcconnell-resign-from-the-senate-before-his-term-ends",
+   "conditionId": "0x15d2e66dcf1d63c5695d6d0e9e2f8e06dd246d00fd5dfc254f2b22baa33bfa1b",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.235,
+   "competitivitaVenue": 71.16627,
+   "larga": {
+    "qBids": 6911.053061224499,
+    "qAsks": 12089.93959183672,
+    "somma": 19000.99265306122,
+    "min": 6911.053061224499
+   },
+   "stretta": {
+    "qBids": 2065.7416326530697,
+    "qAsks": 4758.025306122443,
+    "somma": 6823.766938775512,
+    "min": 2065.7416326530697
+   }
+  },
+  {
+   "slug": "will-openai-not-ipo-by-december-31-2026",
+   "conditionId": "0x3849e1d62e0807801913d3e2427e8caf3cc6dd1c8ef42d8d5c08c6f9c449dc5e",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.83,
+   "competitivitaVenue": 84.137938,
+   "larga": {
+    "qBids": 4237.9359259259445,
+    "qAsks": 15995.97679012343,
+    "somma": 20233.912716049374,
+    "min": 4237.9359259259445
+   },
+   "stretta": {
+    "qBids": 979.0767901234616,
+    "qAsks": 2630.70728395061,
+    "somma": 3609.7840740740717,
+    "min": 979.0767901234616
+   }
+  },
+  {
+   "slug": "will-1-fed-rate-cut-happen-in-2026",
+   "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.095,
+   "competitivitaVenue": 141.890313,
+   "larga": {
+    "qBids": 16120.81086419753,
+    "qAsks": 51627.642469135804,
+    "somma": 67748.45333333334,
+    "min": 16120.81086419753
+   },
+   "stretta": {
+    "qBids": 3553.2403703703694,
+    "qAsks": 11512.198518518517,
+    "somma": 15065.438888888886,
+    "min": 3553.2403703703694
+   }
+  },
+  {
+   "slug": "will-saudi-arabia-join-the-abraham-accords-before-2027",
+   "conditionId": "0x15f442103bfad36b0dcc569d9698b4d020d12a2c935b9ac9050bb190a9238ec6",
+   "maxSpread": 3.5,
+   "minSize": 200,
+   "mid": 0.065,
+   "competitivitaVenue": 86.220569,
+   "larga": {
+    "qBids": 9107.501224489793,
+    "qAsks": 5170.284081632653,
+    "somma": 14277.785306122447,
+    "min": 5170.284081632653
+   },
+   "stretta": {
+    "qBids": 3673.1936734693854,
+    "qAsks": 1886.3361224489784,
+    "somma": 5559.529795918364,
+    "min": 1886.3361224489784
+   }
+  },
+  {
+   "slug": "fed-rate-hike-in-2026",
+   "conditionId": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.525,
+   "competitivitaVenue": 73.766191,
+   "larga": {
+    "qBids": 9489.357037037027,
+    "qAsks": 30569.19703703698,
+    "somma": 40058.55407407401,
+    "min": 9489.357037037027
+   },
+   "stretta": {
+    "qBids": 3451.878271604933,
+    "qAsks": 4361.814691358012,
+    "somma": 7813.692962962945,
+    "min": 3451.878271604933
+   }
+  },
+  {
+   "slug": "will-harry-kane-win-the-2026-ballon-dor",
+   "conditionId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.5805,
+   "competitivitaVenue": 82.676065,
+   "larga": {
+    "qBids": 11667.419341975294,
+    "qAsks": 16951.92086543216,
+    "somma": 28619.340207407455,
+    "min": 11667.419341975294
+   },
+   "stretta": {
+    "qBids": 4665.537027160456,
+    "qAsks": 2360.336454321004,
+    "somma": 7025.87348148146,
+    "min": 2360.336454321004
+   }
+  },
+  {
+   "slug": "will-the-democrats-win-the-minnesota-governor-race-in-2026",
+   "conditionId": "0x086445ea07954a360aeeddc96c292160832662b0227bdc8f07bc353dd511966f",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.935,
+   "competitivitaVenue": 689.547069,
+   "larga": {
+    "qBids": 3976.273580246909,
+    "qAsks": 6246.262222222276,
+    "somma": 10222.535802469185,
+    "min": 3976.273580246909
+   },
+   "stretta": {
+    "qBids": 1319.2486419753066,
+    "qAsks": 717.1167901234749,
+    "somma": 2036.3654320987814,
+    "min": 717.1167901234749
+   }
+  },
+  {
+   "slug": "lowest-temperature-in-seoul-on-august-14-2026-25c",
+   "conditionId": "0x3d2672cf923137040f05180615b059ee1c88a446639e026727a485af402312f1",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.845,
+   "competitivitaVenue": 0.007188,
+   "larga": {
+    "qBids": 5.145679012345686,
+    "qAsks": 3.9506172839506086,
+    "somma": 9.096296296296295,
+    "min": 3.9506172839506086
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "highest-temperature-in-seoul-on-august-14-2026-31c",
+   "conditionId": "0xda019e8ec08fc7afa92daa3c6525f15d8ce9672b086cfbe9ebd05bdd0ab4d97f",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.445,
+   "competitivitaVenue": 9.70791,
+   "larga": {
+    "qBids": 2304.094814814823,
+    "qAsks": 3147.7175308641904,
+    "somma": 5451.812345679014,
+    "min": 2304.094814814823
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "lowest-temperature-in-seoul-on-august-14-2026-24c",
+   "conditionId": "0x191bf58f2f8cd122281780f5cd29b2f0872d872a37b45acc06a24882c17249dc",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.135,
+   "competitivitaVenue": 0.052751,
+   "larga": {
+    "qBids": 20.75654320987654,
+    "qAsks": 26.484938271604936,
+    "somma": 47.24148148148147,
+    "min": 20.75654320987654
+   },
+   "stretta": {
+    "qBids": 12.86703703703703,
+    "qAsks": 12.098765432098759,
+    "somma": 24.965802469135788,
+    "min": 12.098765432098759
+   }
+  },
+  {
+   "slug": "highest-temperature-in-seoul-on-august-14-2026-30c",
+   "conditionId": "0x49db9e6f5d76f2cd6f4c1256d3d82bb2bc71dceea94d4bb1c03dd8010a8570de",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.37,
+   "competitivitaVenue": 21.928964,
+   "larga": {
+    "qBids": 4836.468148148142,
+    "qAsks": 5302.932839506166,
+    "somma": 10139.400987654308,
+    "min": 4836.468148148142
+   },
+   "stretta": {
+    "qBids": 334.18222222221954,
+    "qAsks": 320.246913580244,
+    "somma": 654.4291358024635,
+    "min": 320.246913580244
+   }
+  },
+  {
+   "slug": "highest-temperature-in-shanghai-on-august-14-2026-28c",
+   "conditionId": "0xb80d9d28218a1c3861bdeca1994fa04ccda91491ab631b378afc2281d82281be",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.325,
+   "competitivitaVenue": 7.168016,
+   "larga": {
+    "qBids": 2839.960493827171,
+    "qAsks": 117.13580246913548,
+    "somma": 2957.0962962963063,
+    "min": 117.13580246913548
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "highest-temperature-in-shanghai-on-august-14-2026-29c",
+   "conditionId": "0x791c61d4f1857d398d7a004cb19a6994f47eea58606b90b15d0d63d55b38778c",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.29,
+   "competitivitaVenue": 15.475334,
+   "larga": {
+    "qBids": 5170.884444444437,
+    "qAsks": 149.58876543209922,
+    "somma": 5320.473209876536,
+    "min": 149.58876543209922
+   },
+   "stretta": {
+    "qBids": 203.99999999999713,
+    "qAsks": 4.839506172839652,
+    "somma": 208.8395061728368,
+    "min": 4.839506172839652
+   }
+  },
+  {
+   "slug": "highest-temperature-in-busan-on-august-14-2026-32c",
+   "conditionId": "0x13e7b146388e5674d5ea55eda8dfb1e3526999651ddb5e6959f29ba5ee2a6770",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.49,
+   "competitivitaVenue": 1.167773,
+   "larga": {
+    "qBids": 254.62962962962925,
+    "qAsks": 155.2469135802465,
+    "somma": 409.87654320987576,
+    "min": 155.2469135802465
+   },
+   "stretta": {
+    "qBids": 10.185185185185041,
+    "qAsks": 3.148148148148104,
+    "somma": 13.333333333333146,
+    "min": 3.148148148148104
+   }
+  },
+  {
+   "slug": "highest-temperature-in-karachi-on-august-14-2026-32c",
+   "conditionId": "0xe89a852299081c3d0bd2ef823194f9b13e82102737e35cef301b569391e161c9",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.665,
+   "competitivitaVenue": 2.255474,
+   "larga": {
+    "qBids": 116.56296296296271,
+    "qAsks": 650.6246913580347,
+    "somma": 767.1876543209975,
+    "min": 116.56296296296271
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "highest-temperature-in-singapore-on-august-14-2026-32c",
+   "conditionId": "0x6ca8f87c8e7f2461b3bb70233c7903ef9d7f47a6884b845224371de3381defe6",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.485,
+   "competitivitaVenue": 9.740112,
+   "larga": {
+    "qBids": 2910.986666666676,
+    "qAsks": 401.50419753086356,
+    "somma": 3312.4908641975394,
+    "min": 401.50419753086356
+   },
+   "stretta": {
+    "qBids": 76.22222222222196,
+    "qAsks": 81.11444444444416,
+    "somma": 157.33666666666613,
+    "min": 76.22222222222196
+   }
+  },
+  {
+   "slug": "highest-temperature-in-taipei-on-august-14-2026-36c",
+   "conditionId": "0x30454e288522ce5c9de9bba2a7cc2be5817ee232da8925c940b3e3d033d1cea4",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.46,
+   "competitivitaVenue": 11.739816,
+   "larga": {
+    "qBids": 1892.5462962963031,
+    "qAsks": 468.03654320987573,
+    "somma": 2360.582839506179,
+    "min": 468.03654320987573
+   },
+   "stretta": {
+    "qBids": 1.8707407407407972,
+    "qAsks": 16.728395061728158,
+    "somma": 18.599135802468954,
+    "min": 1.8707407407407972
+   }
+  },
+  {
+   "slug": "will-shadowrocket-be-1-paid-app-in-the-us-apple-app-store-on-august-14-20260807164053297",
+   "conditionId": "0x236a86e125f4c9810cd57517885e46e5d406fde6fa0c9357832d166a2d233317",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.924,
+   "competitivitaVenue": 1.830889,
+   "larga": {
+    "qBids": 200.10368395061718,
+    "qAsks": 194.47160493827192,
+    "somma": 394.5752888888891,
+    "min": 194.47160493827192
+   },
+   "stretta": {
+    "qBids": 121.13580246913571,
+    "qAsks": 122.56543209876561,
+    "somma": 243.70123456790134,
+    "min": 121.13580246913571
+   }
+  },
+  {
+   "slug": "spx-opens-up-or-down-on-august-14-2026",
+   "conditionId": "0xd2206570fb4afd91f2e8fc158117813ac56cfd3a384c1ff0bd50901a224d5a7b",
+   "maxSpread": 2.5,
+   "minSize": 100,
+   "mid": 0.545,
+   "competitivitaVenue": 1.139093,
+   "larga": {
+    "qBids": 200.92799999999983,
+    "qAsks": 108.79999999999987,
+    "somma": 309.7279999999997,
+    "min": 108.79999999999987
+   },
+   "stretta": {
+    "qBids": 95.02199999999989,
+    "qAsks": 43.19999999999995,
+    "somma": 138.22199999999984,
+    "min": 43.19999999999995
+   }
+  },
+  {
+   "slug": "highest-temperature-in-chongqing-on-august-14-2026-35c",
+   "conditionId": "0x72f70e5bbab2c40c72f90052a77d6d70f9565958630d7e74f4222c3e6eb440e2",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.42,
+   "competitivitaVenue": 24.5977,
+   "larga": {
+    "qBids": 1054.5506172839532,
+    "qAsks": 6225.135802469127,
+    "somma": 7279.68641975308,
+    "min": 1054.5506172839532
+   },
+   "stretta": {
+    "qBids": 111.33333333333408,
+    "qAsks": 673.3209876543175,
+    "somma": 784.6543209876515,
+    "min": 111.33333333333408
+   }
+  },
+  {
+   "slug": "will-hotschedules-be-2-paid-app-in-the-us-apple-app-store-on-august-14-20260807164128305",
+   "conditionId": "0x6c9e8f3a58bae2bc2fc74c65706e48df892e92cd814d1502ff8148a15d874182",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.42,
+   "competitivitaVenue": 0.358459,
+   "larga": {
+    "qBids": 36.296296296296276,
+    "qAsks": 36.296296296296276,
+    "somma": 72.59259259259255,
+    "min": 36.296296296296276
+   },
+   "stretta": {
+    "qBids": 18.51851851851849,
+    "qAsks": 18.51851851851849,
+    "somma": 37.03703703703698,
+    "min": 18.51851851851849
+   }
+  },
+  {
+   "slug": "highest-temperature-in-manila-on-august-14-2026-31c",
+   "conditionId": "0xd99edda0110e08a1e5b59677ddb7df4d06932c835876456626c2d738fda835cd",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.39,
+   "competitivitaVenue": 17.263417,
+   "larga": {
+    "qBids": 1196.6285185185168,
+    "qAsks": 2670.1728395061814,
+    "somma": 3866.801358024698,
+    "min": 1196.6285185185168
+   },
+   "stretta": {
+    "qBids": 131.94851851851783,
+    "qAsks": 90.80246913580334,
+    "somma": 222.75098765432116,
+    "min": 90.80246913580334
+   }
+  },
+  {
+   "slug": "highest-temperature-in-shenzhen-on-august-14-2026-30c",
+   "conditionId": "0x524e0c15ac0398682e5b9a97b9d1909c6a2c08cc2326fda8b986f59003d936a2",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.4,
+   "competitivitaVenue": 1.542665,
+   "larga": {
+    "qBids": 660.8765432098756,
+    "qAsks": 674.3209876543227,
+    "somma": 1335.1975308641984,
+    "min": 660.8765432098756
+   },
+   "stretta": {
+    "qBids": 112.28395061728357,
+    "qAsks": 291.7283950617306,
+    "somma": 404.0123456790142,
+    "min": 112.28395061728357
+   }
+  },
+  {
+   "slug": "highest-temperature-in-beijing-on-august-14-2026-32c",
+   "conditionId": "0xf602cf3bd6990a25dac722b05ed1c4bc02eff1e15f4999e4c5a583eabba8ceb5",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.385,
+   "competitivitaVenue": 18.07817,
+   "larga": {
+    "qBids": 4582.377283950608,
+    "qAsks": 711.5061728395062,
+    "somma": 5293.883456790114,
+    "min": 711.5061728395062
+   },
+   "stretta": {
+    "qBids": 205.99444444444373,
+    "qAsks": 144.55555555555506,
+    "somma": 350.5499999999988,
+    "min": 144.55555555555506
+   }
+  },
+  {
+   "slug": "highest-temperature-in-wuhan-on-august-14-2026-29c",
+   "conditionId": "0x64c2d16b12b39617ee7a834b1655c34cfaf5c74b4748b9704197f1d61f198a63",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.365,
+   "competitivitaVenue": 0.660127,
+   "larga": {
+    "qBids": 590.4197530864229,
+    "qAsks": 66.81481481481462,
+    "somma": 657.2345679012376,
+    "min": 66.81481481481462
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "highest-temperature-in-tokyo-on-august-14-2026-28c",
+   "conditionId": "0xb472fd15641ad873769f15fe4e2fb1c7ee1f6905b44e3b66f8838bc3cbd0e9f3",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.375,
+   "competitivitaVenue": 10.158414,
+   "larga": {
+    "qBids": 890.101728395061,
+    "qAsks": 2122.7743209876526,
+    "somma": 3012.8760493827135,
+    "min": 890.101728395061
+   },
+   "stretta": {
+    "qBids": 169.7777777777772,
+    "qAsks": 475.55555555555395,
+    "somma": 645.3333333333312,
+    "min": 169.7777777777772
+   }
+  },
+  {
+   "slug": "highest-temperature-in-chengdu-on-august-14-2026-36c",
+   "conditionId": "0x4033530db0e982f7fe404cd486d6d13676c732d90dbe3fc36a52eed956b8e6e6",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.36,
+   "competitivitaVenue": 0.117309,
+   "larga": {
+    "qBids": 11.111111111111152,
+    "qAsks": 596.4253086419733,
+    "somma": 607.5364197530845,
+    "min": 11.111111111111152
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "highest-temperature-in-qingdao-on-august-14-2026-30c",
+   "conditionId": "0xcb5ba5efa209f484e047dd47e6834ac98d3fd4ddd6cf9b41ddc5fec54c64f460",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.375,
+   "competitivitaVenue": 21.936336,
+   "larga": {
+    "qBids": 3342.777777777771,
+    "qAsks": 1838.6350617283936,
+    "somma": 5181.412839506164,
+    "min": 1838.6350617283936
+   },
+   "stretta": {
+    "qBids": 42.58333333333319,
+    "qAsks": 431.2833333333319,
+    "somma": 473.8666666666651,
+    "min": 42.58333333333319
+   }
+  },
+  {
+   "slug": "highest-temperature-in-qingdao-on-august-14-2026-31c",
+   "conditionId": "0x0351e16df996c3527ff913267b99327b3e8ac45580ee0f12ca628f1f5893e90b",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.38,
+   "competitivitaVenue": 11.035026,
+   "larga": {
+    "qBids": 385.89506172839606,
+    "qAsks": 1243.6127160493809,
+    "somma": 1629.507777777777,
+    "min": 385.89506172839606
+   },
+   "stretta": {
+    "qBids": 7.1790123456789114,
+    "qAsks": 48.7930864197524,
+    "somma": 55.97209876543131,
+    "min": 7.1790123456789114
+   }
+  },
+  {
+   "slug": "highest-temperature-in-tokyo-on-august-14-2026-27c",
+   "conditionId": "0x75adcc4dd4ad5d3a9a72ca565047912f2e8ffdb66fe44b53728f002ad6f034a4",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.36,
+   "competitivitaVenue": 1.916136,
+   "larga": {
+    "qBids": 159.35074074074123,
+    "qAsks": 200.31135802469103,
+    "somma": 359.66209876543223,
+    "min": 159.35074074074123
+   },
+   "stretta": {
+    "qBids": 5.297530864197691,
+    "qAsks": 7.545432098765325,
+    "somma": 12.842962962963016,
+    "min": 5.297530864197691
+   }
+  },
+  {
+   "slug": "lowest-temperature-in-hong-kong-on-august-14-2026-27c",
+   "conditionId": "0xe9b3e28d9cec225de730d73474af946f9115af100e5abd0d9213e77381badd9f",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.36,
+   "competitivitaVenue": 0.316276,
+   "larga": {
+    "qBids": 61.85185185185205,
+    "qAsks": 11.864197530864175,
+    "somma": 73.71604938271622,
+    "min": 11.864197530864175
+   },
+   "stretta": {
+    "qBids": 1.1407407407407752,
+    "qAsks": 0.36790123456789603,
+    "somma": 1.5086419753086713,
+    "min": 0.36790123456789603
+   }
+  },
+  {
+   "slug": "highest-temperature-in-wuhan-on-august-14-2026-30c",
+   "conditionId": "0xe305f232a0bd50b0d2c3ac6ffd4a5236d41305a4069c374048e1d6c188a4d988",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.3,
+   "competitivitaVenue": 0.291204,
+   "larga": {
+    "qBids": 1.320987654320969,
+    "qAsks": 57.98456790123498,
+    "somma": 59.30555555555595,
+    "min": 1.320987654320969
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "highest-temperature-in-singapore-on-august-14-2026-33c",
+   "conditionId": "0x137fa7443739f6bbc4771857466bb0d8e37ec6f7869048951ce961e17e1321f0",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.325,
+   "competitivitaVenue": 13.245006,
+   "larga": {
+    "qBids": 197.19012345678976,
+    "qAsks": 868.9200000000044,
+    "somma": 1066.110123456794,
+    "min": 197.19012345678976
+   },
+   "stretta": {
+    "qBids": 25.87777777777769,
+    "qAsks": 13.063333333333288,
+    "somma": 38.94111111111098,
+    "min": 13.063333333333288
+   }
+  },
+  {
+   "slug": "highest-temperature-in-beijing-on-august-14-2026-31c",
+   "conditionId": "0xa72e0576b49d68825ac10bbb4437a9d4d9b62bae63e04f772219440056b10f39",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.315,
+   "competitivitaVenue": 19.173553,
+   "larga": {
+    "qBids": 722.0597530864186,
+    "qAsks": 2743.654320987649,
+    "somma": 3465.714074074068,
+    "min": 722.0597530864186
+   },
+   "stretta": {
+    "qBids": 71.13222222222198,
+    "qAsks": 18.999999999999936,
+    "somma": 90.13222222222191,
+    "min": 18.999999999999936
+   }
+  },
+  {
+   "slug": "highest-temperature-in-shenzhen-on-august-14-2026-31c",
+   "conditionId": "0x1b0db3a7ab38b0d61a55f8897c95b78461c864485c02f33da240f9205b5aff88",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.34,
+   "competitivitaVenue": 2.069068,
+   "larga": {
+    "qBids": 267.66975308642054,
+    "qAsks": 200.91975308641938,
+    "somma": 468.58950617283995,
+    "min": 200.91975308641938
+   },
+   "stretta": {
+    "qBids": 9.2001234567904,
+    "qAsks": 6.547901234567809,
+    "somma": 15.74802469135821,
+    "min": 6.547901234567809
+   }
+  },
+  {
+   "slug": "highest-temperature-in-lucknow-on-august-14-2026-30c",
+   "conditionId": "0x4a62622757f833689274692bba5b71f6c8839c54bd1c7ba3db92a8f58608a571",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.275,
+   "competitivitaVenue": 22.448317,
+   "larga": {
+    "qBids": 264.1975308641973,
+    "qAsks": 5565.401975308658,
+    "somma": 5829.599506172855,
+    "min": 264.1975308641973
+   },
+   "stretta": {
+    "qBids": 60.66666666666646,
+    "qAsks": 1386.4122222222377,
+    "somma": 1447.0788888889042,
+    "min": 60.66666666666646
+   }
+  },
+  {
+   "slug": "highest-temperature-in-guangzhou-on-august-14-2026-31c",
+   "conditionId": "0x38b660498b489c8ec62a54da4709c8371f701ad5c3ddf4a9c2fee5d8fac2c1bd",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.315,
+   "competitivitaVenue": 1.001338,
+   "larga": {
+    "qBids": 19.802469135802575,
+    "qAsks": 184.26271604938373,
+    "somma": 204.0651851851863,
+    "min": 19.802469135802575
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "highest-temperature-in-lucknow-on-august-14-2026-32c",
+   "conditionId": "0xee9afd21fd3dc805fff09b504e5456bbb60744ec27654cc1c6b6bda3fc00d9c9",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.32,
+   "competitivitaVenue": 0.0264,
+   "larga": {
+    "qBids": 2.6666666666666856,
+    "qAsks": 3.9506172839506455,
+    "somma": 6.617283950617331,
+    "min": 2.6666666666666856
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "highest-temperature-in-hong-kong-on-august-14-2026-31c",
+   "conditionId": "0x9ef2cc0f0a884217b1b69554ef36935f9fb1930339379422d68cb419019a5d42",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.33,
+   "competitivitaVenue": 1.011565,
+   "larga": {
+    "qBids": 85.02777777777808,
+    "qAsks": 27.203086419752957,
+    "somma": 112.23086419753105,
+    "min": 27.203086419752957
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "highest-temperature-in-manila-on-august-14-2026-32c",
+   "conditionId": "0xcba87e4b9317b81dc064746b1dd80d57219f7ffebc843d781b9242d13c29383d",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.29,
+   "competitivitaVenue": 15.59471,
+   "larga": {
+    "qBids": 270.77271604938244,
+    "qAsks": 4103.55864197532,
+    "somma": 4374.331358024702,
+    "min": 270.77271604938244
+   },
+   "stretta": {
+    "qBids": 115.96296296296279,
+    "qAsks": 261.2623456790178,
+    "somma": 377.22530864198063,
+    "min": 115.96296296296279
+   }
+  },
+  {
+   "slug": "highest-temperature-in-wellington-on-august-14-2026-15c",
+   "conditionId": "0x75f5e3500ff23fc06ec2a47c54f097b6f5dec6502ebcc8e056566de2013b0b3f",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.25,
+   "competitivitaVenue": 6.798097,
+   "larga": {
+    "qBids": 1201.1335802469134,
+    "qAsks": 126.32098765432079,
+    "somma": 1327.4545679012342,
+    "min": 126.32098765432079
+   },
+   "stretta": {
+    "qBids": 7.030987654321038,
+    "qAsks": 5.052839506172768,
+    "somma": 12.083827160493806,
+    "min": 5.052839506172768
+   }
+  },
+  {
+   "slug": "highest-temperature-in-taipei-on-august-14-2026-35c",
+   "conditionId": "0x429402c9f26979151858fecc8628d975d0afb6c87dbecd5789a1b4f3326a64de",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.31,
+   "competitivitaVenue": 2.008229,
+   "larga": {
+    "qBids": 93.56790123456783,
+    "qAsks": 287.4327160493837,
+    "somma": 381.00061728395156,
+    "min": 93.56790123456783
+   },
+   "stretta": {
+    "qBids": 3.2982716049382255,
+    "qAsks": 3.8504938271604394,
+    "somma": 7.148765432098665,
+    "min": 3.2982716049382255
+   }
+  },
+  {
+   "slug": "highest-temperature-in-madrid-on-august-14-2026-38c",
+   "conditionId": "0x050d23883c6ea738e9ed17723a2aa033ffc75dbb3d5f0eabed60a5978bee1af4",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.615,
+   "competitivitaVenue": 2.547262,
+   "larga": {
+    "qBids": 142.03950617283928,
+    "qAsks": 110.15654320987633,
+    "somma": 252.19604938271561,
+    "min": 110.15654320987633
+   },
+   "stretta": {
+    "qBids": 19.148888888888823,
+    "qAsks": 11.181111111111072,
+    "somma": 30.329999999999895,
+    "min": 11.181111111111072
+   }
+  },
+  {
+   "slug": "lowest-temperature-in-london-on-august-14-2026-22c",
+   "conditionId": "0x656fcffde67c2d641d050ebe65f9b93515df07ed58bccce2138e2b40146520d7",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.54,
+   "competitivitaVenue": 0.717314,
+   "larga": {
+    "qBids": 44.54913580246904,
+    "qAsks": 54.80555555555561,
+    "somma": 99.35469135802464,
+    "min": 44.54913580246904
+   },
+   "stretta": {
+    "qBids": 1.2820987654320806,
+    "qAsks": 1.7788888888888639,
+    "somma": 3.0609876543209444,
+    "min": 1.2820987654320806
+   }
+  },
+  {
+   "slug": "highest-temperature-in-karachi-on-august-14-2026-31c",
+   "conditionId": "0x20f36d87414044e47e611b142c03a8d10ab97ab113356939aebab889c9cbcdb1",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.2,
+   "competitivitaVenue": 5.953493,
+   "larga": {
+    "qBids": 74.95061728395049,
+    "qAsks": 1003.9754320987655,
+    "somma": 1078.926049382716,
+    "min": 74.95061728395049
+   },
+   "stretta": {
+    "qBids": 2.911604938271564,
+    "qAsks": 4.839506172839541,
+    "somma": 7.751111111111105,
+    "min": 2.911604938271564
+   }
+  },
+  {
+   "slug": "highest-temperature-in-dallas-on-august-14-2026-100-101f",
+   "conditionId": "0xcd93c73174027be4a37d7bc0af5d0b07714f127cca6c86c14e3ecd3ce252c66a",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.485,
+   "competitivitaVenue": 5.529783,
+   "larga": {
+    "qBids": 573.9274074074079,
+    "qAsks": 265.5664197530863,
+    "somma": 839.4938271604942,
+    "min": 265.5664197530863
+   },
+   "stretta": {
+    "qBids": 180.6086419753084,
+    "qAsks": 151.10901234567888,
+    "somma": 331.71765432098726,
+    "min": 151.10901234567888
+   }
+  },
+  {
+   "slug": "highest-temperature-in-london-on-august-14-2026-33c",
+   "conditionId": "0xd5b476e72a3ac6b93dd9eace9fd138117bcaf5614006ed95ab41f2544e23e6b5",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.485,
+   "competitivitaVenue": 0.2122,
+   "larga": {
+    "qBids": 77.87654320987669,
+    "qAsks": 129.46024691358002,
+    "somma": 207.3367901234567,
+    "min": 77.87654320987669
+   },
+   "stretta": {
+    "qBids": 8.444444444444416,
+    "qAsks": 16.752222222222166,
+    "somma": 25.19666666666658,
+    "min": 8.444444444444416
+   }
+  },
+  {
+   "slug": "highest-temperature-in-helsinki-on-august-14-2026-21c",
+   "conditionId": "0x5f79e4f9d51b73ffb7e885de3829a7e0f59925c353bf9b41e2e16b8cc1be2fa8",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.54,
+   "competitivitaVenue": 4.085431,
+   "larga": {
+    "qBids": 76.18567901234555,
+    "qAsks": 1215.5888888889008,
+    "somma": 1291.7745679012464,
+    "min": 76.18567901234555
+   },
+   "stretta": {
+    "qBids": 11.397407407407366,
+    "qAsks": 25.72827160493818,
+    "somma": 37.12567901234554,
+    "min": 11.397407407407366
+   }
+  },
+  {
+   "slug": "highest-temperature-in-moscow-on-august-14-2026-18c",
+   "conditionId": "0x9632178147f5f2114e687360976b35d966ca7ea8b44ef7ab850b61902c3932d5",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.445,
+   "competitivitaVenue": 26.528142,
+   "larga": {
+    "qBids": 1826.0716049382702,
+    "qAsks": 2699.5481481481575,
+    "somma": 4525.619753086427,
+    "min": 1826.0716049382702
+   },
+   "stretta": {
+    "qBids": 419.28333333333194,
+    "qAsks": 32.51666666666655,
+    "somma": 451.7999999999985,
+    "min": 32.51666666666655
+   }
+  },
+  {
+   "slug": "highest-temperature-in-nyc-on-august-14-2026-86-87f",
+   "conditionId": "0x91d2a043a00e19fa8af7befe79982d86d1b77f4fdc65ecc72871e2ddbdcaba5a",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.49,
+   "competitivitaVenue": 5.109873,
+   "larga": {
+    "qBids": 388.1727160493825,
+    "qAsks": 331.41086419753043,
+    "somma": 719.5835802469129,
+    "min": 331.41086419753043
+   },
+   "stretta": {
+    "qBids": 124.25913580246888,
+    "qAsks": 69.9679012345677,
+    "somma": 194.22703703703658,
+    "min": 69.9679012345677
+   }
+  },
+  {
+   "slug": "highest-temperature-in-munich-on-august-14-2026-33c",
+   "conditionId": "0xe0ef25593ef48357bef11f60fe81d1cd9a5427b6fdcfcbff9878ef01fee677bf",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.59,
+   "competitivitaVenue": 1.682275,
+   "larga": {
+    "qBids": 103.12790123456801,
+    "qAsks": 243.06901234567863,
+    "somma": 346.19691358024664,
+    "min": 103.12790123456801
+   },
+   "stretta": {
+    "qBids": 42.49691358024685,
+    "qAsks": 81.55790123456775,
+    "somma": 124.05481481481459,
+    "min": 42.49691358024685
+   }
+  },
+  {
+   "slug": "highest-temperature-in-warsaw-on-august-14-2026-26c",
+   "conditionId": "0x3286f89e21af780f451cb654c59aa11d1d8ad25dc573deec411c9e89a2227016",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.545,
+   "competitivitaVenue": 23.61363,
+   "larga": {
+    "qBids": 1561.2804938271593,
+    "qAsks": 3685.0745679012666,
+    "somma": 5246.355061728425,
+    "min": 1561.2804938271593
+   },
+   "stretta": {
+    "qBids": 361.333209876542,
+    "qAsks": 78.21888888888881,
+    "somma": 439.55209876543086,
+    "min": 78.21888888888881
+   }
+  },
+  {
+   "slug": "highest-temperature-in-austin-on-august-14-2026-98-99f",
+   "conditionId": "0x8951311347d1a197716621d16e5849e93600c2d34debe50f0e5d42c444b8ad3c",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.485,
+   "competitivitaVenue": 4.648655,
+   "larga": {
+    "qBids": 212.4503703703704,
+    "qAsks": 516.8474074074071,
+    "somma": 729.2977777777775,
+    "min": 212.4503703703704
+   },
+   "stretta": {
+    "qBids": 134.44382716049373,
+    "qAsks": 258.08259259259233,
+    "somma": 392.5264197530861,
+    "min": 134.44382716049373
+   }
+  },
+  {
+   "slug": "highest-temperature-in-mexico-city-on-august-14-2026-25c",
+   "conditionId": "0xdf9409b468e1df8122c3c9448a1e3a4bed1cf525762dc7f848a5b1957b91b975",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.485,
+   "competitivitaVenue": 2.027209,
+   "larga": {
+    "qBids": 135.647901234568,
+    "qAsks": 140.5999999999998,
+    "somma": 276.2479012345678,
+    "min": 135.647901234568
+   },
+   "stretta": {
+    "qBids": 21.831111111111035,
+    "qAsks": 22.66666666666659,
+    "somma": 44.49777777777763,
+    "min": 21.831111111111035
+   }
+  },
+  {
+   "slug": "highest-temperature-in-milan-on-august-14-2026-34c",
+   "conditionId": "0x7803c2989fedefac0503a0ea22d2afd536bba112c64be1850054b69195215d06",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.47,
+   "competitivitaVenue": 2.978551,
+   "larga": {
+    "qBids": 164.95987654321033,
+    "qAsks": 223.23222222222188,
+    "somma": 388.1920987654322,
+    "min": 164.95987654321033
+   },
+   "stretta": {
+    "qBids": 29.62950617283982,
+    "qAsks": 34.874320987654194,
+    "somma": 64.50382716049401,
+    "min": 29.62950617283982
+   }
+  },
+  {
+   "slug": "highest-temperature-in-buenos-aires-on-august-14-2026-14c",
+   "conditionId": "0x0c09a52e706281e9c78fa1ad0e09f3fbc9bc26564f28a57e3378851b7b40e468",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.465,
+   "competitivitaVenue": 0.998346,
+   "larga": {
+    "qBids": 117.43061728395101,
+    "qAsks": 166.5106172839503,
+    "somma": 283.9412345679013,
+    "min": 117.43061728395101
+   },
+   "stretta": {
+    "qBids": 13.888888888889044,
+    "qAsks": 13.1144444444444,
+    "somma": 27.003333333333444,
+    "min": 13.1144444444444
+   }
+  },
+  {
+   "slug": "highest-temperature-in-miami-on-august-14-2026-92-93f",
+   "conditionId": "0xfa0c5842b8335b8849cfa18dad31d55ec22fc649b220cfb8dfed41e155356e0c",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.635,
+   "competitivitaVenue": 1.803403,
+   "larga": {
+    "qBids": 374.9199999999997,
+    "qAsks": 394.1259259259255,
+    "somma": 769.0459259259252,
+    "min": 374.9199999999997
+   },
+   "stretta": {
+    "qBids": 93.59962962962936,
+    "qAsks": 116.02469135802446,
+    "somma": 209.62432098765382,
+    "min": 93.59962962962936
+   }
+  },
+  {
+   "slug": "highest-temperature-in-los-angeles-on-august-14-2026-76-77f",
+   "conditionId": "0x8f676366d8bf68a2cac92bd09a2a6d95994057502a172fdf0d40a797869dd10d",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.585,
+   "competitivitaVenue": 2.037084,
+   "larga": {
+    "qBids": 52.098765432098816,
+    "qAsks": 229.3535802469132,
+    "somma": 281.452345679012,
+    "min": 52.098765432098816
+   },
+   "stretta": {
+    "qBids": 10.55555555555552,
+    "qAsks": 34.90111111111099,
+    "somma": 45.456666666666514,
+    "min": 10.55555555555552
+   }
+  },
+  {
+   "slug": "highest-temperature-in-ankara-on-august-14-2026-28c",
+   "conditionId": "0x9b5b71436a4b38c0818670ff2143bc4fc2ce380299d94624360d0bb76d50ab8f",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.53,
+   "competitivitaVenue": 1.889313,
+   "larga": {
+    "qBids": 373.6150617283938,
+    "qAsks": 21.90024691358031,
+    "somma": 395.5153086419741,
+    "min": 21.90024691358031
+   },
+   "stretta": {
+    "qBids": 0.26358024691357657,
+    "qAsks": 0.37037037037036513,
+    "somma": 0.6339506172839418,
+    "min": 0.26358024691357657
+   }
+  },
+  {
+   "slug": "highest-temperature-in-istanbul-on-august-14-2026-26c",
+   "conditionId": "0x4e9a6db00c9657342b6cd4b43e751a753b09290151c8cd63c8a6d865e8cd316f",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.585,
+   "competitivitaVenue": 10.252178,
+   "larga": {
+    "qBids": 1608.4780246913724,
+    "qAsks": 16.790123456790084,
+    "somma": 1625.2681481481625,
+    "min": 16.790123456790084
+   },
+   "stretta": {
+    "qBids": 0,
+    "qAsks": 0,
+    "somma": 0,
+    "min": 0
+   }
+  },
+  {
+   "slug": "lowest-temperature-in-paris-on-august-14-2026-21c",
+   "conditionId": "0x31b48f719675d0ed161ef1f96933dbabcedb63725970ed5535e5c3f521b4e3da",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.435,
+   "competitivitaVenue": 0.382627,
+   "larga": {
+    "qBids": 21.333333333333332,
+    "qAsks": 45.32148148148148,
+    "somma": 66.65481481481481,
+    "min": 21.333333333333332
+   },
+   "stretta": {
+    "qBids": 16.333333333333325,
+    "qAsks": 34.69925925925924,
+    "somma": 51.032592592592565,
+    "min": 16.333333333333325
+   }
+  },
+  {
+   "slug": "highest-temperature-in-tel-aviv-on-august-14-2026-32c",
+   "conditionId": "0xfd982995adebea06b36b3087324e2f4cbbc6318812d05401219b7917f65513d8",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.37,
+   "competitivitaVenue": 26.017708,
+   "larga": {
+    "qBids": 273.92320987654307,
+    "qAsks": 3665.734691358019,
+    "somma": 3939.657901234562,
+    "min": 273.92320987654307
+   },
+   "stretta": {
+    "qBids": 91.35728395061712,
+    "qAsks": 298.0790123456769,
+    "somma": 389.436296296294,
+    "min": 91.35728395061712
+   }
+  },
+  {
+   "slug": "highest-temperature-in-tel-aviv-on-august-14-2026-33c",
+   "conditionId": "0xcb034071d56a7dde2d5764da4abc8afbf8665a972e2d90814fec08b3a4ec4b8b",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.63,
+   "competitivitaVenue": 25.092164,
+   "larga": {
+    "qBids": 162.01666666666645,
+    "qAsks": 3678.0990123456736,
+    "somma": 3840.11567901234,
+    "min": 162.01666666666645
+   },
+   "stretta": {
+    "qBids": 26.829999999999906,
+    "qAsks": 238.68148148147938,
+    "somma": 265.5114814814793,
+    "min": 26.829999999999906
+   }
+  },
+  {
+   "slug": "highest-temperature-in-panama-city-on-august-14-2026-33c",
+   "conditionId": "0xfa818ba38c05575d8a0b6e931861e4f39c01555654ead39cc9beb1acdee509ec",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.43,
+   "competitivitaVenue": 2.001357,
+   "larga": {
+    "qBids": 167.88888888888874,
+    "qAsks": 235.04567901234543,
+    "somma": 402.9345679012342,
+    "min": 167.88888888888874
+   },
+   "stretta": {
+    "qBids": 55.22222222222211,
+    "qAsks": 65.22049382716034,
+    "somma": 120.44271604938245,
+    "min": 55.22222222222211
+   }
+  },
+  {
+   "slug": "israel-closes-its-airspace-by-august-15",
+   "conditionId": "0xdbaa19c72378f7eb2fc01c0b40404857a1b1e68e3561ce5bbe792a24ce79377e",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.0185,
+   "competitivitaVenue": 93.450402,
+   "larga": {
+    "qBids": 479734.5683,
+    "qAsks": 19038.03881975309,
+    "somma": 498772.6071197531,
+    "min": 19038.03881975309
+   },
+   "stretta": {
+    "qBids": 68766.13564444438,
+    "qAsks": 10845.676582716054,
+    "somma": 79611.81222716044,
+    "min": 10845.676582716054
+   }
+  },
+  {
+   "slug": "will-xauusd-reach-4450-by-august-10-2026",
+   "conditionId": "0x823cef1166031e3c36af50894ebf4c31dc216b0b91e208c0b716cd209583e8e5",
+   "maxSpread": 5.5,
+   "minSize": 20,
+   "mid": 0.075,
+   "competitivitaVenue": 1.671348,
+   "larga": {
+    "qBids": 114.52595041322316,
+    "qAsks": 231.90082644628097,
+    "somma": 346.4267768595041,
+    "min": 114.52595041322316
+   },
+   "stretta": {
+    "qBids": 25.334628099173553,
+    "qAsks": 71.71074380165288,
+    "somma": 97.04537190082644,
+    "min": 25.334628099173553
+   }
+  },
+  {
+   "slug": "will-xagusd-reach-67-by-august-10-2026",
+   "conditionId": "0xc8f6e8ab6cc4958b4145e89d650f5163c7392d2d9e616a6a27641f4dd6a42d1d",
+   "maxSpread": 5.5,
+   "minSize": 20,
+   "mid": 0.095,
+   "competitivitaVenue": 0.504546,
+   "larga": {
+    "qBids": 186.6618181818182,
+    "qAsks": 38.44628099173552,
+    "somma": 225.10809917355374,
+    "min": 38.44628099173552
+   },
+   "stretta": {
+    "qBids": 59.63636363636364,
+    "qAsks": 8.264462809917354,
+    "somma": 67.900826446281,
+    "min": 8.264462809917354
+   }
+  },
+  {
+   "slug": "will-trump-say-transgender-during-remarks-in-new-york-20260811183234693",
+   "conditionId": "0x0ca639fce40d15fadbeac7041aeba009617a6d53fa8598914d49d64833767e53",
+   "maxSpread": 4.5,
+   "minSize": 50,
+   "mid": 0.55,
+   "competitivitaVenue": 1.51089,
+   "larga": {
+    "qBids": 284.37765432098735,
+    "qAsks": 122.85185185185237,
+    "somma": 407.2295061728397,
+    "min": 122.85185185185237
+   },
+   "stretta": {
+    "qBids": 103.3588888888887,
+    "qAsks": 38.212962962962905,
+    "somma": 141.5718518518516,
+    "min": 38.212962962962905
+   }
+  },
+  {
+   "slug": "lowest-temperature-in-hong-kong-on-august-14-2026-26c",
+   "conditionId": "0xdc39d10e7e646c4ccd5096cf3c48b80a40483a16ae4410d84645a3982fd17e05",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.24,
+   "competitivitaVenue": 0.129992,
+   "larga": {
+    "qBids": 7.098765432098771,
+    "qAsks": 14.787777777777748,
+    "somma": 21.88654320987652,
+    "min": 7.098765432098771
+   },
+   "stretta": {
+    "qBids": 0.28395061728395266,
+    "qAsks": 0.4444444444444382,
+    "somma": 0.7283950617283909,
+    "min": 0.28395061728395266
+   }
+  },
+  {
+   "slug": "highest-temperature-in-cape-town-on-august-14-2026-18c",
+   "conditionId": "0xe49a4030650f5d5d614ffe5a549542bd016ac29525ac943b7310f940060e9ee4",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.42,
+   "competitivitaVenue": 10.429774,
+   "larga": {
+    "qBids": 1524.557901234563,
+    "qAsks": 81.81777777777802,
+    "somma": 1606.375679012341,
+    "min": 81.81777777777802
+   },
+   "stretta": {
+    "qBids": 5.1439506172838785,
+    "qAsks": 2.7777777777778616,
+    "somma": 7.92172839506174,
+    "min": 2.7777777777778616
+   }
+  },
+  {
+   "slug": "highest-temperature-in-chongqing-on-august-14-2026-34c",
+   "conditionId": "0x7bd44304c8f38d43b55e09862aac4d8593349ff832dcf79ba892850ddc1d65ee",
+   "maxSpread": 4.5,
+   "minSize": 100,
+   "mid": 0.22,
+   "competitivitaVenue": 7.137383,
+   "larga": {
+    "qBids": 923.5944444444445,
+    "qAsks": 81.77790123456793,
+    "somma": 1005.3723456790125,
+    "min": 81.77790123456793
+   },
+   "stretta": {
+    "qBids": 3.7777777777778048,
+    "qAsks": 2.5802469135802655,
+    "somma": 6.35802469135807,
+    "min": 2.5802469135802655
+   }
+  },
+  {
+   "slug": "highest-temperature-in-toronto-on-august-14-2026-27c",
+   "conditionId": "0x57f5c5db4b73197be290bf9de44d773ce019af324b13ea2fdebf1feb4d3f4ec9",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.435,
+   "competitivitaVenue": 6.879264,
+   "larga": {
+    "qBids": 292.31703703703687,
+    "qAsks": 538.2138271604937,
+    "somma": 830.5308641975305,
+    "min": 292.31703703703687
+   },
+   "stretta": {
+    "qBids": 115.66012345678996,
+    "qAsks": 286.31160493827133,
+    "somma": 401.9717283950613,
+    "min": 115.66012345678996
+   }
+  },
+  {
+   "slug": "lowest-temperature-in-nyc-on-august-14-2026-72-73f",
+   "conditionId": "0x51217d9e9ca71329723a710f4353d1310c64d515313fe3a70fd8173cdb05d0bf",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.415,
+   "competitivitaVenue": 1.971569,
+   "larga": {
+    "qBids": 102.84592592592601,
+    "qAsks": 137.71851851851847,
+    "somma": 240.56444444444446,
+    "min": 102.84592592592601
+   },
+   "stretta": {
+    "qBids": 63.37617283950621,
+    "qAsks": 80.70061728395055,
+    "somma": 144.07679012345676,
+    "min": 63.37617283950621
+   }
+  },
+  {
+   "slug": "highest-temperature-in-san-francisco-on-august-14-2026-68-69f",
+   "conditionId": "0x802e58fa887402aea8b33dcaf655f6f5b992475f8549f5bc06bb1bf261befb01",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.4,
+   "competitivitaVenue": 2.716646,
+   "larga": {
+    "qBids": 112.33012345678983,
+    "qAsks": 213.68209876543273,
+    "somma": 326.0122222222226,
+    "min": 112.33012345678983
+   },
+   "stretta": {
+    "qBids": 2.3580246913579916,
+    "qAsks": 7.898395061728633,
+    "somma": 10.256419753086625,
+    "min": 2.3580246913579916
+   }
+  },
+  {
+   "slug": "highest-temperature-in-milan-on-august-14-2026-35c",
+   "conditionId": "0x77a526bf19b1ee29184625adc8b29c6df3aa6a1497a4b2ffdde289ba943169c4",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.465,
+   "competitivitaVenue": 2.022531,
+   "larga": {
+    "qBids": 142.56345679012395,
+    "qAsks": 144.97333333333307,
+    "somma": 287.536790123457,
+    "min": 142.56345679012395
+   },
+   "stretta": {
+    "qBids": 16.776666666666856,
+    "qAsks": 19.261111111111045,
+    "somma": 36.037777777777904,
+    "min": 16.776666666666856
+   }
+  },
+  {
+   "slug": "highest-temperature-in-sao-paulo-on-august-14-2026-25c",
+   "conditionId": "0x9510242cc15b084a816895f09859b9b3e65231f6daeca2a167d7e409851cc1a0",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.365,
+   "competitivitaVenue": 18.781905,
+   "larga": {
+    "qBids": 1513.9155555555549,
+    "qAsks": 642.6474074074063,
+    "somma": 2156.562962962961,
+    "min": 642.6474074074063
+   },
+   "stretta": {
+    "qBids": 479.64197530864084,
+    "qAsks": 72.63925925925912,
+    "somma": 552.2812345678999,
+    "min": 72.63925925925912
+   }
+  },
+  {
+   "slug": "highest-temperature-in-chicago-on-august-14-2026-78-79f",
+   "conditionId": "0x67bd8703483b9dbc2f7bfdbaf5ad2a942c3607f1c7abdb5650d4b0d5fa2ccd4e",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.395,
+   "competitivitaVenue": 12.38359,
+   "larga": {
+    "qBids": 178.10617283950603,
+    "qAsks": 1498.3703703703745,
+    "somma": 1676.4765432098807,
+    "min": 178.10617283950603
+   },
+   "stretta": {
+    "qBids": 74.48246913580238,
+    "qAsks": 420.123456790127,
+    "somma": 494.6059259259294,
+    "min": 74.48246913580238
+   }
+  },
+  {
+   "slug": "highest-temperature-in-houston-on-august-14-2026-92-93f",
+   "conditionId": "0x8a49d18088a8d4ea5e44a96604618dd12339c1a7667012605575fe7b6d5986cd",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.395,
+   "competitivitaVenue": 6.661662,
+   "larga": {
+    "qBids": 401.4395061728391,
+    "qAsks": 352.795061728396,
+    "somma": 754.2345679012351,
+    "min": 352.795061728396
+   },
+   "stretta": {
+    "qBids": 115.2749382716047,
+    "qAsks": 114.65333333333405,
+    "somma": 229.92827160493874,
+    "min": 114.65333333333405
+   }
+  },
+  {
+   "slug": "lowest-temperature-in-paris-on-august-14-2026-22c",
+   "conditionId": "0x7116ff4535a291b9ecee9d130cef7d1eac650e5c0c43ade8553c4e4ee3431f2e",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.34,
+   "competitivitaVenue": 0.493827,
+   "larga": {
+    "qBids": 72.5362962962965,
+    "qAsks": 29.372222222222202,
+    "somma": 101.9085185185187,
+    "min": 29.372222222222202
+   },
+   "stretta": {
+    "qBids": 12.731851851851994,
+    "qAsks": 12.083333333333313,
+    "somma": 24.815185185185307,
+    "min": 12.083333333333313
+   }
+  },
+  {
+   "slug": "highest-temperature-in-los-angeles-on-august-14-2026-74-75f",
+   "conditionId": "0xff7d1982d6bf6f78ac97122c09c741b1d8a178dd48d24d90e938da5d1d34dc93",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.355,
+   "competitivitaVenue": 9.5723,
+   "larga": {
+    "qBids": 1525.8444444444463,
+    "qAsks": 354.6227160493825,
+    "somma": 1880.4671604938287,
+    "min": 354.6227160493825
+   },
+   "stretta": {
+    "qBids": 832.2719753086425,
+    "qAsks": 190.67827160493812,
+    "somma": 1022.9502469135806,
+    "min": 190.67827160493812
+   }
+  },
+  {
+   "slug": "highest-temperature-in-atlanta-on-august-14-2026-96-97f",
+   "conditionId": "0xc6944151a70dd1ddc3166432310a4a681aadae7937cb1da7d39d5eca6c69b380",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.305,
+   "competitivitaVenue": 3.916032,
+   "larga": {
+    "qBids": 59.160493827160614,
+    "qAsks": 75.99604938271591,
+    "somma": 135.15654320987653,
+    "min": 59.160493827160614
+   },
+   "stretta": {
+    "qBids": 5.888888888888869,
+    "qAsks": 3.8888888888888755,
+    "somma": 9.777777777777745,
+    "min": 3.8888888888888755
+   }
+  },
+  {
+   "slug": "highest-temperature-in-denver-on-august-14-2026-84-85f",
+   "conditionId": "0x992a4e7a9dcbc68e329c490ca4dd960093a959873614871c84f59a7e0287bed3",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.355,
+   "competitivitaVenue": 16.850256,
+   "larga": {
+    "qBids": 1491.9758024691403,
+    "qAsks": 677.8246913580236,
+    "somma": 2169.800493827164,
+    "min": 677.8246913580236
+   },
+   "stretta": {
+    "qBids": 365.7718518518557,
+    "qAsks": 150.66049382716037,
+    "somma": 516.4323456790161,
+    "min": 150.66049382716037
+   }
+  },
+  {
+   "slug": "highest-temperature-in-houston-on-august-14-2026-94-95f",
+   "conditionId": "0x7a5d60bfbc841d82b1e8db1257dd5ef81fb41538c5be8470b0547ee4791ef5b1",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.345,
+   "competitivitaVenue": 7.262372,
+   "larga": {
+    "qBids": 328.38172839506274,
+    "qAsks": 373.5466666666664,
+    "somma": 701.9283950617291,
+    "min": 328.38172839506274
+   },
+   "stretta": {
+    "qBids": 127.32037037037131,
+    "qAsks": 146.96740740740717,
+    "somma": 274.2877777777785,
+    "min": 127.32037037037131
+   }
+  },
+  {
+   "slug": "will-eric-barlow-win-the-2026-wyoming-governor-republican-primary-election",
+   "conditionId": "0xfb481845055afdf15febad269fcb534be4c5e79d5789b72659a036660b46e11b",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.8025,
+   "competitivitaVenue": 12.041808,
+   "larga": {
+    "qBids": 271.5675012345686,
+    "qAsks": 1711.500018518517,
+    "somma": 1983.0675197530857,
+    "min": 271.5675012345686
+   },
+   "stretta": {
+    "qBids": 222.15632592592715,
+    "qAsks": 1028.4067555555503,
+    "somma": 1250.5630814814774,
+    "min": 222.15632592592715
+   }
+  },
+  {
+   "slug": "highest-temperature-in-istanbul-on-august-14-2026-25c",
+   "conditionId": "0x88b42339ad6b8f13798d19dfa2bb9931edf1eeb3c7cd897f0ac65d1cbeb0fd3b",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.33,
+   "competitivitaVenue": 1.589298,
+   "larga": {
+    "qBids": 28.9506172839507,
+    "qAsks": 481.107654320986,
+    "somma": 510.0582716049367,
+    "min": 28.9506172839507
+   },
+   "stretta": {
+    "qBids": 1.0493827160494145,
+    "qAsks": 1.1111111111110954,
+    "somma": 2.1604938271605096,
+    "min": 1.0493827160494145
+   }
+  },
+  {
+   "slug": "lowest-temperature-in-miami-on-august-14-2026-80-81f",
+   "conditionId": "0xc4d9d0998c41c88ee8ee702b0525967ec18f5e97e8b0eb152b7fc376bf63b9f9",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.38,
+   "competitivitaVenue": 0.583386,
+   "larga": {
+    "qBids": 32.05555555555549,
+    "qAsks": 37.54320987654321,
+    "somma": 69.5987654320987,
+    "min": 32.05555555555549
+   },
+   "stretta": {
+    "qBids": 0.966666666666653,
+    "qAsks": 1.0617283950617133,
+    "somma": 2.028395061728366,
+    "min": 0.966666666666653
+   }
+  },
+  {
+   "slug": "highest-temperature-in-seattle-on-august-14-2026-80-81f",
+   "conditionId": "0x27f6bc2a33f6ca886cc2ea1f0fc37124da402f54b04dc328287ededfecb41454",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.305,
+   "competitivitaVenue": 2.974371,
+   "larga": {
+    "qBids": 210.50617283950612,
+    "qAsks": 116.81382716049362,
+    "somma": 327.3199999999997,
+    "min": 116.81382716049362
+   },
+   "stretta": {
+    "qBids": 46.74999999999984,
+    "qAsks": 12.444444444444402,
+    "somma": 59.19444444444424,
+    "min": 12.444444444444402
+   }
+  },
+  {
+   "slug": "will-megan-degenfelder-win-the-2026-wyoming-governor-republican-primary-election",
+   "conditionId": "0xa875e0b4802818c2ed51fa4a44eeb303d2a11b1df946de66c0444d80468e78b6",
+   "maxSpread": 4.5,
+   "minSize": 20,
+   "mid": 0.1925,
+   "competitivitaVenue": 30.147486,
+   "larga": {
+    "qBids": 3275.042791358023,
+    "qAsks": 1942.5301753086428,
+    "somma": 5217.572966666666,
+    "min": 1942.5301753086428
+   },
+   "stretta": {
+    "qBids": 1399.1664197530843,
+    "qAsks": 813.9672691358032,
+    "somma": 2213.1336888888873,
+    "min": 813.9672691358032
+   }
+  }
+ ]
+}

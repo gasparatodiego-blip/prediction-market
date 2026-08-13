@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~19:40 UTC.
+Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~22:30 UTC.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -280,6 +280,36 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~19:40 UTC.
 > **⚠ Nessuna regola di rischio toccata**: il modulo produce un **pavimento**, non un prezzo; la
 > concessione vive **dentro** la banda per costruzione. **Orologio non leggibile ⇒ gradino 0.**
 > **⚠ Un gradino a 60 min è stato tolto**: dichiarava un'azione che nessuno consumava.
+
+> ## 📏 LA BANDA PREMIANTE ERA LARGA LA METÀ DI QUELLA VERA — §5-bis p.155, CORRETTO
+> `v` è la **semiampiezza dal mid**, cioè **`v = max_spread`**, non `max_spread/2`. La documentazione
+> ufficiale viva lo definisce «Max spread from midpoint (in cents)», e **l'esempio ufficiale lo dimostra
+> senza bisogno di interpretare la frase**: con `max_spread = 3¢` e mid `0.50`, un bid a `0.48` — **2¢
+> dal mid, cioè oltre `max_spread/2 = 1,5`** — vale `((3−2)/3)²·200 = 22,22`. Con la lettura dimezzata
+> varrebbe **zero**. Le due letture non sono entrambe difendibili.
+> **Contro-prova sul libro vivo** (104 mercati, `scripts/ricerca/banda-competitivita.js`): su **11
+> mercati** il venue pubblica `market_competitiveness > 0` mentre la lettura dimezzata vede il libro
+> premiante **VUOTO**; **zero** mercati mostrano la contraddizione opposta. Il **64,3%** del punteggio
+> premiante di un mercato sta nell'anello `max_spread/2 < s ≤ max_spread` che il bot dichiarava nullo.
+> **⚠ `v` NON È UNA MANOPOLA NOSTRA**: il venue ha **sempre** pagato con `v = max_spread`, anche mentre
+> il codice credeva il contrario. Correggere **non cambia di un centesimo** quanto matura un ordine già
+> a libro — cambia le **decisioni**. Chi legge il consuntivo non deve aspettarsi che si muova.
+> **⚠ E LA PREMESSA «ABBIAMO BUTTATO FUORI ORDINI CHE IL VENUE PAGAVA» È FALSA, misurata**: dei **3.622**
+> giudizi «fuori banda» su ordini ancora dentro quella vera (167 ordini, 62 mercati, 8 giorni),
+> **ZERO** hanno prodotto una cancellazione — 3.040 finiscono in `skip-motore-non-conforme` e il resto in
+> altri `skip`. Gli ordini **sono rimasti a libro e hanno continuato a maturare**. Il costo di quel
+> canale è **zero**.
+> **IL COSTO VERO È A MONTE, nella quotabilità**: «un tick dietro il migliore» cadeva fuori dalla banda
+> stretta e il mercato veniva **scartato**. Sul board vivo: **41 mercati passano da non-quotabile a
+> quotabile**, e fra i soli **finanziabili** l'insieme di scelta va da **28 a 51**. Nessun mercato
+> diventa meno quotabile: la correzione è **monotona**.
+> **⚠ UNA REGRESSIONE STRUTTURALE ESISTE E VA SAPUTA**: il ramo «soli sul lato ⇒ bordo ESTERNO della
+> banda» ora mira a `±max_spread`, dove `S → 0`, invece che a `±max_spread/2`, dove `S(vero) = 0,25`. La
+> banda stretta faceva da **disciplina di prossimità per sbaglio**. Il ramo però **non compare mai nel
+> giornale (0 righe)**, quindi oggi è inerte. **Non è stata aggiunta nessuna manopola**: sarebbe un
+> parametro nuovo, e quello lo decide l'operatore.
+> **⚠ CORREGGE ANCHE §5-bis p.152**, che cita la definizione giusta e poi applica `v = 2,25¢`: il «27%
+> dei nostri ordini a S = 0,0076» è in realtà **S ≈ 0,31**, e la leva ② vale **+13,5%**, non +53%.
 
 > ## 🧱 I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA — §5.2 p.1, §5-bis p.123, BUCO APERTO
 > **$26,30** in cinque residui che il registro raccoglie correttamente e che **niente può chiudere**:
@@ -940,6 +970,24 @@ resta una riga nel registro di §5-bis.
 | processo | cosa entra in servizio | stato |
 |---|---|---|
 | `agent41-realloc-scheduler` | **il gradino 6 «fermati-in-sicurezza» (§5-bis p.153)**: `impostaBot` cablato ⇒ l'ultima difesa esiste davvero · il log del gradino 5 leggibile | **PENDENTE — ⚠ ARMA UNA DIFESA CHE FINORA FALLIVA CHIUSO** |
+| `agent41-realloc-scheduler` | **la banda premiante corretta (§5-bis p.155)** nel cablaggio e nei log del ciclo | **PENDENTE** |
+| `agent40-manual-reprice` | **la banda corretta in `auto-reprice` e `auto-close`**: il giudizio «fuori banda» e la geometria dell'uscita | **PENDENTE — è il riavvio che CHIUDE la divergenza** |
+| `agent24-liquidity-rewards` | la banda corretta nel punteggio del board (`scoreBook`, `halfBand`) | **PENDENTE** |
+| `agent34-clob-ws` | la banda corretta nel `bandRadiusC` dei campioni di profondità | **PENDENTE** |
+| `dashboard` | pannello e `/api/*`: raggio di banda, binario, testo dell'interfaccia | **PENDENTE** (build già verde) |
+
+> ## ⚠️ LA CORREZIONE DELLA BANDA È GIÀ PARZIALMENTE IN SERVIZIO, SENZA RIAVVIO — LEGGERE PRIMA DI DECIDERE
+> `lib/rewards/allocator.js`, `quotabilita.js`, `realistic-estimate.js`, `plan-to-orders.js` e le loro
+> dipendenze (`rewardScore.js`, `banda-premiante.js`) vivono nel **processo figlio** del piano, che
+> rilegge il codice da disco a ogni giro (§5.3). Quindi **il pianificatore usa già la banda vera**,
+> mentre agent40 e agent41 in memoria usano ancora quella stretta. **Divergenza dichiarata, non scoperta.**
+> **Perché non è pericolosa, e perché va chiusa lo stesso**: allargare la banda è **monotono** — il piano
+> nuovo è un **soprainsieme** di quello vecchio, quindi tutto ciò che il motore accettava continua ad
+> accettarlo, e i mercati in più vengono **rifiutati** dal motore vecchio (`motore-non-conforme` /
+> `mai-primo-non-quotabile`). Non si apre niente che prima era vietato. **Il costo è rifiuti in più**, e
+> nel caso peggiore la scala di sblocco arriva a **FERMA in ~30 minuti**, che è uno stato sicuro.
+> **Il riavvio di agent40 e agent41 è ciò che rende coerenti i due lati.** Finché non avviene, il bot
+> lavora sull'intersezione, cioè come prima.
 
 I riavvii del mattino e del pomeriggio sono già in servizio: agent41 **restart 78** (12:09:01Z) e
 agent40 **restart 99** (12:28:36Z) portano griglia, pavimento per riga, sentinelle, recupero scadenza,
@@ -1061,26 +1109,21 @@ pm2 restart agent41-realloc-scheduler
    ed è il risultato.**
    **① EMPIRICAMENTE IL REWARD È PIATTO NEL CAPITALE**: su **604 wallet** (presenti ≥5 giorni), il
    reward/giorno mediano resta **$45–112 in OGNI decile**, da **$11** a **$365.955** di capitale in
-   posizione. Regressione log-log: **reward ~ capitale^0,015, R² = 0,03**. Un intervallo di **33.000×**
-   di capitale non muove il reward.
-   **⚠ MA È LA VARIABILE SBAGLIATA, e va detto invece di concludere**: `valoreUsd` è il capitale **in
-   posizione**, e i reward li generano gli **ordini a riposo**, che l'API non espone (§5-bis p.144).
-   Un direzionale con $365k in posizione può avere pochi ordini a libro; un maker stretto il contrario.
-   **La forma della curva NON è quindi misurabile da questo campione.**
+   posizione. Regressione log-log: **reward ~ capitale^0,015, R² = 0,03**.
+   **⚠ MA È LA VARIABILE SBAGLIATA**: `valoreUsd` è il capitale **in posizione**, e i reward li generano
+   gli **ordini a riposo**, che l'API non espone (§5-bis p.144). **La forma della curva NON è misurabile
+   da questo campione.**
    **② STRUTTURALMENTE il vincolo è il BOARD, e ha una rottura netta**: `capPerMarketUsd` **scala**
-   ($32,67 a $650 · $75 a $3.000 · $375 a $15.000) e `MAX_MERCATI = 40`. Quindi **sotto ~$1.307 più
-   capitale = più MERCATI** (tetto fermo a $32,67); **sopra, i mercati restano 40** e cresce la size.
-   Il tetto più alto **sblocca mercati con `minSize` maggiore**: raggiungibili **53/111 a $650** →
-   60 a $3.000 → **100 a $6.000** → **111/111 a $15.000**. Montepremi dei 40 tenuti: **$1.202/g a $650**
-   → $2.264 → $2.454 → $4.192 → **$4.608 a $15.000, e lì SATURA** (oltre non c'è altro board).
-   **③ IL TETTO FISICO**: montepremi totale del board **$8.346/g**; quello effettivamente raggiungibile
-   e tenibile si ferma a **$4.608/g intorno ai $15.000**. **Oltre i $15.000 il dollaro aggiuntivo non
-   trova più mercati nuovi** — può solo ingrossare la size sui 40 già tenuti.
-   **④ ⚠ LE STIME OLTRE ~$3.000 NON SONO DIFENDIBILI, e non le presento come tali.** Il modello
-   ancorato ai nostri $4,40/g (che poggiano su **4 giorni di presenza**) darebbe $193/g a $15.000; ma
-   il campione empirico dice che i wallet con $10–25k di capitale incassano **$73–112/g mediani**.
-   Il modello **sovrastima di ~2×** e non so riconciliare i due, perché mi manca il capitale a libro.
-   **Non traccio la retta.** Servono **~15 giorni di presenza piena** per un ancoraggio solido.
+   ($32,67 a $650 · $75 a $3.000 · $375 a $15.000) e `MAX_MERCATI = 40`. **Sotto ~$1.307 più capitale =
+   più MERCATI**; **sopra, i mercati restano 40** e cresce la size. Mercati raggiungibili: **53/111 a
+   $650** → 100 a $6.000 → **111/111 a $15.000**. Montepremi dei 40 tenuti: **$1.202/g → $4.608/g a
+   $15.000, e lì SATURA**.
+   **④ ⚠ LE STIME OLTRE ~$3.000 NON SONO DIFENDIBILI**: il modello ancorato ai nostri $4,40/g (che
+   poggiano su **4 giorni di presenza**) darebbe $193/g a $15.000, ma i wallet con $10–25k incassano
+   **$73–112/g mediani**. Il modello **sovrastima di ~2×** e non so riconciliare i due. **Non traccio la
+   retta.** Servono **~15 giorni di presenza piena**.
+
+
 22. **⚑ I MERCATI SBILANCIATI NON RENDONO DI PIÙ, E PER NOI RENDONO MENO — 13 agosto 2026.**
    **① Il reward per dollaro NON dipende dal livello di prezzo — analitico, non stimato.** `S(v,s)`
    contiene solo la **distanza dal mid in centesimi**, non il prezzo; e una COPPIA costa **$1 per
@@ -1092,11 +1135,10 @@ pm2 restart agent41-realloc-scheduler
    CARA** e il 10% su quella economica. Per noi che siamo **nudi il 100% delle volte** (§5-bis p.152)
    significa la quasi totalità del capitale su una gamba che, sopra 0,90, **non matura niente**.
    **④ ⚠ IL TASSO DI ERRORE DEL MERCATO A 90+ NON È MISURABILE dal campione che ho.** I sei wallet a
-   basso residuo vincono **+56,6 punti** sopra il prezzo nella fascia 0–0,10: impossibile come
-   proprietà del mercato, è la firma della **selezione** (sono stati scelti perché bravi). L'unica
-   affermazione lecita: **0 perdite su 3.108 redeem sopra 0,97**, che dà un limite superiore al tasso
-   di errore di **~0,1%**. Per la calibrazione vera servirebbe un campione **non selezionato** di
-   mercati risolti con il prezzo pre-risoluzione — non ce l'ho.
+   basso residuo vincono **+56,6 punti** sopra il prezzo nella fascia 0–0,10: è la firma della
+   **selezione**, non una proprietà del mercato. L'unica affermazione lecita: **0 perdite su 3.108
+   redeem sopra 0,97**, cioè un limite superiore al tasso di errore di **~0,1%**.
+
    **⑤ La nostra esposizione**: su 15.055 osservazioni del mid, **96,5% sta dentro `[0,10 · 0,90]`** e
    **3,5% fuori** — e quel 3,5% è **tutto** nella zona che `end-of-scale` consente.
    **⚠ LA NOSTRA SOGLIA È PIÙ LARGA DELLA ROTTURA DEL VENUE**: vietiamo sotto **0,03** e sopra
@@ -1108,48 +1150,38 @@ pm2 restart agent41-realloc-scheduler
 21. **⚑ LE «CANCELLAZIONI CONTINUE» NON SONO UN CICLO DI RIPREZZO — misurato il 13 agosto 2026,
    finestra AVVIA 12:29 → 18:50, ~6,4 h.**
    **L'ipotesi peggiore è FALSA e va detta per prima**: se gli ordini vivessero meno di 60 s non
-   sarebbero mai campionati dal venue (che campiona **al minuto**) e quel capitale non maturerebbe
-   nulla. **Vita degli ordini, n = 995**: q10 **176 s** · q25 422 s · **mediana 1.093 s (18,2 min)** ·
-   q75 2.575 s · q90 5.014 s · max 15.689 s. **Sotto i 60 s: 1,0%. Sotto i 30 s: 0,2%.**
-   Un ordine mediano viene campionato **~18 volte**. Nessun capitale sprecato in ordini mai visti.
+   sarebbero mai campionati dal venue (che campiona **al minuto**). **Vita degli ordini, n = 995**:
+   q10 **176 s** · **mediana 1.093 s (18,2 min)** · q90 5.014 s. **Sotto i 60 s: 1,0%.** Un ordine
+   mediano viene campionato **~18 volte**. Nessun capitale sprecato in ordini mai visti.
    **Il conteggio, e perché il giornale sembra dire il contrario**: 4.874 eventi di cancellazione, ma
    **solo 979 portano un `orderId`, su 927 ordini distinti (1,06 eventi per ordine)**. I **3.898**
-   restanti sono **senza `orderId`** e sono macchina di chiusura, non riprezzo:
-   `auto-close/manual-cancel/ok` **1.396** · `postOrder/supera-duplicato-cancellato` **1.339** (che non
-   cancella un ordine vivo: è la catena di idempotenza che dichiara di superarne uno già morto) ·
-   `modalita-chiusura-sorella-da-ridimensionare-cancellato` **609**.
+   restanti sono **senza `orderId`** e sono macchina di chiusura, non riprezzo.
    **Per sorgente: `auto-close-on-fill` 3.361 (69%), `auto-reprice-band-exit` 1.458 (30%).** Le
-   cancellazioni continue sono **la gestione delle 22 gambe nude**, non ordini che ciclano.
-   **Per ora**: 12:00 77 · 13:00 453 · 14:00 728 · 15:00 906 · 16:00 1.042 · 17:00 1.087 · 18:00 581.
-   **⚠ IL PUNTO 2 NON È RISPONDIBILE con la strumentazione di oggi**: dei 1.458 `band-exit` solo **12
-   (0,8%)** sono agganciabili alla serie densa del mid, perché i mercati che generano band-exit non
-   sono quelli con osservazioni `scoringMid` nella stessa finestra. **Su 12 punti non si sceglie fra le
-   quattro ipotesi** (geometria / riprezzo precedente sbagliato / ciclo / banda ricalcolata), e non lo
-   si fa. Servirebbe che la riga di `band-exit` portasse **`scoringMid` e `bandRadiusC` al momento
-   dell'uscita** — oggi non li porta. Stessa famiglia di §5.2 p.10.
-   **Conseguenza: il legame col 27% al bordo (§5-bis p.152) resta NON dimostrato.**
+   cancellazioni continue sono **la gestione delle gambe nude**, non ordini che ciclano.
+   **⚠ CHIUSO IL 13 AGOSTO SERA DA §5-bis p.155**: la riga di `band-exit` porta già `scoringMid`,
+   `distanceC` e `bandRadiusC`, e la misura è stata fatta — **`band-exit` è una VALUTAZIONE di riprezzo,
+   non un'uccisione**: dei 3.622 giudizi «fuori banda» su ordini ancora dentro la banda vera, **ZERO**
+   hanno prodotto una cancellazione. Il legame col 27% al bordo cade insieme alla p.152 che lo aveva
+   calcolato sulla banda sbagliata.
+
+
 20. **⚑ I NOSTRI FILL ARRIVANO SUL MID FERMO, NON SULLE RAFFICHE — misurato il 13 agosto 2026.
    Chiude la domanda «il riprezzo è la leva?»: NO.**
-   **Strumento**: il giornale `auto-reprice` porta `observed.scoringMid` a ogni valutazione, cioè una
-   serie del mid a **5 secondi** (mediana 5,009 s, 47 mercati, 15.887 campioni) — **quindici volte più
-   fitta di `mid-history`**, che campiona a 75 s. È la serie giusta per questa domanda.
-   **Il movimento è A RAFFICHE, e la mediana non lo descrive** (14.981 finestre da 60 s):
-   mediana **0,000 tick** · q75 2 · q90 **17** · q95 28 · q99 **72** · max 87.
-   Il mid è **fermo il 65% del tempo** e si muove oltre 1 tick/60 s il **30,5%**. Il **10% di finestre
-   più mosse contiene il 69,2% del movimento totale**.
-   ⚠ **Questo corregge §5.2 p.19**: lì avevo scritto «movimento tipico 0,25 tick/ora» usando una
-   mediana su una distribuzione la cui media è 5,27 tick/60 s. La mediana era priva di significato.
-   **I FILL (1.041 distinti, 607 con serie utilizzabile — il 42% dei mercati non è nella serie densa,
-   dichiarato)**: nei 60 s precedenti il mid era **FERMO (≤0,5 tick) nell'82,4%** dei casi, mosso
-   >1 tick solo nel **13,3%** — contro un tempo-base mosso del 30,5%. **Rapporto 0,44×: i fill sono
-   SOTTO-rappresentati nelle raffiche.** Ci riempie un taker che attraversa lo spread su mercato
-   fermo, che è esattamente ciò che un maker vuole — non selezione avversa da movimento.
+   **Strumento**: `auto-reprice` porta `observed.scoringMid` a ogni valutazione, cioè una serie del mid a
+   **5 secondi** (47 mercati, 15.887 campioni), **quindici volte più fitta di `mid-history`**.
+   **Il movimento è A RAFFICHE, e la mediana non lo descrive** (14.981 finestre da 60 s): mediana
+   **0,000 tick** · q90 **17** · q99 **72**. Il mid è **fermo il 65% del tempo**; il **10% di finestre
+   più mosse contiene il 69,2% del movimento totale**. ⚠ **Questo corregge §5.2 p.19**: «0,25 tick/ora»
+   era una mediana su una distribuzione la cui media è 5,27 tick/60 s — priva di significato.
+   **I FILL (1.041 distinti, 607 con serie utilizzabile)**: nei 60 s precedenti il mid era **FERMO
+   (≤0,5 tick) nell'82,4%** dei casi, mosso >1 tick solo nel **13,3%** — contro un tempo-base mosso del
+   30,5%. **Rapporto 0,44×: i fill sono SOTTO-rappresentati nelle raffiche.** Ci riempie un taker che
+   attraversa lo spread su mercato fermo, che è ciò che un maker vuole — non selezione avversa.
    **⚠ E NELLE RAFFICHE NESSUNA CADENZA BASTEREBBE**: al q90 il mid si sposta di **8,5 tick in 30 s**,
-   cioè **3,8 volte il raggio della banda** (v = 2,25 tick). S residuo **0,0000**. Un movimento più
-   veloce della larghezza della banda non si insegue riprezzando: si insegue solo cancellando.
-   **Conseguenza operativa: `minIntervalMs`, `confirmSamples` e `hysteresisTicks` NON sono la leva**,
-   e il 27% di ordini a s/v 80-100% (§5-bis p.152) è verosimilmente l'**aftermath** delle raffiche.
-   Verifica dell'aggancio raffica→coda-al-bordo **non fatta**: è il prossimo passo naturale.
+   più della larghezza della banda. Non si insegue riprezzando: si insegue solo cancellando.
+   **Conseguenza: `minIntervalMs`, `confirmSamples` e `hysteresisTicks` NON sono la leva.**
+
+
 19. **🟡 LA CADENZA ADATTATIVA È SOTTO-RISOLTA — sola misura, e il costo è piccolo.** agent40
    classifica **2.392 osservazioni su 2.402 (99,6%)** come «lenta» con escursione **0,00 tick/ora** ⇒
    polling a 10.000 ms invece di 1.000. **Causa parziale misurata**: `leggiFinestraTutti` su **15 min**
@@ -1255,6 +1287,37 @@ funzione di `bot-enabled` è chiamata senza essere importata»), non la stringa;
 prima e dopo**, fallendo se è cambiato di un byte (§5 punto 1). Verificato che **fallisce sul codice
 vecchio** — l'unica prova che un test serva a qualcosa.
 
+**155 · LA BANDA PREMIANTE ERA LARGA LA METÀ — `v = max_spread`, NON `max_spread/2`.**
+Vedi il banner per la prova e per le tre conseguenze. Qui restano i numeri e la forma della correzione.
+**La SSOT**: `lib/banda-premiante.js` — `raggioBandaCents` · `raggioBandaPrezzo` · `dentroBanda` ·
+`punteggio`. **46 file** instradati su di lei; **nessuno** ricalcola più il raggio da sé. Era il reperto
+**D1** (costante ricopiata invece che importata) applicato al parametro che decide se un ordine matura:
+**60 punti** se lo calcolavano ciascuno per conto proprio, ed è per questo che **due letture opposte
+hanno potuto convivere** — `lib/reward-score.ts` aveva già la lettura giusta mentre tutto il resto no.
+**La misura del costo, e il bracket**: l'insieme di scelta fra i mercati finanziabili va da **28 a 51**
+(41 sbloccati sul board intero). Il guadagno modellato sui migliori 19 sta fra **1,32×** (somma dei
+montepremi, indipendente dal modello) e **3,35×** (col tetto di credibilità in uso), cioè **+$1,4 · +$10,3
+al giorno** sul consuntivo misurato di $4,40/g. **⚠ Il livello eredita i 4 giorni di presenza su 30 di
+§5-bis p.152; il rapporto no.** Il numero **mercati coperti non cambia** — è `capitale / tetto = 19` a
+qualunque distanza dal mid, perché il capitale per mercato è in dollari e non conosce la banda: **il
+collo è il capitale, mai la banda** (19 finanziabili contro 51 disponibili e `MAX_MERCATI` 40).
+**Allontanarsi dal mid non compra mercati e costa punteggio**: il massimo è alla distanza minima e
+**non è piatto** — da 1,0¢ a 0,5¢ è **+30,6%**, da 1,0¢ a 2,5¢ è **−67,4%**.
+**Test**: `lib/banda-premiante.test.js`, 29 asserzioni. Ancora la definizione all'**esempio ufficiale del
+venue** (l'unico riferimento numerico esterno verificabile senza credenziali) e difende la **proprietà**
+«nessun modulo divide un maxSpread per due», filtrando commenti **e letterali di stringa** — o
+un'etichetta di stampa basterebbe a farlo passare. **Verificato che fallisce sulla lettura vecchia.**
+Ha trovato da solo **due bugie nell'interfaccia** (`EventTerminal.tsx` diceva «± max_spread / 2»).
+**14 test sono stati rimessi in scala, non ammorbiditi**: le loro fixture sceglievano un `maxSpread` per
+ottenere un RAGGIO, e sotto la definizione corretta lo stesso raggio si scrive con metà del numero. Le
+asserzioni sono identiche. **Sesta occorrenza di «test che fotografa il codice»**: `tetto-per-ordine`
+asseriva su `git diff --name-only HEAD` (§5.3) ed è diventato rosso perché il codice era CORRETTO —
+sostituito con la proprietà vera.
+**Strumento trovato e NON cablato**: `GET /rewards/user/markets` del CLOB restituisce `earnings` e
+`earning_percentage` **per mercato**, cioè l'attribuzione che §4.12 dà per impossibile. Senza le
+credenziali L2 torna `maker_address: 0x000…` e zeri. **Cablarlo passa dall'adapter, cioè dalla
+superficie che sa piazzare**: è una decisione dell'operatore, non un dettaglio.
+
 **154 · IL FILTRO DI PROFONDITÀ NON STA AFFAMANDO IL PIANO — sola misura, niente toccato.**
 Misura in `data/ricerca/sintesi-profondita.md`; script `scripts/ricerca/taratura-profondita.js` e
 `esiti-contro-gate.js`. **q = 0,60 è `realistic-estimate.DEFAULTS.maxCredibleShare`
@@ -1343,20 +1406,23 @@ modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà**
 testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
 
-**152 · IL BORDO DELLA BANDA NON CONVIENE, E IL 27% DEI NOSTRI ORDINI CI STA GIÀ.** Misura in
-`data/ricerca/sintesi-posizione-banda.md`. **Formula VERIFICATA sulla documentazione ufficiale viva**:
-`S(v,s) = ((v−s)/v)²`, `Q_min` con **c = 3,0**, size in **share**, **10.080 campioni per epoca**
-(campionamento al minuto), soglia minima **per mercato**, banda **simmetrica**, pagamento a mezzanotte
-UTC. **⚠ Al bordo `s → v` ⇒ `S → 0`: non matura quasi nulla, per costruzione.**
-**Dove stiamo** (17.119 osservazioni): v = **2,25¢**, distanza mediana **1,0¢**, S = 0,3086, **S medio
-effettivo 0,2981**. **⚠ Il 27% degli ordini sta a s/v 80-100% con S = 0,0076** — quaranta volte meno
-della mediana. Non è una scelta (la regola «bordo se soli» non compare mai nel giornale): è **deriva
-del mid**. Spostare quella coda porterebbe S da 0,2981 a **0,4580, +53%**.
-**⚠ L'ipotesi del bordo è sbagliata di segno**: un fill costa **$0,05/giorno** di spread, il capitale
-immobilizzato **$0,91/giorno**, 18×. Al bordo si distruggerebbe il **96%** del reward per $0,04/g.
-**Le leve**: presenza 4/30→29/30 **+$100/mese** · togliere la coda al bordo **+$68/mese** · sbloccare
-i $135 **+$27/mese** · posizione verso il bordo **−$96/mese**.
-**⚠ Il reward osservato poggia su 4 giorni di presenza**: servono ~15 giorni.
+**152 · IL BORDO DELLA BANDA NON CONVIENE — ⚠ NUMERI CORRETTI DA §5-bis p.155.**
+Misura in `data/ricerca/sintesi-posizione-banda.md`. **La formula è verificata sulla documentazione
+ufficiale viva**: `S(v,s) = ((v−s)/v)²·b`, `Q_min` con **c = 3,0**, size in **share**, **10.080 campioni
+per epoca** (campionamento al minuto ⇒ il tempo a libro conta), soglia minima **per mercato**, banda
+**simmetrica**, pagamento giornaliero a mezzanotte UTC. Al bordo `s → v` ⇒ `S → 0`: il bordo estremo
+**non matura quasi nulla, per costruzione**, e questo resta vero.
+**⚠ MA QUESTA VOCE APPLICAVA `v = 2,25¢` SU MERCATI CON `max_spread = 4,5¢`**, cioè la semiampiezza
+dimezzata — cita la definizione giusta e usa il numero sbagliato. Rifatto il conto su **42.834**
+osservazioni reali (`scripts/ricerca/nostri-s-reali.js`): **S medio 0,4951, non 0,2981**; il «27% a
+S = 0,0076» è in realtà **S ≈ 0,3082**; la leva ② vale **+13,5%**, non +53%. ⚠ Il campione è la
+**valutazione di riprezzo**, non i minuti a libro: è un proxy, e va detto.
+**Restano validi**: il costo di un fill è **$0,05/g** di spread contro **$0,91/g** di capitale
+immobilizzato ($135 in gambe nude), cioè **18×** — l'ipotesi «andare al bordo» è sbagliata di segno; e la
+leva ① **presenza 4/30→29/30, +$100/mese**, che resta la più grande.
+**⚠ Incertezza**: il reward osservato poggia su **4 giorni di presenza** e il costo di uscita su **13
+vendite**. Servono **~15 giorni** di bot acceso per stabilizzare il resto.
+
 
 **151 · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — corregge §150.** Misura in
 `data/ricerca/sintesi-redeem.md`. **5.087 redeem su 8 wallet.** ⚠ **Confondente escluso prima di
@@ -1480,61 +1546,37 @@ scatto fu il 9 agosto (§5-bis p.70). **Il latch è attivo e il riarmo è dell'o
 **passate**: `esito` è solo l'ultima, e senza sommare le precedenti si dichiarerebbe meno del fatto.
 
 **125 · RIFIUTI RIPETUTI: RICONOSCERE E REAGIRE** (`lib/maker/sblocco-progressivo.js`, puro).
-**N = 5**, e il numero viene dai dati: sul giornale 9-13 agosto la stessa coppia (mercato, gate) si è
-ripetuta fino a **3.309 volte di fila**, quindi qualunque soglia sarebbe scattata; il vincolo che
-decide è l'altro lato — un ordine si riprezza ogni ~60 s, quindi 5 ripetizioni identiche sono ~5 minuti
-in cui il libro si è mosso e la risposta non è cambiata. Sotto (2-3) si prenderebbero i rimbalzi di un
-book che oscilla. La serie si azzera su un **successo** (prova che il blocco non c'è più) o dopo
-**15 minuti** di silenzio (una ripetizione a mezz'ora non è un loop). **Famiglie coperte, con la
-reazione:**
+Scala, classi e famiglie sono nel banner di §5 p.124-127. **N = 5** viene dai dati: sul giornale 9-13
+agosto la stessa coppia (mercato, gate) si è ripetuta fino a **3.309 volte di fila**, quindi qualunque
+soglia sarebbe scattata; a decidere è l'altro lato — un ordine si riprezza ogni ~60 s, quindi 5
+ripetizioni identiche sono ~5 minuti in cui il libro si è mosso e la risposta non è cambiata. Sotto
+(2-3) si prenderebbero i rimbalzi di un book che oscilla. Azzeramento su un **successo** o dopo
+**15 minuti** di silenzio. **37 famiglie** classificate in `rischio` / `stato-bot` / `transitorio`;
+una famiglia **sconosciuta vale rischio**.
 
-| classe | famiglie | reazione |
-|---|---|---|
-| **rischio** (56% dei rifiuti) | `motore-non-conforme` (13.448) · `venue-rules` (5.848) · `end-of-scale` (5.771) · `would-cross` (2.982) · `inseguimento-contro-mai-primo` · `close-sell-floor` · `mai-primo-sul-libro` · `manual-order-cap` | **si cambia mercato e si DICHIARA perché non si è agito.** Mai un aggiramento |
-| **stato-bot** | `idempotent`/`idempotent-duplicate` ⇒ ricarica configurazione · `limit-max-open-notional` ⇒ riconcilia esposizione · `live-min-market-mismatch`/`manual-mode-inactive` ⇒ ripara precondizioni · `rules-unreadable`/`market-unknown`/`refresh-invalid` ⇒ ripara catalogo · `mid-stale`/`mid-not-live`/`stale-book`/`board-vecchio` ⇒ risveglia feed · `piano-senza-righe` ⇒ ricostruisci piano | la via alternativa, che non tocca nessuna regola |
-| **transitorio** | `rate-limited` · `kill-global` · `market-closed` · `market-not-accepting-orders` | nessuna: passa da sé |
-
-**⚠ Una famiglia sconosciuta è trattata come RISCHIO**, non come occasione di inventare una via
-d'uscita — la stessa regola di `ignota` altrove.
 
 **126 · COERENZA FRA I MODULI** (`lib/maker/coerenza-soglie.js`, puro). La classe di difetto: chi
 propone non conosce le soglie di chi riceve, e ogni modulo preso da solo risponde correttamente alla
-propria domanda. **Due divergenze misurate**, la seconda nuova e grossa:
+propria domanda. Due divergenze misurate: ① griglia $24,00 contro pavimento $24,50 ⇒ **114 rifiuti
+identici, 3 ore di capitale fermo**; ② tetto per **mercato** $32,67 contro tetto per **ordine** $21,34
+sulla gamba cara ⇒ **243 mercati su 321 (76%)** sfonderebbero, **631 `manual-order-cap` in 3 giorni**.
+L'aritmetica di ②: `capitale ≤ tettoOrdine × costoCoppia / max(p_yes, p_no)`. Il capitale **può solo
+scendere** (`Math.min`), quindi nessun tetto viene alzato. Il modulo **non importa nessuna costante**:
+le soglie gliele passa chi le possiede, o nascerebbe la settima copia del tetto.
 
-| # | chi propone | chi riceve | misura |
-|---|---|---|---|
-| ① | griglia dell'allocatore ($24,00) | pavimento del mini-ciclo ($24,50) | **114 rifiuti identici, 3 ore di capitale fermo** |
-| ② | tetto per **mercato** ($32,67) | tetto per **ordine** ($21,34) sulla gamba cara | **243 mercati su 321 (76%) sfonderebbero · 631 `manual-order-cap` in 3 giorni** |
 
-L'aritmetica di ②: le due gambe comprano le **stesse share** `Q = capitale/costoCoppia` e costano
-`Q × p` ciascuna ⇒ `capitale ≤ tettoOrdine × costoCoppia / max(p_yes, p_no)`. Il capitale **può solo
-scendere** (è un `Math.min`), quindi nessun tetto viene alzato: la riga smette di essere impossibile
-diventando **più piccola**, non più permessa. Se nemmeno il massimo compatibile regge il pavimento
-premiante, la riga si **scarta e si dichiara** — non si forza una size sotto `min_incentive_size`, dove
-il reward è ZERO. **Il modulo non importa nessuna costante**: le soglie gliele passa chi le possiede, o
-nascerebbe la settima copia del tetto.
-**Altre coppie cercate e già coperte**, quindi non ritoccate: tetto per mercato ↔ Regola 5 del motore
-(costante unica importata da undici consumatori) · `MIN_ALLOCAZIONE_USD` ↔ `capPerMarketUsd` (§107) ·
-`ETA_BOARD_MAX_MS` ↔ `SCAN_INTERVAL_MS` (test che legge il sorgente) · `rateCap` ↔ mercati per giro
-(test) · `minSizeShares` ↔ `BELOW_MIN_SIZE` (cancello in share, non in dollari).
-
-**127 · SCALA DI SBLOCCO E AUTODIAGNOSI.** Vedi il banner per i gradini e le soglie. Le scelte:
-**5 minuti per gradino** perché è il tempo in cui la sentinella vede un vuoto ed è più di due cadenze
-del trigger, quindi un gradino ha avuto le sue occasioni; **50%** di capitale al lavoro come soglia di
-guasto (non il 95% dell'obiettivo: l'obiettivo è una tensione, la soglia è un sintomo) perché sul
-giornale delle 48 h precedenti il regime bloccato stava a 8-40% e quello sano a 44-63%; **15 minuti**
-sotto soglia perché un singolo giro sotto il 50% è normale dopo un ribilanciamento. **L'ultimo gradino
-non è un'azione: è FERMA**, e non tocca le posizioni aperte né l'uscita automatica.
-
+**127 · SCALA DI SBLOCCO E AUTODIAGNOSI.** Gradini e soglie nel banner. Le scelte: **5 minuti** per
+gradino (il tempo in cui la sentinella vede un vuoto, più di due cadenze del trigger); **50%** di
+capitale al lavoro come soglia di guasto — non il 95% dell'obiettivo, perché l'obiettivo è una tensione
+e la soglia è un sintomo — perché sul giornale delle 48 h precedenti il regime bloccato stava a 8-40% e
+quello sano a 44-63%; **15 minuti** sotto soglia perché un singolo giro sotto il 50% è normale dopo un
+ribilanciamento. **L'ultimo gradino non è un'azione: è FERMA.**
 **⚠ VERIFICA STORICA, e il risultato non è quello che si spererebbe.** Sui 102 mini-cicli del 10-13
-agosto ci sono **4 finestre di blocco per 610 minuti totali**: 13/08 01:10→05:56 (**286 min**, 27 giri),
-12/08 13:39→18:15 (276 min, 5 giri), 10/08 02:50→03:32 (42 min), 12/08 23:48→23:54 (6 min). **Tre su
-quattro hanno la stessa causa — il deadlock aritmetico — e per quelle la scala NON avrebbe sbloccato
-niente**: nessuno dei cinque gradini agisce su una soglia incompatibile, e il bot sarebbe arrivato a
-**FERMA in ~30 minuti**. Il guadagno è reale ma va detto per quello che è: **da 286 minuti di finto
-lavoro a 30 minuti e un allarme grave con il bot dichiaratamente fermo**, non a un bot che riparte. A
-sbloccare quelle tre è stata la correzione della **griglia** (§120), non queste difese. **La quarta
-(6 min) sarebbe stata risolta dal gradino 1.** Capitale fermo nei quattro blocchi: ~**6.190 $·ora**.
+agosto ci sono **4 finestre di blocco per 610 minuti**; **tre su quattro hanno la stessa causa — il
+deadlock aritmetico — e per quelle la scala NON avrebbe sbloccato niente**: il bot sarebbe arrivato a
+**FERMA in ~30 minuti**. Il guadagno è **da 286 minuti di finto lavoro a 30 minuti e un allarme grave**,
+non a un bot che riparte. A sbloccare quelle tre è stata la griglia (§120). Capitale fermo: ~**6.190 $·ora**.
+
 
 **128 · RESIDUI SOTTO SOGLIA: NON SI PUÒ IMPEDIRE CHE NASCANO — non implementato, con i numeri.**
 **(a) Il venue non offre un vincolo di esecuzione utile, e la prova è nei tipi dell'SDK.**

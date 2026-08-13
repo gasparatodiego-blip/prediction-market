@@ -1,3 +1,4 @@
+import { raggioBandaCents } from './banda-premiante';
 // lib/rewards-estimate.test.ts — standalone assertion tests (no framework).
 // Run: tsc lib/rewards-estimate.ts lib/rewards-estimate.test.ts --outDir <tmp> \
 //        --module commonjs --target es2019 && node <tmp>/lib/rewards-estimate.test.js
@@ -41,7 +42,7 @@ console.log('rewards-estimate unit tests\n');
 ok('proximity at mid (d=0) = 1', approx(proximityFactor(0, 6), 1));
 ok('proximity at band edge (d=maxSpread) = 0', approx(proximityFactor(6, 6), 0));
 // quadratic, not linear: at half the band, 1-(0.5)^2 = 0.75 (linear would give 0.5)
-ok('proximity is QUADRATIC at d=maxSpread/2 → 0.75', approx(proximityFactor(3, 6), 0.75));
+ok('proximity is QUADRATIC at d=raggioBandaCents(maxSpread) → 0.75', approx(proximityFactor(3, 6), 0.75));
 ok('proximity at quarter band → 1-(0.25)^2 = 0.9375', approx(proximityFactor(1.5, 6), 0.9375));
 ok('proximity clamps ≥0 beyond band', proximityFactor(99, 6) === 0);
 ok('Kalshi (maxSpread null) proximity = 1 (flat model)', proximityFactor(3, null) === 1);

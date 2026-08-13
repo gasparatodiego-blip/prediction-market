@@ -1,11 +1,12 @@
 'use strict';
+const { raggioBandaCents } = require('../../../../lib/banda-premiante');
 // app/dashboard/liquidity-rewards/allocate/band-state.js
 //
 // Pure band-edge state machine for the allocation table. This is the CANONICAL implementation, imported by
 // RewardsAllocatePanel (client-safe: no React, no node builtins, no dynamic require — so webpack bundles it
 // cleanly) AND exercised by selfcheckBandState() in plain node. It reads no key, builds no order.
 //
-// A maker quote earns iff its distance from mid is within the reward band radius (maxSpread/2). Widening does
+// A maker quote earns iff its distance from mid is within the reward band radius (maxSpread). Widening does
 // NOT decay the reward — one tick past the radius removes it ENTIRELY. For a row quoting at `offsetTicks`
 // (offset in this market's own ticks), this returns:
 //   headroomTicks : whole +1-tick steps until the reward zeroes (1 = the very NEXT step crosses the edge)
@@ -17,7 +18,7 @@ function fin(x) { return typeof x === 'number' && Number.isFinite(x); }
 
 function bandStateFor(maxSpreadCents, tick, offsetTicks) {
   const tickCents = fin(tick) && tick > 0 ? tick * 100 : null;
-  const radiusCents = fin(maxSpreadCents) ? maxSpreadCents / 2 : null;
+  const radiusCents = fin(maxSpreadCents) ? raggioBandaCents(maxSpreadCents) : null;
   // UNKNOWN fails closed: an unreadable band is never presented as safe.
   if (radiusCents == null || tickCents == null) {
     return { state: 'unknown', headroomTicks: null, headroomCents: null, maxInBandTicks: null, radiusCents, tickCents, offsetCents: null };

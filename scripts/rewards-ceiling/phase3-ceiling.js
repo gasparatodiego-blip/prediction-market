@@ -9,6 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { capitalForShare } = require('./lib/curve');
+const { raggioBandaCents } = require('../../lib/banda-premiante');
 
 const OUT_DIR = path.join(__dirname, 'out');
 const RISK_FREE_PCT = 4.0;    // ~4%/yr risk-free reference (the bar funding +2.79% and carry +2.68% failed)
@@ -101,7 +102,7 @@ function aggregateCeiling(rows, S) {
   console.log('HAND-VERIFY (redo this arithmetic by hand — every intermediate number shown):');
   console.log('  market:            ' + hv.question);
   console.log('  pot (Gamma):       $' + hv.pot + '/day');
-  console.log('  reward band:       ±' + (hv.maxSpread / 2) + '¢ (maxSpread ' + hv.maxSpread + '¢), minSize ' + hv.minSize + ' shares');
+  console.log('  reward band:       ±' + (raggioBandaCents(hv.maxSpread)) + '¢ (maxSpread ' + hv.maxSpread + '¢), minSize ' + hv.minSize + ' shares');
   console.log('  scoring mid:       ' + hv.mid.toFixed(4) + '  → price used ' + price.toFixed(4));
   console.log('  observed in-band depth: bid $' + hv.inbandBidUsd.toFixed(0) + ' + ask $' + hv.inbandAskUsd.toFixed(0) + ' = $' + hv.inbandDepthUsd.toFixed(0) + ' (qualifying ≥minSize, both stacks)');
   console.log('  competitor Qmin:   ' + hv.competitorQ.toFixed(2) + ' (scoreBook, live book)');

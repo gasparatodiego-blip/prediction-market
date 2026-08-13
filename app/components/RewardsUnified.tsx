@@ -1398,7 +1398,7 @@ function RewardYieldBreakdown({ row, isPaid, totalSizeUsd, offsetCents }:
  * PRICE-FIRST expansion (Part A) — the reward row rebuilt around PRICE.
  *  • three-cell price block BUY YES | MID | BUY NO (MID largest), derived from the SCORING mid + the
  *    user's offset, tick-snapped; complementary-identity line under it.
- *  • reward-band rail: mid tick, eligible band (mid ± maxSpread/2), posted bid/ask markers, live touch.
+ *  • reward-band rail: mid tick, eligible band (mid ± maxSpread), posted bid/ask markers, live touch.
  *  • expected GROSS $/day at the user's TOTAL size via the published quadratic (poolDay × share) at the
  *    chosen offset against the feed's competitorQ; own-impact chip; net "—" (adverse selection unmodelled).
  * Every number is REAL or "—". The band warning CALLS the shared venue-rules validator (never reimplemented).
@@ -1496,7 +1496,7 @@ function RewardPriceFirst({ row, isPaid, totalSizeUsd, offsetCents }:
         <div className="rw-pf-ticknote">tick di mercato non disponibile dal feed — prezzi non arrotondati al tick</div>
       )}
 
-      {/* ── REWARD-BAND RAIL ── centred on the mid, spanning ± max_spread; eligible band = ± max_spread/2 ── */}
+      {/* ── REWARD-BAND RAIL ── centrato sul mid, largo ± 2×max_spread; banda premiante = ± max_spread ── */}
       {railHalf != null ? (
         <div className="rw-rail-wrap">
           <div className="rw-rail" aria-hidden="true">

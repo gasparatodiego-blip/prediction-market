@@ -1,0 +1,287 @@
+{
+ "generatoAl": "2026-08-13T19:52:37.648Z",
+ "righeLette": 3887021,
+ "fileLetti": [
+  "polymarket-maker-audit-2026-08-11T16-29-07Z.jsonl",
+  "polymarket-maker-audit.jsonl"
+ ],
+ "finestra": {
+  "da": "2026-08-05T12:08:20.450Z",
+  "a": "2026-08-13T19:52:33.392Z"
+ },
+ "eventiBandExit": 42715,
+ "perOutcome": [
+  {
+   "outcome": "end-of-life-cancel",
+   "n": 136429
+  },
+  {
+   "outcome": "skip-motore-non-conforme",
+   "n": 33614
+  },
+  {
+   "outcome": "anomalia-rinnovo-fermato",
+   "n": 11585
+  },
+  {
+   "outcome": "end-of-scale-cancel",
+   "n": 6463
+  },
+  {
+   "outcome": "skip-mid-stale",
+   "n": 5980
+  },
+  {
+   "outcome": "ok",
+   "n": 3826
+  },
+  {
+   "outcome": "sent",
+   "n": 3528
+  },
+  {
+   "outcome": "skip-close-sell-floor",
+   "n": 2866
+  },
+  {
+   "outcome": "skip-rate-limited",
+   "n": 2519
+  },
+  {
+   "outcome": "cancelled-by-system",
+   "n": 2229
+  },
+  {
+   "outcome": "inseguimento-soppresso",
+   "n": 1811
+  },
+  {
+   "outcome": "trigger",
+   "n": 1701
+  },
+  {
+   "outcome": "skip-hourly-cap",
+   "n": 1149
+  },
+  {
+   "outcome": "reject-manual-order-cap",
+   "n": 487
+  },
+  {
+   "outcome": "reject-cap-preflight",
+   "n": 478
+  },
+  {
+   "outcome": "skip-refresh-invalid",
+   "n": 360
+  },
+  {
+   "outcome": "skip-mai-primo-non-quotabile",
+   "n": 322
+  },
+  {
+   "outcome": "scaduto-senza-rinnovo",
+   "n": 306
+  },
+  {
+   "outcome": "expired",
+   "n": 265
+  },
+  {
+   "outcome": "skip-mid-not-live",
+   "n": 192
+  },
+  {
+   "outcome": "inseguimento-ripreso",
+   "n": 157
+  },
+  {
+   "outcome": "cancelled-externally",
+   "n": 148
+  },
+  {
+   "outcome": "skip-chase-target-invalid",
+   "n": 129
+  },
+  {
+   "outcome": "mid-stantio-risolto",
+   "n": 125
+  },
+  {
+   "outcome": "mid-stantio-cancellato-mid-stantio",
+   "n": 103
+  },
+  {
+   "outcome": "mid-stantio-cancellato",
+   "n": 82
+  },
+  {
+   "outcome": "rinnovo-esente-dal-tetto",
+   "n": 59
+  },
+  {
+   "outcome": "cecita-timeout-mid-stantio",
+   "n": 57
+  },
+  {
+   "outcome": "skip-replacement-invalid",
+   "n": 55
+  },
+  {
+   "outcome": "cancelled-lato-singolo-zero",
+   "n": 55
+  },
+  {
+   "outcome": "mid-stantio-timeout",
+   "n": 44
+  },
+  {
+   "outcome": "residuo-sotto-soglia",
+   "n": 42
+  },
+  {
+   "outcome": "cancelled-top-of-book",
+   "n": 27
+  },
+  {
+   "outcome": "reject-idempotent-duplicate",
+   "n": 25
+  },
+  {
+   "outcome": "mid-stantio-cancellato-nessun-libro",
+   "n": 18
+  },
+  {
+   "outcome": "cecita-timeout-nessun-libro",
+   "n": 14
+  },
+  {
+   "outcome": "noop",
+   "n": 11
+  },
+  {
+   "outcome": "reject-venue",
+   "n": 8
+  },
+  {
+   "outcome": "reject-idempotent",
+   "n": 7
+  },
+  {
+   "outcome": "allowlist-auto-off",
+   "n": 5
+  },
+  {
+   "outcome": "reject-cancel-failed",
+   "n": 4
+  },
+  {
+   "outcome": "reject-idempotency-preflight",
+   "n": 4
+  },
+  {
+   "outcome": "reject-mai-primo-sul-libro",
+   "n": 3
+  },
+  {
+   "outcome": "reject-place",
+   "n": 3
+  },
+  {
+   "outcome": "reject-replace",
+   "n": 3
+  }
+ ],
+ "conMisuraDistanza": 5808,
+ "fuoriBandaStretta": 5808,
+ "ancoraDentroBandaVera": 3621,
+ "fuoriAncheDallaBandaVera": 2187,
+ "quotaSalvabile": 62.3,
+ "ordiniDistintiSalvabili": 167,
+ "mercatiDistintiSalvabili": 62,
+ "punteggioResiduoConVCorretto": {
+  "nota": "S=((v−s)/v)² con v = maxSpread: quanto MATURAVA ancora l'ordine che abbiamo cancellato",
+  "mediana": 0.1111111111111111,
+  "q25": 0.04938271604938271,
+  "q75": 0.19753086419753085,
+  "q90": 0.19753086419753085,
+  "media": 0.1189
+ },
+ "istogrammaDistanzaSuBandaVera": [
+  {
+   "da": 0.5,
+   "a": 0.6,
+   "n": 1599
+  },
+  {
+   "da": 0.6,
+   "a": 0.7,
+   "n": 424
+  },
+  {
+   "da": 0.7,
+   "a": 0.8,
+   "n": 1247
+  },
+  {
+   "da": 0.8,
+   "a": 0.9,
+   "n": 351
+  },
+  {
+   "da": 1,
+   "a": 1.1,
+   "n": 315
+  },
+  {
+   "da": 1.1,
+   "a": 1.2,
+   "n": 134
+  },
+  {
+   "da": 1.2,
+   "a": 1.3,
+   "n": 57
+  },
+  {
+   "da": 1.3,
+   "a": 1.4,
+   "n": 70
+  },
+  {
+   "da": 1.4,
+   "a": 1.5,
+   "n": 4
+  },
+  {
+   "da": 1.5,
+   "a": 1.6,
+   "n": 21
+  },
+  {
+   "da": 1.6,
+   "a": 1.7,
+   "n": 20
+  },
+  {
+   "da": 1.7,
+   "a": 1.8,
+   "n": 5
+  },
+  {
+   "da": 1.8,
+   "a": 1.9,
+   "n": 18
+  },
+  {
+   "da": 1.9,
+   "a": 2,
+   "n": 3
+  },
+  {
+   "da": 2,
+   "a": 2.1,
+   "n": 1540
+  }
+ ]
+}

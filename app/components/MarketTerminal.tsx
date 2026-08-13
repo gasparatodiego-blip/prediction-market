@@ -826,7 +826,7 @@ function FeedBadge({ book }: { book: BookPayload | null }) {
 }
 
 /**
- * ONE ladder. The reward band (mid ± max_spread/2) is highlighted, the scoring mid separates the two
+ * ONE ladder. The reward band (mid ± max_spread) is highlighted, the scoring mid separates the two
  * stacks, and the levels where the configured orders would land are marked inline — which is what the
  * separate "open the book" page used to be for. In-band is tested with the SSOT (lib/rewards-live-band).
  */
