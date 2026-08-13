@@ -369,3 +369,6 @@ data/ricerca/serie-copertura.json
 
 # Giornale dell osservatore: rigenerato in continuo, non va in git
 data/osservatore/
+
+# Grezzi delle distribuzioni reward: 5,8 MB rigenerabili da scripts/ricerca/raccogli-distribuzioni.js
+data/ricerca/distribuzioni-reward/

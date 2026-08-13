@@ -1277,6 +1277,32 @@ modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà**
 testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
 
+**149 · CHI INCASSA DAVVERO I REWARD — sola ricerca, 30 giorni on-chain (14/07 → 12/08).** Misura
+completa in `data/ricerca/sintesi-incassatori.md`; script `raccogli-distribuzioni.js`,
+`analizza-incassatori.js`, `profila-top.js`.
+**La scala vera**: **7 tx al giorno per ~2.700 destinatari**, non una da 400 — **$3.974.198** in 30
+giorni a **14.836 wallet**. ⚠ Fonte: **Etherscan V2 multichain** (`api.polygonscan.com` v1 è
+**dismesso**, risponde HTML), e la query va **partizionata per blocchi giornalieri** perché il piano
+gratuito tronca a 1.000 righe/pagina e 10.000/query — senza partizione si scambia una pagina troncata
+per l'ultima.
+**La concentrazione**: **172 wallet (1,9%) prendono il 59,2%** del monte a ≥$200/giorno, presenti
+**29 giorni su 30**. I primi 100 prendono il 52,4%.
+**NOI: percentile 39,3** — 5.596° su 9.214, **$17,59** in 30 giorni, presenti **4 giorni su 30**.
+**⚠ IL CONSUNTIVO DEL PANNELLO È CORRETTO, e la catena pure**: ogni importo coincide a quattro
+decimali **sfalsato di un giorno** — il pannello data al giorno MATURATO, la catena al giorno PAGATO
+(mezzanotte successiva). $19,25 − $17,59 = $1,66 = la riga del 12/08, pagata il 13/08.
+**⚠ I TOP SONO DIREZIONALI, non market maker neutrali — verificato prima di concluderlo**: l'API
+`positions` NON compatta i lati opposti (restituisce entrambi gli `outcomeIndex`), quindi «una gamba
+sola» è misurato. **Solo 4 wallet su 50 superano il 5% di mercati appaiati, massimo 12,1%.** Aggregato
+dei primi 50: **$6,74 M in posizione contro $1,65 M di reward** — i premi sono un sottoprodotto del
+tenere size su mercati con una view. ⚠ Il PnL dell'API è **cumulativo** e non ritagliabile sui 30
+giorni: non lo si usa per concludere.
+**⚠ I 21 WALLET DEL MANUALE NON SONO I TOP**: il migliore è **67°**, la maggior parte fra 100° e 400°,
+uno (`Lilybaeum`) è **sparito**. Il manuale descrive la seconda fascia.
+**L'unica differenza replicabile a $650 è la PRESENZA** (4/30 contro 29/30): il taglio dei nostri
+ordini ($10,76 mediano) è già dentro il range dei top ($5,67–$16,86). Scala e direzionalità **non**
+sono replicabili — il primo wallet tiene $1,77 M in posizione, 2.700× il nostro capitale.
+
 **147 · L'ESENZIONE DAL TETTO PER ORDINE VALE SU TUTTI I PERCORSI CHE RIDUCONO.** Il ramo
 `riposizionamento-scoperto` (`auto-close.js:1412`) era l'unico percorso di chiusura a NON dichiarare
 `chiudePosizione: true`, e gestisce proprio la posizione NUDA quando la banda sta sotto il carico.
