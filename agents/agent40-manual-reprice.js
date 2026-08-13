@@ -803,6 +803,39 @@ function mercatiSulBoard() {
 }
 
 let ultimaScansione = 0;
+// ── IL RECUPERO DELLE SCADENZE MANCANTI ───────────────────────────────────────────────────────────
+// La memoria dei tentativi falliti vive nel processo e non su disco, di proposito: un riavvio deve
+// poter riprovare subito: il costo di un tentativo in più è una richiesta, il costo di non riprovare è
+// una posizione che nessuno chiuderà. Vedi `lib/maker/scadenza-recupero.js` per il perché esiste.
+let scadenzeFallite = {};
+async function recuperaScadenzeMancanti(idsConCapitale) {
+  const REC = require('../lib/maker/scadenza-recupero');
+  const { fetchMarketByConditionId } = require('../lib/maker/market-search');
+  const { upsertMarket } = require('../lib/maker/market-catalog');
+  const r = await REC.recuperaScadenze({
+    marketIds: idsConCapitale,
+    // NON una seconda lettura: è esattamente la funzione che poi deciderà la chiusura forzata, quindi
+    // «recuperato» significa per costruzione «adesso quella decisione ha il dato».
+    scadenzaNota: scadenzaMercato,
+    falliti: scadenzeFallite,
+    fetchOne: (id) => fetchMarketByConditionId(id, {}),
+    salva: ({ marketId, endDate }) => upsertMarket({ marketId, endDate },
+      { by: 'agent40 · recupero scadenza', reason: 'board e catalogo di ripiego non portano la scadenza: chiesta al venue' }),
+  });
+  scadenzeFallite = r.falliti;
+  if (r.recuperati.length) {
+    log(`scadenze recuperate dal venue: ${r.recuperati.length} — `
+      + r.recuperati.map((x) => `${x.marketId.slice(0, 12)} ⇒ ${x.endDate}`).join(' · ')
+      + ' · da adesso la chiusura forzata a 3 ore può scattare su questi mercati');
+  }
+  if (r.nonTrovati.length) {
+    log(`⚠ scadenza NON recuperabile per ${r.nonTrovati.length} mercato/i con capitale dentro: `
+      + r.nonTrovati.map((x) => `${x.marketId.slice(0, 12)} (${x.motivo})`).join(' · ')
+      + ' — su questi la chiusura forzata resta spenta finché il venue non risponde');
+  }
+  return r;
+}
+
 async function scansioneRegistri({ forzata = false } = {}) {
   const SR = require('../lib/maker/scansione-registri');
   const now = Date.now();
@@ -935,6 +968,16 @@ async function closeTask() {
     const visitare = [...new Set([...(cfg.readable ? cfg.enabledMarketIds : []), ...daPosizione]
       .map((x) => String(x || '').trim().toLowerCase()).filter(Boolean))];
     if (!visitare.length) return;   // OFF: silent — lo snapshot lo tiene vivo snapshotPosizioniTask
+
+    // ── PRIMA DI DECIDERE, LA SCADENZA DEVE ESSERCI ───────────────────────────────────────────────
+    // Va QUI e non nella scansione dei registri (ogni 30 min) perché è un ingresso di una decisione di
+    // RISCHIO — la chiusura forzata a 3 ore — e una decisione di rischio non deve aspettare mezz'ora
+    // per avere il proprio dato. Costa zero nel caso normale: chiede solo per i mercati la cui
+    // scadenza non si legge da NESSUNA delle due fonti, al più cinque per giro, e una volta scritta
+    // nel catalogo non si richiede mai più. Non blocca il ciclo: se fallisce si prosegue come prima.
+    try { await recuperaScadenzeMancanti(visitare); }
+    catch (e) { log(`recupero delle scadenze fallito (il ciclo prosegue): ${e.message}`); }
+
     // Il saldo del giro: UNA lettura per ciclo, come gia' fa il ciclo di riprezzo. Serve al
     // riposizionamento post-fill, che deve dimensionarsi su quanto c'e' DAVVERO adesso e non sul
     // capitale appena fuso. Se la lettura non e' affidabile si passa `null` piu' sotto.

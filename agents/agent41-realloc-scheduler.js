@@ -162,6 +162,7 @@ const killSwitch = require('../lib/safety/kill-switch');
 const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 const UTIL = require('../lib/maker/utilizzo-capitale');
 const CAPLAV = require('../lib/maker/capitale-al-lavoro');
+const SENT = require('../lib/maker/sentinella-vuoto');
 
 // ── LO STATO DELLA DIAGNOSI DEL CAPITALE FERMO ────────────────────────────────────────────────────
 // Vive in memoria e non su disco di proposito: descrive un EPISODIO in corso, e dopo un riavvio la
@@ -1199,30 +1200,83 @@ async function miniCiclo(decisione, deps = {}) {
   // Tre casi, e sono tutti «il piano vecchio non risponde alla domanda di adesso»: non c'e', e' piu'
   // vecchio di un'ora, oppure c'e' ed e' fresco ma nessuna delle sue righe ha spazio per il capitale
   // libero. Il terzo e' quello che il Requisito 2 chiama per nome: prima il trigger si fermava li'.
+  // ── QUANTE RIGHE DEL PIANO SONO ANCORA SPENDIBILI ─────────────────────────────────────────────
+  // Il numero che il 13 agosto 2026 non esisteva. Il piano ne DICHIARAVA 17 e le spendibili erano
+  // ZERO: senza questa misura «il piano c'è» e «il piano serve a qualcosa» erano indistinguibili, e
+  // il mini-ciclo ha risposto «nessuna azione» per tre ore mentre il capitale stava fermo.
+  const utiliOra = TRIG.contaRigheUtili({
+    righe: righeCandidate, notionalePerMercato: perMercato,
+    capPerMercatoUsd: capMercato, disponibileUsd: spendibileUsd,
+  });
+  referto.righeUtili = utiliOra;
+  referto.sogliaRigheUtili = TRIG.SOGLIA_RIGHE_UTILI;
+
   let pianoRicalcolato = null;
-  if (!giro.scelte.length) {
+  // ── IL PIANO NON PUÒ SVUOTARSI, E NON SI ASPETTA IL CICLO DA SEI ORE ──────────────────────────
+  // Fino al 13 agosto si ricalcolava SOLO a zero scelte, cioè quando il danno era già completo. Ora
+  // si ricalcola anche quando le righe ancora spendibili scendono sotto i posti che un giro ha
+  // (`SOGLIA_RIGHE_UTILI`): sotto quella soglia il giro finisce il piano prima di finire i propri
+  // posti, e da lì ogni giro successivo ne trova meno. Si anticipa il consumo invece di subirlo.
+  //
+  // ⚠ LA RICOSTRUZIONE PASSA DALLA STESSA PORTA DEL CICLO PESANTE: `pianoLeggero` chiama
+  // `calcolaPianoFuoriProcesso`, cioè lo STESSO `planFromCollection` con `horizonFilter`, il filtro di
+  // profondità, quello di quotabilità, il pavimento premiante e il tetto per mercato. Cambia solo la
+  // finestra di storico (6 h invece di 48). Nessun mercato salta un controllo: se saltasse, questa
+  // riga sarebbe un modo di piazzare su ciò che il ciclo pesante rifiuterebbe.
+  const sottoSoglia = giro.scelte.length > 0 && utiliOra < TRIG.SOGLIA_RIGHE_UTILI;
+  if (!giro.scelte.length || sottoSoglia) {
     const perche = !piano.ok ? (piano.motivo || 'nessun piano salvato')
       : !pianoFresco ? `il piano salvato ha ${etaPianoMs == null ? 'eta ignota' : Math.round(etaPianoMs / 60000) + ' minuti'} (limite ${PIANO_FRESCO_MAX_MS / 60000})`
-        : `il piano salvato non ha righe utilizzabili adesso (${giro.motivoStop})`;
+        : sottoSoglia ? `il piano si sta consumando: ${utiliOra} righe ancora spendibili sotto la soglia di ${TRIG.SOGLIA_RIGHE_UTILI} (i posti di un giro)`
+          : `il piano salvato non ha righe utilizzabili adesso (${giro.motivoStop})`;
     annuncia('log', `mini-ciclo: ricalcolo leggero — ${perche}`);
+    // ⚠ UN RICALCOLO PREVENTIVO NON DEVE POTER PEGGIORARE IL GIRO. Quando si entra qui con delle
+    // scelte già in mano (il caso `sottoSoglia`), un ricalcolo fallito o più povero deve lasciare le
+    // scelte di prima: altrimenti la correzione che esiste per non lasciare fermo il capitale
+    // diventerebbe il modo di lasciarlo fermo. Si tiene il migliore dei due, e si dichiara quale.
+    const giroPrima = giro;
+    const fontePrima = fonte;
+    const righePrima = righeCandidate;
+    const tieniIlPrecedente = (motivo) => {
+      if (!giroPrima.scelte.length) return false;
+      giro = giroPrima; fonte = fontePrima; righeCandidate = righePrima;
+      referto.ricostruzione = { tentata: true, adottata: false, motivo };
+      annuncia('log', `mini-ciclo: ricostruzione NON adottata — ${motivo}; si prosegue col piano di prima (${giroPrima.scelte.length} scelte)`);
+      return true;
+    };
     const tRic = Date.now();
     try {
       pianoRicalcolato = await ricalcola({ capital: decisione.saldoUsd, maxPerMarketUsd: capMercato });
     } catch (e) {
-      return { ...referto, esito: 'nessuna-azione', utilizzo: utilPrima,
-        motivo: `${perche}, e il ricalcolo leggero e' fallito: ${e.message}` };
+      if (!tieniIlPrecedente(`il ricalcolo leggero e' fallito: ${e.message}`)) {
+        return { ...referto, esito: 'nessuna-azione', utilizzo: utilPrima,
+          motivo: `${perche}, e il ricalcolo leggero e' fallito: ${e.message}` };
+      }
+      pianoRicalcolato = null;
     }
-    const righeFresche = (pianoRicalcolato && pianoRicalcolato.rows) || [];
-    referto.ricalcolo = { motivo: perche, durataMs: Date.now() - tRic, righe: righeFresche.length,
-      finestraOre: FINESTRA_LEGGERA_ORE };
-    if (!righeFresche.length) {
-      return { ...referto, esito: 'nessuna-azione', utilizzo: utilPrima,
-        motivo: `${perche} — e il ricalcolo leggero non ha trovato nessun mercato ammissibile adesso:`
-          + ' il capitale resta liquido perche' + ' non c\'e\' dove metterlo, non perche\' non si e\' guardato' };
+    if (pianoRicalcolato !== null) {
+      const righeFresche = (pianoRicalcolato && pianoRicalcolato.rows) || [];
+      referto.ricalcolo = { motivo: perche, durataMs: Date.now() - tRic, righe: righeFresche.length,
+        finestraOre: FINESTRA_LEGGERA_ORE };
+      if (!righeFresche.length) {
+        if (!tieniIlPrecedente('il ricalcolo leggero non ha trovato nessun mercato ammissibile adesso')) {
+          return { ...referto, esito: 'nessuna-azione', utilizzo: utilPrima,
+            motivo: `${perche} — e il ricalcolo leggero non ha trovato nessun mercato ammissibile adesso:`
+              + ' il capitale resta liquido perche' + ' non c\'e\' dove metterlo, non perche\' non si e\' guardato' };
+        }
+      } else {
+        const giroFresco = TRIG.pianificaGiro({ ...comuni, righe: righeFresche, disponibileUsd: spendibileUsd });
+        if (giroFresco.scelte.length >= giroPrima.scelte.length) {
+          righeCandidate = righeFresche;
+          giro = giroFresco;
+          fonte = `ricostruzione del piano (${FINESTRA_LEGGERA_ORE}h, ${Date.now() - tRic}ms)`;
+          referto.ricostruzione = { tentata: true, adottata: true, righe: righeFresche.length,
+            righeUtiliPrima: utiliOra, scelteePrima: giroPrima.scelte.length, scelte: giroFresco.scelte.length };
+        } else {
+          tieniIlPrecedente(`la ricostruzione produce ${giroFresco.scelte.length} scelte contro ${giroPrima.scelte.length}`);
+        }
+      }
     }
-    righeCandidate = righeFresche;
-    giro = TRIG.pianificaGiro({ ...comuni, righe: righeFresche, disponibileUsd: spendibileUsd });
-    fonte = `ricalcolo leggero (${FINESTRA_LEGGERA_ORE}h, ${Date.now() - tRic}ms)`;
   }
 
   if (!giro.scelte.length) {
@@ -1484,6 +1538,85 @@ async function miniCiclo(decisione, deps = {}) {
   };
 }
 
+// ═══ LA SENTINELLA SUL VUOTO ═══════════════════════════════════════════════════════════════════════
+// Il presidio che il 13 agosto 2026 non esisteva: zero ordini a riposo per 180 minuti con KILL spento,
+// AVVIA acceso e $609,10 liquidi, senza che nessun componente avesse per mestiere accorgersene.
+//
+// ⚠ NON CONSUMA LA QUOTA DEI RINNOVI. L'unica chiamata che fa è una LETTURA degli ordini aperti, e la
+// quota 60/40 conta gli `intent`, cioè gli invii (`lib/safety/usage.js`): una GET non entra nella
+// finestra e non toglie un solo posto al 40% riservato ai rinnovi. La ricostruzione che la sentinella
+// chiede passa dal mini-ciclo, quindi resta dentro il 60% delle aperture come qualunque altro giro.
+//
+// ⚠ E NON ALLENTA NIENTE: la sua unica azione è chiedere a `controlloCapitaleFermo` di girare ADESSO
+// invece che al prossimo cooldown. Kill, AVVIA/FERMA, freno di prova e tutti i cancelli per ordine
+// restano davanti e decidono come sempre.
+let statoVuoto = null;
+async function sorvegliaVuoto(deps = {}) {
+  const leggiOrdini = deps.listOrders || (() => listManualOrders({}));
+  const forza = deps.forza || ((m) => controlloCapitaleFermo({ forzatoDa: m }));
+  const ora = deps.now || Date.now();
+  if (!TRIGGER_ATTIVO) return null;
+
+  // I due cancelli gratuiti prima della lettura, per la stessa ragione del trigger: a bot fermo o con
+  // il kill attivo il vuoto è lo stato CORRETTO e non c'è niente da leggere.
+  const avviato = botAttivo();
+  let kill = { effectivelyKilled: false, readable: true };
+  try { kill = killSwitch.killStatus(); } catch { kill = { effectivelyKilled: true, readable: false }; }
+  const killAttivo = kill.effectivelyKilled === true || kill.readable === false;
+
+  let quanti = null;
+  if (avviato && !killAttivo) {
+    try {
+      const o = await leggiOrdini();
+      quanti = (o && o.ok !== false && Array.isArray(o.orders)) ? o.orders.length : null;
+    } catch { quanti = null; }   // illeggibile ⇒ la sentinella si congela, non grida
+  }
+
+  const v = SENT.valutaVuoto({ stato: statoVuoto, ordiniARiposo: quanti, killAttivo, botAvviato: avviato, now: ora });
+  statoVuoto = v.stato;
+  if (v.rientrato === true) annuncia('log', `vuoto RIENTRATO — ${v.motivo}`);
+  if (!v.anomalia) return v;
+
+  // L'allarme si scrive UNA VOLTA per episodio: tre ore di vuoto non devono diventare novanta righe
+  // identiche, che è il modo in cui un allarme smette di essere letto. La RICOSTRUZIONE invece si
+  // richiede a ogni giro finché il vuoto dura, perché è l'azione che lo risolve.
+  if (v.nuova) {
+    let cal = null;
+    let rip = null;
+    try {
+      const s = await leggiSaldo();
+      const pos = readVenuePositions();
+      const u = UTIL.misuraUtilizzo({
+        saldoUsd: s && s.readable !== false ? s.usd : null,
+        // ZERO ordini a riposo non è un'ipotesi: è il fatto che ha appena fatto scattare la sentinella.
+        ordiniARiposoUsd: 0,
+        posizioniUsd: pos && pos.readable === true ? UTIL.valorePosizioni(pos.positions || []) : null,
+      });
+      cal = CAPLAV.capitaleAlLavoro({ utilizzo: u });
+      // Con il libro VUOTO la causa non è un'ipotesi da indovinare: tutto il capitale libero è fermo
+      // perché nessuna riga è diventata un ordine. La si attribuisce per intero e la somma chiude.
+      if (cal.leggibile) rip = CAPLAV.ripartizioneFermo({ fermoUsd: cal.fermoUsd, pianoSenzaRigheUsd: cal.fermoUsd });
+    } catch { cal = null; rip = null; }
+    const riga = SENT.rigaAllarme({ vuotoMs: v.vuotoMs, capitale: cal, ripartizione: rip });
+    annuncia('error', riga);
+    try {
+      appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'realloc-scheduler', op: 'sentinella-vuoto',
+        reason: 'sentinella-vuoto', decision: v.motivo, outcome: 'vuoto-oltre-soglia',
+        requested: { vuotoMs: v.vuotoMs, sogliaMs: SENT.SOGLIA_MS },
+        observed: { riga, alLavoroUsd: cal && cal.alLavoroUsd, fermoUsd: cal && cal.fermoUsd,
+          ripartizione: rip ? rip.voci : null, killAttivo, botAvviato: avviato } });
+    } catch { /* l'audit non blocca il tentativo di rimedio */ }
+    scrivi({ at: new Date(ora).toISOString(), tipo: 'sentinella-vuoto', esito: 'anomalia',
+      vuotoMs: v.vuotoMs, sogliaMs: SENT.SOGLIA_MS, motivo: v.motivo,
+      capitaleAlLavoro: cal, ripartizione: rip ? rip.voci : null, pid: process.pid });
+  }
+  if (v.deveRicostruire) {
+    try { await forza('sentinella-vuoto'); }
+    catch (e) { annuncia('error', `la ricostruzione chiesta dalla sentinella è fallita: ${e.message}`); }
+  }
+  return v;
+}
+
 /** Il controllo periodico. Costa una lettura di saldo (in cache) e niente altro finche' non scatta. */
 async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   if (inCorso) return;                    // il lucchetto, prima di qualunque I/O
@@ -1722,9 +1855,20 @@ function main() {
       + ` (rilevazione del saldo ogni ${TRIG.CADENZA_MS / 1000}s), soglia $${TRIG.SOGLIA_USD}`
       + ` · non cancella niente, rilegge AVVIA/FERMA e il kill a ogni controllo`
       + ` · obiettivo di utilizzo ${Math.round(UTIL.TARGET_UTILIZZO * 100)}%, fino a ${TRIG.MAX_MERCATI_PER_GIRO} mercati per giro`
-      + ` · se il piano salvato manca, e' vecchio (> ${PIANO_FRESCO_MAX_MS / 60000} min) o non ha spazio, RICALCOLA (piano leggero a ${FINESTRA_LEGGERA_ORE}h)`);
+      + ` · se il piano salvato manca, e' vecchio (> ${PIANO_FRESCO_MAX_MS / 60000} min), non ha spazio`
+      + ` o ha meno di ${TRIG.SOGLIA_RIGHE_UTILI} righe ancora spendibili, RICOSTRUISCE il piano (leggero a ${FINESTRA_LEGGERA_ORE}h, stessi filtri del ciclo pesante)`);
+    annuncia('log', `sentinella sul vuoto ACCESA — zero ordini a riposo per piu' di ${SENT.SOGLIA_MS / 60000} min`
+      + ' con KILL spento e bot AVVIATO e\' un\'ANOMALIA: allarme nel log e nel giornale con la ripartizione del fermo in dollari,'
+      + ` e ricostruzione del piano chiesta subito · controllo ogni ${TRIG.CADENZA_MS / 1000}s`
+      + ' · e\' una sola LETTURA degli ordini: non consuma nessun posto della quota riservata ai rinnovi');
     setTimeout(() => {
       setInterval(() => { controlloCapitaleFermo().catch((e) => annuncia('error', 'controllo capitale fermo fallito', { error: e.message })); }, TRIG.CADENZA_MS);
+      // La sentinella gira sulla STESSA cadenza di rilevazione del trigger (120 s), sfalsata di mezzo
+      // periodo: le due leggono cose diverse (il saldo l'una, il libro l'altra) e sovrapporle
+      // significherebbe due letture nello stesso istante senza nessun vantaggio.
+      setTimeout(() => {
+        setInterval(() => { sorvegliaVuoto().catch((e) => annuncia('error', 'sentinella sul vuoto fallita', { error: e.message })); }, TRIG.CADENZA_MS);
+      }, Math.floor(TRIG.CADENZA_MS / 2));
     }, STARTUP_DELAY_MS);
     // Il sorvegliante dell'interruttore parte SUBITO e non dopo il minuto di grazia: la sua prima
     // esecuzione non piazza niente per costruzione (inizializza l'istante), e serve proprio a essere
@@ -1740,6 +1884,7 @@ function main() {
 if (require.main === module) main();
 
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
-  miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
+  miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
+  LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,
   rigaBoardNormalizzata, copiaRegoleNelRipiego, BOARD_NORMALIZZATO, sorvegliaAvvio, scadenzaDalBoard };
