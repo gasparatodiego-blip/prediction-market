@@ -96,6 +96,13 @@ const { readMarketCatalog } = require('../lib/maker/market-catalog');
 // scadenza nominale.
 const { leggiVenueClob } = require('../lib/maker/verifica-mercati-venue');
 const { registraResiduoScoperto, potaScadute, leggiRegistroResidui, scriviRegistroResidui } = require('../lib/maker/accumulo-residui');
+// ── IL CONSUMATORE DEL REGISTRO DEI RESIDUI (13 agosto 2026, §5.2 p.17) ──────────────────────────
+// Modulo PURO: dice QUALI mercati rivisitare, non piazza niente. Chiude il buco per cui `pronto:true`
+// veniva calcolato, scritto, e non riletto da nessuno in produzione.
+const RITENTA = require('../lib/maker/ritenta-residui');
+// Il contatore del backoff, in memoria: il registro su disco resta la verita', questo e' solo la
+// memoria dei tentativi. Un riavvio lo azzera e si ritenta prima — direzione innocua.
+let statoRitentativi = new Map();
 const MC = require('../lib/maker/modalita-chiusura');
 // ── IL PERCORSO DI PROFILO, CABLATO AL CICLO ────────────────────────────────────────────────────────
 // `valutaPiazzamento` instrada un mercato verso i controlli Safe (mai-primo, depth $15 cumulata,
@@ -1047,6 +1054,45 @@ async function closeTask() {
     } catch (_) { daPosizione = []; }
     const visitare = [...new Set([...(cfg.readable ? cfg.enabledMarketIds : []), ...daPosizione]
       .map((x) => String(x || '').trim().toLowerCase()).filter(Boolean))];
+
+    // ══ I RESIDUI TORNATI PIAZZABILI — CLAUDE.md §5.2 p.17 ═══════════════════════════════════════
+    // `accumulo-residui` calcolava `pronto: true` e nessuno lo rileggeva: il sistema misurava quando un
+    // residuo tornava piazzabile, lo scriveva, e non agiva mai (misurato il 13 agosto 2026: 6 voci
+    // pronte per $105,79 di nozionale, ferme). Qui i loro mercati entrano nell'insieme che il ciclo di
+    // chiusura visita comunque.
+    //
+    // ⚠ NON È UN LASCIAPASSARE, ed è la ragione per cui il cablaggio è QUESTO e non un piazzamento
+    // diretto: il registro dice SOLO che la size ha ripreso il minimo del venue. Da `visitare` in giù
+    // vale tutto quello che vale sempre — banda premiante, tetto della coppia, tetto per mercato,
+    // «mai primo sul libro», profondità, tetto di perdita. Si riapre una porta, non si scavalca un muro.
+    //
+    // ⚠ E IL REGISTRO NON SI SCRIVE: un tentativo fallito lascia la voce dov'è. L'unico scrittore
+    // resta `accumulo-residui`; qui si tiene solo il contatore del backoff, in memoria.
+    let residuiRitentati = [];
+    try {
+      const regRes = leggiRegistroResidui();
+      const rr = RITENTA.residuiDaRitentare({
+        registro: regRes && regRes.residui ? regRes.residui : null,
+        stato: statoRitentativi, mercatiGiaVisitati: visitare,
+      });
+      statoRitentativi = rr.stato;
+      residuiRitentati = rr.daRitentare;
+      for (const c of residuiRitentati) {
+        if (!visitare.includes(c.marketId)) visitare.push(c.marketId);
+        log(`residuo pronto ritentato: ${c.marketId.slice(0, 10)} ${c.book} — ${c.size} share`
+          + ` (minimo ${c.minSize}), nozionale $${(c.notionalUsd || 0).toFixed(2)}`
+          + `${c.fallimenti ? `, ${c.fallimenti} fallimenti precedenti` : ''}`);
+        try {
+          appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'auto-close-on-fill',
+            op: 'ritenta-residuo', outcome: 'residuo-pronto-rivisitato',
+            marketRef: `cid_${c.marketId.replace(/^0x/, '')}`,
+            reason: rr.motivo,
+            observed: { book: c.book, size: c.size, minSize: c.minSize, notionalUsd: c.notionalUsd,
+              fallimentiPrecedenti: c.fallimenti, attesaApplicataMs: c.attesaApplicataMs } });
+        } catch { /* il giornale non deve poter fermare il giro */ }
+      }
+    } catch (e) { log('ritentativo dei residui non riuscito (non blocca il giro):', e.message); }
+
     if (!visitare.length) return;   // OFF: silent — lo snapshot lo tiene vivo snapshotPosizioniTask
 
     // ── PRIMA DI DECIDERE, LA SCADENZA DEVE ESSERCI ───────────────────────────────────────────────
@@ -1223,6 +1269,31 @@ async function closeTask() {
       else if (a.action === 'rimpiazzo') log(`RIMPIAZZO ${a.ok ? 'ok' : 'FALLITO'} · ${a.book.toUpperCase()} BUY ${a.size} @ ${a.price} — ${a.reason}`);
       else if (a.action === 'rimpiazzo-saltato') log(`rimpiazzo saltato · ${a.gate}: ${a.reason}`);
       else if (a.action === 'skip') log(`auto-close skip · ${a.gate}: ${a.reason}`);
+    }
+
+    // ── L'ESITO DEI RESIDUI RITENTATI, per il backoff ────────────────────────────────────────────
+    // Si guarda cosa ha fatto il ciclo sui mercati che ERANO stati aggiunti per il residuo. «Riuscito»
+    // vuol dire che una gamba è davvero partita; qualunque altra cosa è un fallimento, e il MOTIVO
+    // conta — il backoff cresce solo se è sempre lo stesso, perché tre rifiuti diversi sono un libro
+    // che si muove, non un blocco strutturale.
+    //
+    // ⚠ IL REGISTRO NON SI TOCCA MAI, nemmeno qui: fallire non cancella la voce. Si aggiorna solo il
+    // contatore in memoria, che un riavvio azzera — e allora si ritenta prima, che è il verso innocuo.
+    for (const c of residuiRitentati) {
+      const azioni = (res.actions || []).filter((a) => String(a.marketId || '').toLowerCase() === c.marketId);
+      const riuscito = azioni.some((a) => a.ok === true);
+      const motivo = riuscito ? null
+        : (azioni.find((a) => a.gate)?.gate || (azioni.length ? 'nessuna gamba partita' : 'mercato non valutato'));
+      statoRitentativi = RITENTA.registraEsito({ stato: statoRitentativi, chiave: c.chiave, riuscito, motivo });
+      log(`residuo ritentato · ${c.marketId.slice(0, 10)} ${c.book}: ${riuscito ? 'RIUSCITO' : `fallito — ${motivo}`}`);
+      try {
+        appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'auto-close-on-fill',
+          op: 'ritenta-residuo', outcome: riuscito ? 'residuo-ripiazzato' : 'residuo-ancora-bloccato',
+          marketRef: `cid_${c.marketId.replace(/^0x/, '')}`, gate: motivo,
+          reason: riuscito ? 'il residuo pronto è tornato sul libro'
+            : `il residuo pronto resta bloccato: ${motivo} — la voce RESTA a registro e si ritenta più tardi`,
+          observed: { book: c.book, size: c.size, notionalUsd: c.notionalUsd, fallimentiPrecedenti: c.fallimenti } });
+      } catch { /* il giornale non deve poter fermare il giro */ }
     }
   } catch (e) {
     log('close task failed:', e && e.message ? e.message : String(e));

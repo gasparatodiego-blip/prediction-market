@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~12:20 UTC.
+Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~14:40 UTC.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -1016,7 +1016,9 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
 
 ### 5.2 · Aperte
 
-17. **🔴 IL REGISTRO DEI RESIDUI È SCRITTO E MAI RILETTO — misurato il 13 agosto 2026.**
+17. ✅ **CORRETTO il 13 agosto 2026 (§5-bis p.148)** — il registro ha finalmente un consumatore.
+   Resta la diagnosi, che è il motivo per cui la correzione ha la forma che ha.
+   **IL REGISTRO DEI RESIDUI ERA SCRITTO E MAI RILETTO — misurato il 13 agosto 2026.**
    `lib/maker/accumulo-residui.js` scrive `data/residui-scoperti.json` a ogni giro (17 voci, aggiornate
    al minuto) e calcola correttamente il flag `pronto`, che oggi è **true su 6 voci per $105,79 di
    nozionale**. Ma `residuiPronti` (`accumulo-residui.js:157`) e `capitaleFermoUsd` (riga 162) hanno
@@ -1025,7 +1027,9 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
    read-modify-write che REGISTRA (riga 1123) — e in nessuno dei due per **riprovare**.
    Cioè: il sistema misura quando un residuo torna piazzabile, lo scrive, e non agisce mai.
    **Non corretto: tocca capitale ed è una decisione dell'operatore.**
-18. **🔴 IL TETTO PER ORDINE NON È ESENTATO SUL RAMO DEL RIPOSIZIONAMENTO — misurato il 13 agosto 2026.**
+18. ✅ **CORRETTO il 13 agosto 2026 (§5-bis p.147)** — l'esenzione vale su tutti i percorsi che riducono.
+   Resta la diagnosi.
+   **IL TETTO PER ORDINE NON ERA ESENTATO SUL RIPOSIZIONAMENTO — misurato il 13 agosto 2026.**
    L'esenzione di chiusura (§5 p.76, §5-bis p.133) è dichiarata dal ramo del completamento coppia
    (`auto-close.js:~1188`, `chiudePosizione: true`) ma **NON** dal ramo `riposizionamento-scoperto`
    (`auto-close.js:1411-1418`), che chiama `deps.placeOrder` senza quel campo. Conseguenza misurata:
@@ -1272,6 +1276,34 @@ complessive, $99,32 di nozionale di picco; $137,80 scoperti nell'istante della m
 modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà** perché fotografavano il
 testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
+
+**147 · L'ESENZIONE DAL TETTO PER ORDINE VALE SU TUTTI I PERCORSI CHE RIDUCONO.** Il ramo
+`riposizionamento-scoperto` (`auto-close.js:1412`) era l'unico percorso di chiusura a NON dichiarare
+`chiudePosizione: true`, e gestisce proprio la posizione NUDA quando la banda sta sotto il carico.
+Misurato: una **SELL di 52,6 share GIÀ POSSEDUTE** rifiutata con «controvalore $24,72 oltre il tetto
+per ordine $21,34», e **1.331 rifiuti `manual-order-cap`** nello slice recente. Quinta occorrenza della
+classe «protezione presente su un percorso e assente sul suo gemello».
+**⚠ L'ESENZIONE NON È UNA DICHIARAZIONE DI CUI CI SI FIDA**, e il guard esisteva già ed è sul percorso:
+`deps.placeOrder` arriva all'imbuto di piazzamento del pannello, e il suo GATE 4
+(`manual-order.js:1202-1224`) rifà l'aritmetica con `provaChiusura` sullo snapshot del venue — SELL
+oltre il posseduto o BUY oltre `manca` **non** vengono esentate — e il tetto di `safety-risk-limits`
+resta intatto: si esenta solo il cap live-min, e solo quando è lui a mordere. Snapshot illeggibile ⇒
+nessuna esenzione, cioè capitale fermo, che è il verso giusto in cui sbagliare.
+**I sette percorsi che ora dichiarano la chiusura sono TUTTI in riduzione**, e un test lo difende sia
+per conteggio sia per proprietà (`bulk-allocate`, la corsia che APRE, non la dichiara mai).
+
+**148 · IL REGISTRO DEI RESIDUI HA FINALMENTE UN CONSUMATORE.** `lib/maker/ritenta-residui.js` (puro)
++ cablaggio in `agent40` dentro `closeTask`: i mercati con una voce `pronto: true` entrano
+nell'insieme che il ciclo di chiusura visita già. **Non è un lasciapassare**: il registro dice SOLO che
+la size ha ripreso il minimo del venue, e da lì in giù valgono banda, tetti, «mai primo», profondità.
+**Cadenza `INTERVALLO_RITENTATIVO_MS = 10 min`**, backoff ×2 sui fallimenti **con lo stesso motivo**
+(un motivo diverso azzera: è un libro che si muove, non un blocco), tetto **2 ore**, al più **3 residui
+per giro** — è manutenzione, non la corsia principale.
+**⚠ IL REGISTRO NON SI SCRIVE MAI DA QUI**: un tentativo fallito lascia la voce dov'è, e un test lo
+verifica. L'unico scrittore resta `accumulo-residui`. Il contatore del backoff vive in memoria: un
+riavvio lo azzera e si ritenta prima, che è la direzione innocua.
+Ogni tentativo va nel giornale (`op: ritenta-residuo`, esiti `residuo-pronto-rivisitato` /
+`residuo-ripiazzato` / `residuo-ancora-bloccato`), così l'osservatore lo vede.
 
 **145 · LE DUE CONFERME DEVONO ESSERE DUE OSSERVAZIONI, NON DUE COPIE.** Il terzo scatto (13 agosto
 11:24:15Z) è avvenuto **con k=2 già attivo**: le due letture erano lo stesso numero, −32,58335 USD e
