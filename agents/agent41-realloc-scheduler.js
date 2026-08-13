@@ -1204,6 +1204,36 @@ async function miniCiclo(decisione, deps = {}) {
     mercatiGiaAperti: Object.keys(perMercato),
   };
 
+  // ── LE SOGLIE DI CHI RICEVE, PRIMA DI PROPORRE ────────────────────────────────────────────────
+  // Il pianificatore non conosce il tetto per ORDINE: alloca fino al tetto per MERCATO, e a mid estremo
+  // la gamba cara sfonda. Misurato sulle 24 ore: **84 gambe su 129 perse (65%) muoiono di
+  // `coppia-non-atomica`**, cioe' coppie abbandonate intere perche' UNA gamba sfondava — $1.276 di
+  // nozionale che non e' mai arrivato sul book. Qui le righe vengono ADATTATE: il capitale puo' solo
+  // SCENDERE, quindi nessun tetto e' toccato — si rispetta quello che c'e' gia' invece di scoprirlo al
+  // gate e buttare via anche la gamba che sarebbe passata.
+  //
+  // ⚠ VA APPLICATA A OGNI FONTE DI RIGHE, e la prima stesura non lo faceva: adattava il piano SALVATO e
+  // poi la ricostruzione sovrascriveva `righeCandidate` con righe mai passate di qui. Misurato dopo il
+  // riavvio delle 07:17: `coerenza: undefined` e sei `coppia-non-atomica` allo stesso giro, cioe' la
+  // correzione era INERTE. Adesso e' una funzione, e la chiamano tutti e due i percorsi.
+  const adattaAlleSoglie = (righe, dove) => {
+    const a = COER.adattaRighe({
+      righe: righe || [],
+      soglieDi: (r) => ({
+        capPerMercatoUsd: capMercato,
+        tettoOrdineUsd: CO.liveMinOrderCapUsd(capitaleTotale),
+        pavimentoRigaUsd: TRIG.pavimentoDiRiga(r).usd,
+      }),
+    });
+    if (a.adattate || a.scartate.length) {
+      referto.coerenza = { fonte: dove, adattate: a.adattate, scartate: a.scartate.length,
+        divergenze: a.divergenze.slice(0, 6), scartateDettaglio: a.scartate.slice(0, 6) };
+      annuncia('log', `mini-ciclo: coerenza soglie (${dove}) — ${a.adattate} riga/he con capitale RIDOTTO per rispettare il tetto per ordine`
+        + `, ${a.scartate.length} scartata/e perche' nessun capitale soddisfa insieme tutte le soglie`);
+    }
+    return a.righe;
+  };
+
   let righeCandidate = [];
   let motivoPassate = null;
   const piano = leggiPiano();
@@ -1212,40 +1242,13 @@ async function miniCiclo(decisione, deps = {}) {
   let giro = { scelte: [], motivoStop: piano.ok ? null : (piano.motivo || 'nessun piano salvato') };
   let fonte = null;
   if (pianoFresco) {
-    righeCandidate = piano.righe;
+    righeCandidate = adattaAlleSoglie(piano.righe, 'piano salvato');
     giro = TRIG.pianificaGiro({ ...comuni, righe: righeCandidate, disponibileUsd: spendibileUsd });
     fonte = `piano salvato (${Math.round(etaPianoMs / 60000)} min)`;
   }
 
-  // ── IL RICALCOLO, QUANDO IL PIANO SALVATO NON BASTA ────────────────────────────────────────────
-  // Tre casi, e sono tutti «il piano vecchio non risponde alla domanda di adesso»: non c'e', e' piu'
-  // vecchio di un'ora, oppure c'e' ed e' fresco ma nessuna delle sue righe ha spazio per il capitale
-  // libero. Il terzo e' quello che il Requisito 2 chiama per nome: prima il trigger si fermava li'.
   // ── QUANTE RIGHE DEL PIANO SONO ANCORA SPENDIBILI ─────────────────────────────────────────────
-  // Il numero che il 13 agosto 2026 non esisteva. Il piano ne DICHIARAVA 17 e le spendibili erano
-  // ZERO: senza questa misura «il piano c'è» e «il piano serve a qualcosa» erano indistinguibili, e
-  // il mini-ciclo ha risposto «nessuna azione» per tre ore mentre il capitale stava fermo.
-  // ── LE SOGLIE DI CHI RICEVE, PRIMA DI PROPORRE ────────────────────────────────────────────────
-  // Il pianificatore non conosce il tetto per ORDINE: alloca fino al tetto per MERCATO, e a mid estremo
-  // la gamba cara sfonda. Misurato: 243 mercati su 321 del board (76%) sfonderebbero al tetto pieno, e
-  // il giornale porta 631 rifiuti `manual-order-cap` in tre giorni. Qui le righe vengono ADATTATE — il
-  // capitale può solo scendere — così smettono di essere proposte per essere rifiutate. Nessun tetto è
-  // toccato: si rispetta quello che c'è già invece di scoprirlo al gate.
-  const adatt = COER.adattaRighe({
-    righe: righeCandidate,
-    soglieDi: (r) => ({
-      capPerMercatoUsd: capMercato,
-      tettoOrdineUsd: CO.liveMinOrderCapUsd(capitaleTotale),
-      pavimentoRigaUsd: TRIG.pavimentoDiRiga(r).usd,
-    }),
-  });
-  if (adatt.adattate || adatt.scartate.length) {
-    referto.coerenza = { adattate: adatt.adattate, scartate: adatt.scartate.length,
-      divergenze: adatt.divergenze.slice(0, 6), scartateDettaglio: adatt.scartate.slice(0, 6) };
-    annuncia('log', `mini-ciclo: coerenza soglie — ${adatt.adattate} riga/he con capitale RIDOTTO per rispettare il tetto per ordine`
-      + `, ${adatt.scartate.length} scartata/e perché nessun capitale soddisfa insieme tutte le soglie`);
-  }
-  righeCandidate = adatt.righe;
+  // Il numero che il 13 agosto 2026 non esisteva: il piano ne DICHIARAVA 17 e le spendibili erano ZERO.
 
   const utiliOra = TRIG.contaRigheUtili({
     righe: righeCandidate, notionalePerMercato: perMercato,
@@ -1308,9 +1311,10 @@ async function miniCiclo(decisione, deps = {}) {
               + ' il capitale resta liquido perche' + ' non c\'e\' dove metterlo, non perche\' non si e\' guardato' };
         }
       } else {
-        const giroFresco = TRIG.pianificaGiro({ ...comuni, righe: righeFresche, disponibileUsd: spendibileUsd });
+        const fresche = adattaAlleSoglie(righeFresche, 'ricostruzione');
+        const giroFresco = TRIG.pianificaGiro({ ...comuni, righe: fresche, disponibileUsd: spendibileUsd });
         if (giroFresco.scelte.length >= giroPrima.scelte.length) {
-          righeCandidate = righeFresche;
+          righeCandidate = fresche;
           giro = giroFresco;
           fonte = `ricostruzione del piano (${FINESTRA_LEGGERA_ORE}h, ${Date.now() - tRic}ms)`;
           referto.ricostruzione = { tentata: true, adottata: true, righe: righeFresche.length,

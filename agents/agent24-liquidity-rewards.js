@@ -620,7 +620,48 @@ async function scan() {
   // avrebbe rotto quella garanzia per ottenere un risultato che si ottiene ugualmente dopo.
   // L'unione sta in `lib/rewards-normalize.buildCombined`, dove il board viene composto: stesso effetto
   // pratico a valle, garanzia intatta a monte.
-  const toProcess = markets.slice(0, MAX_CLOB_MARKETS);
+  // ── LA QUOTA DI SCANSIONE RISERVATA AI MERCATI ALLA PORTATA DEL CAPITALE ──────────────────────
+  //
+  // ⚠ IL DIFETTO, misurato il 13 agosto 2026. La scoperta trova **1.276 mercati premiati** e il taglio
+  // ne processa **150**, scelti per **montepremi**. Ma il montepremi alto vive sui mercati a `minSize`
+  // grande — 1.000 share chiedono $1.225 per mercato contro un tetto di $32,67 — cioè **su mercati che
+  // questo capitale non potrà MAI quotare**. I meteo giornalieri, che hanno `minSize 20` ed è l'unico
+  // scaglione alla portata, hanno montepremi basso e **vengono seppelliti sistematicamente**.
+  //
+  // La correzione non tocca nessun filtro di qualità e non cambia il numero di mercati processati: dei
+  // 150 posti, **metà è riservata ai mercati compatibili col tetto**, ordinati fra loro per montepremi.
+  // Gli altri posti restano alla classifica di sempre, quindi non si perde niente di ciò che si vedeva.
+  //
+  // ⚠ LA SOGLIA DI COMPATIBILITÀ È FISSA E NON LEGGE IL CAPITALE, di proposito:
+  // `capitale-al-lavoro.test.js` difende che la SCOPERTA resti disaccoppiata da capitale, interruttore e
+  // allowlist, così agent24 gira H24 indipendente dallo stato del conto. Si usa `minSize <= 100`, che
+  // copre i tre scaglioni bassi del venue (20/50/100) — cioè tutto ciò che un capitale ragionevole per
+  // questo bot può raggiungere — invece del tetto vero, che cambia col saldo.
+  const MIN_SIZE_ALLA_PORTATA = 100;
+  const QUOTA_COMPATIBILI = Math.floor(MAX_CLOB_MARKETS / 2);
+  const minSizeDi = (m) => {
+    const v = Number(m && (m.rewardsMinSize
+      || (m.clobRewards && m.clobRewards[0] && m.clobRewards[0].rewardsMinSize)));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+  const toProcess = (() => {
+    const compat = [];
+    const resto = [];
+    for (const m of markets) {
+      const ms = minSizeDi(m);
+      // `minSize` non leggibile ⇒ resta nella classifica normale: non si promuove su un'incognita.
+      (ms != null && ms <= MIN_SIZE_ALLA_PORTATA ? compat : resto).push(m);
+    }
+    const scelti = compat.slice(0, QUOTA_COMPATIBILI);
+    const presi = new Set(scelti);
+    for (const m of markets) {
+      if (scelti.length >= MAX_CLOB_MARKETS) break;
+      if (!presi.has(m)) { scelti.push(m); presi.add(m); }
+    }
+    console.log(`  quota di scansione: ${Math.min(compat.length, QUOTA_COMPATIBILI)}/${QUOTA_COMPATIBILI} posti riservati a mercati con minSize <= ${MIN_SIZE_ALLA_PORTATA}`
+      + ` (ne esistono ${compat.length} sui ${markets.length} premiati) · gli altri ${MAX_CLOB_MARKETS - Math.min(compat.length, QUOTA_COMPATIBILI)} restano alla classifica per montepremi`);
+    return scelti.slice(0, MAX_CLOB_MARKETS);
+  })();
   console.log(`  Processing top ${toProcess.length} of ${markets.length} reward markets for CLOB depth`
     + ` (tetto ${MAX_CLOB_MARKETS}, tarato sul MISURATO — la durata reale è cronometrata qui sotto)`);
 

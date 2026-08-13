@@ -104,6 +104,62 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~07:25 UTC.
 > «disponibile per il trading» **è il cash** e non sottrae i BUY a riposo, quindi gli «impegnati» del
 > pannello sono le **sole posizioni**; il bot conta **posizioni + ordini a riposo**.
 
+> ## 🩸 DOVE MUOIONO LE GAMBE: `coppia-non-atomica` È LA PRIMA CAUSA — §5 punti 129-130
+> **Conto esatto sulle 24 ore (33 giri): 284 gambe pianificate · 260 inviate · 155 accettate · 105
+> rifiutate · 24 saltate prima dell'invio ⇒ tasso di accettazione 54,6%.**
+>
+> | gambe perse | nozionale | famiglia | recuperabile? |
+> |---|---|---|---|
+> | **84** | **$1.276,13** | **`coppia-non-atomica`** | **SÌ — difetto, corretto** |
+> | 20 | $0 | cap cumulativo raggiunto in sequenza | no: regola di rischio che ha funzionato |
+> | 11 | $268,95 | `manual-order-cap` | SÌ — stessa causa |
+> | 9 | $121,23 | `mai-primo-sul-libro` | **no: regola di rischio, perdita voluta** |
+> | 4 | $129,95 | cap di esposizione ($600) | no: regola di rischio |
+>
+> **65% delle gambe perse sono coppie abbandonate INTERE perché UNA gamba sfondava il tetto per
+> ordine** — il precontrollo atomico di §5 p.115 fa il suo mestiere (meglio zero invii che una gamba
+> orfana), ma la causa a monte è che **il pianificatore non conosce il tetto per ordine**.
+> **⚠ E LA CORREZIONE DI STAMATTINA ERA INERTE**: `adattaRighe` girava sul piano **salvato**, e poi la
+> ricostruzione sovrascriveva `righeCandidate` con righe mai passate di lì. Misurato dopo il riavvio
+> delle 07:17: `coerenza: undefined` e **6 `coppia-non-atomica` nello stesso giro**. Adesso è una
+> funzione (`adattaAlleSoglie`) chiamata da **entrambe** le fonti, e un test lo asserisce per nome.
+
+> ## 💰 IL RISCATTO AUTOMATICO DOPO LA RISOLUZIONE — §5 punto 131
+> `redeemPosition` esisteva, era provata on-chain e **non aveva chiamanti**: il capitale tornava solo se
+> un umano se ne accorgeva. Adesso `lib/maker/riscatto-automatico.js` lo chiama, agganciato alla
+> scansione dei registri di agent40.
+> **⚠ IL SEGNALE È `payoutDenominator(conditionId) > 0` LETTO ON-CHAIN, non «il mercato è chiuso»**:
+> `closed`/`acceptingOrders` diventano veri **ore prima** che l'oracolo riporti l'esito, e
+> `redeemPositions` esige i payout già riportati — un tentativo prima è un revert che costa gas e non
+> dice niente. **Non letto ⇒ non si riscatta.**
+> **Idempotente** con registro su disco (`data/riscatti.json`): una voce `riuscito` chiude il caso per
+> sempre — non basta guardare la posizione, perché fra l'invio e la sparizione del token passano secondi
+> e in quella finestra un secondo giro riproverebbe. **3 tentativi** con attesa 2/4 s, poi **10 minuti**
+> di backoff per mercato. Al più **3 mercati per giro**: è manutenzione, e ogni transazione costa gas al
+> relayer di terzi. `negRisk` non booleano ⇒ non si tenta (sceglie quale adapter CTF riceve la chiamata).
+> **Misurato adesso: 10 posizioni, `payoutDenominator = 0` su TUTTE ⇒ zero riscattabili oggi.** I
+> mercati risolvono il **14 agosto**: i 5 residui per **$35,03** saranno riscattabili fra ~29-33 ore,
+> **senza intervento umano**.
+
+> ## 🔭 IL BOT VEDE 111 MERCATI SU 1.276 PREMIATI — E NON È LUI IL COLLO — §5 punto 132
+> **La catena, misurata dal log di agent24**: la scoperta trova **1.276 mercati premiati** → il taglio
+> `REWARD_MAX_CLOB_MARKETS = 150` ne processa **150** → il board finale ha **111 righe Polymarket**.
+> **1.126 mercati (88%) non vengono mai guardati.**
+> **⚠ Il tetto NON si può alzare**: cronometrato adesso, **2,81-3,41 s/mercato**, cioè 7,0-8,5 min per
+> 150; al ritmo di adesso nel periodo di 15 min ci starebbero **158-192**. Vedere i 1.276 costerebbe
+> **~60 minuti** di sola profondità, contro un limite di freschezza del board di 25 minuti.
+> **Il collo vero è l'ORDINAMENTO**: i 150 si scelgono per **montepremi**, e il montepremi alto vive sui
+> `minSize` grandi — 1.000 share chiedono **$1.225 per mercato** contro un tetto di **$32,67**. I meteo
+> giornalieri, `minSize 20`, sono gli unici alla portata e vengono **seppelliti sistematicamente**.
+> **Correzione: metà dei 150 posti è riservata ai mercati con `minSize ≤ 100`**, ordinati fra loro per
+> montepremi; gli altri restano alla classifica di sempre. Il numero processato non cambia, e **la
+> soglia è una costante e non il tetto vero**: la scoperta deve restare disaccoppiata dal conto.
+> **⚠⚠ MA VEDERNE DI PIÙ NON ALZA I MERCATI QUOTATI, OGGI, E VA DETTO.** Il capitale consente
+> `$664,90 / $32,67 = **20 mercati**`, e il board ne offre già **29** che superano tetto + orizzonte.
+> **Il vincolo che morde non è la scoperta: è il tasso di accettazione del 54,6%** (§5 punto 129) e il
+> tetto di 12 mercati per giro. La quota di scansione è **assicurazione** per quando il board si
+> assottiglia (compatibili osservati fra 20 e 96 al giorno, mediana 46), non la cura di adesso.
+
 > ## 🧱 I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA — §5 punto 123, BUCO APERTO
 > **$26,30** in cinque residui che il registro raccoglie correttamente e che **niente può chiudere**:
 > `manca` è sotto `min_incentive_size`, quindi né un ripiazzamento né il completamento della coppia sono

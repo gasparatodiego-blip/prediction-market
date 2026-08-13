@@ -836,6 +836,86 @@ async function recuperaScadenzeMancanti(idsConCapitale) {
   return r;
 }
 
+// ── IL RISCATTO AUTOMATICO DELLE POSIZIONI SU MERCATI RISOLTI ─────────────────────────────────────
+// Vedi `lib/maker/riscatto-automatico.js` per il perché. Qui c'è solo il cablaggio: il segnale di
+// risoluzione (una lettura on-chain), il registro su disco (l'idempotenza) e il riscattatore vero.
+const RISCATTI_FILE = path.join(__dirname, '..', 'data', 'riscatti.json');
+/** ConditionalTokens su Polygon: è il contratto che tiene i payout, ed è lo stesso per i mercati
+ *  neg-risk (cambia l'ADAPTER che si chiama, non il registro dei payout). */
+const CTF_CONDITIONAL_TOKENS = '0x4D97DCd97eC945f40cF65F87097ACe5EA0476045';
+
+function leggiRiscatti() {
+  try { const j = JSON.parse(require('fs').readFileSync(RISCATTI_FILE, 'utf8')); return (j && j.riscatti) || {}; }
+  catch { return {}; }
+}
+function scriviRiscatti(reg) {
+  try {
+    const fs_ = require('fs');
+    const tmp = `${RISCATTI_FILE}.tmp`;
+    fs_.writeFileSync(tmp, JSON.stringify({ at: Date.now(), atIso: new Date().toISOString(), riscatti: reg }, null, 1));
+    fs_.renameSync(tmp, RISCATTI_FILE);
+    return true;
+  } catch (e) { log(`registro dei riscatti non scritto: ${e.message}`); return false; }
+}
+
+/** `payoutDenominator(conditionId) > 0` ⇔ l'oracolo ha riportato l'esito. Una lettura che fallisce
+ *  lascia la voce ASSENTE dalla mappa, che a valle vale «non so» e quindi «non si riscatta». */
+async function leggiPayout(conditionIds) {
+  const mappa = {};
+  if (!conditionIds.length) return mappa;
+  try {
+    const { ethers } = require('ethers');
+    const rpc = process.env.POLYGON_RPC_URL;
+    if (!rpc) return mappa;
+    const prov = new ethers.JsonRpcProvider(rpc);
+    const ctf = new ethers.Contract(CTF_CONDITIONAL_TOKENS, ['function payoutDenominator(bytes32) view returns (uint256)'], prov);
+    for (const cid of conditionIds) {
+      try { mappa[cid.toLowerCase()] = Number(await ctf.payoutDenominator(cid)); }
+      catch { /* questa condizione resta ignota: non si riscatta */ }
+    }
+  } catch (e) { log(`lettura dei payout on-chain non riuscita (nessun riscatto questo giro): ${e.message}`); }
+  return mappa;
+}
+
+async function riscattaRisolte() {
+  const RIS = require('../lib/maker/riscatto-automatico');
+  const snap = readVenuePositions();
+  if (!snap || snap.readable !== true) return null;      // senza posizioni fresche non si riscatta
+  const posizioni = (snap.positions || []).map((p) => ({
+    conditionId: p.conditionId || p.marketId, size: Number(p.size),
+    // `negRisk` non sta nello snapshot: si legge dal catalogo di ripiego, che lo conserva. Assente ⇒
+    // `null` ⇒ non si tenta, perché sceglie quale adapter CTF riceve la chiamata.
+    negRisk: (() => { try { const m = readMarketCatalog().markets[String(p.conditionId || '').toLowerCase()]; return typeof (m && m.negRisk) === 'boolean' ? m.negRisk : null; } catch { return null; } })(),
+  })).filter((p) => p.conditionId && Number.isFinite(p.size) && p.size > 0);
+  if (!posizioni.length) return null;
+
+  const registro = leggiRiscatti();
+  // Si chiede il payout SOLO per i mercati che non sono già stati riscattati: una lettura on-chain per
+  // ognuno, e non ha senso pagarla per un caso già chiuso.
+  const candidati = posizioni.map((p) => String(p.conditionId).toLowerCase())
+    .filter((c) => !(registro[c] && registro[c].esito === 'riuscito'));
+  if (!candidati.length) return null;
+  const payout = await leggiPayout(candidati.slice(0, 12));
+
+  const r = await RIS.riscattaTutte({
+    posizioni, registro, risolto: RIS.risoltoDaMappa(payout),
+    riscatta: async ({ conditionId, negRisk }) => {
+      const { redeemPosition } = require('../lib/maker/ctf-relayer');
+      return redeemPosition(conditionId, { negRisk,
+        deps: { signerProvider: require('../lib/maker/live-providers').makerLiveProviders().signerProvider } });
+    },
+    attende: (ms) => new Promise((res) => setTimeout(res, ms)),
+    audit: (rec) => { try { appendMakerAudit(rec); } catch { /* l'audit non annulla un riscatto */ } },
+  });
+  if (r.riusciti.length || r.falliti.length) scriviRiscatti(r.registro);
+  if (r.riusciti.length) {
+    log(`💰 RISCATTO: ${r.riusciti.length} posizione/i su mercati risolti riportate a collaterale — `
+      + r.riusciti.map((x) => `${x.conditionId.slice(0, 12)} ${x.size} share (tx ${String(x.tx || '?').slice(0, 12)})`).join(' · '));
+  }
+  if (r.falliti.length) log(`⚠ riscatto fallito su ${r.falliti.length}: ${r.falliti.map((x) => `${x.conditionId.slice(0, 12)} ${x.motivo}`).join(' · ')}`);
+  return r;
+}
+
 async function scansioneRegistri({ forzata = false } = {}) {
   const SR = require('../lib/maker/scansione-registri');
   const now = Date.now();
@@ -1880,6 +1960,9 @@ async function main() {
   // referto mancato, non un ciclo di riprezzo perso. E non tocca ordini ne' capitale — cancella voci di
   // registro di mercati che il VENUE dichiara chiusi, e solo a libro libero.
   const scansioneSicura = async (quando) => {
+    // Il riscatto gira insieme alla scansione dei registri: e' manutenzione, non ha fretta, e cosi'
+    // non aggiunge un quarto orologio. Non blocca la scansione se fallisce.
+    try { await riscattaRisolte(); } catch (e) { log(`riscatto automatico fallito (la scansione prosegue): ${e.message}`); }
     try { await scansioneRegistri({ forzata: quando === 'avvio' }); }
     catch (e) { log(`scansione registri fallita (non fatale): ${e.message}`); }
   };
