@@ -1,0 +1,17 @@
+{
+ "generatoIso": "2026-08-13T11:54:49.831Z",
+ "letture": 7249,
+ "scattiSenzaDistinzione": [
+  {
+   "iso": "2026-08-13T11:24:15.079Z",
+   "pnlUsd": -32.58335,
+   "conferme": 2
+  }
+ ],
+ "scattiConDistinzione": [],
+ "scattiReali": [
+  "2026-08-09T21:46:37.237Z",
+  "2026-08-13T09:08:33.818Z",
+  "2026-08-13T11:24:15.079Z"
+ ]
+}

@@ -152,13 +152,27 @@ function heartbeat() {
 async function capitaleOra(deps = {}) {
   const saldo = deps.saldo || await leggiSaldoUsd();
   const pos = deps.posizioni || readVenuePositions();
-  return valutaCapitale({
+  // ── L'ISTANTE IN CUI IL SALDO È STATO LETTO DAVVERO ─────────────────────────────────────────────
+  // La cache restituisce `etaMs`, cioè quanto è vecchia la voce: `now − etaMs` è l'istante in cui
+  // quella voce è stata scritta. Serve a `confermaScatto` per distinguere una seconda OSSERVAZIONE
+  // da una copia della prima — vedi il blocco in guardian-perdite.js. Non leggibile ⇒ `null`, e da lì
+  // in giù «non si può dimostrare che sia un dato nuovo», che è la direzione prudente.
+  const etaSaldo = saldo && Number.isFinite(Number(saldo.etaMs)) ? Number(saldo.etaMs) : null;
+  const osservazione = {
+    saldoLetturaAt: etaSaldo === null ? null : (deps.now ? deps.now() : Date.now()) - etaSaldo,
+    saldoFonte: saldo ? saldo.fonte : null,
+    posizioniEtaMs: pos && Number.isFinite(Number(pos.ageMs)) ? Number(pos.ageMs) : null,
+  };
+  const cap = valutaCapitale({
     // `affidabile:false` = il numero c'è ma è vecchio oltre il tollerato. Per un gate di piazzamento
     // sarebbe «non autorizzare»; qui è «non misurare», che è la stessa prudenza nell'altra direzione.
     saldoUsd: (saldo && saldo.affidabile === false) ? null : (saldo ? saldo.usd : null),
     posizioni: pos ? pos.positions : null,
     posizioniLeggibili: !!(pos && pos.readable),
   });
+  // L'osservazione viaggia ACCANTO al capitale, non dentro: `valutaCapitale` è puro e non deve
+  // imparare cos'è una cache. Chi decide lo scatto ha bisogno di entrambi.
+  return { ...cap, osservazione };
 }
 
 /**
@@ -262,14 +276,20 @@ async function poll(deps = {}) {
   // contare. Un file lo farebbe «ricordare» una cosa che non ha osservato.
   // Iniettabile da `deps` perche' i test possano guidare la sequenza senza far girare il loop vero.
   const statoPrima = deps.statoConferme !== undefined ? deps.statoConferme : statoConferme;
-  const conf = confermaScatto({ stato: statoPrima, decisione, pnl, now });
+  const conf = confermaScatto({ stato: statoPrima, decisione, pnl, now,
+    // ⚠ SENZA QUESTA RIGA la conferma tornerebbe a valere contro una copia della stessa lettura: è la
+    // dep che rende effettiva la correzione del 13 agosto 2026 (§5.2 p.16). Non iniettata ⇒
+    // `saldoLetturaAt: null` ⇒ nessuna conferma conta, cioè il guardiano non scatta più: è il verso
+    // giusto in cui rompersi, ma va saputo.
+    osservazione: capitale && capitale.osservazione ? capitale.osservazione : null });
   if (deps.statoConferme === undefined) statoConferme = conf.stato;
 
   if (!conf.scatta) {
     // ⚠ IL PRE-ALLARME SI VEDE. E' esattamente l'evento che prima diventava un latch e adesso no:
     // se sparisse dal log, la modifica sembrerebbe «il guardiano non vede piu' niente».
     if (conf.preAllarme) {
-      log(`PRE-ALLARME (${conf.conferme}/${LETTURE_CONSECUTIVE_PER_SCATTO}) — ${decisione.motivo}.`
+      log(`PRE-ALLARME (${conf.conferme}/${LETTURE_CONSECUTIVE_PER_SCATTO}`
+        + `${conf.inAttesaDiDatoFresco ? ', FERMO in attesa di un saldo fresco' : ''}) — ${decisione.motivo}.`
         + ` Baseline $${baseline.baselineUsd.toFixed(2)} → adesso $${capitale.totaleUsd.toFixed(2)}.`
         + ` NON scatto: ${conf.motivo}`);
     } else if (conf.azzeratoPer === 'rientro') {
@@ -278,6 +298,7 @@ async function poll(deps = {}) {
     return { azione: conf.preAllarme ? 'pre-allarme' : 'entro-soglia',
       pnlUsd: pnl.pnlUsd, pnlPct: pnl.pnlPct, baselineUsd: baseline.baselineUsd,
       totaleUsd: capitale.totaleUsd, soglie, conferme: conf.conferme,
+      inAttesaDiDatoFresco: conf.inAttesaDiDatoFresco === true, saldoLetturaAt: conf.saldoLetturaAt,
       statoConferme: conf.stato, azzeratoPer: conf.azzeratoPer,
       motivo: conf.preAllarme ? conf.motivo : decisione.motivo };
   }

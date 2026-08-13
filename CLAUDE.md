@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~11:45 UTC.
+Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~12:20 UTC.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -1016,6 +1016,24 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
 
 ### 5.2 · Aperte
 
+17. **🔴 IL REGISTRO DEI RESIDUI È SCRITTO E MAI RILETTO — misurato il 13 agosto 2026.**
+   `lib/maker/accumulo-residui.js` scrive `data/residui-scoperti.json` a ogni giro (17 voci, aggiornate
+   al minuto) e calcola correttamente il flag `pronto`, che oggi è **true su 6 voci per $105,79 di
+   nozionale**. Ma `residuiPronti` (`accumulo-residui.js:157`) e `capitaleFermoUsd` (riga 162) hanno
+   **zero chiamanti in produzione**: gli unici sono in `lato-scoperto-principio.test.js`. In agent40 il
+   registro si legge in due punti soli — la mano di pulizia del mercato morto (riga 679) e il
+   read-modify-write che REGISTRA (riga 1123) — e in nessuno dei due per **riprovare**.
+   Cioè: il sistema misura quando un residuo torna piazzabile, lo scrive, e non agisce mai.
+   **Non corretto: tocca capitale ed è una decisione dell'operatore.**
+18. **🔴 IL TETTO PER ORDINE NON È ESENTATO SUL RAMO DEL RIPOSIZIONAMENTO — misurato il 13 agosto 2026.**
+   L'esenzione di chiusura (§5 p.76, §5-bis p.133) è dichiarata dal ramo del completamento coppia
+   (`auto-close.js:~1188`, `chiudePosizione: true`) ma **NON** dal ramo `riposizionamento-scoperto`
+   (`auto-close.js:1411-1418`), che chiama `deps.placeOrder` senza quel campo. Conseguenza misurata:
+   una **SELL di 52,6 share già possedute** su `0x791c61d4` rifiutata con
+   `reject-manual-order-cap` — «controvalore $24,72 oltre il tetto per ordine $21,34» — cioè un tetto
+   pensato per limitare le APERTURE che impedisce di **ridurre** un'esposizione già aperta.
+   **1.331 rifiuti `manual-order-cap` nello slice recente.** È la quinta occorrenza della classe
+   «protezione presente su un percorso e assente sul suo gemello». **Non corretto: tocca capitale.**
 1. **I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA — buco strutturale, §5-bis p.123.**
    **$26,30** in cinque residui che nessun percorso può chiudere. Proposta scritta, **non implementata**
    perché è capitale: è una decisione dell'operatore.
@@ -1038,8 +1056,8 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
 7. **La ricostruzione sotto soglia scatta quasi a ogni giro sul board di oggi** (6 righe utili contro
    una soglia di 12): costa ~13 s di processo figlio ogni 10 minuti. È il comportamento corretto — il
    piano *è* sotto soglia — ma se un domani il board si allargasse stabilmente vale la pena rimisurare.
-16. **🔴🔴🔴 k=2 CONFERMA CONTRO UNA COPIA DI SE STESSO — difetto NUOVO, osservato DAL VIVO il 13
-   agosto 2026 alle 11:24:15Z. NON corretto (vietato toccare `guardian-perdite.js` in quella sessione).**
+16. ✅ **k=2 CONFERMAVA CONTRO UNA COPIA DI SE STESSO — CORRETTO il 13 agosto 2026 (§5-bis p.145).**
+   Resta qui la diagnosi, che è il motivo per cui la correzione ha la forma che ha.
    Il terzo scatto del guardiano è avvenuto **con k=2 già in produzione**, e il meccanismo ha fatto
    meccanicamente il suo mestiere — `PRE-ALLARME (1/2)` alle 11:23:45, `SCATTO … CONFERMATO da 2
    letture consecutive` alle 11:24:15. **Ma le due letture erano lo STESSO numero**: `−32.58335` USD e
@@ -1254,6 +1272,33 @@ complessive, $99,32 di nozionale di picco; $137,80 scoperti nell'istante della m
 modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà** perché fotografavano il
 testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
+
+**145 · LE DUE CONFERME DEVONO ESSERE DUE OSSERVAZIONI, NON DUE COPIE.** Il terzo scatto (13 agosto
+11:24:15Z) è avvenuto **con k=2 già attivo**: le due letture erano lo stesso numero, −32,58335 USD e
+totale $627,98, identici a cinque decimali, perché `SALDO_CACHE_TTL_MS = 45_000` contro
+`GUARDIAN_POLL_MS = 30_000` ⇒ due giri consecutivi cadono nella stessa finestra di cache.
+**La correzione**: `confermaScatto` riceve `osservazione.saldoLetturaAt` (`now − etaMs`, che È
+l'istante in cui la voce di cache è stata scritta) e conta la conferma **solo se quell'istante è
+cambiato**. Se è uguale, o non è leggibile, il contatore **resta dov'è** e si aspetta un dato fresco.
+**⚠ SCARTATA la strada di abbassare il TTL**: quella cache è condivisa con agent40 (che gira ogni
+~5 s), col trigger a capitale fermo e con agent45 — abbassarla moltiplicherebbe le `eth_call` del
+consumatore più intenso per risolvere il problema di quello meno intenso. Questa condizione vive solo
+nel guardiano e non cambia una riga per nessun altro.
+**Costo**: nel caso peggiore la conferma arriva a 60 s invece che a 30 s (il TTL è 45 s).
+**Verifica retroattiva su 7.249 letture / 5 giorni**: senza la condizione la simulazione riproduce
+**esattamente** lo scatto vero delle 11:24 (1 scatto), con la condizione ne restano **ZERO** — e i tre
+scatti cadono per ragioni diverse: 21:46 e 09:08 perché la lettura dopo era già rientrata (k=2 basta),
+11:24 perché la seconda lettura veniva dalla **stessa voce di cache**.
+Script: `scripts/ricerca/verifica-letture-distinte.js`.
+
+**146 · I RESIDUI BLOCCATI, MISURATI — sola diagnosi, niente corretto.** 16 posizioni per **$158,44**,
+tutte a gamba singola dopo il cancel-all del guardiano. **10 sono sotto il minimo del venue** (20 share)
+per **$51,78**; le altre 6 valgono **$106,66**. **Costo totale di uscire a mercato: $8,81**, calcolato
+sul `bestBid` VERO del lato posseduto — non sul mark di mezzo. Il registro dei residui
+(`lib/maker/accumulo-residui.js:52` → `data/residui-scoperti.json`) **esiste, è popolato e aggiornato**
+(17 voci, 6 con `pronto:true` per $105,79 di nozionale) **e nessuno lo rilegge**: `residuiPronti`
+(`accumulo-residui.js:157`) ha **zero chiamanti in produzione**, solo in un test.
+Script: `scripts/ricerca/diagnosi-residui-bloccati.js`.
 
 **144 · L'OSSERVATORE MUTO (agent45).** Vedi §3. `lib/osservatore/campionamento.js` è puro e testato
 (47 asserzioni); l'agente importa SOLO `saldo-cache` (eth_call senza signer), lo snapshot posizioni e
