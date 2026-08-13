@@ -1099,6 +1099,19 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
    ritardo introduce su uno scatto vero. Misura completa in `data/ricerca/sintesi-collasso.md`.
 13. **La soglia sulla derivata per la sentinella È misurabile, ed è l'85%** (§5-bis p.140). Non
    implementata: questa era una sessione di sola diagnosi.
+19. **🟡 LA CADENZA ADATTATIVA È SOTTO-RISOLTA, E UN PEZZO RESTA INSPIEGATO — misurato il 13 agosto
+   2026, sola misura.** agent40 classifica **2.392 osservazioni su 2.402 (99,6%)** come «mercato
+   lenta» con **escursione 0,00 tick/ora** ⇒ polling a 10.000 ms invece di 1.000.
+   **La causa parziale è la risoluzione della finestra**: `leggiFinestraTutti` su **15 min** vede
+   `rangeMid = 0` sul **48,8%** dei mercati (12 campioni mediani, perché `mid-history` campiona ogni
+   **75 s**); sugli stessi mercati a **240 min** i fermi scendono al **13,8%** (180 campioni). La
+   finestra corta non ha abbastanza campioni per vedere un movimento che a quattro ore c'è.
+   **⚠ MA IL CONTO NON TORNA DEL TUTTO, e non lo si nasconde**: la fonte a 15 min dice 48,8%, agent40
+   ne logga 99,6%. **Quel divario non è spiegato** e vale una sessione mirata.
+   **⚠ E IL COSTO È PICCOLO, quindi non è questa la leva**: il movimento tipico è ~0,25 tick/ora,
+   quindi 10 s invece di 1 s costano ~0,0007 tick. **La cadenza NON è ciò che manda il 27% degli
+   ordini al bordo della banda** (§5-bis p.152) — la causa va cercata nelle soglie di riprezzo
+   (`minIntervalMs` 30 s, `confirmSamples` 2, `hysteresisTicks` 1), **non misurate**.
 9. **🔴 LA SENTINELLA VEDE IL VUOTO, NON IL COLLASSO — buco aperto, misurato il 13 agosto 2026.**
    Il ramo ③ di `lib/maker/sentinella-vuoto.js` dice «`ordiniARiposo > 0` ⇒ il libro non è vuoto» e
    **azzera l'orologio**. Quindi un calo da **23 ordini a 2** — il **91%** — è invisibile: la
