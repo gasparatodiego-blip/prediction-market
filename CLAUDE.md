@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~07:25 UTC.
+Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~09:40 UTC.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -14,15 +14,28 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~07:25 UTC.
 
 ---
 
-## 🔴 STATO OPERATIVO — 13 agosto 2026, 06:35 UTC
+## 🔴 STATO OPERATIVO — 13 agosto 2026, 09:35 UTC
 
 | | |
 |---|---|
 | **KILL** | **spento** (`killed:false` dal 12/08 20:30:22Z) |
-| **AVVIA/FERMA** | **AVVIA** (dal 12/08 20:30:26Z, `by: operatore · tab Mercati`) |
+| **AVVIA/FERMA** | 🛑 **FERMA** dal 13/08 **09:08:35Z**, `by: agent43-guardian` — **non** dall'operatore |
 | **Freno di prova** | **disinserito** (`REALLOC_SCHEDULER_DRY_RUN=0`) — agent41 invia ordini veri |
-| **Guardiano perdite** | in servizio, **nessun latch** (`data/guardian-state.json` assente) |
-| Capitale | ~**$664** totali · $609 liquidi · 7 posizioni scoperte per ~$55 |
+| **Guardiano perdite** | 🛑 **SCATTATO** alle 09:08:33Z — `data/guardian-state.json` presente, **latch attivo** |
+| Capitale | **$624,42** totali contro baseline **$660,56** ⇒ **−$36,15 / −5,47%** |
+
+> ## 🛑 IL GUARDIANO È SCATTATO — 13 agosto 2026, 09:08:33Z, SECONDO SCATTO REALE
+> Perdita oltre **entrambe** le soglie nello stesso giro: **−5,47%** contro il limite del 5% e
+> **−$36,15** contro il limite di $30. Baseline $660,56 → totale $624,42. Il guardiano ha fatto
+> esattamente il suo mestiere: **23 ordini cancellati su 12 mercati** e bot su **FERMA**.
+> **⚠ NON C'È RIARMO AUTOMATICO, ED È VOLUTO**: si riparte cancellando `data/guardian-state.json` a
+> mano e premendo AVVIA. È una decisione dell'operatore sul capitale, e nessuna sessione la prende.
+> **⚠ COSA CONTINUA A GIRARE CON FERMA**: agent40 chiude e riprezza le posizioni aperte (§2 — FERMA
+> ferma le APERTURE, non la gestione). Misurato dopo lo scatto: 34 intent di `auto-close-on-fill` in
+> 23 minuti. Il capitale scoperto **non** è abbandonato.
+> **⚠ E LA SENTINELLA NON PUÒ VEDERLO**: con il bot su FERMA il vuoto è lo stato corretto, quindi la
+> sentinella si azzera per costruzione. Vedi la questione aperta in §5.2 punto 9 — il ramo
+> `ordiniARiposo > 0` non distingue **2 ordini da 23**, cioè non vede un collasso progressivo.
 
 > ## 🕳️ IL VUOTO DI TRE ORE, E IL DEADLOCK ARITMETICO CHE LO CAUSAVA — §5 punto 120
 > Il 13 agosto, fra le 02:53 e le 05:56, il bot ha avuto **ZERO ordini a riposo per 180 minuti** con
@@ -233,6 +246,50 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~07:25 UTC.
 > profondità** non conosce l'esenzione, e un test lo verifica per assenza.
 > **⚠ E SU TEL AVIV LA COPERTURA PUÒ RESTARE BLOCCATA LO STESSO**: nel suo verdetto concorreva anche
 > `profondita-insufficiente`, che è una regola di rischio e **resta intatta**.
+
+> ## ⏱ LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA — §5 punto 138
+> **Il fatto**: la posizione NO di 58,8 share su `0xcd126ec4` è rimasta scoperta **8,2 ore**.
+> **Nessuna singola regola aveva sbagliato**, e il bot **adattava anche il prezzo** (11 prezzi distinti
+> su 17 mid distinti: NON era il vizio dei 114 rifiuti identici di §120). Il tetto per mercato
+> rifiutava la gamba NO — che **apre**, ed è giusto; il pavimento di profondità rifiutava la gamba YES,
+> e il libro era davvero sottile per tutte le sette ore (mediana `depth/pavimento` **0,28** su 157
+> campioni). Sbagliava il **sistema**, in un punto solo: **nessuno guardava da quanto tempo la
+> posizione era scoperta.** La gerarchia di §4.6 ha **un solo orologio** — i 60 min del Livello 2 — e
+> alla sua scadenza il Livello 3 ripiega sull'uscita ordinaria, che risponde `no-target` perché la
+> banda è scesa sotto il carico. Da lì **si ripete identica per sempre**: `merge-livello-3` con
+> `attesaMin` che cresce 60,3 → 66,4 e la stessa azione a ogni giro.
+> **Le soglie vengono dai dati, e la distribuzione è BIMODALE** (24 episodi su 19 mercati in 48 h):
+> **7 chiusi**, mediana **10,5 min**, q75 **29,3** — contro **17 ancora aperti**, mediana **126,5 min**,
+> massimo **553,7** (9,2 h). Una scopertura sana si chiude in dieci minuti; oltre l'ora non si chiude
+> quasi più da sola.
+> **La scala, tre soglie e quattro gradini** (`lib/maker/urgenza-scoperto.js`, puro):
+> **0** (<30 min) niente di nuovo · **1** (≥30) l'uscita può scendere **fino al carico**
+> (`profitPct: 0`): è il gradino che scioglie il caso reale, dove il bordo della banda era
+> **esattamente** il carico e un `<=` produceva `no-target` · **2** (≥120) **chiusura peggiorativa**
+> entro il tetto dichiarato · **3** (≥240) **anomalia grave** nel log e nel giornale
+> (`outcome: scoperto-oltre-soglia-grave`), che **non apre una quarta via**: al gradino 2 sono già
+> tutte aperte, e il bot dichiara di non farcela invece di tacere.
+> **⚠ IL TETTO DI PERDITA È DOPPIO E IL PIÙ STRETTO VINCE**: **2 tick** (in tick e non in percentuale,
+> perché il prezzo vive su una griglia) **e mai oltre il 5% del carico** (su un token da 10¢ due tick
+> sarebbero il 20%). Misurato sul caso reale: **$0,59 su 58,8 share**, contro un'esposizione
+> direzionale di **$25,28** — cioè **43×**. È la concessione **più piccola** già in uso: §4.6 accetta
+> una coppia fino a 120¢, cioè 20¢/share.
+> **⚠ NESSUNA REGOLA DI RISCHIO È TOCCATA, ed è per costruzione**: il modulo non produce prezzi, produce
+> un **pavimento**; il prezzo lo sceglie il motore, che applica «mai primo sul libro» come sempre. E la
+> concessione **non esce dalla banda**: ci si arriva solo quando il bordo **alto** della banda sta sotto
+> il carico, quindi un prezzo fra i due è dentro la banda. La concessione **autorizza, non peggiora**:
+> il prezzo resta `b.hi`, il migliore disponibile.
+> **⚠ OROLOGIO NON LEGGIBILE ⇒ GRADINO 0**, cioè il comportamento di prima: la concessione costa
+> capitale reale e non si paga contro un dato che non si è letto. Stessa direzione di `ignota` altrove.
+> **⚠ L'OROLOGIO NON È NUOVO**: è il timestamp della **modalità chiusura**, che nasce col fill, è già
+> persistito e viene cancellato da `esciDaChiusura`. Non serviva un secondo registro. **Ma si azzera a
+> ogni nuovo ingresso in modalità chiusura**: su `0xcd126ec4` diceva 168 min contro 492 veri, cioè
+> **sbaglia per difetto** — sottostima l'urgenza, non la sopravvaluta.
+> **⚠ UN GRADINO È STATO TOLTO IN CORSA, E VA SAPUTO**: la prima stesura ne aveva uno a 60 min che
+> «non abbandonava la copertura a riposo», e non serviva a niente — nel ramo `no-target` il ciclo esce
+> con `continue` **prima** della cancellazione del completamento. Era un campo dichiarato e consumato
+> da nessuno, cioè «dep non cablata» vista dall'altro verso. **Un gradino che non apre una via non è un
+> gradino.** Un test lo verifica **per assenza** del campo.
 
 > ## 🧱 I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA — §5 punto 123, BUCO APERTO
 > **$26,30** in cinque residui che il registro raccoglie correttamente e che **niente può chiudere**:
@@ -887,11 +944,12 @@ arrivi. Registro visibile su `GET /api/maker/registro-reward` e nella scheda «a
 Solo voci con evidenza reale nel codice, nei commit o nei file di stato. Chiuso ⇒ si toglie di qui e
 resta una riga nel registro di §5-bis.
 
-### 5.1 · Riavvii pendenti — al 13 agosto 2026, 07:25 UTC
+### 5.1 · Riavvii pendenti — al 13 agosto 2026, 09:40 UTC
 
 | processo | cosa entra in servizio | stato |
 |---|---|---|
 | `agent41-realloc-scheduler` | nozionale davvero piazzato nel «capitale al lavoro» · coerenza delle soglie prima di proporre · rifiuti ripetuti · scala di sblocco · autodiagnosi periodica | **PENDENTE** |
+| `agent40-manual-reprice` | **la scala di urgenza sul tempo di scopertura (§5 p.138)**: pareggio a 30 min, chiusura peggiorativa a 120, anomalia grave a 240. Finché non riparte, `decideClose` gira senza `urgenza` — cioè al gradino 0, cioè **esattamente come prima** | **PENDENTE** |
 
 I riavvii del mattino (griglia, pavimento per riga, ricostruzione sotto soglia, sentinella sul vuoto,
 recupero della scadenza) **sono già in servizio**: agent41 restart 72 e agent40 restart 92, 06:43-06:44 UTC.
@@ -930,7 +988,23 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
 7. **La ricostruzione sotto soglia scatta quasi a ogni giro sul board di oggi** (6 righe utili contro
    una soglia di 12): costa ~13 s di processo figlio ogni 10 minuti. È il comportamento corretto — il
    piano *è* sotto soglia — ma se un domani il board si allargasse stabilmente vale la pena rimisurare.
-8. **I rossi noti della suite sono NOVE** e sono tutti preesistenti a questa sessione:
+9. **🔴 LA SENTINELLA VEDE IL VUOTO, NON IL COLLASSO — buco aperto, misurato il 13 agosto 2026.**
+   Il ramo ③ di `lib/maker/sentinella-vuoto.js` dice «`ordiniARiposo > 0` ⇒ il libro non è vuoto» e
+   **azzera l'orologio**. Quindi un calo da **23 ordini a 2** — il **91%** — è invisibile: la
+   sentinella è tarata sul **caso estremo**, non sulla derivata. Osservato alle 09:08 (lì la causa era
+   il guardiano, quindi lo stato era corretto: FERMA ⇒ vuoto giusto). **Ma la lacuna resta per il caso
+   in cui il bot è su AVVIA**, ed è proprio il collasso progressivo che nessuno vedrebbe.
+   **Non implementato**: la cura è un secondo criterio (calo relativo su una finestra) accanto al
+   conteggio assoluto, e va tarato su una misura di quanto oscilla normalmente il numero di ordini —
+   misura che oggi non esiste. Non si aggiunge una soglia a occhio a un presidio.
+10. **Il costo di `profondita-non-verificata` NON è misurabile dallo stato salvato.** L'esclusione vive
+   in `lib/rewards/allocator.js:1104` (`reasonCode: 'profondita-non-verificata'`), che gira in un
+   **processo figlio**; `data/realloc-ultimo-piano.json` persiste **solo `righe`**, cioè i vincitori, e
+   **nessun file conserva i candidati scartati**. Zero occorrenze in 4 giorni di giornale perché quel
+   giornale non è dove finiscono. **Per questo il numero «non è mai stato misurato»: non è che nessuno
+   l'abbia guardato, è che nessuno lo scrive.** La cura è una riga — l'istogramma dei `reasonCode`
+   scartati accanto a `righe` — e senza quella non si tocca agent34, perché non c'è evidenza di costo.
+11. **I rossi noti della suite sono NOVE** e sono tutti preesistenti a questa sessione:
    `leg-order` e i due in `lib/venues/__tests__/` (test JS su moduli TypeScript: `node` non li avvia
    nemmeno) · `dipendenze-collegate` (falso positivo su un ternario andato a capo) ·
    `scaduto-senza-rinnovo` (fixture il cui ordine viene riprezzato al primo giro) · `scadenza-ereditata`
@@ -1062,6 +1136,23 @@ contestata, e serve un test che provi che non si riscatta un mercato non risolto
 **Mitigazione già attiva, e va detta**: la correzione del punto 120 riporta `f_min` da 0,82 a **0,61**,
 cioè un fill parziale lascia un residuo piazzabile molto più spesso. **Riduce il tasso a cui il buco si
 riempie, non chiude il buco.**
+
+**138 · LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA.** Vedi il banner per la scala, le soglie e i
+limiti. `lib/maker/urgenza-scoperto.js` (puro) + `concessioneTick`/`profitPct` in `exit-plan.planExit`
++ `urgenza` in `auto-close.decideClose`. **La misura che ha deciso le soglie**, e che vale la pena
+tenere: 24 episodi di scopertura in 48 h su 19 mercati, **bimodali** — 7 chiusi (mediana 10,5 min,
+q75 29,3) contro 17 aperti (mediana 126,5 min, max 553,7). **11 episodi oltre l'ora, 61,1 ore-scoperto
+complessive, $99,32 di nozionale di picco; $137,80 scoperti nell'istante della misura.**
+**Il difetto NON era «il bot ripete identico»** — la premessa da verificare — ed è stato verificato:
+11 prezzi distinti su 17 mid distinti. Il difetto era che **la gerarchia ha un solo orologio**.
+**Cinque test nuovi** in `scoperto-oltre-soglia.test.js` (38 asserzioni) più 23 nel selfcheck del
+modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà** perché fotografavano il
+testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
+auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
+
+**139 · IL SECONDO SCATTO DEL GUARDIANO — 13 agosto 2026, 09:08:33Z.** Vedi il banner. −$36,15 /
+−5,47%, oltre **entrambe** le soglie, 23 ordini cancellati su 12 mercati, bot su FERMA. Il primo
+scatto fu il 9 agosto (§5-bis p.70). **Il latch è attivo e il riarmo è dell'operatore.**
 
 ### Le voci del 13 agosto 2026, sera
 
