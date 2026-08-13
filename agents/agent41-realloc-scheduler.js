@@ -94,6 +94,66 @@ const { fetchVenuePositions } = require('../lib/maker/manual-reset');
 const { resolveMarketRules } = require('../lib/maker/manual-order');
 const { writeAllocatedCapital, readAllocatedCapitalAll } = require('../lib/maker/allocated-capital');
 const { writeCollectorPriority } = require('../lib/rewards/collector-priority');
+
+// ── I CANDIDATI DA SEMINARE NEL FEED (13 agosto 2026) ─────────────────────────────────────────────
+// L'allocatore SCARTA un mercato la cui profondità non è VERIFICATA (`allocator.js:1068`,
+// `status:'scartato', capital:0`), e la verifica accetta solo campioni **websocket**
+// (`allocator.js:109`, `r.src === 'ws'`). Il websocket è agent34, che sottoscrive `collector-priority`,
+// che agent41 scriveva **dal proprio piano**: un anello chiuso, misurato il 13 agosto alle 00:20 —
+// dei 17 mercati che superavano ogni filtro d'ingresso, solo **3** erano nel feed.
+//
+// Un candidato è un mercato che il piano POTREBBE scegliere se lo vedesse: `minSize` compatibile con il
+// tetto per mercato di ADESSO e orizzonte ancora valido. Non è una promessa di allocarci capitale — è
+// solo il permesso di guardarlo, che oggi non ha.
+//
+// ⚠ SI LEGGE IL BOARD, NON SI INVENTA NIENTE: stessa fonte del pianificatore
+// (`/tmp/liquidity-rewards.json`), così un candidato non può essere un mercato che il piano non
+// potrebbe comunque valutare. Ordinati per montepremi decrescente perché, se eccedono il tetto della
+// corsia, a cedere il posto siano i più poveri.
+function candidatiPerIlFeed() {
+  try {
+    const CONC = require('../lib/rewards/concentration');
+    const board = JSON.parse(require('fs').readFileSync(BOARD_NORMALIZZATO, 'utf8'));
+    const righe = Array.isArray(board && board.markets) ? board.markets : [];
+    if (!righe.length) return [];
+    // Il tetto si deriva dal capitale VERO, non da una costante: è lui a decidere quale `minSize` è
+    // alla portata, e cambia col saldo.
+    // Il capitale si legge dalla mappa dei tetti, che il mini-ciclo aggiorna col saldo vero: è la
+    // stessa fonte su cui il tetto per mercato viene deciso a valle. Illeggibile ⇒ il capitale di
+    // riferimento, che è conservativo (tetto più basso ⇒ meno candidati, mai di più).
+    let capitale = CONC.CAPITALE_RIFERIMENTO_USD;
+    try {
+      const t = JSON.parse(require('fs').readFileSync('data/maker-allocated-capital.json', 'utf8'));
+      if (Number(t && t.capital) > 0) capitale = Number(t.capital);
+    } catch { /* si tiene il riferimento */ }
+    const tetto = CONC.capPerMarketUsd(capitale);
+    const ORA = Date.now();
+    const MIN_ORE = 18;
+    return righe
+      .filter((r) => {
+        const pav = CONC.pavimentoPremiante(r && r.minSize);
+        if (pav == null || pav > tetto) return false;              // fuori portata del tetto
+        if (!r.endDate) return false;                              // scadenza non determinabile ⇒ esclude
+        const ore = (Date.parse(r.endDate) - ORA) / 3_600_000;
+        return Number.isFinite(ore) && ore >= MIN_ORE;
+      })
+      .sort((a, b) => (Number(b.dailyPool) || 0) - (Number(a.dailyPool) || 0))
+      .map((r) => String(r.marketId));
+  } catch { return []; }   // board illeggibile ⇒ nessun candidato: si torna al comportamento di prima
+}
+
+/** I mercati dove il capitale è GIÀ esposto. Fail-closed: snapshot illeggibile ⇒ lista vuota. */
+function mercatiConPosizione() {
+  try {
+    const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
+    const snap = readVenuePositions();
+    if (!snap || snap.readable !== true) return [];
+    return (snap.positions || [])
+      .filter((p) => Number(p && p.size) > 0)
+      .map((p) => String((p.conditionId || p.marketId) || '').trim().toLowerCase())
+      .filter(Boolean);
+  } catch { return []; }
+}
 const { gambeDiUnaRiga } = require('../lib/rewards/plan-to-orders');
 const { capPerMarketUsd, mercatiNecessari, MARKET_CAP_FIXED_USD } = require('../lib/rewards/concentration');
 const TRIG = require('../lib/maker/trigger-capitale-fermo');
@@ -466,8 +526,14 @@ async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null, ex
   // scritta adesso non fa in tempo ad aiutare QUESTO ciclo, ma è quella che rende eseguibile il prossimo.
   if (!onlyMarketIds) {
     try {
-      const pr = writeCollectorPriority(piano);
-      annuncia('log', `priorità del raccoglitore aggiornate: ${pr.marketIds.length} mercati (${pr.freschi} da questo piano, ${pr.trattenuti} tenuti caldi dai piani precedenti, ${pr.scaduti} lasciati raffreddare)`);
+      const pr = writeCollectorPriority(piano, {
+        candidati: candidatiPerIlFeed(),
+        posizioni: mercatiConPosizione(),
+      });
+      annuncia('log', `priorità del raccoglitore aggiornate: ${pr.marketIds.length} mercati`
+        + ` (${pr.freschi} da questo piano, ${pr.conPosizione} con posizione aperta,`
+        + ` ${pr.candidati} CANDIDATI seminati nel feed${pr.candidatiTagliati ? ` (${pr.candidatiTagliati} oltre il tetto)` : ''},`
+        + ` ${pr.trattenuti} tenuti caldi, ${pr.scaduti} lasciati raffreddare)`);
     } catch (e) { annuncia('error', 'priorità del raccoglitore non scritte', { error: e.message }); }
     // ── E LO STESSO PIANO, RIDOTTO, PER IL MINI-CICLO DEL TRIGGER ────────────────────────────────
     // Anche questa si scrive SEMPRE, per lo stesso motivo della riga qui sopra: e' la memoria che

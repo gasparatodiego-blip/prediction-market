@@ -3,7 +3,21 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt**: non serve più reincollarlo ogni volta.
 
-Ultima verifica contro codice/stato reali: **12 agosto 2026**, ~23:10 UTC (§5 punti 116-118).
+Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~00:45 UTC (§5 punto 119).
+
+> ## 🔄 L'ANELLO CHIUSO DEL FEED: IL PIANO VEDEVA SOLO CIÒ CHE AVEVA GIÀ SCELTO — §5 punto 119
+> `allocator.js:1068` **SCARTA** (`status:'scartato', capital:0`) ogni mercato con profondità
+> `non-verificata`, e la verifica accetta **solo campioni websocket** (`allocator.js:109`,
+> `r.src === 'ws'`). Il websocket è agent34, che sottoscrive `collector-priority.json`, che agent41
+> scriveva **dal proprio piano**. **Misurato il 13 agosto 00:20: dei 17 mercati che superavano OGNI
+> filtro d'ingresso, solo 3 erano nel feed** — gli altri 14 invisibili per costruzione, con $400 fermi.
+> Adesso il feed si semina anche con i **CANDIDATI** (`minSize` compatibile col tetto **di adesso** +
+> orizzonte ≥ 18 h), ordinati per montepremi, più i mercati con **posizione aperta**. Tetto della corsia
+> **30 → 60** (agent34 regge 125 e ne aveva 117: a cedere è la corsia del board, la più povera).
+> **Misurato: 31 candidati, 20 non ancora nel feed ⇒ la corsia passa da 30 a 50 mercati.**
+> **⚠ E IL TURNOVER NEGATIVO NON SI CORREGGE DA QUI**: delle 38 morti vere in 6 h, **35 ($437,78) sono
+> `profondita-insufficiente`** — il pavimento di profondità, che è una regola di rischio. Solo **1** è
+> `mai-primo-sul-libro`. La leva sul saldo è aprire di più, non morire di meno.
 
 > ## 📊 IL CAPITALE AL LAVORO È UN NUMERO, E L'OBIETTIVO È 95% — §5 punti 116-118
 > **Il collo di bottiglia NON è il rate limit**, e la misura lo smentisce: il gate del venue ha morso
@@ -6081,6 +6095,70 @@ una non era iniziata. Questi punti coprono **tutte e sei**, più il rosso che la
      to UtilizzoLike»*. Si importa il tipo esistente, non se ne scrive un gemello. E finché il build
      è rotto **`.next` resta senza `BUILD_ID`**: un riavvio del dashboard in quella finestra lo manda
      in crash loop (§5 punto 7).
+
+119. **L'ANELLO DEL FEED APERTO, E IL TURNOVER CHE NON SI CORREGGE DA LÌ — 13 agosto 2026, ~00:45 UTC.**
+
+     **① L'ANELLO.** `allocator.js:1068` scarta con `capital: 0` ogni mercato la cui profondità è
+     `non-verificata`, e `allocator.js:109` verifica **solo** su `r.src === 'ws'`. Il websocket è
+     agent34 → `collector-priority.json` → scritto da agent41 **dal proprio piano**. Chiuso.
+     **Misurato alle 00:20: 3 dei 17 mercati validi erano nel feed.** Adesso `writeCollectorPriority`
+     accetta `candidati` e `posizioni`:
+     - **candidato** = `minSize` compatibile col tetto **derivato dal capitale vero** (letto da
+       `maker-allocated-capital.json`, non da una costante) **e** orizzonte ≥ 18 h. Si legge dal
+       **board normalizzato**, la stessa fonte del pianificatore: un candidato non può essere un
+       mercato che il piano non potrebbe comunque valutare;
+     - **ordine di sacrificio** quando si supera il tetto: righe del piano → quasi-vincitori →
+       trattenuti → **candidati per primi**. Un candidato è un'ipotesi; una riga del piano è capitale
+       deciso e una posizione è capitale esposto. I mercati con posizione entrano **fra le righe**;
+     - **tetto della corsia 30 → 60.** agent34 dichiara `TOTAL_MARKET_CAP` 125 ed era a **117**: i posti
+       li cede la corsia del **board**, che è la più povera, ed è l'ordine che §5 punto 61 ha già
+       misurato. 60 e non 125 perché questa è una delle quattro corsie;
+     - **fail-closed**: board illeggibile ⇒ zero candidati (comportamento di prima); snapshot posizioni
+       illeggibile ⇒ zero posizioni.
+     **Misurato adesso: 31 candidati, 20 non ancora nel feed ⇒ la corsia passa da 30 a 50.** Tutti e 17
+     i mercati validi diventano verificabili dopo che agent34 ha raccolto ≥10 campioni ws (~10-20 min).
+     **Cercato l'anello altrove**: l'unico altro consumatore è `readCollectorPriority` in agent34, che
+     applica lo stesso `MAX_MARKETS` (quindi è salito con lui); `attesa-riscaldamento` non filtra sul
+     piano. Nessun secondo punto da correggere.
+
+     **② IL TURNOVER — la causa principale è una REGOLA DI RISCHIO, e lo dico invece di forzarla.**
+     Le 311 «morti» in 6 h non sono morti: **129 `manual-cancel ok` + 123 `cancelled-by-system` sono la
+     coppia cancella→ripiazza del rinnovo**, cioè churn, non perdita. Le morti **vere** sono 38:
+
+     | n | $ | causa |
+     |---|---|---|
+     | **35** | **$437,78** | `profondita-insufficiente` — la banda finisce prima del pavimento |
+     | 2 | $25,71 | `refresh-invalid` |
+     | 1 | $12,58 | `mai-primo-sul-libro` |
+
+     Il pavimento di profondità è la **Regola 2** del motore (`DEPTH_FLOOR_PCT_OF_AVG`), cioè una regola
+     di rischio: l'operatore ha dichiarato intoccabili «mai primo», banda e tetti, e questa appartiene
+     alla stessa famiglia. **Il saldo del turnover non si può portare a zero riducendo le morti senza
+     toccarla.** La leva è l'altra metà — **aprire di più** — ed è esattamente ciò che il punto ① fa:
+     il mini-ciclo apriva 1-2 mercati per giro perché il piano aveva 4-5 righe, e il piano aveva 4-5
+     righe perché vedeva 3 mercati su 17.
+
+     **③ VERIFICA CONGIUNTA, con i numeri.** Dopo la correzione i mercati quotabili sono **17**
+     (tutti quelli che superano i filtri, ora visibili) ⇒ **17 × $26 = $442 = 67% del capitale**.
+     **I 25 mercati NON sono raggiungibili oggi**, e la ragione non è più il feed: il board di adesso
+     offre **23** mercati a `minSize` compatibile, che scendono a 19 per orizzonte e a 17 per la
+     finestra di mid. Il divario residuo è **l'offerta del board**, che sui 37 snapshot della giornata
+     oscilla fra **20 e 96 mercati compatibili (mediana 46)**: su un board mediano i 25 ci sono, su
+     questo no. Il tetto per mercato **non è stato alzato** (decisione dell'operatore, e la diagnosi
+     mostra che 25 × $26 fanno già il 98%).
+
+     **④ IL TARGET VIVE IN UN POSTO SOLO.** `leggiTarget` **0,90 → 0,95**: `capitale-al-lavoro`
+     dichiarava `OBIETTIVO_DEFAULT = 0.95` ma interrogava prima `leggiTarget`, che rispondeva 0,90 e
+     vinceva — il modulo era scritto per il 95% e il pannello stampava «obiettivo 90%».
+
+     **File:** `lib/rewards/collector-priority.js` · `agents/agent41-realloc-scheduler.js`
+     (`candidatiPerIlFeed`, `mercatiConPosizione`) · `lib/maker/utilizzo-capitale.js`.
+     **Suite: 195 eseguiti, 187 verdi, 8 rossi** — i 7 preesistenti più `end-of-scale-cycle`, che è
+     rosso **anche senza queste modifiche** (verificato con `git stash`): legge la configurazione VIVA
+     del riprezzo, che il bot muta, quindi dipende dai dati come `guardian-perdite` e
+     `cancellazione-riconosciuta`. `npm run build` verde, `BUILD_ID` `nLIfg-V3lGIxaL_7hcDR9`.
+     **Una fixture ritarata**: `apertura-guidata-dal-target` fissava «90,9% ⇒ obiettivo raggiunto», vero
+     solo a target 0,90; adesso **deriva** lo stato dal target, qualunque esso sia.
 
 ---
 
