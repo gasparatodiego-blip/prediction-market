@@ -363,3 +363,6 @@ data/merge-attese.json.tmp*
 # chiudendo e da quando. Versionarlo significherebbe che un `git checkout` può dire al bot che una
 # coppia è in chiusura quando non lo è, o il contrario.
 data/modalita-chiusura.json
+
+# Serie grezza rigenerabile da scripts/ricerca/estrai-serie-copertura.js (1,1 MB)
+data/ricerca/serie-copertura.json

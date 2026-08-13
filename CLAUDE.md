@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~09:40 UTC.
+Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~09:55 UTC.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -988,6 +988,24 @@ ripetuti né la scala di sblocco**. Nessun capitale a rischio: si fallisce chius
 7. **La ricostruzione sotto soglia scatta quasi a ogni giro sul board di oggi** (6 righe utili contro
    una soglia di 12): costa ~13 s di processo figlio ogni 10 minuti. È il comportamento corretto — il
    piano *è* sotto soglia — ma se un domani il board si allargasse stabilmente vale la pena rimisurare.
+12. **🔴🔴 IL GUARDIANO DECIDE SU UN SEGNALE IL CUI RUMORE SUPERA LA SUA SOGLIA — nuovo, 13 agosto
+   2026, misurato. `lib/maker/guardian-perdite.js:121-128`.** Il confronto è **istantaneo**: una sola
+   lettura oltre soglia fa scattare il latch, senza nessuna richiesta di **persistenza** (N letture
+   consecutive) né filtro sulla variazione fra letture. Ma la distribuzione dei salti di PnL a 30 s
+   sui **5 giorni / 7.211 campioni** del log di agent43 è: mediana **$0,00**, q95 **$0,12**, q99
+   **$1,18**, **max $74,47** — con **32 salti oltre $10, 12 oltre $20 e 7 oltre $30**, contro una
+   soglia assoluta di **$30**. I più grandi arrivano **in coppie che si annullano** (+$74,47 e −$73,12
+   a trenta secondi di distanza, due volte il 9 agosto). **Il minuto e mezzo dello scatto**: −$1,66 →
+   **−$26,46** → **−$1,37** (rientrato per intero, e sotto i $30 non scatta) → −$1,89 → +$8,06 →
+   −$4,70 → **−$36,15 SCATTO**. **Lettura on-chain 37 minuti dopo: $653,79 contro baseline $660,56,
+   cioè −$6,77 (−1,02%)** — quindi **~$29 dei $36 erano transitori**. ⚠ **NON CORRETTO E NON DA
+   CORREGGERE DI SLANCIO**: il guardiano è l'ultima difesa sul capitale e allentarlo è la modifica più
+   pericolosa possibile. La direzione giusta è **aggiungere una condizione, non toglierne**: pretendere
+   **k letture consecutive** oltre soglia prima del latch (con k=2 lo scatto del 13 agosto non sarebbe
+   avvenuto, e nemmeno il transitorio delle 09:05). Va deciso dall'operatore, e va misurato quanto
+   ritardo introduce su uno scatto vero. Misura completa in `data/ricerca/sintesi-collasso.md`.
+13. **La soglia sulla derivata per la sentinella È misurabile, ed è l'85%** (§5-bis p.140). Non
+   implementata: questa era una sessione di sola diagnosi.
 9. **🔴 LA SENTINELLA VEDE IL VUOTO, NON IL COLLASSO — buco aperto, misurato il 13 agosto 2026.**
    Il ramo ③ di `lib/maker/sentinella-vuoto.js` dice «`ordiniARiposo > 0` ⇒ il libro non è vuoto» e
    **azzera l'orologio**. Quindi un calo da **23 ordini a 2** — il **91%** — è invisibile: la
@@ -1149,6 +1167,38 @@ complessive, $99,32 di nozionale di picco; $137,80 scoperti nell'istante della m
 modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà** perché fotografavano il
 testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
+
+**140 · LA SOGLIA SULLA DERIVATA È 85%, E IL DIVARIO FRA LE DUE POPOLAZIONI È VUOTO — sola misura,
+niente implementato.** §5.2 p.9 chiedeva di misurare quanto oscilla normalmente il numero di ordini
+prima di mettere una soglia. Fatto. **Serie A · ordini aperti: osservazione DIRETTA** (`manual-list`
+con `requested.marketId` nullo ⇒ `response.count` è il totale vivo), 7.860 campioni su **4,1 giorni**,
+cadenza mediana **60,0 s**. Variazioni: assoluta mediana **0**, q95 **1**, q99 **3**, max **22**;
+percentuale q90 **14,3%**, q99 **100%**.
+**La forma della soglia è il calo % dal MASSIMO delle ultime 10 minuti**, non la differenza fra campioni
+consecutivi: la cadenza è irregolare (60,0 s mediani, fino a 77) e la differenza campione-a-campione
+mescola «quanto è cambiato» con «quanto tempo è passato»; inoltre un crollo che arriva in due campioni
+verrebbe spezzato in due pezzi ciascuno sotto soglia. **Tabella di sensibilità (veri/falsi positivi su
+4,1 giorni)**: 30% ⇒ 5/183 · 40% ⇒ 5/69 · **50% ⇒ 5/20** · 60% ⇒ 5/4 · 70% ⇒ 5/2 · **80% ⇒ 5/0**.
+Il livello minimo richiesto **non discrimina** (precisione 20-22% per ogni livello fra 3 e 12).
+**Si propone 85% e non 80% perché il divario è VUOTO**: il calo fisiologico più grande misurato è
+**75%** (30 → 8 il 13/08 08:31, rientrato da solo in 9,5 min), il patologico più piccolo è **92,9%**, e
+fra i due non cade nessun episodio. 85% è il punto medio del vuoto. **⚠ Limite dichiarato: 5 soli
+eventi positivi in 4,1 giorni** — difendibile sui dati esistenti, ma campione piccolo.
+**⚠ B e C sono INDICATIVE, non complete**: `esposizioneOrdiniUsd` copre solo il **19%** delle finestre
+da 5 min, e il ciclo di vita ordine-per-ordine sui 18 giorni di `execution-audit` **non è
+ricostruibile** perché **651 righe `manual-cancel/ok` non portano `orderId`**. Non si fissano soglie su
+quelle due serie.
+**Copertura e PnL non sono correlati**: 460 punti allineati a 5 min, **Pearson −0,048**; PnL/ora
+**−$0,255 quando coperto** contro **+$0,208 quando scoperto**. Le perdite **non** maturano perché il
+book è scoperto — la scopertura è una conseguenza dello stato del libro, non la causa della perdita.
+**I due scatti del guardiano hanno la STESSA firma**: caduta in **un solo campione**, senza decadimento
+precedente, da cancellazione esterna al processo che osserva (9/08 **9 → 0**, 13/08 **28 → 2**; il
+residuo di 2 è agent40 che ripiazza subito le chiusure, che FERMA non blocca). **Il calo del 13 agosto
+NON era in corso prima**: livello stabile 21-28 fino alle 09:08:12 (ultimo campione **23**), poi **2**
+alle 09:09:16 — e l'attribuzione lo conferma, 99 `cancelled-by-system` prima (il cancella-e-ripiazza di
+agent40, che **non** abbassa il livello) contro 21 `cancelled-externally` dopo, cioè la firma del
+`cancel-all`. Script: `scripts/ricerca/{estrai-serie-copertura,analizza-collasso}.js`; dati in
+`data/ricerca/`.
 
 **139 · IL SECONDO SCATTO DEL GUARDIANO — 13 agosto 2026, 09:08:33Z.** Vedi il banner. −$36,15 /
 −5,47%, oltre **entrambe** le soglie, 23 ordini cancellati su 12 mercati, bot su FERMA. Il primo
