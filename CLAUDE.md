@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~23:55 UTC.
+Ultima verifica contro codice/stato reali: **14 agosto 2026**, ~01:20 UTC.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -429,7 +429,7 @@ file che non sia la propria coda — provato da un test che cammina il suo alber
 
 | | |
 |---|---|
-| `agent43-guardian` | **Il guardiano delle perdite economiche.** Ogni 30 s confronta (saldo pUSD + posizioni al prezzo corrente) con il baseline in `data/guardian-baseline.json`; oltre `GUARDIAN_LOSS_PCT` (default 5%) o `GUARDIAN_LOSS_ABS` (default $30) cancella **tutti gli ordini a riposo**, deposita un referto `reason='guardian-auto-kill'` e mette il bot su **FERMA**. Non tocca le posizioni aperte e non ferma l'uscita automatica. Nessun auto-riarmo: si riparte cancellando `data/guardian-state.json` a mano. Le soglie si rileggono da `.env` **a ogni giro**, senza restart. Strutturalmente incapace di piazzare (unica superficie: `lib/maker/cancel-all`), verificato da un test che cammina l'albero dei `require` (65/65 verdi). File: `agents/agent43-guardian.js` + `lib/maker/guardian-perdite.js`. Codice e blocco pm2 sono in git dal 7 agosto (`dbba34e`). |
+| `agent43-guardian` | **Il guardiano delle perdite economiche.** Ogni 30 s confronta (saldo pUSD + posizioni al prezzo corrente) con il **riferimento a massimo mobile** in `data/guardian-baseline.json` (§5-bis p.157: depositi e prelievi sono riconosciuti come cassa esterna, non come P&L); oltre `GUARDIAN_LOSS_PCT` (5%) o la **soglia assoluta DERIVATA** (5% del riferimento; `GUARDIAN_LOSS_ABS` resta il pavimento in dollari) cancella **tutti gli ordini a riposo**, deposita un referto `reason='guardian-auto-kill'` e mette il bot su **FERMA**. Non tocca le posizioni aperte e non ferma l'uscita automatica. Nessun auto-riarmo: si riparte cancellando `data/guardian-state.json` a mano. Le soglie si rileggono da `.env` **a ogni giro**, senza restart. Strutturalmente incapace di piazzare (unica superficie: `lib/maker/cancel-all`), verificato da un test che cammina l'albero dei `require` (65/65 verdi). File: `agents/agent43-guardian.js` + `lib/maker/guardian-perdite.js`. Codice e blocco pm2 sono in git dal 7 agosto (`dbba34e`). |
 
 Distinzione che era da tenere ferma, e che il 9 agosto 2026 ha perso una delle due metà: **agent37
 guardava i processi, agent43-guardian guarda il capitale** — due guasti indipendenti (un motore può
@@ -539,7 +539,7 @@ pavimento premiante(minSize) = minSize × 0,98 × 1,25   ⇒ 20/50/100/200 = $24
 60/40** — al più 24 posti alle aperture, **16 riservati a rinnovi e chiusure protettive**. Invariante
 difesa da un test: `rateCap ≥ 2 × mercatiPerGiro` con almeno 8 posti di margine. Un'apertura rimandata
 è un **rinvio dichiarato** (`rimandato-per-quota`), non un errore. Restano intatti il cap per ordine di
-safety ($1000) e il cap cumulativo di esposizione aperta ($600). **Mercati per giro: 12**, dichiarati in
+safety ($1000) e il cap cumulativo di esposizione aperta ($600). **Mercati per giro: 10** (era 12 — 13 agosto 2026), dichiarati in
 **un posto solo** (`utilizzo-capitale.leggiMaxNuoviPerGiro`) e importati dal trigger.
 
 **⚠ La quota 60/40 sui volumi di oggi non morde mai** e va saputo: 141 intent in 48 h, picco 18/min
@@ -566,7 +566,7 @@ restano confrontabili numero per numero.
 
 | filtro | dove | regola |
 |---|---|---|
-| **orizzonte** | `horizon.js` | `[MIN_HORIZON_DAYS 0,75 · MAX_HORIZON_DAYS 150]`, confini **inclusivi da entrambi i lati**. Il pavimento in ore (18 h) è **derivato** in `market-validity`, non ripetuto. **Scadenza non determinabile ⇒ ESCLUDE**. ⚠ **È il filtro che taglia di più**: 78 mercati su 102 valutati il 13/8 alle 20:17, e il gradino è tutto fra 12 h e 18 h — vedi §5 punto 129 prima di toccarlo o di lasciarlo com'è |
+| **orizzonte** | `horizon.js` | `[MIN_HORIZON_DAYS **0,50** · MAX_HORIZON_DAYS 150]`, confini **inclusivi da entrambi i lati**. Il pavimento in ore (**12 h**) è **derivato** in `market-validity` e in `risk-classifier`, non ripetuto. **0,75 → 0,50 il 13 agosto 2026**: il confine di rischio misurato è a **6 ore** (sotto, il 35,1% delle uscite arriva dopo la risoluzione; fra 6-12 h è 0/36, fra 12-18 h 0/15), quindi a 12 h restano **due volte** il margine. **0,25 g è sconsigliato.** Sul board vivo: utilizzabili **13 → 50**, coperti **13 → 35**, capitale impiegato **$796 → $2.144**, reward modellato **5,14×**. **Scadenza non determinabile ⇒ ESCLUDE**. ⚠ **È il filtro che taglia di più**: 78 mercati su 102 valutati il 13/8 alle 20:17, e il gradino è tutto fra 12 h e 18 h — vedi §5 punto 129 prima di toccarlo o di lasciarlo com'è |
 | **quota coda lunga** | `allocator.js` | il capitale oltre `LONG_TAIL_DAYS 7` non supera il **12%** del piano. **Due passate**, non una potatura: la fascia corta gira col budget pieno, la coda riceve `S·q/(1−q)` — non `S·q`, che sbaglierebbe in difetto perché la quota è sul totale e il totale contiene la coda. Fascia corta vuota ⇒ la coda non ottiene niente |
 | **profondità** | `profondita-minima.js` | **scala la size**, non toglie il mercato: `S_max = cQ · q/(1−q)` a `q = 0,60`, cioè `1,5 · cQ`. Esclude solo dove **nessuna size piazzabile** regge, con due motivi distinti (`escluso-troppo-sottile` / `escluso-sotto-minimo`). ⚠ **VINCOLO ASSOLUTO: mai forzare la size al minimo del venue oltre la quota sicura** — è strutturale (i due rami di esclusione restituiscono `tenuti` senza toccarlo), non promesso |
 | **quotabilità** | `allocator.js` | chiama `planBehindBest`, **la stessa funzione del piazzamento**, su **entrambi** i lati (una riga con una gamba sola è esposizione direzionale). Fail-open: dati mancanti ⇒ `ignota`, il mercato resta. «Nessun concorrente» **non** è un dato mancante: è il ramo «soli», quotabilissimo |
@@ -866,6 +866,8 @@ resta una riga nel registro di §5-bis.
 
 | processo | cosa entra in servizio | stato |
 |---|---|---|
+| `agent43-guardian` | **🔴 IL RIFERIMENTO NUOVO E LA SOGLIA DERIVATA (§5-bis p.157)** — finché non riparte il guardiano usa la baseline del 7 agosto e **NON PROTEGGE** | **PENDENTE — È IL PRIMO** |
+| `agent40` · `agent41` · `agent24` | orizzonte 0,50 · mercati per giro 10 · manopola distanza (spenta) · tetto e banda già committati | **PENDENTE** |
 | `agent41-realloc-scheduler` | **il gradino 6 «fermati-in-sicurezza» (§5-bis p.153)**: `impostaBot` cablato ⇒ l'ultima difesa esiste davvero · il log del gradino 5 leggibile | **PENDENTE — ⚠ ARMA UNA DIFESA CHE FINORA FALLIVA CHIUSO** |
 | `agent41-realloc-scheduler` | **la banda premiante corretta (§5-bis p.155)** nel cablaggio e nei log del ciclo | **PENDENTE** |
 | `agent40-manual-reprice` | **la banda corretta in `auto-reprice` e `auto-close`**: il giudizio «fuori banda» e la geometria dell'uscita | **PENDENTE — è il riavvio che CHIUDE la divergenza** |
@@ -917,22 +919,21 @@ pm2 restart agent41-realloc-scheduler
 > **p.15/16 guardiano k=2 + letture distinte** → §5-bis p.141 e p.145 · **p.17 registro residui senza
 > consumatore** → p.148 · **p.18 tetto per ordine sul riposizionamento scoperto** → p.147.
 
-24. **🔴 MERCATI PER GIRO E TETTO PER MERCATO NON SONO PIÙ COERENTI — test rosso VOLUTO.**
-   `MAX_NUOVI_PER_GIRO = 12` contro un tetto di $61,25 chiede **$735** a un capitale di **~$662**.
-   Il numero coerente è **10** (`mercatiSostenibili($652)`). **Non cambiato**: è un secondo parametro, e
-   la sessione del 13 agosto ne muove uno solo per avere 24 ore su una variabile sola.
-   **Cosa succede intanto**: il knapsack resta limitato da `budgetUsd`, quindi non si impegna più
-   capitale di quanto ce ne sia — le ultime righe del giro finiscono in `saltati` invece che in un piano
-   più corto. Degradazione dichiarata, non rischio di capitale.
-   Rosso in `lib/maker/tetti-per-giro-e-scope.test.js`, con il motivo scritto accanto all'asserzione.
-25. **🔴 IL TETTO ASSOLUTO DI CHIUSURA VALE ORA IL 18,6% DEL CAPITALE (era 9,9%) — test rosso VOLUTO.**
-   È DERIVATO dal tetto ordinario (`× (1 + 1/costoCoppia)` = 2,02×), quindi è passato da $65,97 a
-   **$123,75**. La soglia dell'11% in `tetto-chiusura.test.js` fu tarata sul 9,9% di §5-bis p.133.
-   **Non alzata**: alzarla sarebbe trasformare una leva sul tetto in un allentamento silenzioso di un
-   limite di concentrazione. **⚠ Va detto anche cosa NON è**: l'esenzione vale SOLO per chi RIDUCE, con
-   la prova rifatta sull'ordine esatto, quindi quel 18,6% è capitale impegnato per **completare una
-   coppia** — esposizione direzionale ~zero — non capitale a rischio. Tre vie: accettare il 18,6%,
-   ritarare la soglia, o disaccoppiare il tetto di chiusura da quello ordinario. Decide l'operatore.
+26. **🟡 `end-of-scale` NON è stata stretta a [0,10 · 0,90], e la ragione è misurata (13 agosto 2026).**
+   La proposta: allineare la nostra soglia ([0,03 · 0,97]) al punto dove il venue rompe `Q_min`, perché
+   fuori da [0,10 · 0,90] una gamba **nuda** matura ZERO invece di un terzo.
+   **⚠ MA QUELLA PROTEZIONE ESISTE GIÀ, ED È PIÙ PRECISA**: `motore-unico.latoSingolo` deriva la
+   frazione da `qMin` stesso (`MID_MIN_UN_LATO = 0,10`, `MID_MAX_UN_LATO = 0,90`) e **cancella** un lato
+   solo fuori banda — **48 volte in produzione** nel giornale corrente. Stringere `end-of-scale`
+   impedirebbe di quotare **a DUE lati** dove il venue paga normalmente (`Q_min = min(Qb,Qa) > 0`), cioè
+   toglierebbe reward senza aggiungere protezione.
+   **Il costo misurato**: 11 mercati del board nella fascia contesa, di cui **5 davvero utilizzabili**
+   per **$666/g di montepremi**; nel piano dei migliori sono **4 mercati per $62,33/g modellati (17,8%)**,
+   e i rimpiazzi che entrerebbero valgono **$4,28/g**. Misura in `data/ricerca/fine-scala-1090.json`.
+   **Decisione: non applicata**, e la seconda ragione è metodologica — l'orizzonte si è appena mosso, e
+   due leve insieme rendono illeggibili le 24 ore di dati che l'operatore ha chiesto.
+
+
 21. **🔴 IL PAVIMENTO DI PROFONDITÀ TRATTA UN RINNOVO COME UN'APERTURA — difetto annotato, NON
    corretto (13 agosto 2026, sera).** Stessa forma dei due chiusi stamattina (§5-bis p.133 tetto per
    mercato, p.147 tetto per ordine): una regola nata per limitare l'**apertura** di esposizione nuova,
@@ -987,16 +988,7 @@ pm2 restart agent41-realloc-scheduler
 7. **La ricostruzione sotto soglia scatta quasi a ogni giro sul board di oggi** (6 righe utili contro
    una soglia di 12): costa ~13 s di processo figlio ogni 10 minuti. È il comportamento corretto — il
    piano *è* sotto soglia — ma se un domani il board si allargasse stabilmente vale la pena rimisurare.
-14. **🔴 LA BASELINE DEL GUARDIANO È UNA FOTOGRAFIA VECCHIA — NON corretto, correzione proposta.**
-   `data/guardian-baseline.json` è fissata al **2026-08-07T21:27:31Z**, «primo avvio», **mai più
-   aggiornata**: conteneva 1 posizione e saldo $590,26, oggi il portafoglio ne ha 16. Nel frattempo
-   sono entrati **$17,95 di reward reali** che la baseline non conosce. **Quindi il «PnL» del guardiano
-   non è un drawdown: è la variazione cumulata dal 7 agosto**, che mescola trading e reward, e non ha
-   protezione contro depositi o prelievi.
-   **⚠ Sbaglia in DUE direzioni opposte**: i reward gonfiano il totale e ritardano lo scatto; una
-   perdita realizzata non rientra mai, quindi col tempo scatta sulla **storia cumulata** invece che sul
-   calo corrente. **Correzione proposta, NON applicata**: drawdown da un **massimo mobile**, oppure
-   baseline fissa **meno** reward incassati e movimenti di cassa. È capitale: decide l'operatore.
+
 13. **La soglia sulla derivata per la sentinella È misurabile, ed è l'85%** (§5-bis p.140). Non
    implementata: questa era una sessione di sola diagnosi.
 24. **⚑ IL MERCATO È CALIBRATO AGLI ESTREMI — misura, 13 agosto 2026.** Universo: **mercati**, non
@@ -1199,6 +1191,31 @@ funzione di `bot-enabled` è chiamata senza essere importata»), non la stringa;
 **davvero** contro una spia installata prima del `require`; e **rilegge `data/maker-bot-enabled.json`
 prima e dopo**, fallendo se è cambiato di un byte (§5 punto 1). Verificato che **fallisce sul codice
 vecchio** — l'unica prova che un test serva a qualcosa.
+
+**158 · LA MANOPOLA DELLA POSIZIONE, INSTALLATA E SPENTA.** Vedi il banner.
+`lib/maker/distanza-obiettivo.js` (puro) + un ingresso opzionale in `planBehindBest`, applicato per
+ULTIMO e solo verso l'esterno. **39 asserzioni** in `distanza-obiettivo.test.js`, e difendono le due
+proprietà che contano — dentro banda **sempre**, mai davanti a nessuno — su tutti i valori provati
+(0,1 · 0,25 · 0,444 · 0,6 · 0,9 · 0,95 · 5 · 100), non su quello di default.
+**⚠ IL COSTO, MISURATO PRIMA DI INSTALLARLA** (`data/ricerca/manopola-distanza.json`, board vivo,
+37.410 finestre da 60 s su 89 mercati): a 1,5× la distanza il reward modellato fa **−19%**, a 2× **−38%**,
+a 2,5× **−57%**. E il **tasso di fill non si muove**: 4,60 → 4,40 → 4,36 → **4,13 al giorno**, cioè
+0,47 fill evitati al giorno per **$0,005** di costo d'uscita risparmiato. **Il movimento del mid è a
+raffiche molto più grandi della banda** (§5.2 p.20), quindi allontanarsi di uno o due centesimi non
+sposta la probabilità di essere raggiunti. **Lo scambio è sfavorevole di due ordini di grandezza**, ed
+è scritto qui perché l'operatore lo sappia mentre gira la manopola, non dopo.
+
+**157 · IL RIFERIMENTO DEL GUARDIANO: DRAWDOWN DA MASSIMO MOBILE.** Vedi il banner. Chiude §5.2 p.14.
+`lib/maker/guardian-riferimento.js` (puro) + cablaggio in `agent43-guardian`. **Il file resta uno solo**
+(`data/guardian-baseline.json`) e continua a portare `baselineUsd`: il codice vecchio, non ancora
+riavviato, legge il valore giusto invece di rompersi. Il record v1 si **MIGRA adottando** il valore che
+c'era e lasciando che il massimo lo alzi — non si ricrea da zero, perché il giorno in cui il totale
+corrente fosse più BASSO del riferimento vecchio ricreare cancellerebbe un drawdown in corso.
+**⚠ La guardia sul capitale illeggibile è stata spostata PRIMA del riferimento**: un massimo mobile
+aggiornato su una lettura fallita resterebbe sbagliato per sempre.
+**28 asserzioni** in `guardian-riferimento.test.js`, fra cui le quattro che decidono: un deposito non è
+un guadagno, un prelievo non è una perdita, un calo delle posizioni resta una perdita, un fill non è un
+movimento di cassa.
 
 **156 · IL TETTO PER MERCATO PASSA A $61,25, E SMETTE DI DERIVARE DA `f_min`.**
 Vedi il banner per i numeri. Qui la forma. `lib/rewards/concentration.js`: `SCAGLIONE_FINANZIABILE = 50`

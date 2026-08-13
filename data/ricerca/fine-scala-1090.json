@@ -1,0 +1,87 @@
+{
+ "generatoAl": "2026-08-13T21:19:43.739Z",
+ "minHorizonDays": 0.5,
+ "capitale": 2149.88,
+ "tettoPerMercato": 61.25,
+ "boardConMontepremi": 112,
+ "nellaFasciaContesa": 11,
+ "fasciaContesaMontepremiTotale": 1056,
+ "contesiUtiliOggi": 5,
+ "contesiUtiliMontepremi": 666,
+ "utiliTotaliOggi": 47,
+ "utiliTotaliMontepremi": 3147,
+ "dettaglioContesiUtili": [
+  {
+   "slug": "how-many-fed-rate-cuts-in-2026",
+   "mid": 0.095,
+   "pool": 66,
+   "minSize": 50,
+   "ore": 3338.7
+  },
+  {
+   "slug": "lowest-temperature-in-shanghai-on-august-14-",
+   "mid": 0.91,
+   "pool": 229,
+   "minSize": 20,
+   "ore": 14.7
+  },
+  {
+   "slug": "lowest-temperature-in-shanghai-on-august-14-",
+   "mid": 0.08,
+   "pool": 171,
+   "minSize": 20,
+   "ore": 14.7
+  },
+  {
+   "slug": "lowest-temperature-in-tokyo-on-august-14-202",
+   "mid": 0.905,
+   "pool": 114,
+   "minSize": 20,
+   "ore": 14.7
+  },
+  {
+   "slug": "lowest-temperature-in-tokyo-on-august-14-202",
+   "mid": 0.08,
+   "pool": 86,
+   "minSize": 20,
+   "ore": 14.7
+  }
+ ],
+ "perFasciaOraria": [
+  {
+   "daOre": 0,
+   "aOre": 6,
+   "mercati": 1,
+   "estremi": 1,
+   "quotaEstremiPct": 100
+  },
+  {
+   "daOre": 6,
+   "aOre": 12,
+   "mercati": 1,
+   "estremi": 0,
+   "quotaEstremiPct": 0
+  },
+  {
+   "daOre": 12,
+   "aOre": 24,
+   "mercati": 83,
+   "estremi": 4,
+   "quotaEstremiPct": 4.8
+  },
+  {
+   "daOre": 24,
+   "aOre": 72,
+   "mercati": 3,
+   "estremi": 1,
+   "quotaEstremiPct": 33.3
+  },
+  {
+   "daOre": 72,
+   "aOre": null,
+   "mercati": 24,
+   "estremi": 6,
+   "quotaEstremiPct": 25
+  }
+ ]
+}

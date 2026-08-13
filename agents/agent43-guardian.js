@@ -96,10 +96,13 @@ const { DATA_DIR } = require('../lib/safety/store');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
 const audit = (riga) => appendMakerAudit(riga);
 const {
-  valutaCapitale, calcolaPnl, decidiScatto, baselineDaScrivere, leggiBaseline, costruisciEventoGuardian,
+  valutaCapitale, calcolaPnl, decidiScatto, leggiBaseline, costruisciEventoGuardian,
   valutaLatch, eventoRiarmo, ETA_RIARMO_MS,
   confermaScatto, LETTURE_CONSECUTIVE_PER_SCATTO,
 } = require('../lib/maker/guardian-perdite');
+const {
+  aggiornaRiferimento, sogliaAssoluta, FRAZIONE_SOGLIA_ASSOLUTA,
+} = require('../lib/maker/guardian-riferimento');
 
 // ── LO STATO DELLA PERSISTENZA, FRA UN GIRO E L'ALTRO ────────────────────────────────────────────
 // In memoria e non su disco: vedi il commento dentro `poll`. Un riavvio lo azzera, ed e' voluto.
@@ -126,7 +129,11 @@ function leggiSoglie() {
   const n = (v, dflt) => { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : dflt; };
   return {
     pct: n(out.GUARDIAN_LOSS_PCT !== undefined ? out.GUARDIAN_LOSS_PCT : process.env.GUARDIAN_LOSS_PCT, 5),
-    abs: n(out.GUARDIAN_LOSS_ABS !== undefined ? out.GUARDIAN_LOSS_ABS : process.env.GUARDIAN_LOSS_ABS, 30),
+    // ⚠ NON e' piu' LA soglia assoluta: e' il suo PAVIMENTO in dollari. La soglia vera e' derivata dal
+    // riferimento (vedi `sogliaAssoluta`), e questo valore morde solo quando il conto e' cosi' piccolo
+    // che il 5% varrebbe meno di tanto. Il .env non viene ignorato — continua a decidere, ma da sotto.
+    absPavimento: n(out.GUARDIAN_LOSS_ABS !== undefined ? out.GUARDIAN_LOSS_ABS : process.env.GUARDIAN_LOSS_ABS, 30),
+    absFrazione: n(out.GUARDIAN_LOSS_ABS_PCT !== undefined ? out.GUARDIAN_LOSS_ABS_PCT : process.env.GUARDIAN_LOSS_ABS_PCT, FRAZIONE_SOGLIA_ASSOLUTA * 100) / 100,
   };
 }
 
@@ -219,7 +226,11 @@ async function poll(deps = {}) {
     const pnlL = (capitale.leggibile && baselineL.valido)
       ? calcolaPnl({ baselineUsd: baselineL.baselineUsd, totaleUsd: capitale.totaleUsd })
       : null;
-    const l = valutaLatch({ stato, pnl: pnlL, sogliaPct: soglie.pct, sogliaAbs: soglie.abs, now });
+    // La soglia assoluta e' DERIVATA anche qui: il riarmo deve usare lo stesso metro dello scatto, o
+    // il latch si azzererebbe con un criterio diverso da quello che lo ha prodotto.
+    const absL = sogliaAssoluta({ riferimentoUsd: baselineL.valido ? baselineL.baselineUsd : null,
+      pavimentoUsd: soglie.absPavimento, frazione: soglie.absFrazione }).sogliaUsd;
+    const l = valutaLatch({ stato, pnl: pnlL, sogliaPct: soglie.pct, sogliaAbs: absL, now });
     if (!l.azzera) {
       return { azione: 'gia-scattato', scattatoAl: stato.atIso || null, etaMs: l.etaMs, motivo: l.motivo };
     }
@@ -250,24 +261,58 @@ async function poll(deps = {}) {
   // ogni misura successiva erediterebbe quell'errore per sempre.
   const baselineRaw = deps.baselineRaw !== undefined ? deps.baselineRaw : readJson(baselineFile);
   const baseline = leggiBaseline(baselineRaw);
-  if (!baseline.valido) {
-    if (!capitale.leggibile) {
-      return { azione: 'attesa-baseline', motivo: `baseline da creare ma il capitale non è leggibile (${capitale.motivo}) — non si fissa un punto zero su una lettura fallita` };
-    }
-    const nuovo = baselineDaScrivere({ capitale, now, motivo: baselineRaw ? 'baseline precedente illeggibile' : 'primo avvio' });
-    try { scrivi(baselineFile, nuovo); } catch (e) { return { azione: 'baseline-non-scritto', motivo: e.message }; }
-    log(`baseline fissato: $${nuovo.baselineUsd.toFixed(2)} (saldo $${Number(capitale.saldoUsd).toFixed(2)} + posizioni $${Number(capitale.valorePosizioniUsd).toFixed(2)} su ${capitale.posizioni.length} mercati).`
-      + ' Sopravvive ai riavvii: si azzera solo cancellando il file a mano.');
-    return { azione: 'baseline-creato', baselineUsd: nuovo.baselineUsd };
+  if (!capitale.leggibile) {
+    // NON si scatta al buio, e NON si tocca il riferimento al buio. Vedi il blocco in cima a
+    // guardian-perdite: un saldo illeggibile letto come zero sarebbe «perdita del 100%», cioè una
+    // spazzata totale causata da un RPC lento. Questa guardia sta PRIMA del riferimento di proposito:
+    // un massimo mobile aggiornato su una lettura fallita resterebbe sbagliato per sempre.
+    return { azione: baseline.valido ? 'capitale-illeggibile' : 'attesa-baseline',
+      motivo: baseline.valido ? capitale.motivo
+        : `riferimento da creare ma il capitale non è leggibile (${capitale.motivo}) — non si fissa un punto zero su una lettura fallita` };
   }
 
-  if (!capitale.leggibile) {
-    // NON si scatta al buio. Vedi il blocco in cima a guardian-perdite: un saldo illeggibile letto come
-    // zero sarebbe «perdita del 100%», cioè una spazzata totale causata da un RPC lento.
-    return { azione: 'capitale-illeggibile', motivo: capitale.motivo };
+  // ── IL RIFERIMENTO: MASSIMO MOBILE, SPOSTATO DAI MOVIMENTI DI CASSA ESTERNI ──────────────────────
+  // Sostituisce la baseline-fotografia di §5.2 p.14, che con un deposito faceva fallire il guardiano
+  // APERTO. Si aggiorna a OGNI giro e si riscrive solo quando cambia davvero.
+  const rif = aggiornaRiferimento({ stato: baselineRaw, capitale, now });
+  if (rif.cambiato && rif.stato) {
+    try { scrivi(baselineFile, rif.stato); } catch (e) { return { azione: 'riferimento-non-scritto', motivo: e.message }; }
+    log(`riferimento aggiornato: $${Number(rif.riferimentoUsd).toFixed(2)} — ${rif.motivo}.`
+      + (rif.movimento && rif.movimento.esterno
+        ? ' ⚠ MOVIMENTO DI CASSA ESTERNO riconosciuto: non entra nel P&L.' : ''));
+    try {
+      (deps.audit || audit)({ ts: now, venue: 'polymarket', source: 'agent43-guardian',
+        op: 'guardian-riferimento',
+        outcome: rif.movimento && rif.movimento.esterno ? 'movimento-cassa-esterno' : 'nuovo-massimo',
+        observed: { riferimentoUsd: rif.riferimentoUsd, totaleUsd: capitale.totaleUsd,
+          movimentoUsd: rif.movimento ? rif.movimento.movimentoUsd : null,
+          movimentiEsterniCumulatiUsd: rif.stato.movimentiEsterniUsd },
+        reason: rif.motivo });
+    } catch { /* un audit che non riesce non ferma il guardiano */ }
   }
+  if (!Number.isFinite(Number(rif.riferimentoUsd))) {
+    return { azione: 'attesa-baseline', motivo: `riferimento non calcolabile: ${rif.motivo}` };
+  }
+  if (rif.creato === true) {
+    // Contratto invariato dal 7 agosto: alla creazione da zero il giro si chiude qui. Non c'e' niente
+    // da giudicare — il drawdown e' zero per costruzione — e il log resta quello che l'operatore conosce.
+    log(`riferimento fissato: $${Number(rif.riferimentoUsd).toFixed(2)} (saldo $${Number(capitale.saldoUsd).toFixed(2)} + posizioni $${Number(capitale.valorePosizioniUsd).toFixed(2)} su ${capitale.posizioni.length} mercati).`
+      + ' E\' un MASSIMO MOBILE: sale coi guadagni, si sposta coi depositi e i prelievi, e non invecchia.');
+    return { azione: 'baseline-creato', baselineUsd: Number(rif.riferimentoUsd) };
+  }
+  // Da qui in poi `baseline.baselineUsd` E' il riferimento: una sola grandezza, un solo nome a valle.
+  baseline.valido = true;
+  baseline.baselineUsd = Number(rif.riferimentoUsd);
 
   const pnl = calcolaPnl({ baselineUsd: baseline.baselineUsd, totaleUsd: capitale.totaleUsd });
+  // ⚠ LA SOGLIA ASSOLUTA E' DERIVATA DAL RIFERIMENTO, non piu' i $30 fissi del .env: su $2.150 quei
+  // $30 valevano l'1,4% e avrebbero fatto scattare il guardiano su rumore di mercato. Il valore del
+  // .env resta come PAVIMENTO in dollari, cioe' morde sui conti piccoli.
+  const abs = sogliaAssoluta({ riferimentoUsd: baseline.baselineUsd,
+    pavimentoUsd: soglie.absPavimento, frazione: soglie.absFrazione });
+  soglie.abs = abs.sogliaUsd;
+  soglie.absDerivata = abs.derivata;
+  soglie.absMotivo = abs.motivo;
   const decisione = decidiScatto({ pnl, sogliaPct: soglie.pct, sogliaAbs: soglie.abs });
 
   // ── LA PERSISTENZA: NON SI SCATTA SULLA PRIMA LETTURA ────────────────────────────────────────────

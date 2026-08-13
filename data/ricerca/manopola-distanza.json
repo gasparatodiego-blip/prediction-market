@@ -1,0 +1,60 @@
+{
+ "generatoAl": "2026-08-13T21:32:51.211Z",
+ "capitale": 2149.88,
+ "tettoPerMercato": 61.25,
+ "mercatiUtili": 50,
+ "mercatiCoperti": 35,
+ "vModale": 4.5,
+ "finestre60s": 37410,
+ "mercatiNellaSerie": 89,
+ "righe": [
+  {
+   "moltiplicatore": 1,
+   "distanzaC": 1,
+   "frazioneDiV": 0.222,
+   "S": 0.6049,
+   "rewardModellatoGiorno": 534.38,
+   "rewardVsOggiPct": 0,
+   "quotaFinestreOltre": 0.42954,
+   "fillAlGiornoAtteso": 4.6,
+   "fillEvitatiAlGiorno": 0,
+   "risparmioUscitaGiorno": 0
+  },
+  {
+   "moltiplicatore": 1.5,
+   "distanzaC": 1.5,
+   "frazioneDiV": 0.333,
+   "S": 0.4444,
+   "rewardModellatoGiorno": 433.01,
+   "rewardVsOggiPct": -19,
+   "quotaFinestreOltre": 0.41048,
+   "fillAlGiornoAtteso": 4.4,
+   "fillEvitatiAlGiorno": 0.2,
+   "risparmioUscitaGiorno": 0.0022
+  },
+  {
+   "moltiplicatore": 2,
+   "distanzaC": 2,
+   "frazioneDiV": 0.444,
+   "S": 0.3086,
+   "rewardModellatoGiorno": 329.72,
+   "rewardVsOggiPct": -38.3,
+   "quotaFinestreOltre": 0.40682,
+   "fillAlGiornoAtteso": 4.36,
+   "fillEvitatiAlGiorno": 0.24,
+   "risparmioUscitaGiorno": 0.0026
+  },
+  {
+   "moltiplicatore": 2.5,
+   "distanzaC": 2.5,
+   "frazioneDiV": 0.556,
+   "S": 0.1975,
+   "rewardModellatoGiorno": 230.17,
+   "rewardVsOggiPct": -56.9,
+   "quotaFinestreOltre": 0.3861,
+   "fillAlGiornoAtteso": 4.13,
+   "fillEvitatiAlGiorno": 0.47,
+   "risparmioUscitaGiorno": 0.0051
+  }
+ ]
+}
