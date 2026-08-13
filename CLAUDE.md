@@ -1277,6 +1277,28 @@ modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà**
 testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
 auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
 
+**150 · COSA FANNO GLI ALTRI DOPO UN FILL — sola ricerca.** Misura in
+`data/ricerca/sintesi-post-fill.md`; script `post-fill.js`. **82 wallet** (30 top + 30 casuali della
+fascia $10–100/g + i 21 del manuale + noi), **138.894 trade, 35.520 episodi**, finestra ~26 h, 178 s,
+zero rate-limit. Fonte: `data-api.polymarket.com/activity`, paginato, che distingue **TRADE / MERGE /
+REDEEM** — la ricostruzione fill-per-fill È possibile.
+**⚠ NON misurabile, e nessuna conclusione ci poggia**: maker contro taker (`activity` non porta il
+flag) e lo spread puro (il book storico non è ricostruibile: il «costo di uscita» è un limite superiore).
+**Vie d'uscita aggregate**: mai chiusa **37,3%** · vendita 34,4% · **redeem 18,4%** · merge 9,9%.
+**⚠ SIAMO GIÀ MEGLIO SU TRE ASSI SU QUATTRO, misurato**: durata mediana **21,8 min** contro 121,5
+(top30), 167,3 (i21), 489,3 (media) · **merge 43%** contro 1-5% di tutti gli altri · costo di uscita
+**0,25 ¢/share** contro 1,24 dei top30.
+**⚠ L'UNICO PUNTO IN CUI SIAMO PEGGIO SONO I RESIDUI (18,0% contro 8,3-13,4%), E LA CAUSA NON È LA
+SIZE**: la correlazione taglio-ordine ↔ quota-residui è **−0,141**, cioè quasi nulla, e il nostro
+$10,50 è già nella fascia migliore. La causa è **la via d'uscita**: i sei wallet con meno residui
+(0,2-2,6%) escono via **redeem all'87-98%**, e il settimo fa **54% merge in 1,2 min**. La size minima
+di 20 share vincola gli **ORDINI**, non il merge né il redeem — noi abbiamo residui perché proviamo a
+*scambiare* per uscire.
+**Conseguenza operativa**: le 10 posizioni per **$50,32** bloccate sotto il minimo (§5.2 p.1, §5-bis
+p.123) non hanno bisogno di un ordine più grande, hanno bisogno del **redeem** — che non ha minimo.
+**⚠ Limite dichiarato: la nostra riga poggia su 61 episodi in 26 ore** contro migliaia degli altri.
+Le differenze a nostro favore vanno riverificate su una finestra più lunga.
+
 **149 · CHI INCASSA DAVVERO I REWARD — sola ricerca, 30 giorni on-chain (14/07 → 12/08).** Misura
 completa in `data/ricerca/sintesi-incassatori.md`; script `raccogli-distribuzioni.js`,
 `analizza-incassatori.js`, `profila-top.js`.
