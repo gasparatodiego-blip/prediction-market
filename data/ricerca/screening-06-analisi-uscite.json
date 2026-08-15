@@ -1,0 +1,219 @@
+{
+  "generatoIl": "2026-08-15T13:49:17.134Z",
+  "parametri": {
+    "giorni": 7,
+    "orizzonteH": 24,
+    "finestraUnioneS": 120
+  },
+  "wallet": 65,
+  "eventiClassificati": 62525,
+  "censurati": 3494,
+  "copertura": {
+    "oreMediana": 262.25194444444446,
+    "oreMin": 33.22833333333333,
+    "oreMax": 5958.5055555555555
+  },
+  "complessivo": {
+    "etichetta": "tutti i 65",
+    "eventi": 62525,
+    "distribuzione": {
+      "A": {
+        "n": 20063,
+        "pct": 32.1
+      },
+      "B": {
+        "n": 10368,
+        "pct": 16.6
+      },
+      "C": {
+        "n": 9731,
+        "pct": 15.6
+      },
+      "D": {
+        "n": 21038,
+        "pct": 33.6
+      },
+      "E": {
+        "n": 1325,
+        "pct": 2.1
+      }
+    },
+    "A": {
+      "n": 20063,
+      "costoCoppiaCents": {
+        "q25": 98,
+        "mediana": 100,
+        "q75": 102
+      },
+      "quotaSopra100": 43.8,
+      "quotaSopra110": 6.2,
+      "quotaSopra120": 1.5,
+      "tempoSec": {
+        "q25": 102,
+        "mediana": 1713,
+        "q75": 9954
+      },
+      "quotaCompletamentoTaker": 24,
+      "quotaEntroUnMinuto": 21.8,
+      "quotaEntroUnOra": 60.5
+    },
+    "B": {
+      "n": 10368,
+      "deltaCents": {
+        "q25": -2.9999999999999973,
+        "mediana": -0.8900000000000019,
+        "q75": 0.30000000000000027
+      },
+      "quotaInPerdita": 56.9,
+      "tempoSec": {
+        "q25": 19,
+        "mediana": 391,
+        "q75": 5630
+      },
+      "quotaRivenditaTaker": 64.4
+    },
+    "quotaIngressoTaker": 19.9
+  },
+  "C": {
+    "n": 9731,
+    "mercatiDistinti": 4942,
+    "scadenzaTrovata": 9052,
+    "senzaScadenza": 679,
+    "troncato": false,
+    "realizzate": {
+      "n": 4702,
+      "q25": 17988,
+      "mediana": 55998,
+      "q75": 128006
+    },
+    "previste": {
+      "n": 4350,
+      "q25": 1748691,
+      "mediana": 4493121,
+      "q75": 12139481
+    }
+  },
+  "sogliaRewards": 418.21870000000007,
+  "rewardsAlti": {
+    "etichetta": "rewards ≥ $418",
+    "eventi": 54228,
+    "distribuzione": {
+      "A": {
+        "n": 18532,
+        "pct": 34.2
+      },
+      "B": {
+        "n": 7012,
+        "pct": 12.9
+      },
+      "C": {
+        "n": 8450,
+        "pct": 15.6
+      },
+      "D": {
+        "n": 19167,
+        "pct": 35.3
+      },
+      "E": {
+        "n": 1067,
+        "pct": 2
+      }
+    },
+    "A": {
+      "n": 18532,
+      "costoCoppiaCents": {
+        "q25": 98,
+        "mediana": 100,
+        "q75": 102
+      },
+      "quotaSopra100": 44.9,
+      "quotaSopra110": 6.4,
+      "quotaSopra120": 1.6,
+      "tempoSec": {
+        "q25": 100,
+        "mediana": 1675,
+        "q75": 10176
+      },
+      "quotaCompletamentoTaker": 24.8,
+      "quotaEntroUnMinuto": 22,
+      "quotaEntroUnOra": 60.4
+    },
+    "B": {
+      "n": 7012,
+      "deltaCents": {
+        "q25": -3.9999999999999925,
+        "mediana": -1.0000000000000009,
+        "q75": 0
+      },
+      "quotaInPerdita": 60.1,
+      "tempoSec": {
+        "q25": 10,
+        "mediana": 237,
+        "q75": 4604
+      },
+      "quotaRivenditaTaker": 68.1
+    },
+    "quotaIngressoTaker": 21.5
+  },
+  "rewardsBassi": {
+    "etichetta": "rewards < $418",
+    "eventi": 8297,
+    "distribuzione": {
+      "A": {
+        "n": 1531,
+        "pct": 18.5
+      },
+      "B": {
+        "n": 3356,
+        "pct": 40.4
+      },
+      "C": {
+        "n": 1281,
+        "pct": 15.4
+      },
+      "D": {
+        "n": 1871,
+        "pct": 22.6
+      },
+      "E": {
+        "n": 258,
+        "pct": 3.1
+      }
+    },
+    "A": {
+      "n": 1531,
+      "costoCoppiaCents": {
+        "q25": 98,
+        "mediana": 99.5,
+        "q75": 101
+      },
+      "quotaSopra100": 31.3,
+      "quotaSopra110": 3,
+      "quotaSopra120": 0.7,
+      "tempoSec": {
+        "q25": 135,
+        "mediana": 2151,
+        "q75": 7793
+      },
+      "quotaCompletamentoTaker": 13.7,
+      "quotaEntroUnMinuto": 18.8,
+      "quotaEntroUnOra": 60.8
+    },
+    "B": {
+      "n": 3356,
+      "deltaCents": {
+        "q25": -1.9999999999999962,
+        "mediana": -0.029999999999996696,
+        "q75": 1.0000000000000009
+      },
+      "quotaInPerdita": 50.1,
+      "tempoSec": {
+        "q25": 33,
+        "mediana": 951,
+        "q75": 7454
+      },
+      "quotaRivenditaTaker": 56.7
+    },
+    "quotaIngressoTaker": 9.4
+  }
+}

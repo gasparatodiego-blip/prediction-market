@@ -1,5 +1,5 @@
 {
-  "generatoIl": "2026-08-15T13:20:01.553Z",
+  "generatoIl": "2026-08-15T13:37:34.288Z",
   "finestra": {
     "da": "2026-08-02",
     "a": "2026-08-15",
@@ -15,6 +15,333 @@
   },
   "passati": 65,
   "passatiNelBatchDei400": 10,
+  "passatiWallet": [
+    {
+      "wallet": "0x30fb41b5a08fff5d3dd983f6323e3343931a7db4",
+      "rewards14g": 49457.7258,
+      "quotaDueLati": 0.3933649289099526
+    },
+    {
+      "wallet": "0x403f2471f8aaa1e8a224f1338b073bfa3fdb94f1",
+      "rewards14g": 9851.041,
+      "quotaDueLati": 0.3333333333333333
+    },
+    {
+      "wallet": "0x5c0af092b533934008144d223d704b4cbebfa2c3",
+      "rewards14g": 8220.026899999999,
+      "quotaDueLati": 0.3119266055045872
+    },
+    {
+      "wallet": "0xeed8c2be411025120fb511ea2332dd0a1f6135f0",
+      "rewards14g": 8182.2235,
+      "quotaDueLati": 0.6232558139534884
+    },
+    {
+      "wallet": "0xf7aa193b1d7c880db7f8e2bde9177c4559a8ddd6",
+      "rewards14g": 5146.0327,
+      "quotaDueLati": 0.8428571428571429
+    },
+    {
+      "wallet": "0x4b8ae011176b76888949476d7fb7a56985faf4a4",
+      "rewards14g": 4773.897199999999,
+      "quotaDueLati": 0.30833333333333335
+    },
+    {
+      "wallet": "0x4c9affa3a4f5ba6b9ab3dd272c20e47ea47e0cd4",
+      "rewards14g": 3987.4722999999994,
+      "quotaDueLati": 0.32967032967032966
+    },
+    {
+      "wallet": "0x2d6ce0b703efb60f8f356246bcdb98544a54e3f5",
+      "rewards14g": 3808.3664000000003,
+      "quotaDueLati": 0.5189873417721519
+    },
+    {
+      "wallet": "0x44354bfba2a60adacb5c80f09952ed9cbeb8786f",
+      "rewards14g": 3283.4293,
+      "quotaDueLati": 0.30656934306569344
+    },
+    {
+      "wallet": "0x9edafdc25b112e399374f72863eb5231e7d86e19",
+      "rewards14g": 3033.9741,
+      "quotaDueLati": 0.3037037037037037
+    },
+    {
+      "wallet": "0xd49829353a5e33f4d29bf976ac9be8bde744a6c5",
+      "rewards14g": 2955.3695000000002,
+      "quotaDueLati": 0.32432432432432434
+    },
+    {
+      "wallet": "0x204b382df532a8106768ccceaf699a89c4ed8ca3",
+      "rewards14g": 2475.8230000000003,
+      "quotaDueLati": 0.40816326530612246
+    },
+    {
+      "wallet": "0x41e6de55cf3bd608b50952f681dfb562187466b7",
+      "rewards14g": 1827.2179,
+      "quotaDueLati": 0.562962962962963
+    },
+    {
+      "wallet": "0xc50c05d454f0681ea57b254df8ad97bc210f3017",
+      "rewards14g": 1734.5769,
+      "quotaDueLati": 0.6766467065868264
+    },
+    {
+      "wallet": "0xa6dcc89a31d7d68c961969eed282690ed41912ec",
+      "rewards14g": 1662.3614999999998,
+      "quotaDueLati": 0.5555555555555556
+    },
+    {
+      "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+      "rewards14g": 1626.9805000000001,
+      "quotaDueLati": 0.75
+    },
+    {
+      "wallet": "0x87ec6cd961d326bd6caa54b8a2a194440522138f",
+      "rewards14g": 1616.5431999999998,
+      "quotaDueLati": 0.7096774193548387
+    },
+    {
+      "wallet": "0xf2f2df41cd3ff33147e622869ac052ce5ad2d1f0",
+      "rewards14g": 1520.8048,
+      "quotaDueLati": 0.35353535353535354
+    },
+    {
+      "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+      "rewards14g": 1353.6626999999999,
+      "quotaDueLati": 0.5142857142857142
+    },
+    {
+      "wallet": "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+      "rewards14g": 982.9163000000001,
+      "quotaDueLati": 0.8309859154929577
+    },
+    {
+      "wallet": "0x0503c17bfdedab64c1d70d1768f11c00a1db4155",
+      "rewards14g": 871.974,
+      "quotaDueLati": 0.6813186813186813
+    },
+    {
+      "wallet": "0x3b6930e90b206755a20e89f7bae00588391e01d7",
+      "rewards14g": 852.7384,
+      "quotaDueLati": 0.4077669902912621
+    },
+    {
+      "wallet": "0x2e62eddf5acffa59a97706de674348a2e600b22e",
+      "rewards14g": 740.105,
+      "quotaDueLati": 0.38596491228070173
+    },
+    {
+      "wallet": "0xc37d459c8124f8d3d69a7fce81a60d63ec6db48c",
+      "rewards14g": 671.8379,
+      "quotaDueLati": 0.8138297872340425
+    },
+    {
+      "wallet": "0x19243fa24e3a6097d1145680259dde028650dff3",
+      "rewards14g": 658.7091999999999,
+      "quotaDueLati": 0.3706293706293706
+    },
+    {
+      "wallet": "0x45a22737a76fafd5dd101eb0dc6030986eb13c01",
+      "rewards14g": 637.7937,
+      "quotaDueLati": 0.4
+    },
+    {
+      "wallet": "0xffee18b118b9ea6c3062a4ce3aabd51cbcdaea6b",
+      "rewards14g": 568.6125000000001,
+      "quotaDueLati": 0.7956204379562044
+    },
+    {
+      "wallet": "0xcf006e28309313be21b36d22bde515882182353f",
+      "rewards14g": 526.978,
+      "quotaDueLati": 0.38181818181818183
+    },
+    {
+      "wallet": "0xb40e89677d59665d5188541ad860450a6e2a7cc9",
+      "rewards14g": 488.6086,
+      "quotaDueLati": 0.3584905660377358
+    },
+    {
+      "wallet": "0x7cd6fab8b2fa66f53e1c1252245ad1245cb8b33c",
+      "rewards14g": 480.2106999999999,
+      "quotaDueLati": 0.453125
+    },
+    {
+      "wallet": "0x82ae434f983771a5bc94092a6850da80368e2890",
+      "rewards14g": 469.1427,
+      "quotaDueLati": 0.8947368421052632
+    },
+    {
+      "wallet": "0x2f5242b73c0f0222b44f5b35351ebf9c0d339fba",
+      "rewards14g": 436.1923,
+      "quotaDueLati": 0.631578947368421
+    },
+    {
+      "wallet": "0x8f13db915cca106e6330e8a39996c0a875d8daae",
+      "rewards14g": 418.21870000000007,
+      "quotaDueLati": 0.35294117647058826
+    },
+    {
+      "wallet": "0x16a092c7d8a641e94016ed6a785fac4b713a227f",
+      "rewards14g": 384.5957,
+      "quotaDueLati": 0.42857142857142855
+    },
+    {
+      "wallet": "0xcd73809735f8a76552295611f8171a67f9f5f7ad",
+      "rewards14g": 282.63649999999996,
+      "quotaDueLati": 0.59375
+    },
+    {
+      "wallet": "0x3cd2bccc76e77916da8350289a456c75d239c545",
+      "rewards14g": 265.9989,
+      "quotaDueLati": 0.348993288590604
+    },
+    {
+      "wallet": "0xee25992b23adb27fdf2ba2f765b5790dda7963cc",
+      "rewards14g": 255.80370000000002,
+      "quotaDueLati": 0.48
+    },
+    {
+      "wallet": "0x51ae4fd822503e81be9ea9d5d5e76500c309ce30",
+      "rewards14g": 255.50349999999997,
+      "quotaDueLati": 0.3191489361702128
+    },
+    {
+      "wallet": "0x23ea5743b4a7c8264090220157c7bb6a8d255a98",
+      "rewards14g": 229.59380000000004,
+      "quotaDueLati": 0.7530120481927711
+    },
+    {
+      "wallet": "0x40e4d8ad998bea126b20f3534b540fbf34866ef7",
+      "rewards14g": 221.61390000000006,
+      "quotaDueLati": 0.32727272727272727
+    },
+    {
+      "wallet": "0xd3ecc080c3153881f838c9ff1e72cd60ae680a13",
+      "rewards14g": 201.30159999999998,
+      "quotaDueLati": 0.4444444444444444
+    },
+    {
+      "wallet": "0xe5fca09203243073a269b23be9b59139b9fd4c49",
+      "rewards14g": 194.7878,
+      "quotaDueLati": 0.532258064516129
+    },
+    {
+      "wallet": "0x91fc54f2ae283dd4454b0bf52c8b208dedc20109",
+      "rewards14g": 187.3301,
+      "quotaDueLati": 0.35714285714285715
+    },
+    {
+      "wallet": "0x5cb8165affd8de9f8a2943fda90245dfe73b7809",
+      "rewards14g": 157.64570000000003,
+      "quotaDueLati": 0.6915887850467289
+    },
+    {
+      "wallet": "0x64befd4360723d4fd0ad845b99dd69f14b3ac653",
+      "rewards14g": 148.6088,
+      "quotaDueLati": 0.7291666666666666
+    },
+    {
+      "wallet": "0x2cc0c99d67eb1e06330418104a7529ec466104c0",
+      "rewards14g": 144.503,
+      "quotaDueLati": 0.31666666666666665
+    },
+    {
+      "wallet": "0x5c9eaa3575461ae1ead71b4b365b077c0af0bdb6",
+      "rewards14g": 141.103,
+      "quotaDueLati": 0.3020833333333333
+    },
+    {
+      "wallet": "0x19f158c6376882a4bcc012e817eed3f09be586bc",
+      "rewards14g": 133.18439999999998,
+      "quotaDueLati": 0.32
+    },
+    {
+      "wallet": "0xc975d7bcf7363c8ca1046753c49a5bf95a531983",
+      "rewards14g": 129.13049999999998,
+      "quotaDueLati": 0.39436619718309857
+    },
+    {
+      "wallet": "0x0cbb4364d1b617a7e52fa14abae056205bf1b9d1",
+      "rewards14g": 124.27799999999998,
+      "quotaDueLati": 0.44
+    },
+    {
+      "wallet": "0x76b3b657068c3130e872a54681bb1c5d75bac36a",
+      "rewards14g": 117.557,
+      "quotaDueLati": 0.34285714285714286
+    },
+    {
+      "wallet": "0xf847df60af3d028b82949c7b76882a2a9244ee6a",
+      "rewards14g": 102.98559999999999,
+      "quotaDueLati": 0.3064516129032258
+    },
+    {
+      "wallet": "0x256818aca89f3b3012e82831ecf856bf6055ef92",
+      "rewards14g": 89.55560000000001,
+      "quotaDueLati": 0.38064516129032255
+    },
+    {
+      "wallet": "0x6f1cabe66d3d7c7ebdbb0437cde8d88e323eeffa",
+      "rewards14g": 79.54450000000001,
+      "quotaDueLati": 0.3898305084745763
+    },
+    {
+      "wallet": "0x758ae553acc82337cec98f89a8a5d0ad0034f23c",
+      "rewards14g": 76.1243,
+      "quotaDueLati": 0.3
+    },
+    {
+      "wallet": "0x99dd407b80e45874638d783f54b0d8c097544303",
+      "rewards14g": 70.5822,
+      "quotaDueLati": 1
+    },
+    {
+      "wallet": "0x9b3f000102cdd6c22d4b676f222728538bcc2e7c",
+      "rewards14g": 66.51710000000001,
+      "quotaDueLati": 0.5454545454545454
+    },
+    {
+      "wallet": "0xbe1a34ce895c2e730c2c3702095df4752994bd22",
+      "rewards14g": 60.3179,
+      "quotaDueLati": 0.7467532467532467
+    },
+    {
+      "wallet": "0x81abf8e4680cb2c6f94e3763daeeb9826e5d799a",
+      "rewards14g": 58.58200000000001,
+      "quotaDueLati": 0.3466666666666667
+    },
+    {
+      "wallet": "0x6bcd48f75827ddb6f965f7d96727e10adc3406b9",
+      "rewards14g": 52.16400000000001,
+      "quotaDueLati": 0.5263157894736842
+    },
+    {
+      "wallet": "0x3150113acc90e6fb128ce529597de3bdffbe3be9",
+      "rewards14g": 45.51079999999999,
+      "quotaDueLati": 0.6923076923076923
+    },
+    {
+      "wallet": "0xaea5685107f6b48cbb95e4c4a022c290c6659f69",
+      "rewards14g": 44.2495,
+      "quotaDueLati": 0.42857142857142855
+    },
+    {
+      "wallet": "0xf5d1d070865cfac18c29aa9fc12eda659b9767cc",
+      "rewards14g": 41.677200000000006,
+      "quotaDueLati": 0.36923076923076925
+    },
+    {
+      "wallet": "0xd211865ad25b4c5527fd0d9f40e3bcb02007628b",
+      "rewards14g": 41.36450000000001,
+      "quotaDueLati": 0.3125
+    },
+    {
+      "wallet": "0xc36fd737fb6ae96a69eda33cd8c443b41bb87422",
+      "rewards14g": 35.3201,
+      "quotaDueLati": 0.6425531914893617
+    }
+  ],
   "primi20": [
     {
       "wallet": "0x30fb41b5a08fff5d3dd983f6323e3343931a7db4",
@@ -449,8 +776,8 @@
       "valoreGruppo": 1798.9722000000002,
       "minSize": 200,
       "maxSpread": 4.5,
-      "volume24h": 169378.05079599997,
-      "liquidita": 574669.4224,
+      "volume24h": 168264.139219,
+      "liquidita": 574568.6961,
       "chiuso": false
     },
     {
@@ -464,8 +791,8 @@
       "valoreGruppo": 2300.5828,
       "minSize": 50,
       "maxSpread": 4.5,
-      "volume24h": 63959.011419,
-      "liquidita": 264598.69161,
+      "volume24h": 64476.360550000005,
+      "liquidita": 160742.25781,
       "chiuso": false
     },
     {
@@ -479,8 +806,8 @@
       "valoreGruppo": 276.4128,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 26676.807082,
-      "liquidita": 163594.7648,
+      "volume24h": 26480.164893,
+      "liquidita": 163317.1377,
       "chiuso": false
     },
     {
@@ -494,8 +821,8 @@
       "valoreGruppo": 211.3451,
       "minSize": 50,
       "maxSpread": 4.5,
-      "volume24h": 48108.750469,
-      "liquidita": 130832.00956,
+      "volume24h": 48133.720033,
+      "liquidita": 131050.2536,
       "chiuso": false
     },
     {
@@ -509,8 +836,8 @@
       "valoreGruppo": 115.7791,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 6281.560431999999,
-      "liquidita": 2236.2503,
+      "volume24h": 6245.056729999999,
+      "liquidita": 1436.2758,
       "chiuso": false
     },
     {
@@ -525,7 +852,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 31959.887446999997,
-      "liquidita": 111075.42066,
+      "liquidita": 110356.813,
       "chiuso": false
     },
     {
@@ -539,8 +866,8 @@
       "valoreGruppo": 58.5077,
       "minSize": 200,
       "maxSpread": 2.5,
-      "volume24h": 107965.334982,
-      "liquidita": 89252.8988,
+      "volume24h": 108493.001647,
+      "liquidita": 92376.7782,
       "chiuso": false
     },
     {
@@ -554,8 +881,8 @@
       "valoreGruppo": 107.5788,
       "minSize": 200,
       "maxSpread": 4.5,
-      "volume24h": 140207.84526099998,
-      "liquidita": 535030.1725,
+      "volume24h": 139657.84526099998,
+      "liquidita": 531473.1814,
       "chiuso": false
     },
     {
@@ -570,7 +897,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 2080.278414,
-      "liquidita": 2458.4328,
+      "liquidita": 2591.5149,
       "chiuso": false
     },
     {
@@ -584,8 +911,8 @@
       "valoreGruppo": 452.4276,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 16619.725284000004,
-      "liquidita": 985.3086,
+      "volume24h": 15553.648989000001,
+      "liquidita": 1075.77799,
       "chiuso": false
     },
     {
@@ -599,8 +926,8 @@
       "valoreGruppo": 372.16389999999996,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 7197.722267000001,
-      "liquidita": 4445.1822,
+      "volume24h": 7187.722267000001,
+      "liquidita": 4203.8626,
       "chiuso": false
     },
     {
@@ -615,7 +942,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 9874.497776,
-      "liquidita": 17052.6251,
+      "liquidita": 17779.5862,
       "chiuso": false
     },
     {
@@ -630,7 +957,7 @@
       "minSize": 20,
       "maxSpread": 5.5,
       "volume24h": 5498.5678179999995,
-      "liquidita": 13499.7168,
+      "liquidita": 13499.2668,
       "chiuso": false
     },
     {
@@ -644,8 +971,8 @@
       "valoreGruppo": 138.95319999999998,
       "minSize": 200,
       "maxSpread": 4.5,
-      "volume24h": 222329.56704599998,
-      "liquidita": 126545.4637,
+      "volume24h": 223659.58427099997,
+      "liquidita": 108262.0437,
       "chiuso": false
     },
     {
@@ -659,8 +986,8 @@
       "valoreGruppo": 91,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 69819.93268900001,
-      "liquidita": 195989.191,
+      "volume24h": 62907.762688999996,
+      "liquidita": 197451.7114,
       "chiuso": false
     },
     {
@@ -674,8 +1001,8 @@
       "valoreGruppo": 112.5,
       "minSize": 200,
       "maxSpread": 4.5,
-      "volume24h": 8420.258779,
-      "liquidita": 95066.7018,
+      "volume24h": 8418.907429,
+      "liquidita": 89038.5145,
       "chiuso": false
     },
     {
@@ -689,8 +1016,8 @@
       "valoreGruppo": 89.0423,
       "minSize": 50,
       "maxSpread": 4.5,
-      "volume24h": 3945.22673,
-      "liquidita": 5933.28538,
+      "volume24h": 4383.45673,
+      "liquidita": 5984.83301,
       "chiuso": false
     },
     {
@@ -704,8 +1031,8 @@
       "valoreGruppo": 165.6412,
       "minSize": 50,
       "maxSpread": 4.5,
-      "volume24h": 13862.052009,
-      "liquidita": 3866.57033,
+      "volume24h": 13931.652009000001,
+      "liquidita": 4262.51154,
       "chiuso": false
     },
     {
@@ -719,8 +1046,8 @@
       "valoreGruppo": 111.2633,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 5136.25007,
-      "liquidita": 4341.8454,
+      "volume24h": 5374.427024,
+      "liquidita": 7305.4953,
       "chiuso": false
     },
     {
@@ -735,7 +1062,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 3580.050321,
-      "liquidita": 4407.4967,
+      "liquidita": 3343.8034,
       "chiuso": false
     },
     {
@@ -747,10 +1074,10 @@
       "makerConTrade": 6,
       "makerUnione": 7,
       "valoreGruppo": 462.8696,
-      "minSize": 100,
+      "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 14790.953221,
-      "liquidita": 345.4595,
+      "volume24h": 15260.034911,
+      "liquidita": 381.6346,
       "chiuso": false
     },
     {
@@ -765,7 +1092,7 @@
       "minSize": 100,
       "maxSpread": 4.5,
       "volume24h": 7252.116160999999,
-      "liquidita": 1420.2366,
+      "liquidita": 2067.3874,
       "chiuso": false
     },
     {
@@ -779,8 +1106,8 @@
       "valoreGruppo": 207.73700000000002,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 3781.947304999999,
-      "liquidita": 5247.4895,
+      "volume24h": 3779.447304999999,
+      "liquidita": 5087.0795,
       "chiuso": false
     },
     {
@@ -794,8 +1121,8 @@
       "valoreGruppo": 176.1538,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 10905.800810000002,
-      "liquidita": 390.5,
+      "volume24h": 11327.123634,
+      "liquidita": 393.8501,
       "chiuso": false
     },
     {
@@ -809,8 +1136,8 @@
       "valoreGruppo": 567.9630999999999,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 11945.626685000003,
-      "liquidita": 4684.96974,
+      "volume24h": 11940.626685000003,
+      "liquidita": 4681.96974,
       "chiuso": false
     },
     {
@@ -825,7 +1152,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 2561.339134,
-      "liquidita": 2131.6051,
+      "liquidita": 2163.3825,
       "chiuso": false
     },
     {
@@ -840,7 +1167,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 2648.170926,
-      "liquidita": 13672.7445,
+      "liquidita": 13237.3788,
       "chiuso": false
     },
     {
@@ -854,8 +1181,8 @@
       "valoreGruppo": 45.618700000000004,
       "minSize": 20,
       "maxSpread": 5.5,
-      "volume24h": 1037.75,
-      "liquidita": 897.0536,
+      "volume24h": 1081.75,
+      "liquidita": 1439.2328,
       "chiuso": false
     },
     {
@@ -869,8 +1196,8 @@
       "valoreGruppo": 101.14580000000001,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 4063.3556189999995,
-      "liquidita": 3218.9805,
+      "volume24h": 4063.5556189999993,
+      "liquidita": 2763.8576,
       "chiuso": false
     },
     {
@@ -884,8 +1211,8 @@
       "valoreGruppo": 409.5321,
       "minSize": 50,
       "maxSpread": 4.5,
-      "volume24h": 7976.382777,
-      "liquidita": 16376.9844,
+      "volume24h": 7975.542777,
+      "liquidita": 15351.29883,
       "chiuso": false
     },
     {
@@ -900,7 +1227,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 13278.13673,
-      "liquidita": 41418.90444,
+      "liquidita": 39001.74206,
       "chiuso": false
     },
     {
@@ -914,8 +1241,8 @@
       "valoreGruppo": 164.2624,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 3124.198323,
-      "liquidita": 17826.7375,
+      "volume24h": 3074.198323,
+      "liquidita": 7047.4899,
       "chiuso": false
     },
     {
@@ -929,8 +1256,8 @@
       "valoreGruppo": 70.5384,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 2534.2777869999995,
-      "liquidita": 528.6082,
+      "volume24h": 2508.7013069999994,
+      "liquidita": 532.9579,
       "chiuso": false
     },
     {
@@ -944,8 +1271,8 @@
       "valoreGruppo": 57.170500000000004,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 1767.1130159999998,
-      "liquidita": 7965.76633,
+      "volume24h": 1806.683016,
+      "liquidita": 8968.10783,
       "chiuso": false
     },
     {
@@ -959,8 +1286,8 @@
       "valoreGruppo": 77.57169999999999,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 3021.8767639999996,
-      "liquidita": 13733.2656,
+      "volume24h": 3034.9499329999994,
+      "liquidita": 12933.4213,
       "chiuso": false
     },
     {
@@ -974,8 +1301,8 @@
       "valoreGruppo": 100.40320000000001,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 2393.413918,
-      "liquidita": 4966.6984,
+      "volume24h": 2506.8389180000004,
+      "liquidita": 5500.7866,
       "chiuso": false
     },
     {
@@ -990,7 +1317,7 @@
       "minSize": 50,
       "maxSpread": 6.5,
       "volume24h": 6603.818007999999,
-      "liquidita": 801.61277,
+      "liquidita": 994.71074,
       "chiuso": false
     },
     {
@@ -1005,7 +1332,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 2867.687489,
-      "liquidita": 9076.9607,
+      "liquidita": 11432.1904,
       "chiuso": false
     },
     {
@@ -1020,7 +1347,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 8429.443777999999,
-      "liquidita": 12415.1222,
+      "liquidita": 11462.4488,
       "chiuso": false
     },
     {
@@ -1035,7 +1362,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 3656.146095,
-      "liquidita": 15006.4461,
+      "liquidita": 14257.688,
       "chiuso": false
     },
     {
@@ -1050,7 +1377,7 @@
       "minSize": 200,
       "maxSpread": 5.5,
       "volume24h": 2194.2426140000002,
-      "liquidita": 325479.79865,
+      "liquidita": 327608.13411,
       "chiuso": false
     },
     {
@@ -1065,7 +1392,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 2714.8,
-      "liquidita": 829.2182,
+      "liquidita": 1137.0941,
       "chiuso": false
     },
     {
@@ -1079,8 +1406,8 @@
       "valoreGruppo": 60.99979999999999,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 23147.602096000002,
-      "liquidita": 21481.85522,
+      "volume24h": 22837.212096000003,
+      "liquidita": 21416.59121,
       "chiuso": false
     },
     {
@@ -1094,8 +1421,8 @@
       "valoreGruppo": 28.095,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 7267.2141440000005,
-      "liquidita": 773.5452,
+      "volume24h": 7261.811443000002,
+      "liquidita": 1141.4843,
       "chiuso": false
     },
     {
@@ -1110,7 +1437,7 @@
       "minSize": 20,
       "maxSpread": 5.5,
       "volume24h": 2780.2002330000005,
-      "liquidita": 114852.83029,
+      "liquidita": 114176.9977,
       "chiuso": false
     },
     {
@@ -1124,8 +1451,8 @@
       "valoreGruppo": 58.45,
       "minSize": 200,
       "maxSpread": 3.5,
-      "volume24h": 29432.54080800001,
-      "liquidita": 929045.9881,
+      "volume24h": 29555.99080800001,
+      "liquidita": 930811.1913,
       "chiuso": false
     },
     {
@@ -1139,8 +1466,8 @@
       "valoreGruppo": 0,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 5512.514061999999,
-      "liquidita": 3785.9644,
+      "volume24h": 5488.840586,
+      "liquidita": 2796.4056,
       "chiuso": false
     },
     {
@@ -1154,8 +1481,8 @@
       "valoreGruppo": 268.8722,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 4766.779161000001,
-      "liquidita": 1033.4236,
+      "volume24h": 4768.953073000001,
+      "liquidita": 911.0075,
       "chiuso": false
     },
     {
@@ -1169,8 +1496,8 @@
       "valoreGruppo": 198.39869999999996,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 4608.375282999999,
-      "liquidita": 354.7817,
+      "volume24h": 4625.981181999999,
+      "liquidita": 394.5595,
       "chiuso": false
     },
     {
@@ -1184,8 +1511,8 @@
       "valoreGruppo": 163.5101,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 6715.205643,
-      "liquidita": 4032.9353,
+      "volume24h": 6810.409276,
+      "liquidita": 4780.0898,
       "chiuso": false
     },
     {
@@ -1199,8 +1526,8 @@
       "valoreGruppo": 138.9681,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 3556.740849,
-      "liquidita": 10577.1055,
+      "volume24h": 3581.740849,
+      "liquidita": 11230.3902,
       "chiuso": false
     },
     {
@@ -1215,7 +1542,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 829.859051,
-      "liquidita": 577.86411,
+      "liquidita": 423.45286,
       "chiuso": false
     },
     {
@@ -1229,8 +1556,8 @@
       "valoreGruppo": 756.2677,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 9263.352697999999,
-      "liquidita": 5467.69423,
+      "volume24h": 9255.515284,
+      "liquidita": 5423.06054,
       "chiuso": false
     },
     {
@@ -1244,8 +1571,8 @@
       "valoreGruppo": 197.74,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 9719.654393999997,
-      "liquidita": 1630.595,
+      "volume24h": 9713.894393999997,
+      "liquidita": 1855.9485,
       "chiuso": false
     },
     {
@@ -1260,7 +1587,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 6720.786479999999,
-      "liquidita": 1108.2049,
+      "liquidita": 1196.71582,
       "chiuso": false
     },
     {
@@ -1274,8 +1601,8 @@
       "valoreGruppo": 121.7531,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 2828.4907610000005,
-      "liquidita": 5336.1459,
+      "volume24h": 2891.985354000001,
+      "liquidita": 3975.2121,
       "chiuso": false
     },
     {
@@ -1290,7 +1617,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 6477.490896,
-      "liquidita": 709.4437,
+      "liquidita": 706.8077,
       "chiuso": false
     },
     {
@@ -1305,7 +1632,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 133.19,
-      "liquidita": 2152.5847,
+      "liquidita": 2148.6847,
       "chiuso": false
     },
     {
@@ -1320,7 +1647,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 3186.9090549999996,
-      "liquidita": 695.1663,
+      "liquidita": 485.827,
       "chiuso": false
     },
     {
@@ -1335,7 +1662,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": null,
-      "liquidita": 930.4103,
+      "liquidita": 929.245,
       "chiuso": false
     },
     {
@@ -1349,8 +1676,8 @@
       "valoreGruppo": 271.1444,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 1298.8872159999999,
-      "liquidita": 11575.9233,
+      "volume24h": 1311.62531,
+      "liquidita": 11532.4272,
       "chiuso": false
     },
     {
@@ -1365,7 +1692,7 @@
       "minSize": 20,
       "maxSpread": 5.5,
       "volume24h": 53,
-      "liquidita": 1018.1641,
+      "liquidita": 987.1641,
       "chiuso": false
     },
     {
@@ -1380,7 +1707,7 @@
       "minSize": 50,
       "maxSpread": 5.5,
       "volume24h": 21863.041428,
-      "liquidita": 437682.12447,
+      "liquidita": 436309.43597,
       "chiuso": false
     },
     {
@@ -1395,7 +1722,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 7221.307107,
-      "liquidita": 12847.75751,
+      "liquidita": 12897.58219,
       "chiuso": false
     },
     {
@@ -1409,8 +1736,8 @@
       "valoreGruppo": 258.2464,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 10116.57555,
-      "liquidita": 939.27595,
+      "volume24h": 10217.517554,
+      "liquidita": 1069.3446,
       "chiuso": false
     },
     {
@@ -1424,8 +1751,8 @@
       "valoreGruppo": 166.6677,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 3166.395719,
-      "liquidita": 560.0166,
+      "volume24h": 3179.765719,
+      "liquidita": 590.0585,
       "chiuso": false
     },
     {
@@ -1440,7 +1767,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 2718.7930170000004,
-      "liquidita": 8134.3148,
+      "liquidita": 9081.2121,
       "chiuso": false
     },
     {
@@ -1454,8 +1781,8 @@
       "valoreGruppo": 104.858,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 3250.472534,
-      "liquidita": 3008.004,
+      "volume24h": 3255.472534,
+      "liquidita": 3832.4685,
       "chiuso": false
     },
     {
@@ -1470,7 +1797,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 247.10999999999999,
-      "liquidita": 832.8332,
+      "liquidita": 812.7334,
       "chiuso": false
     },
     {
@@ -1484,8 +1811,8 @@
       "valoreGruppo": 84.6259,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 5202.961106,
-      "liquidita": 3806.901,
+      "volume24h": 5170.92426,
+      "liquidita": 3564.1936,
       "chiuso": false
     },
     {
@@ -1499,8 +1826,8 @@
       "valoreGruppo": 64.8184,
       "minSize": 50,
       "maxSpread": 4.5,
-      "volume24h": 1316.097056,
-      "liquidita": 611.9355,
+      "volume24h": 1341.097056,
+      "liquidita": 393.3519,
       "chiuso": false
     },
     {
@@ -1514,8 +1841,8 @@
       "valoreGruppo": 46.3074,
       "minSize": 20,
       "maxSpread": 5.5,
-      "volume24h": 3468.0844989999996,
-      "liquidita": 1680.0148,
+      "volume24h": 3503.0844989999996,
+      "liquidita": 1976.5588,
       "chiuso": false
     },
     {
@@ -1530,7 +1857,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 5242.129438000001,
-      "liquidita": 4317.7091,
+      "liquidita": 7985.4808,
       "chiuso": false
     },
     {
@@ -1545,7 +1872,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 3358.754065,
-      "liquidita": 8469.6643,
+      "liquidita": 8028.2759,
       "chiuso": false
     },
     {
@@ -1559,8 +1886,8 @@
       "valoreGruppo": 43.624700000000004,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 2343.341224,
-      "liquidita": 418.812,
+      "volume24h": 2367.821475,
+      "liquidita": 495.7423,
       "chiuso": false
     },
     {
@@ -1574,8 +1901,8 @@
       "valoreGruppo": 41.9227,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 2158.09,
-      "liquidita": 1041.3405,
+      "volume24h": 1201.55,
+      "liquidita": 1070.7203,
       "chiuso": false
     },
     {
@@ -1589,8 +1916,8 @@
       "valoreGruppo": 89.8165,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 3166.177581,
-      "liquidita": 4188.0743,
+      "volume24h": 3177.268489,
+      "liquidita": 4386.3103,
       "chiuso": false
     },
     {
@@ -1604,8 +1931,8 @@
       "valoreGruppo": 39.4083,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 5101.394397,
-      "liquidita": 2986.9999,
+      "volume24h": 5241.997729,
+      "liquidita": 3277.1133,
       "chiuso": false
     },
     {
@@ -1619,8 +1946,8 @@
       "valoreGruppo": 206.4827,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 8616.801505,
-      "liquidita": 15364.6944,
+      "volume24h": 8662.251505,
+      "liquidita": 15181.1195,
       "chiuso": false
     },
     {
@@ -1635,7 +1962,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 177176.08704699995,
-      "liquidita": 74473.69219,
+      "liquidita": 74781.93091,
       "chiuso": false
     },
     {
@@ -1650,7 +1977,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 19055.713910000002,
-      "liquidita": 199323.5902,
+      "liquidita": 199321.3046,
       "chiuso": false
     },
     {
@@ -1664,8 +1991,8 @@
       "valoreGruppo": 21.9902,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 18271.155894,
-      "liquidita": 3934.65995,
+      "volume24h": 16744.727643,
+      "liquidita": 3720.24426,
       "chiuso": false
     },
     {
@@ -1679,8 +2006,8 @@
       "valoreGruppo": 231.6949,
       "minSize": 20,
       "maxSpread": 5.5,
-      "volume24h": 2767.615554,
-      "liquidita": 49614.82954,
+      "volume24h": 2668.615554,
+      "liquidita": 49639.2893,
       "chiuso": false
     },
     {
@@ -1694,8 +2021,8 @@
       "valoreGruppo": 59.33969999999999,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 17641.997376999996,
-      "liquidita": 48562.68927,
+      "volume24h": 17587.838345999997,
+      "liquidita": 46967.60927,
       "chiuso": false
     },
     {
@@ -1709,8 +2036,8 @@
       "valoreGruppo": 186.0001,
       "minSize": 200,
       "maxSpread": 4.5,
-      "volume24h": 34128.18709300001,
-      "liquidita": 47839.5129,
+      "volume24h": 34122.50527600001,
+      "liquidita": 47667.45,
       "chiuso": false
     },
     {
@@ -1724,8 +2051,8 @@
       "valoreGruppo": 102.75,
       "minSize": 20,
       "maxSpread": 5.5,
-      "volume24h": 3596.85344,
-      "liquidita": 2119.815,
+      "volume24h": 3835.85344,
+      "liquidita": 3492.4388,
       "chiuso": false
     },
     {
@@ -1739,8 +2066,8 @@
       "valoreGruppo": 35.5495,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 1202.003393,
-      "liquidita": 4325.661,
+      "volume24h": 1288.486979,
+      "liquidita": 4058.4748,
       "chiuso": false
     },
     {
@@ -1755,7 +2082,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 4120.06168,
-      "liquidita": 3512.9446,
+      "liquidita": 3980.6383,
       "chiuso": false
     },
     {
@@ -1769,8 +2096,8 @@
       "valoreGruppo": 10.7,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 2603.0221180000003,
-      "liquidita": 4701.0495,
+      "volume24h": 2596.5481990000003,
+      "liquidita": 11404.2693,
       "chiuso": false
     },
     {
@@ -1785,7 +2112,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 4434.453707,
-      "liquidita": 1638.1694,
+      "liquidita": 1631.2026,
       "chiuso": false
     },
     {
@@ -1800,7 +2127,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 8071.958618,
-      "liquidita": 745.8767,
+      "liquidita": 673.0767,
       "chiuso": false
     },
     {
@@ -1824,8 +2151,8 @@
       "valoreGruppo": 48.2116,
       "minSize": 200,
       "maxSpread": 4.5,
-      "volume24h": 200044.57458000007,
-      "liquidita": 58936.122,
+      "volume24h": 200032.93821800005,
+      "liquidita": 60103.6713,
       "chiuso": false
     },
     {
@@ -1840,7 +2167,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 17375.425268,
-      "liquidita": 100918.3666,
+      "liquidita": 100528.7816,
       "chiuso": false
     },
     {
@@ -1855,7 +2182,7 @@
       "minSize": 20,
       "maxSpread": 5.5,
       "volume24h": 4434.323595,
-      "liquidita": 213129.59201,
+      "liquidita": 211004.40627,
       "chiuso": false
     },
     {
@@ -1870,7 +2197,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 9425.532736,
-      "liquidita": 31193.19739,
+      "liquidita": 31516.11741,
       "chiuso": false
     },
     {
@@ -1885,7 +2212,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 1750.399343,
-      "liquidita": 2074.5013,
+      "liquidita": 2616.3629,
       "chiuso": false
     },
     {
@@ -1899,8 +2226,8 @@
       "valoreGruppo": 5.845,
       "minSize": 20,
       "maxSpread": 5.5,
-      "volume24h": 1043.686701,
-      "liquidita": 817.68836,
+      "volume24h": 1475.4718,
+      "liquidita": 30177.58433,
       "chiuso": false
     },
     {
@@ -1914,8 +2241,8 @@
       "valoreGruppo": 59.1512,
       "minSize": 200,
       "maxSpread": 4.5,
-      "volume24h": 2740.3905659999996,
-      "liquidita": 104621.8012,
+      "volume24h": 2660.029912,
+      "liquidita": 105695.6728,
       "chiuso": false
     },
     {
@@ -1930,7 +2257,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 4744.205317,
-      "liquidita": 80845.4623,
+      "liquidita": 80515.8161,
       "chiuso": false
     },
     {
@@ -1945,7 +2272,7 @@
       "minSize": 50,
       "maxSpread": 4.5,
       "volume24h": 640.6,
-      "liquidita": 15604.623,
+      "liquidita": 15718.1071,
       "chiuso": false
     },
     {
@@ -1960,7 +2287,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 1510.47881,
-      "liquidita": 3538.6131,
+      "liquidita": 3935.5247,
       "chiuso": false
     },
     {
@@ -1975,7 +2302,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 205,
-      "liquidita": 2395.27014,
+      "liquidita": 2873.76991,
       "chiuso": false
     },
     {
@@ -1989,8 +2316,8 @@
       "valoreGruppo": 474.1214,
       "minSize": 20,
       "maxSpread": 5.5,
-      "volume24h": 1704.8265809999998,
-      "liquidita": 1003.5944,
+      "volume24h": 1824.8265809999998,
+      "liquidita": 639.8136,
       "chiuso": false
     },
     {
@@ -2005,7 +2332,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 2621.8775530000003,
-      "liquidita": 4747.2842,
+      "liquidita": 4781.895,
       "chiuso": false
     },
     {
@@ -2019,8 +2346,8 @@
       "valoreGruppo": 194.3669,
       "minSize": 50,
       "maxSpread": 4.5,
-      "volume24h": 8598.818949,
-      "liquidita": 5839.40832,
+      "volume24h": 8691.417281,
+      "liquidita": 6117.65661,
       "chiuso": false
     },
     {
@@ -2034,8 +2361,8 @@
       "valoreGruppo": 315.2812,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 11940.964778000001,
-      "liquidita": 346.2171,
+      "volume24h": 12135.566906000002,
+      "liquidita": 356.8967,
       "chiuso": false
     },
     {
@@ -2049,8 +2376,8 @@
       "valoreGruppo": 317.01279999999997,
       "minSize": 100,
       "maxSpread": 4.5,
-      "volume24h": 13645.301802999998,
-      "liquidita": 16830.2324,
+      "volume24h": 13537.301802999998,
+      "liquidita": 16671.6119,
       "chiuso": false
     },
     {
@@ -2064,8 +2391,8 @@
       "valoreGruppo": 145.1757,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 5864.024651,
-      "liquidita": 327.798,
+      "volume24h": 5808.5673799999995,
+      "liquidita": 306.4213,
       "chiuso": false
     },
     {
@@ -2079,8 +2406,8 @@
       "valoreGruppo": 103.335,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 8922.756608,
-      "liquidita": 7071.02155,
+      "volume24h": 9656.886608,
+      "liquidita": 5194.77713,
       "chiuso": false
     },
     {
@@ -2095,7 +2422,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 1251.480042,
-      "liquidita": 6139.1094,
+      "liquidita": 6096.4786,
       "chiuso": false
     },
     {
@@ -2109,8 +2436,8 @@
       "valoreGruppo": 340.8048,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 6140.603765999999,
-      "liquidita": 353.2409,
+      "volume24h": 7032.493646999998,
+      "liquidita": 518.9709,
       "chiuso": false
     },
     {
@@ -2125,7 +2452,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 6269.331977000001,
-      "liquidita": 28455.89864,
+      "liquidita": 26958.89864,
       "chiuso": false
     },
     {
@@ -2139,8 +2466,8 @@
       "valoreGruppo": 167.2282,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 4260.416679000001,
-      "liquidita": 255.0247,
+      "volume24h": 4406.488343,
+      "liquidita": 316.1665,
       "chiuso": false
     },
     {
@@ -2155,7 +2482,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 318.504674,
-      "liquidita": 400.168,
+      "liquidita": 437.1137,
       "chiuso": false
     },
     {
@@ -2170,7 +2497,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 4052.8476010000004,
-      "liquidita": 4224.6683,
+      "liquidita": 4291.7594,
       "chiuso": false
     },
     {
@@ -2185,7 +2512,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 26.92,
-      "liquidita": 14716.3599,
+      "liquidita": 14476.1082,
       "chiuso": false
     },
     {
@@ -2199,8 +2526,8 @@
       "valoreGruppo": 142.9186,
       "minSize": 20,
       "maxSpread": 4.5,
-      "volume24h": 2518.2333110000004,
-      "liquidita": 4954.2892,
+      "volume24h": 2563.9633110000004,
+      "liquidita": 4788.7108,
       "chiuso": false
     },
     {
@@ -2215,7 +2542,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": 307.228171,
-      "liquidita": 504.83917,
+      "liquidita": 786.74663,
       "chiuso": false
     },
     {
@@ -2230,7 +2557,7 @@
       "minSize": 20,
       "maxSpread": 4.5,
       "volume24h": null,
-      "liquidita": 705.4986,
+      "liquidita": 629.3824,
       "chiuso": false
     },
     {
@@ -53454,7 +53781,7 @@
   "perMinSize": [
     {
       "minSize": 20,
-      "presenzeMaker": 457
+      "presenzeMaker": 464
     },
     {
       "minSize": 50,
@@ -53462,7 +53789,7 @@
     },
     {
       "minSize": 100,
-      "presenzeMaker": 95
+      "presenzeMaker": 88
     },
     {
       "minSize": 200,

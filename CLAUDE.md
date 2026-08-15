@@ -932,6 +932,19 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
 > **p.15/16 guardiano k=2 + letture distinte** → §5-bis p.141 e p.145 · **p.17 registro residui senza
 > consumatore** → p.148 · **p.18 tetto per ordine sul riposizionamento scoperto** → p.147.
 
+28. **🟡 DUE COMMENTI IN `auto-close.js` DICONO 110¢ DOVE IL CODICE FA 120¢ — reperto D7, non corretto
+   (15 agosto 2026).** `lib/maker/auto-close.js:1301` («si accetta di pagare la coppia fino a
+   `TETTO_COPPIA_CENTS` (110¢)») e `:1496` («oltre 110¢. Non è un numero nuovo — è
+   `TETTO_COPPIA_CENTS`, riusato») sono rimasti al valore di prima del 12 agosto:
+   `chiusura-rapida.js:73` porta `TETTO_COPPIA_DEFAULT_CENTS = 120`, e `MAKER_TETTO_COPPIA_CENTS` non
+   è impostata né in `.env` né in `ecosystem.config.js` né nell'ambiente di agent40 (verificato su
+   `/proc/<pid>/environ`) ⇒ **il valore in servizio è 120**. Il codice è giusto, i commenti no —
+   quarta occorrenza della classe D7. **⚠ E il commento sbagliato ha già disinformato l'operatore**,
+   che ha chiesto un confronto contro «il tetto 110¢» del proprio bot. Non corretto qui per
+   disciplina: sessione di sola diagnosi. **⚠ Da leggere insieme a §5-bis p.162**, che misura quanto
+   costa davvero quel tetto: il 110¢ dei commenti descrive il comportamento dei vincitori **meglio**
+   del 120¢ del codice (93,8% delle loro coppie chiude entro 110¢, 98,5% entro 120¢).
+
 27. **🟢 I 5 SELFCHECK DI `scripts/` SONO STATI RIMESSI IN SCALA — 15 agosto 2026, ora verdi.**
    Fallivano **perché il codice è corretto**, sesta occorrenza di «test che fotografa il codice invece
    della proprietà» (§5.3). Nessuna asserzione è stata ammorbidita: sono cambiati i numeri che
@@ -1160,6 +1173,36 @@ funzione di `bot-enabled` è chiamata senza essere importata»), non la stringa;
 **davvero** contro una spia installata prima del `require`; e **rilegge `data/maker-bot-enabled.json`
 prima e dopo**, fallendo se è cambiato di un byte (§5 punto 1). Verificato che **fallisce sul codice
 vecchio** — l'unica prova che un test serva a qualcosa.
+
+**162 · COME ESCONO I 65 DOPO UN FILL — sola ricerca, 15 agosto 2026.**
+`data/ricerca/sintesi-uscite-maker.md`, script `screening-05-uscite.js` + `screening-06-analisi-uscite.js`.
+**62.525 fill BUY** classificati su 65 wallet, copertura mediana 262 h, orizzonte 24 h.
+**LO STRUMENTO CHE MANCAVA**: `/activity` non dice taker o maker, **`/trades` sì** — accetta
+`takerOnly` (`true` è anche il difetto, verificato riga per riga), e l'etichetta si ricava per
+differenza fra le due liste. Le liste coprono archi diversi a parità di `limit`, quindi si classifica
+solo l'intervallo coperto da **entrambe**.
+**DISTRIBUZIONE**: A completa la coppia **32,1%** · B rivende **16,6%** · C non fa nulla **15,6%** ·
+D aumenta sullo stesso lato **33,6%** · E vende l'altro lato 2,1%. Fra le sole uscite vere (A+B+E)
+**A è il 63,2%**.
+**A**: costo coppia mediano **100,00¢** (q25 98 · q75 102); **≤99¢ solo il 41,2%**, ≤110¢ **93,8%**,
+≤120¢ 98,5%. Tempo mediano **28,6 min** (21,8% entro il minuto, 60,5% entro l'ora). **La gamba che
+completa è taker solo nel 24%.** Taker: 101,00¢ in 1,6 min · maker: 100,00¢ in 36,1 min ⇒
+**attraversare costa 1¢ di coppia e fa risparmiare 34,5 minuti.**
+**B**: mediana **−0,89¢**, in perdita nel 56,9%, tempo mediano 6,5 min, **taker nel 64,4%** — quando
+mollano, pagano lo spread.
+**C**: durata **realizzata** (mercati già chiusi, n=4.702) mediana **15,6 h**; i 4.350 ancora aperti
+sono censurati a 52 g. ⚠ Gamma restituisce di difetto i soli mercati **aperti**: senza la seconda
+passata `&closed=true` il campione conteneva **zero** mercati risolti, cioè l'esatto complemento
+della domanda.
+**IL TAGLIO PER REWARDS È LA COSA PIÙ DECISIONALE**: sopra la mediana ($418/14g) A **34,2%** e B
+**12,9%**; sotto, A **18,5%** e B **40,4%**. **Chi guadagna completa la coppia, chi guadagna poco
+liquida la gamba.** E chi guadagna usa più il taker (ingresso 21,5% contro 9,4%).
+**⚠ DUE ARTEFATTI TROVATI E CORRETTI, entrambi gonfiavano D**: fondere i fill parziali confrontando
+la riga PRECEDENTE nello stream non funziona (i fill sono interlacciati fra mercati) — 2.049 eventi;
+e i prezzi della API arrivano con rumore di virgola mobile (`0.8599999965` contro `0.86`) — altri
+1.155. Residuo finale: 4.
+**⚠ LIMITI**: la finestra è per wallet e non allineata; D non è un'uscita ma «continua a quotare»;
+E resta una classe a sé invece di finire schiacciata su B.
 
 **161 · CHI FA DAVVERO LIQUIDITY REWARDS, E DOVE QUOTA — sola ricerca, 15 agosto 2026.**
 `data/ricerca/sintesi-screening-maker.md`, script `scripts/ricerca/screening-0{1,2,3,4}-*.js`.

@@ -259,6 +259,9 @@ async function main() {
     soglie: { dueLati: SOGLIA_DUE_LATI, rapportoPnlRewards: SOGLIA_RAPPORTO_PNL },
     passati: passati.length,
     passatiNelBatchDei400: passati.filter((r) => r.nelBatch).length,
+    // L'elenco completo dei sopravvissuti, non solo i primi 20: lo stadio 5 parte da qui invece di
+    // riapplicare i filtri per conto proprio, che sarebbe la settima copia di una soglia (reperto D1).
+    passatiWallet: passati.map((r) => ({ wallet: r.wallet, rewards14g: r.rewards14g, quotaDueLati: r.quotaDueLati })),
     // ⚠ `mercati` e `mercatiRecenti` NON entrano nel referto: sono gli elenchi per-wallet, valgono
     // ~64 MB su 1.302 wallet e sono già serviti a costruire la classifica. Restano negli stadi 2 e 3,
     // che sono intermedi rigenerabili e non si committano.
