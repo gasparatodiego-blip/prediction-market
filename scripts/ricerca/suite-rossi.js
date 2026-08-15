@@ -24,10 +24,15 @@ const nome = (process.argv[2] || 'baseline').replace(/[^\w.-]/g, '-');
 const OUT = path.join(OUT_DIR, `suite-rossi-${nome}.json`);
 const TIMEOUT_MS = 60_000;
 
-/** Tutti i `*.test.js` del repo, esclusi node_modules e .next. */
+/** Tutti i `*.test.js` del repo, esclusi node_modules, .next e `_archivio`.
+ *
+ * ⚠ `_archivio` E' ESCLUSO PER LA STESSA RAGIONE DEI SEI TEST STRUTTURALI (vedi il banner di
+ * CLAUDE.md sulla riduzione): li' dentro ci sono 568 file spostati e non cancellati, fra cui script
+ * di ricerca che cablano di proposito i valori che studiavano. Eseguirli produce rossi che non
+ * descrivono il bot, e un elenco di baseline sporco smette di servire al confronto. */
 function trovaTest(dir, acc = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (e.name === 'node_modules' || e.name === '.next' || e.name === '.git') continue;
+    if (e.name === 'node_modules' || e.name === '.next' || e.name === '.git' || e.name === '_archivio') continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) trovaTest(p, acc);
     else if (/\.test\.js$/.test(e.name)) acc.push(path.relative(ROOT, p));
@@ -51,6 +56,10 @@ const STATO_SENSIBILE = [
   'data/maker-bot-enabled.json', 'data/safety-kill-switch.json', 'data/guardian-state.json',
   'data/guardian-baseline.json', 'data/maker-auto-reprice.json', 'data/maker-manual-mode.json',
   'data/maker-allocated-capital.json', 'data/realloc-ultimo-piano.json',
+  // Aggiunto il 15 agosto 2026 con la selezione automatica: e' lo stato che ricorda QUALI mercati il
+  // bot ha scelto e quali stanno uscendo. Un test che lo riscrivesse farebbe perdere al bot la memoria
+  // di uno slot ancora occupato — cioe' gli farebbe aprire un terzo mercato.
+  'data/selezione-mercati.json',
 ];
 const impronte = () => new Map(STATO_SENSIBILE.map((k) => {
   const p = path.join(ROOT, k);

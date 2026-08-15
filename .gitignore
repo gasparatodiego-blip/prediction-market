@@ -372,3 +372,9 @@ data/osservatore/
 
 # Grezzi delle distribuzioni reward: 5,8 MB rigenerabili da scripts/ricerca/raccogli-distribuzioni.js
 data/ricerca/distribuzioni-reward/
+
+# Stato runtime della selezione automatica dei mercati (§4.13): quali mercati il bot ha scelto e
+# quali stanno uscendo. Cambia a ogni ciclo di agent41 ed e legato a QUESTA macchina: committarlo
+# significherebbe che un checkout riporta indietro la memoria di uno slot ancora occupato.
+data/selezione-mercati.json
+data/selezione-mercati-audit.jsonl

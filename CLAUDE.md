@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~22:10 UTC.
+Ultima verifica contro codice/stato reali: **15 agosto 2026**, ~14:10 UTC (§3, §4.13, §5.1, §5.2).
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -37,7 +37,9 @@ Ultima verifica contro codice/stato reali: **13 agosto 2026**, ~22:10 UTC.
 > `distanza-2c.test.js` §6 non elenca più tre nomi a mano — DERIVA i processi che decidono un prezzo
 > dalla flotta vera, così un processo nuovo che non la dichiarasse non passerebbe inosservato.
 > **I COMANDI CHE SOSTITUISCONO IL PANNELLO** (`scripts/cli/`, ognuno dichiara cosa sta per cambiare
-> e cosa ha cambiato): `mercati.js` · `distanza.js` · `stato.js` · `avvia.js` · `ferma.js`.
+> e cosa ha cambiato): `mercati.js` · `distanza.js` · `stato.js` · `avvia.js` · `ferma.js` ·
+> **`selezione.js`** (15/08: la scelta automatica dei mercati, §4.13 — `prova` mostra cosa sceglierebbe
+> senza scrivere niente).
 > Passano dagli **stessi moduli** degli agent, non riscrivono nessun file a mano. **Nessuno può
 > accendere la modalità viva**: `MAKER_MODE` si cambia solo a mano nel `.env`. **`avvia.js` LEGGE il
 > KILL e si rifiuta di partire mentre è attivo, senza spegnerlo** — verificato armando il kill davvero
@@ -891,6 +893,54 @@ un numero inventato con l'aspetto di una misura. Fonte: registro attività **pub
 Recupero **a ritroso** fino a 30 giorni, perché i tre tentativi notturni cadono prima che il pagamento
 arrivi. Registro visibile su `GET /api/maker/registro-reward` e nella scheda «alloca».
 
+### 4.13 · La selezione automatica dei mercati — `lib/maker/selezione-mercati.js` (15 agosto 2026)
+
+Fino a qui la lista dei mercati quotabili si riempiva **a mano** (`scripts/cli/mercati.js aggiungi`).
+Adesso la riempie il bot, dentro i vincoli dell'operatore. **La decisione è PURA** (zero `require`, un
+test lo asserisce); il cablaggio sta in `agent41` e passa dalle **stesse** funzioni di prima —
+`preparaMercatoNuovo` per chi entra, `rilasciaDallaSelezione` → `setAutoReprice` per chi esce.
+
+| | |
+|---|---|
+| **vincoli** | `rewardsMinSize ≤ 20` · **scadenza ≥ 48 h** · **niente famiglia meteo** · **max 2 contemporanei** |
+| **interruttore** | `data/selezione-mercati.json`, `scripts/cli/selezione.js {stato\|prova\|accendi\|spegni}`. Difetto **SPENTA**; file illeggibile ⇒ **spenta**. **ACCESA dal 15/08** |
+| **quando gira** | a ogni ciclo 6 h **e** a ogni controllo del capitale fermo (120 s), **prima** del piano — e prima di `decidiTrigger`, così un mercato che scade esce anche nei giri in cui il trigger non scatta |
+| **classifica** | `levels[<capitale minimo>].grossRewardDay`, cioè la stima che **il board ha già calcolato** con la formula del venue → ripiego `rateOrdinamento` → `rewardsDailyRate`. **Non** il montepremi (§5 p.132). Pareggio rotto sul `conditionId`: due giri sullo stesso board danno la stessa risposta |
+| **il piano si restringe** | `restringiAllaSelezione` in `calcolaPianoFuoriProcesso`, cioè il punto per cui **entrambi** i percorsi (6 h e mini-ciclo) sono coperti da una regola sola. **Interseca, non sostituisce**; intersezione vuota ⇒ vincolo **impossibile**, mai vincolo **assente** |
+
+> **⚠ LO SLOT NON SI LIBERA ALLA SCADENZA, MA ALLA CHIUSURA.** Sono due momenti e vanno tenuti
+> distinti. Un mercato che viola un vincolo **esce dalla lista subito** (niente ordini nuovi) ma
+> **continua a occupare il suo slot finché al venue c'è una posizione aperta**. Se lo slot si liberasse
+> subito, il bot aprirebbe il terzo mercato col secondo ancora pieno: il tetto direbbe 2 e
+> l'esposizione vera sarebbe 3. **Il tetto è sull'esposizione, e l'esposizione finisce quando finisce
+> la posizione — non quando finisce l'interesse.**
+> **⚠ USCIRE DALLA LISTA SPEGNE L'INGRESSO, NON L'USCITA**: `rilasciaDallaSelezione` tocca
+> `setAutoReprice` e **niente altro** — non `setAutoClose`, non il tracking, nessuna cancellazione —
+> quindi la posizione resta gestita dalla regola di copertura di §4.8. Un rilascio che spegnesse anche
+> la via d'uscita ripeterebbe §5-bis p.44, e **due test lo verificano per assenza**.
+> **⚠ FAIL-CLOSED NEI DUE VERSI**: board illeggibile o posizioni non leggibili ⇒ **nessuna decisione**,
+> e soprattutto **nessuno esce** (un board che non si legge farebbe sembrare scaduto il mondo intero).
+> Ma una **singola** scadenza non determinabile **esclude quel mercato**, come in §4.4: lì l'ignoranza
+> riguarda l'insieme e la risposta è non agire, qui riguarda un mercato e è già una ragione per starne fuori.
+> **⚠ NON ACCENDE NIENTE**: servono ancora, indipendentemente, l'interruttore generale del riprezzo,
+> AVVIA, il KILL spento e `MAKER_MODE` a mano nel `.env`. Decide **su quali** mercati, mai **se**.
+> **⚠ E IL FILTRO METEO OGGI TOGLIE ZERO RIGHE** (misurato sul board del 15/08): il vincolo delle 48 h
+> le aveva già tolte tutte. Resta esplicito perché un meteo settimanale passerebbe le 48 h, e una regola
+> che vale «per conseguenza» smette di valere il giorno in cui la conseguenza cambia.
+
+**Il terzo meccanismo che può spegnere un mercato.** Gli altri due sono `setTracking` (ciclo 6 h) e
+`impostaBot` (fermo di sicurezza). `trigger-capitale-fermo.test.js` pretende che **ogni `enabled: false`
+del file appartenga a un meccanismo dichiarato**, ed è caduto sul terzo prima che girasse una volta:
+è stato ammesso **dopo** aver provato sul sorgente che spegne solo l'ingresso. Il pattern **non** è
+stato allargato a un `setAutoReprice(` generico — sarebbe un varco largo quanto il file.
+
+**Trappola incontrata scrivendo questo codice, e vale per il prossimo che ci lavora:** `\brain\b`
+senza ancore classifica come meteo **«Ukraine signs peace deal with Russia before 2027?»** («rain»
+sta dentro «Ukraine»). Due mercati geopolitici sparivano dall'universo **in silenzio**.
+E `Number(riga.rewardsMinSize)` su un campo assente vale **0**, cioè `0 ≤ 20`: un mercato di cui non
+si sa il pavimento premiante veniva dichiarato **il più finanziabile di tutti** — **ottava** occorrenza
+di §5.3, di nuovo trovata da una prova e non dal ragionamento.
+
 ---
 
 ## 5 · QUESTIONI APERTE
@@ -900,8 +950,22 @@ resta una riga nel registro di §5-bis.
 
 ### 5.1 · Riavvii pendenti — SUL BOT VIVO, non su questa copia
 
-**⚠ Questa sezione riguarda `/root/rewards-bot`.** In `/root/bot` non c'è nessun processo da
-riavviare: pm2 è installato ma la flotta non è mai stata avviata, e il `dashboard` non esiste più.
+> **⚠ CORRETTO IL 15 AGOSTO 2026: LA FLOTTA DI `/root/bot` È ACCESA, E QUESTA RIGA DICEVA IL CONTRARIO.**
+> Qui c'era scritto «pm2 è installato ma la flotta non è mai stata avviata»: era vero quando fu
+> scritto e falso da quando qualcuno l'ha avviata, **senza che niente lo dicesse**. Verificato con
+> `pm2 jlist`: **10 processi online** (`agent24` · `agent27` · `agent34` · `agent38` · `agent40` ·
+> `agent41` · `agent42` · `agent43` · `agent45` · `agent-monitor`) più `agent44` in `waiting restart`,
+> che è il suo stato **corretto** (è un cron delle 03:07, non un processo caduto).
+> **⚠ LA CAUSA NON ERA `stato.js`, ED È LA PARTE CHE VALE**: `stato.js` non ha mai affermato che la
+> flotta fosse spenta — semplicemente **non guardava il runtime**. Leggeva `ecosystem.config.js` e
+> stampava «processi definiti 11», una riga che dice *11* a flotta accesa e *11* a flotta spenta.
+> Un pannello che non distingue acceso da spento non descrive nulla. **Corretto**: `stato.js` ora
+> legge `pm2 jlist` e confronta i due elenchi **nei due versi** — definiti-ma-assenti e
+> vivi-ma-non-definiti (`scripts/cli/_comune.flottaViva`). Nessuna riga di questo file va creduta su
+> uno stato che un comando può leggere.
+
+**⚠ Il resto di questa sezione riguarda `/root/rewards-bot`.** Il `dashboard` non esiste più in
+nessuna delle due copie.
 
 **Eseguiti il 13/08 alle 21:41Z**: `agent43` · `agent24` · `agent34` · `agent40` · `dashboard` —
 portano orizzonte 0,50, tetto $61,25, banda premiante corretta, riferimento a massimo mobile.
@@ -945,6 +1009,41 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
    costa davvero quel tetto: il 110¢ dei commenti descrive il comportamento dei vincitori **meglio**
    del 120¢ del codice (93,8% delle loro coppie chiude entro 110¢, 98,5% entro 120¢).
 
+31. **🔴 LA MANOPOLA DELLA DISTANZA È A 0,95 E COSTA IL 99,6% DEL PUNTEGGIO — non toccata, 15 agosto
+   2026.** `agents/ecosystem.config.js` porta `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95'` su
+   **entrambi** i processi che decidono un prezzo (agent40 riga 206, agent41 riga 323), e il valore è
+   **confermato nel runtime** (`/proc/<pid>/environ`, non solo nel file). L'ultimo commit
+   (`d03ef7a`) la lasciava a **0,444**: il passaggio a 0,95 è una modifica **non committata** di una
+   sessione precedente, che ha anche lasciato `distanza-2c.test.js` rosso (il test dichiara
+   `VALORE = '0.444'`).
+   **⚠ IL COSTO, calcolato con `lib/banda-premiante.punteggio` sulla banda modale (`maxSpread` 4,5¢),
+   contro la distanza mediana misurata degli ordini veri (1,0¢, §5-bis p.160):**
+   0,222 ⇒ 1,00¢ ⇒ S 0,605 (**100%**) · **0,444 ⇒ 2,00¢ ⇒ S 0,309 (51%)** · 0,7 ⇒ 3,15¢ ⇒ S 0,090
+   (15%) · **0,95 ⇒ 4,27¢ ⇒ S 0,0025 (0,4%)**. Da 0,444 a 0,95 il punteggio si moltiplica per
+   **0,0081**, cioè si divide per **123**.
+   **Non è pericoloso** — la manopola è un `Math.min` e può solo **allontanare** dal mid, quindi «mai
+   primo sul libro» e il bordo della banda restano intatti (§5-bis p.160) — ma a 0,95 l'ordine sta
+   praticamente **sul bordo esterno della banda**, dove §5-bis p.152 ha già misurato che non matura
+   quasi nulla **per costruzione**. **⚠ Non modificata**: è la manopola dell'operatore, e cambiarla
+   richiede il riavvio **coordinato** dei due processi (§5.1) — se ne riparte uno solo i prezzi
+   divergono. Si cambia con `node scripts/cli/distanza.js`, che li scrive tutti insieme o nessuno.
+32. **🟡 LE DUE COPIE DELLA POLICY DEI PERMESSI DIVERGONO — 15 agosto 2026.**
+   `.claude/settings.json` (progetto) ha la policy completa; `~/.claude/settings.json` è di **22 byte**
+   e non ha nessun blocco `permissions`. `lib/safety/policy-permessi.test.js` muore con un
+   `TypeError: Cannot read properties of undefined (reading 'ask')` — non è un rosso «dei dati vivi»,
+   è la divergenza che quel test esiste per prendere (§2). **Le regole `ask` del progetto continuano a
+   valere** (si fondono fra i file e `ask` batte `allow` da qualunque file arrivi), quindi il presidio
+   non è caduto — ma la copia utente non porta più niente. **Non corretta qui**: §2 non si riscrive
+   senza istruzione esplicita in chat.
+33. **🟡 `preparaMercatoNuovo` È CHIAMATA COL PRIMO ARGOMENTO SBAGLIATO NEL GRADINO 4 — 15 agosto 2026.**
+   `agents/agent41-realloc-scheduler.js`, gradino `ripara-precondizioni`:
+   `await preparaMercatoNuovo({ marketId: id })` passa un **oggetto** dove la firma vuole una
+   **stringa**, e **non passa nessuno dei quattro iniettori**. La funzione rifiuta subito
+   (`nessuna funzione setEnabled cablata`), quindi `n` resta 0 e il gradino riporta sempre
+   «precondizioni riscritte su 0/N». **Quinta occorrenza della classe «dep non cablata»** di §5.3, e
+   la stessa forma di §5-bis p.153. **Falliva chiuso** (non scrive niente) e la scala è comunque
+   **disarmata al gradino 6**, quindi non ha prodotto danno. **Non corretta**: sta dentro la scala di
+   sblocco, che è fuori dal perimetro chiesto in questa sessione, e va corretta con la sua misura.
 27. **🟢 I 5 SELFCHECK DI `scripts/` SONO STATI RIMESSI IN SCALA — 15 agosto 2026, ora verdi.**
    Fallivano **perché il codice è corretto**, sesta occorrenza di «test che fotografa il codice invece
    della proprietà» (§5.3). Nessuna asserzione è stata ammorbidita: sono cambiati i numeri che

@@ -453,8 +453,35 @@ const PLAN_TIMEOUT_MS = 120_000;
 // su un universo da ~110 valutati sono megabyte, non kilobyte.
 const PLAN_MAX_BUFFER = 48 * 1024 * 1024;
 
+/**
+ * IL PIANO SI CALCOLA SOLO SUI MERCATI CHE LA SELEZIONE HA SCELTO — quando la selezione e' accesa.
+ *
+ * Questo e' il punto in cui la scelta dei mercati e la scelta delle SIZE si incontrano, e sta qui e non
+ * nei due chiamanti perche' i chiamanti sono due (`calcolaPiano` per il ciclo da 6 h, `pianoLeggero`
+ * per il mini-ciclo) e una regola scritta due volte e' una regola che un giorno vale una volta sola.
+ *
+ * ⚠ SI INTERSECA, NON SI SOSTITUISCE. `onlyMarketIds` ha gia' un significato — «il piano ristretto ai
+ * mercati in gestione», il piano di paragone del trigger di valore — e sovrascriverlo lo cancellerebbe.
+ * L'intersezione puo' solo STRINGERE l'universo, quindi non puo' introdurre un mercato che uno dei due
+ * criteri escludeva.
+ *
+ * ⚠ E SE L'INTERSEZIONE E' VUOTA NON SI TOGLIE IL VINCOLO. Un elenco vuoto significa «nessun mercato
+ * comune», e la risposta giusta e' un piano vuoto — non un piano su tutto il board, che e' esattamente
+ * il modo in cui un filtro di sicurezza si trasforma nel suo contrario. Si passa un elenco impossibile
+ * invece di `null`, cosi' l'allocatore risponde «nessuna riga» invece di «nessun vincolo».
+ */
+function restringiAllaSelezione(opzioni) {
+  const sel = selezioneAttiva();
+  if (!sel.attiva) return opzioni;
+  const scelti = new Set(sel.ids);
+  const prima = Array.isArray(opzioni.onlyMarketIds) ? opzioni.onlyMarketIds.map((x) => String(x).trim().toLowerCase()) : null;
+  const dopo = prima ? prima.filter((x) => scelti.has(x)) : [...scelti];
+  return { ...opzioni, onlyMarketIds: dopo.length ? dopo : ['0x' + '0'.repeat(64)] };
+}
+
 /** Il piano, fuori da questo processo. Rifiuta invece di restituire un piano parziale o indovinato. */
-function calcolaPianoFuoriProcesso(opzioni) {
+function calcolaPianoFuoriProcesso(opzioniGrezze) {
+  const opzioni = restringiAllaSelezione(opzioniGrezze || {});
   return new Promise((resolve, reject) => {
     const figlio = execFile('node', ['-e', RUNNER_PIANO],
       { timeout: PLAN_TIMEOUT_MS, maxBuffer: PLAN_MAX_BUFFER },
@@ -854,6 +881,10 @@ async function giro(motivoAvvio) {
   // un freno.
   const frenoGiro = FRENO.statoFreno();
   const soloRacconto = !bot.enabled || frenoGiro.attivo;
+  // LA SELEZIONE PRIMA DEL PIANO, sempre: il piano si calcola sui mercati scelti, quindi sceglierli
+  // dopo significherebbe pianificare su quelli di sei ore fa. Non solleva mai (vedi la funzione).
+  try { await selezionaMercati(); }
+  catch (e) { annuncia('log', `selezione automatica non eseguita: ${e.message} — il ciclo prosegue con la lista di prima`); }
   scrivi({ at: new Date(avvio).toISOString(), tipo: 'ciclo-avvio', motivoAvvio, dryRun: soloRacconto,
     botEnabled: bot.enabled, botBy: bot.by, botAt: bot.atIso, aperture: r,
     intervalloOre: INTERVAL_MS / 3_600_000, tettoPerMercatoUsd: MARKET_CAP_FIXED_USD });
@@ -1042,6 +1073,166 @@ function copiaRegoleNelRipiego({ marketId }, by) {
   if (!rec) return { ok: false, error: 'riga di board non traducibile in un record di catalogo' };
   return CATALOGO.upsertMarket(rec, { by,
     reason: 'copia di sicurezza delle regole di venue: se il mercato esce dal board — per rotazione o perche\' sta per risolvere — la gestione deve poter continuare' });
+}
+
+// ══ LA SELEZIONE AUTOMATICA DEI MERCATI ══════════════════════════════════════════════════════════
+// Fino al 15 agosto 2026 la lista dei mercati quotabili si riempiva a mano. Da qui la riempie il bot,
+// dentro i vincoli dell'operatore: `rewardsMinSize <= 20`, scadenza >= 48 h, niente famiglia meteo, al
+// piu' 2 contemporaneamente, e uno slot che si libera SOLO a posizione chiusa.
+//
+// La decisione e' in `lib/maker/selezione-mercati.js` ed e' pura: qui c'e' solo il cablaggio, cioe' le
+// letture (board, posizioni, quarantena) e le scritture. Le scritture NON sono una strada nuova verso
+// la allowlist: chi entra passa da `preparaMercatoNuovo`, cioe' dalle stesse quattro scritture del
+// mini-ciclo e della fase 3 del reset; chi esce passa da `setAutoReprice`, la stessa funzione del
+// ciclo delle sei ore. Una seconda strada sarebbe una seconda verita' sullo stesso file.
+const SELM = require('../lib/maker/selezione-mercati');
+const SELS = require('../lib/maker/selezione-stato');
+const BOARD_REWARD = path.join(DATA_DIR_A41, 'liquidity-rewards.json');
+
+/** Il board dei mercati premianti (l'uscita di agent24). `null` — MAI `[]` — se non si legge: la
+ *  differenza decide se la selezione si astiene o crede che il mondo sia vuoto. */
+function leggiBoardReward(file = BOARD_REWARD) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return Array.isArray(raw && raw.markets) ? raw.markets : null;
+  } catch { return null; }
+}
+
+/** I mercati con una posizione APERTA al venue, per conditionId. Dallo snapshot su disco: nessuna
+ *  chiamata di rete, e quindi nessuna superficie che sappia piazzare. */
+function posizioniPerSelezione(leggi = readVenuePositions) {
+  let p;
+  try { p = leggi(); } catch (e) { return { leggibile: false, motivo: e.message, conditionIds: [] }; }
+  if (!p || p.readable !== true) return { leggibile: false, motivo: (p && p.reason) || 'snapshot non leggibile', conditionIds: [] };
+  const ids = [];
+  for (const x of (p.positions || [])) {
+    const c = typeof x.conditionId === 'string' ? x.conditionId.trim().toLowerCase() : '';
+    // Una riga senza size positiva non e' una posizione aperta; una size illeggibile NON vale zero.
+    const s = Number(x.size);
+    if (c && Number.isFinite(s) && s > 0 && !ids.includes(c)) ids.push(c);
+  }
+  return { leggibile: true, motivo: null, conditionIds: ids };
+}
+
+/**
+ * IL TERZO MECCANISMO CHE PUO' SPEGNERE UN MERCATO, e l'unico nato nel 2026 dopo i primi due.
+ *
+ * Gli altri due sono `setTracking` (il ciclo delle sei ore, che rilascia cio' che il piano non vuole
+ * piu') e `impostaBot` (il fermo di sicurezza dell'ultimo gradino). Questo e' il rilascio della
+ * selezione automatica: un mercato che ha smesso di rispettare i vincoli non deve ricevere ordini
+ * nuovi. Ha una funzione tutta sua, con un nome che si legge nel giornale e nel test, perche'
+ * `trigger-capitale-fermo.test.js` pretende — giustamente — che ogni `enabled: false` del file
+ * appartenga a un meccanismo DICHIARATO invece di essere contato e basta.
+ *
+ * ⚠ SPEGNE L'INGRESSO, NON L'USCITA. Non tocca `setAutoClose`, non tocca il tracking e non cancella
+ * nessun ordine: gli ordini gia' a riposo muoiono per GTD o si riempiono, e la posizione resta gestita
+ * per la regola di copertura di §4.8 («board ∪ mercati dove il capitale e' gia' esposto»). Se qui si
+ * spegnesse anche l'uscita automatica, un mercato scaduto resterebbe senza via d'uscita — ed e'
+ * esattamente il guasto di §5-bis p.44.
+ */
+async function rilasciaDallaSelezione({ marketId, motivo }) {
+  try {
+    return await setAutoReprice({
+      scope: 'market', marketId, enabled: false, by: 'riallocatore · selezione automatica',
+      reason: `fuori dai vincoli della selezione automatica (${motivo}): nessun ordine nuovo, la posizione resta gestita`,
+    });
+  } catch (e) { return { ok: false, error: e && e.message ? e.message : String(e) }; }
+}
+
+/** I mercati che la selezione ha scelto, quando e' accesa. `{attiva:false}` ⇒ il piano non si
+ *  restringe e tutto resta come prima: la selezione spenta non deve poter cambiare nessun numero. */
+function selezioneAttiva() {
+  try {
+    const s = SELS.leggiStato();
+    if (!s.leggibile || s.attiva !== true) return { attiva: false, ids: [] };
+    return { attiva: true, ids: Object.keys(s.stato.selezionati || {}) };
+  } catch { return { attiva: false, ids: [] }; }
+}
+
+/**
+ * UN GIRO DI SELEZIONE. Si chiama a ogni ciclo (6 h) e a ogni controllo del capitale fermo (2 min):
+ * un mercato che scade deve uscire in minuti, non in ore.
+ *
+ * Non piazza e non cancella niente. Non solleva mai: un guasto qui deve lasciare il bot esattamente
+ * come lo ha trovato, non fermarlo.
+ */
+async function selezionaMercati(deps = {}) {
+  const stato = deps.leggiStatoSelezione ? deps.leggiStatoSelezione() : SELS.leggiStato();
+  if (!stato.leggibile) {
+    annuncia('log', `selezione automatica: stato illeggibile (${stato.error}) — nessuna decisione, e nessun mercato tolto`);
+    return { attiva: false, applicata: false, motivo: 'stato illeggibile' };
+  }
+  if (stato.attiva !== true) return { attiva: false, applicata: false, motivo: 'selezione automatica spenta' };
+
+  const board = deps.leggiBoard ? deps.leggiBoard() : leggiBoardReward();
+  const posizioni = deps.leggiPosizioni ? deps.leggiPosizioni() : posizioniPerSelezione();
+  const quarantena = (() => { try { return Object.keys(leggiQuarantena() || {}); } catch { return []; } })();
+
+  const d = SELM.decidiSelezione({
+    board, stato: stato.stato, posizioni, ora: Date.now(), escludi: quarantena,
+  });
+  if (!d.ok) {
+    annuncia('log', `selezione automatica: nessuna decisione — ${d.motivo}`);
+    scrivi({ tipo: 'selezione-mercati', esito: 'astenuta', motivo: d.motivo, occupati: d.occupati });
+    return { attiva: true, applicata: false, motivo: d.motivo };
+  }
+
+  // ── LE SCRITTURE. Prima chi esce, poi chi entra: se le due si invertissero, un giro in cui uno esce
+  // e uno entra passerebbe per un istante da 3 mercati abilitati, e un piazzamento concorrente
+  // potrebbe infilarsi proprio li'.
+  const usciti = [];
+  for (const u of d.uscenti) {
+    const r = await rilasciaDallaSelezione({ marketId: u.id, motivo: u.motivo });
+    usciti.push({ ...u, scritto: !!(r && r.ok), error: (r && r.error) || null });
+  }
+
+  const entrati = [];
+  for (const e of d.entranti) {
+    const abilita = ({ marketId }) => setAutoReprice({ scope: 'market', marketId, enabled: true,
+      by: 'riallocatore · selezione automatica',
+      reason: `scelto dalla selezione automatica: minSize ${e.minSize} · ${e.oreAllaScadenza != null ? e.oreAllaScadenza.toFixed(1) + ' h alla risoluzione' : 'scadenza non dichiarata'} · stima ${e.punteggio.toFixed(3)} (${e.fontePunteggio})` });
+    const prendiInGestione = ({ marketId, manual }) => setManualMode({ marketId, manual,
+      by: 'riallocatore · selezione automatica', reason: 'mercato scelto dalla selezione automatica' });
+    const accendiUscita = ({ marketId, enabled }) => setAutoClose({ scope: 'market', marketId, enabled,
+      by: 'riallocatore · selezione automatica', reason: 'l uscita automatica e pronta PRIMA che il mercato abbia ordini' });
+    const registraCatalogo = ({ marketId }) => copiaRegoleNelRipiego({ marketId }, 'riallocatore · selezione automatica');
+    let p;
+    try { p = await preparaMercatoNuovo(e.id, abilita, prendiInGestione, accendiUscita, registraCatalogo); }
+    catch (err) { p = { ok: false, motivo: err && err.message ? err.message : String(err) }; }
+    entrati.push({ ...e, riga: undefined, aperto: p.ok === true, motivo: p.ok === true ? null : p.motivo });
+  }
+
+  // ⚠ SI SALVA SOLO CIO' CHE E' STATO SCRITTO DAVVERO. Un mercato che `preparaMercatoNuovo` ha
+  // rifiutato non e' un mercato che il bot ha preso: registrarlo nello stato gli farebbe occupare uno
+  // slot per sempre senza mai ricevere un ordine — capitale fermo prodotto dalla contabilita'.
+  const statoDaSalvare = { ...d.statoNuovo, selezionati: { ...d.statoNuovo.selezionati } };
+  for (const e of entrati) if (!e.aperto) delete statoDaSalvare.selezionati[e.id];
+
+  const salvato = SELS.scriviStato(statoDaSalvare, { by: 'agent41 · selezione automatica',
+    reason: `${entrati.filter((x) => x.aperto).length} entrati, ${usciti.length} usciti, ${d.liberati.length} slot liberati` });
+
+  const riassunto = `selezione automatica: ${d.occupati}/${SELM.MAX_MERCATI_CONTEMPORANEI} slot occupati`
+    + ` · ${d.ammissibili} mercati ammissibili su ${d.valutati} valutati`
+    + (entrati.length ? ` · ENTRATI ${entrati.map((x) => `${x.id.slice(0, 10)}…${x.aperto ? '' : ' (RIFIUTATO: ' + x.motivo + ')'}`).join(', ')}` : '')
+    + (usciti.length ? ` · USCITI ${usciti.map((x) => `${x.id.slice(0, 10)}… (${x.motivo})`).join(', ')}` : '')
+    + (d.liberati.length ? ` · SLOT LIBERATI ${d.liberati.map((x) => x.id.slice(0, 10) + '…').join(', ')}` : '');
+  if (entrati.length || usciti.length || d.liberati.length) annuncia('log', riassunto);
+
+  const rec = {
+    tipo: 'selezione-mercati', esito: 'applicata',
+    occupati: d.occupati, ammissibili: d.ammissibili, valutati: d.valutati,
+    tenuti: d.tenuti.map((x) => x.id), entrati, usciti, liberati: d.liberati,
+    statoSalvato: salvato.ok, statoErrore: salvato.ok ? null : salvato.error,
+  };
+  scrivi(rec);
+  try {
+    SELS.giornale({ op: 'giro', ...rec });
+    appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'selezione-automatica',
+      op: 'selezione-mercati', outcome: 'applicata',
+      response: { occupati: d.occupati, entrati: entrati.map((x) => x.id), usciti: usciti.map((x) => x.id) } });
+  } catch { /* un giornale non scritto non annulla una decisione gia' presa */ }
+
+  return { attiva: true, applicata: true, ...rec };
 }
 
 async function preparaMercatoNuovo(marketId, abilita, prendiInGestione, accendiUscita, registraCatalogo) {
@@ -2012,6 +2203,13 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
     if (forzatoDa) annuncia('log', `avvio forzato ignorato: kill-switch ${kill.readable === false ? 'NON LEGGIBILE' : 'ATTIVO'} — nessun piazzamento`);
     return;
   }
+  // ── LA SELEZIONE GIRA ANCHE QUANDO IL TRIGGER NON SCATTA ──────────────────────────────────────
+  // Sta PRIMA di `decidiTrigger` di proposito: un mercato che scade deve uscire dalla lista in minuti
+  // anche in una giornata in cui il capitale e' tutto al lavoro e nessun trigger scatta mai. Costa due
+  // letture di file locali, non una chiamata di rete, e i due cancelli gratuiti (bot avviato, kill
+  // spento) sono gia' stati passati qui sopra.
+  try { await selezionaMercati(); }
+  catch (e) { annuncia('log', `selezione automatica non eseguita: ${e.message} — si prosegue con la lista di prima`); }
   let saldo = null;
   try { saldo = await leggiSaldo(); } catch (e) { saldo = { readable: false, error: e.message }; }
   const st = leggiStato();
@@ -2271,6 +2469,7 @@ if (require.main === module) main();
 
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
+  selezionaMercati, rilasciaDallaSelezione, selezioneAttiva, restringiAllaSelezione, leggiBoardReward, posizioniPerSelezione,
   autodiagnosiPeriodica, eseguiGradino, messaggioFeedRiseminato, nozionalePiazzato,
   LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,
