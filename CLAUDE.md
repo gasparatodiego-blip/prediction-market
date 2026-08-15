@@ -1174,6 +1174,44 @@ funzione di `bot-enabled` è chiamata senza essere importata»), non la stringa;
 prima e dopo**, fallendo se è cambiato di un byte (§5 punto 1). Verificato che **fallisce sul codice
 vecchio** — l'unica prova che un test serva a qualcosa.
 
+**163 · GLI «EFFICIENTI» DENTRO I 65: CAPITALE PICCOLO E TRADING IN PARI — sola ricerca, 15 agosto 2026.**
+`data/ricerca/sintesi-efficienti.md`, script `efficienti-01/02/03` (numerati fuori dalla serie
+`screening-*` perché p.162 girava **in parallelo** su questa stessa copia e il 06 era già preso).
+**IL GRUPPO È DI 4, E ALLARGARE IL CAPITALE NON LO MUOVE**: filtro chiesto (capitale $500-6.000 ·
+|P&L 7g| ≤ $100 · rewards 14g ≥ $300 · due-lateralità ≥ 40%) ⇒ **4**; portando il tetto a $15.000 ⇒
+**4**; **togliendo del tutto il vincolo di capitale ⇒ 4**. Il collo è **|P&L 7g|** (37 su 65 lo
+passano da solo, ma è l'unico la cui rimozione porta il gruppo da 4 a 13). I due wallet indicati
+dall'operatore **passano da soli**, l'inclusione forzata non è servita. Gruppo di sensibilità
+(|P&L| ≤ $250) = 10, usato solo per dare un `n` alle misure.
+**① LA DISTANZA DAL MID NON È IL LORO VANTAGGIO, e la misura ribalta l'attesa**: mediana **2,38¢**
+contro **1,00¢** dei primi 5 — quotano *più lontano*, con coda molto più larga (q90 19,5¢ contro
+3,0¢). Normalizzata sul raggio di banda: 0,33 contro 0,27. **Metodo**: `clob/prices-history`
+`fidelity=1`, campione **strettamente precedente** il fill e scartato oltre 180 s, solo fill **maker**.
+La semantica della serie è stata **misurata, non assunta**: il campione successivo coincide col
+prezzo del fill nello **0-12%** dei casi ⇒ è un punto medio, non l'ultimo scambio.
+**② I MERCATI SONO QUASI DISGIUNTI**: solo il **9,1%** dei 374 mercati degli efficienti è toccato
+anche dai primi 5 (2.613 mercati). Book più sottili (volume 24 h mediano **$325** contro $1.020) e
+bande più larghe (`maxSpread` 6,5 nel **19%** dei loro mercati contro il 4%). `minSize` ≤ 50 nel
+**95%** contro l'87%.
+**③ L'USCITA È LA DIFFERENZA VERA, ED È DOPPIA.** ⓐ **le due gambe stanno a libro insieme**: il
+**94,1%** delle coppie si completa con un ordine **già a riposo** in **40 s** mediani, e il **97,3%**
+di quelle chiuse entro 120 s costa **meno di $1** — nei primi 5 le veloci sono il 21,5% e fra quelle
+solo il **2,6%** sta sotto la pari (quando i grossi chiudono in fretta stanno *attraversando*).
+ⓑ **quando la coppia non arriva la smontano invece di pagarla**: B = **31,9%** a **−1¢** in **156 s**,
+contro il 13,7% dei primi 5. Esito: restano direzionali il **26,5%** contro il **51,7%**, chiudono
+sopra la pari il **13,2%** contro il **49,6%**, e il costo mediano realizzato di un'uscita è
+**+1,00¢** contro **−0,58¢**.
+**IL CONFRONTO COL BOT**: il tetto 99¢ dei Livelli 1-2 (`strategia-merge.js:45,83`) coincide col
+costo mediano che loro pagano davvero (99¢) — **il numero è tarato bene**. L'escalation a 120¢ è una
+valvola che nessuno dei due gruppi usa (2,7% e 1,3%). **Lo scarto è sullo sgancio**: la rivendita a
+piccola perdita, che per loro è un terzo del comportamento dopo 156 s, il bot la consente (2 tick e
+5% del carico, `urgenza-scoperto.js:63,85,86`) **solo dopo 120 minuti di scopertura, ~46× più tardi**.
+**⚠ NON MISURATO, ed è la metà che deciderebbe**: uscire prima costa reward (un ordine smontato non
+matura), e il saldo fra costo d'uscita e reward richiede il reward **per mercato**, che §4.12 dà per
+non attribuibile. **⚠ Altri limiti**: n=4 wallet, 536 eventi (`0x16a092c7` ne porta 21, sotto ogni
+soglia di conclusione); 250 eventi censurati su 786; campione a numero fisso di pagine, quindi archi
+diversi per wallet (35 h per il primo dei grossi contro 584 h per il primo degli efficienti).
+
 **162 · COME ESCONO I 65 DOPO UN FILL — sola ricerca, 15 agosto 2026.**
 `data/ricerca/sintesi-uscite-maker.md`, script `screening-05-uscite.js` + `screening-06-analisi-uscite.js`.
 **62.525 fill BUY** classificati su 65 wallet, copertura mediana 262 h, orizzonte 24 h.

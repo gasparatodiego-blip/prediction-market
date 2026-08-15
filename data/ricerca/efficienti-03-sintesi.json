@@ -1,0 +1,873 @@
+{
+ "generatoIl": "2026-08-15T14:07:15.466Z",
+ "gruppo": [
+  {
+   "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+   "rewards14g": 1626.9805000000001,
+   "medianaGiornaliera": 65.60785,
+   "giorniAttivi": 14,
+   "capitaleStimato": 4118.80731,
+   "contanteUsd": 4115.49421,
+   "valorePosizioni": 3.3131,
+   "pnl7g": 21.37170031916503,
+   "quotaDueLati": 0.75,
+   "mercatiScambiati": 20,
+   "mercatiConPosizione": 0,
+   "rendimentoPct": 39.501253094551785
+  },
+  {
+   "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+   "rewards14g": 1353.6626999999999,
+   "medianaGiornaliera": 102.0226,
+   "giorniAttivi": 14,
+   "capitaleStimato": 995.331148,
+   "contanteUsd": 808.763548,
+   "valorePosizioni": 186.5676,
+   "pnl7g": 14.943597360000005,
+   "quotaDueLati": 0.5142857142857142,
+   "mercatiScambiati": 35,
+   "mercatiConPosizione": 13,
+   "rendimentoPct": 136.00123965978807
+  },
+  {
+   "wallet": "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+   "rewards14g": 982.9163000000001,
+   "medianaGiornaliera": 25.393250000000002,
+   "giorniAttivi": 14,
+   "capitaleStimato": 653.308093,
+   "contanteUsd": 586.318793,
+   "valorePosizioni": 66.9893,
+   "pnl7g": -63.941376042500266,
+   "quotaDueLati": 0.8309859154929577,
+   "mercatiScambiati": 142,
+   "mercatiConPosizione": 2,
+   "rendimentoPct": 150.4521848928022
+  },
+  {
+   "wallet": "0x16a092c7d8a641e94016ed6a785fac4b713a227f",
+   "rewards14g": 384.5957,
+   "medianaGiornaliera": 33.0657,
+   "giorniAttivi": 11,
+   "capitaleStimato": 563.1255560000001,
+   "contanteUsd": 532.165556,
+   "valorePosizioni": 30.96,
+   "pnl7g": -4.838991249999999,
+   "quotaDueLati": 0.42857142857142855,
+   "mercatiScambiati": 21,
+   "mercatiConPosizione": 3,
+   "rendimentoPct": 68.29661625230874
+  }
+ ],
+ "imbuto": {
+  "dei65": 65,
+  "soloCapitale6k": 35,
+  "soloCapitale15k": 42,
+  "soloPnl": 37,
+  "soloRewards": 34,
+  "soloDueLati": 35,
+  "tuttiEQuattro": 4,
+  "senzaVincoloCapitale": 4,
+  "senzaVincoloPnl": 13,
+  "senzaVincoloRewards": 11,
+  "senzaVincoloDueLati": 4,
+  "capitaleNonMisurato": 0,
+  "pnlNonMisurato": 0
+ },
+ "allargamentoChiesto": {
+  "applicato": true,
+  "da": 6000,
+  "a": 15000,
+  "utile": false,
+  "walletAggiunti": [],
+  "nota": "INERTE: il vincolo che decide è |P&L 7g|, non il capitale — vedi `imbuto.senzaVincoloCapitale`"
+ },
+ "forzati": [
+  {
+   "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+   "neiSessantacinque": true,
+   "giaDentroDaSolo": true,
+   "perche": "passa tutti e quattro i filtri da solo"
+  },
+  {
+   "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+   "neiSessantacinque": true,
+   "giaDentroDaSolo": true,
+   "perche": "passa tutti e quattro i filtri da solo"
+  }
+ ],
+ "distanza": {
+  "efficienti": {
+   "wallet": 4,
+   "medianaDelleMediane": 2.375000000000001,
+   "medianaPesata": 1.943131462333827,
+   "fillMisurati": 677,
+   "q25": 0.75,
+   "q75": 9.499999999999996,
+   "q90": 19.5,
+   "quotaMaker": 0.9095076225793159,
+   "dallaParteGiusta": 0.9034848484848486
+  },
+  "top5": {
+   "wallet": 5,
+   "medianaDelleMediane": 1.0000000000000009,
+   "medianaPesata": 1.2403433189081228,
+   "fillMisurati": 1502,
+   "q25": 0.5000000000000004,
+   "q75": 1.9999959699999958,
+   "q90": 3.0000000000000027,
+   "quotaMaker": 0.5435606060606061,
+   "dallaParteGiusta": 0.9666666666666667
+  },
+  "sensibilita": {
+   "wallet": 6,
+   "medianaDelleMediane": 1.2500000000000004,
+   "medianaPesata": 1.3292474344355767,
+   "fillMisurati": 1754,
+   "q25": 0.5000000000000004,
+   "q75": 2.0000000000000018,
+   "q90": 3.2499999999999987,
+   "quotaMaker": 0.6736514513457277,
+   "dallaParteGiusta": 0.9617386489479514
+  }
+ },
+ "distanzaPerWallet": [
+  {
+   "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+   "etichetta": "efficiente",
+   "copertura": {
+    "da": "2026-07-21T19:38:25.000Z",
+    "a": "2026-08-15T03:19:21.000Z",
+    "ore": 583.6822222222222
+   },
+   "pagine": 1,
+   "eventiTotali": 404,
+   "eventiMaker": 385,
+   "quotaMaker": 0.9529702970297029,
+   "campionati": 300,
+   "misurati": 300,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.06333333333333334,
+   "distanzaC": {
+    "n": 300,
+    "q10": 0.10000000000000009,
+    "q25": 0.4999999999999949,
+    "mediana": 0.5000000000000004,
+    "q75": 1.5000000000000013,
+    "q90": 2.4999999999999964,
+    "media": 1.1341658492333324
+   },
+   "quotaDallaParteGiusta": 0.9433333333333334,
+   "mercatiDistinti": 20
+  },
+  {
+   "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+   "etichetta": "efficiente",
+   "copertura": {
+    "da": "2026-07-25T20:36:19.000Z",
+    "a": "2026-08-13T06:02:22.000Z",
+    "ore": 441.43416666666667
+   },
+   "pagine": 1,
+   "eventiTotali": 78,
+   "eventiMaker": 55,
+   "quotaMaker": 0.7051282051282052,
+   "campionati": 55,
+   "misurati": 54,
+   "nonMisurati": 1,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.07272727272727272,
+   "distanzaC": {
+    "n": 54,
+    "q10": 0.49999999999998934,
+    "q25": 0.5000000000000004,
+    "mediana": 2.249999999999999,
+    "q75": 12.5,
+    "q90": 24.5,
+    "media": 8.416666666666666
+   },
+   "quotaDallaParteGiusta": 0.9814814814814815,
+   "mercatiDistinti": 35
+  },
+  {
+   "wallet": "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+   "etichetta": "efficiente",
+   "copertura": {
+    "da": "2026-08-02T11:22:50.000Z",
+    "a": "2026-08-15T13:41:36.000Z",
+    "ore": 314.3127777777778
+   },
+   "pagine": 2,
+   "eventiTotali": 809,
+   "eventiMaker": 730,
+   "quotaMaker": 0.9023485784919654,
+   "campionati": 301,
+   "misurati": 301,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0,
+   "distanzaC": {
+    "n": 301,
+    "q10": 0.5000000000000004,
+    "q25": 0.9999999999999996,
+    "mediana": 2.500000000000002,
+    "q75": 6.499999999999995,
+    "q90": 14.500000000000002,
+    "media": 5.916278683787376
+   },
+   "quotaDallaParteGiusta": 0.707641196013289,
+   "mercatiDistinti": 303
+  },
+  {
+   "wallet": "0x16a092c7d8a641e94016ed6a785fac4b713a227f",
+   "etichetta": "efficiente",
+   "copertura": {
+    "da": "2026-07-31T03:30:57.000Z",
+    "a": "2026-08-15T09:27:09.000Z",
+    "ore": 365.93666666666667
+   },
+   "pagine": 1,
+   "eventiTotali": 24,
+   "eventiMaker": 22,
+   "quotaMaker": 0.9166666666666666,
+   "campionati": 22,
+   "misurati": 22,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0,
+   "distanzaC": {
+    "n": 22,
+    "q10": 0.5000000000000004,
+    "q25": 3.5000000000000004,
+    "mediana": 13.25,
+    "q75": 24,
+    "q90": 37,
+    "media": 15.429545454545456
+   },
+   "quotaDallaParteGiusta": 0.8636363636363636,
+   "mercatiDistinti": 16
+  },
+  {
+   "wallet": "0x41e6de55cf3bd608b50952f681dfb562187466b7",
+   "etichetta": "sensibilita",
+   "copertura": {
+    "da": "2026-08-06T17:16:41.000Z",
+    "a": "2026-08-15T13:43:27.000Z",
+    "ore": 212.44611111111112
+   },
+   "pagine": 6,
+   "eventiTotali": 2756,
+   "eventiMaker": 2745,
+   "quotaMaker": 0.9960087082728593,
+   "campionati": 300,
+   "misurati": 300,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.10333333333333333,
+   "distanzaC": {
+    "n": 300,
+    "q10": 0.4999878099999966,
+    "q25": 0.5000000000000004,
+    "mediana": 0.5000000000000004,
+    "q75": 1.4999997000000014,
+    "q90": 2.0000000000000018,
+    "media": 1.0046643342666663
+   },
+   "quotaDallaParteGiusta": 0.9666666666666667,
+   "mercatiDistinti": 562
+  },
+  {
+   "wallet": "0x3b6930e90b206755a20e89f7bae00588391e01d7",
+   "etichetta": "sensibilita",
+   "copertura": {
+    "da": "2026-08-06T13:15:09.000Z",
+    "a": "2026-08-15T13:30:12.000Z",
+    "ore": 216.25083333333333
+   },
+   "pagine": 1,
+   "eventiTotali": 483,
+   "eventiMaker": 251,
+   "quotaMaker": 0.5196687370600414,
+   "campionati": 251,
+   "misurati": 251,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.02390438247011952,
+   "distanzaC": {
+    "n": 251,
+    "q10": 0.20000000000000018,
+    "q25": 0.5000000000000004,
+    "mediana": 1.5,
+    "q75": 2.0000000000000018,
+    "q90": 2.9999999999999973,
+    "media": 1.9143418154581675
+   },
+   "quotaDallaParteGiusta": 0.9760956175298805,
+   "mercatiDistinti": 103
+  },
+  {
+   "wallet": "0xc37d459c8124f8d3d69a7fce81a60d63ec6db48c",
+   "etichetta": "sensibilita",
+   "copertura": {
+    "da": "2026-08-05T04:50:21.000Z",
+    "a": "2026-08-15T13:39:37.000Z",
+    "ore": 248.82111111111112
+   },
+   "pagine": 3,
+   "eventiTotali": 1472,
+   "eventiMaker": 723,
+   "quotaMaker": 0.49116847826086957,
+   "campionati": 301,
+   "misurati": 301,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.07973421926910298,
+   "distanzaC": {
+    "n": 301,
+    "q10": 0.34999926000000015,
+    "q25": 0.5000000000000004,
+    "mediana": 1.0000000000000009,
+    "q75": 2.0000000000000018,
+    "q90": 3,
+    "media": 1.4196011792026573
+   },
+   "quotaDallaParteGiusta": 0.9900332225913622,
+   "mercatiDistinti": 539
+  },
+  {
+   "wallet": "0x7cd6fab8b2fa66f53e1c1252245ad1245cb8b33c",
+   "etichetta": "sensibilita",
+   "copertura": {
+    "da": "2026-07-17T19:20:21.000Z",
+    "a": "2026-08-13T20:55:19.000Z",
+    "ore": 649.5827777777778
+   },
+   "pagine": 1,
+   "eventiTotali": 436,
+   "eventiMaker": 333,
+   "quotaMaker": 0.7637614678899083,
+   "campionati": 300,
+   "misurati": 300,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.05,
+   "distanzaC": {
+    "n": 300,
+    "q10": 0.4999999400000066,
+    "q25": 0.5000000000000004,
+    "mediana": 1.0000000000000009,
+    "q75": 1.9999999999999991,
+    "q90": 3.4999999999999973,
+    "media": 1.7004988448999998
+   },
+   "quotaDallaParteGiusta": 0.8966666666666666,
+   "mercatiDistinti": 64
+  },
+  {
+   "wallet": "0x82ae434f983771a5bc94092a6850da80368e2890",
+   "etichetta": "sensibilita",
+   "copertura": {
+    "da": "2026-08-13T02:42:28.000Z",
+    "a": "2026-08-15T11:50:34.000Z",
+    "ore": 57.135
+   },
+   "pagine": 12,
+   "eventiTotali": 5736,
+   "eventiMaker": 3768,
+   "quotaMaker": 0.6569037656903766,
+   "campionati": 301,
+   "misurati": 301,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.026578073089700997,
+   "distanzaC": {
+    "n": 301,
+    "q10": 0.5000000000000004,
+    "q25": 1.4999999999999902,
+    "mediana": 2.500000000000001,
+    "q75": 4.5000000000000036,
+    "q90": 10.499999999999998,
+    "media": 4.04053095013289
+   },
+   "quotaDallaParteGiusta": 0.8372093023255814,
+   "mercatiDistinti": 322
+  },
+  {
+   "wallet": "0x2f5242b73c0f0222b44f5b35351ebf9c0d339fba",
+   "etichetta": "sensibilita",
+   "copertura": {
+    "da": "2026-07-29T18:14:57.000Z",
+    "a": "2026-08-15T11:19:51.000Z",
+    "ore": 401.08166666666665
+   },
+   "pagine": 2,
+   "eventiTotali": 927,
+   "eventiMaker": 640,
+   "quotaMaker": 0.6903991370010788,
+   "campionati": 301,
+   "misurati": 301,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.06312292358803986,
+   "distanzaC": {
+    "n": 301,
+    "q10": 0.5000000000000004,
+    "q25": 0.5000000000000004,
+    "mediana": 1.5000000000000013,
+    "q75": 2.500000000000002,
+    "q90": 3.849999999999998,
+    "media": 2.0350492140531564
+   },
+   "quotaDallaParteGiusta": 0.9568106312292359,
+   "mercatiDistinti": 219
+  },
+  {
+   "wallet": "0x30fb41b5a08fff5d3dd983f6323e3343931a7db4",
+   "etichetta": "top5",
+   "copertura": {
+    "da": "2026-08-14T03:00:39.000Z",
+    "a": "2026-08-15T13:44:51.000Z",
+    "ore": 34.736666666666665
+   },
+   "pagine": 12,
+   "eventiTotali": 5823,
+   "eventiMaker": 5823,
+   "quotaMaker": 1,
+   "campionati": 301,
+   "misurati": 301,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.059800664451827246,
+   "distanzaC": {
+    "n": 301,
+    "q10": 0.49999999999999767,
+    "q25": 0.5000000000000004,
+    "mediana": 1.0000000000000009,
+    "q75": 1.9999959699999958,
+    "q90": 3.0000000000000027,
+    "media": 1.5074736125581392
+   },
+   "quotaDallaParteGiusta": 0.9667774086378738,
+   "mercatiDistinti": 905
+  },
+  {
+   "wallet": "0x403f2471f8aaa1e8a224f1338b073bfa3fdb94f1",
+   "etichetta": "top5",
+   "copertura": {
+    "da": "2026-08-07T17:08:58.000Z",
+    "a": "2026-08-15T12:16:33.000Z",
+    "ore": 187.1263888888889
+   },
+   "pagine": 8,
+   "eventiTotali": 3792,
+   "eventiMaker": 2040,
+   "quotaMaker": 0.5379746835443038,
+   "campionati": 301,
+   "misurati": 301,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.029900332225913623,
+   "distanzaC": {
+    "n": 301,
+    "q10": 0.4999956599999966,
+    "q25": 1.0000000000000009,
+    "mediana": 2.0000000000000018,
+    "q75": 3.8000000000000034,
+    "q90": 4.999999999999999,
+    "media": 2.8270740653820603
+   },
+   "quotaDallaParteGiusta": 0.9069767441860465,
+   "mercatiDistinti": 267
+  },
+  {
+   "wallet": "0x5c0af092b533934008144d223d704b4cbebfa2c3",
+   "etichetta": "top5",
+   "copertura": {
+    "da": "2026-08-07T18:17:37.000Z",
+    "a": "2026-08-15T12:52:46.000Z",
+    "ore": 186.58583333333334
+   },
+   "pagine": 5,
+   "eventiTotali": 2263,
+   "eventiMaker": 1122,
+   "quotaMaker": 0.4958020326999558,
+   "campionati": 300,
+   "misurati": 300,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.03333333333333333,
+   "distanzaC": {
+    "n": 300,
+    "q10": 0.5999909699999972,
+    "q25": 1.4999999999999987,
+    "mediana": 1.6499999999999981,
+    "q75": 2.500000000000002,
+    "q90": 3.4999999999999973,
+    "media": 2.3068329641333323
+   },
+   "quotaDallaParteGiusta": 0.9433333333333334,
+   "mercatiDistinti": 426
+  },
+  {
+   "wallet": "0xeed8c2be411025120fb511ea2332dd0a1f6135f0",
+   "etichetta": "top5",
+   "copertura": {
+    "da": "2026-08-08T01:59:31.000Z",
+    "a": "2026-08-15T13:36:22.000Z",
+    "ore": 179.61416666666668
+   },
+   "pagine": 9,
+   "eventiTotali": 4351,
+   "eventiMaker": 2530,
+   "quotaMaker": 0.5814755228683062,
+   "campionati": 300,
+   "misurati": 300,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.07333333333333333,
+   "distanzaC": {
+    "n": 300,
+    "q10": 0.4999996899999998,
+    "q25": 0.5000000000000004,
+    "mediana": 0.5499999999999976,
+    "q75": 1.5000000000000013,
+    "q90": 3.0000000000000004,
+    "media": 1.6913332204
+   },
+   "quotaDallaParteGiusta": 0.9666666666666667,
+   "mercatiDistinti": 854
+  },
+  {
+   "wallet": "0xf7aa193b1d7c880db7f8e2bde9177c4559a8ddd6",
+   "etichetta": "top5",
+   "copertura": {
+    "da": "2026-08-10T00:34:34.000Z",
+    "a": "2026-08-15T13:44:51.000Z",
+    "ore": 133.17138888888888
+   },
+   "pagine": 12,
+   "eventiTotali": 5808,
+   "eventiMaker": 3157,
+   "quotaMaker": 0.5435606060606061,
+   "campionati": 300,
+   "misurati": 300,
+   "nonMisurati": 0,
+   "serieAssenti": 0,
+   "semanticaCoincidenzaDopo": 0.12,
+   "distanzaC": {
+    "n": 300,
+    "q10": 0.5000000000000004,
+    "q25": 0.5000000000000004,
+    "mediana": 0.9999855500000016,
+    "q75": 1.5000000000000013,
+    "q90": 2.4999999999999996,
+    "media": 1.2696645757666667
+   },
+   "quotaDallaParteGiusta": 0.9766666666666667,
+   "mercatiDistinti": 815
+  }
+ ],
+ "mercati": {
+  "efficienti": {
+   "n": 374,
+   "minSize": {
+    "noti": 102,
+    "nonNoti": 272,
+    "righe": [
+     [
+      20,
+      59
+     ],
+     [
+      50,
+      38
+     ],
+     [
+      200,
+      4
+     ],
+     [
+      100,
+      1
+     ]
+    ]
+   },
+   "maxSpread": {
+    "noti": 102,
+    "nonNoti": 272,
+    "righe": [
+     [
+      4.5,
+      75
+     ],
+     [
+      6.5,
+      19
+     ],
+     [
+      5.5,
+      5
+     ],
+     [
+      3.5,
+      3
+     ]
+    ]
+   },
+   "volume24hMediano": 325
+  },
+  "top5": {
+   "n": 2613,
+   "minSize": {
+    "noti": 1649,
+    "nonNoti": 964,
+    "righe": [
+     [
+      20,
+      1123
+     ],
+     [
+      50,
+      260
+     ],
+     [
+      100,
+      150
+     ],
+     [
+      200,
+      65
+     ],
+     [
+      40,
+      31
+     ],
+     [
+      30,
+      20
+     ]
+    ]
+   },
+   "maxSpread": {
+    "noti": 1649,
+    "nonNoti": 964,
+    "righe": [
+     [
+      4.5,
+      1345
+     ],
+     [
+      5.5,
+      220
+     ],
+     [
+      6.5,
+      58
+     ],
+     [
+      3.5,
+      22
+     ],
+     [
+      2.5,
+      4
+     ]
+    ]
+   },
+   "volume24hMediano": 1019.5499999999998
+  },
+  "comuni": 34,
+  "quotaDeiMercatiEfficientiAncheNeiTop5": 0.09090909090909091
+ },
+ "uscite": {
+  "efficienti": {
+   "tot": 536,
+   "quote": {
+    "A": {
+     "n": 219,
+     "pct": 0.4085820895522388
+    },
+    "B": {
+     "n": 171,
+     "pct": 0.31902985074626866
+    },
+    "C": {
+     "n": 66,
+     "pct": 0.12313432835820895
+    },
+    "D": {
+     "n": 76,
+     "pct": 0.1417910447761194
+    },
+    "E": {
+     "n": 4,
+     "pct": 0.007462686567164179
+    }
+   },
+   "A": {
+    "n": 219,
+    "costoCoppiaC": {
+     "q25": 97,
+     "mediana": 99,
+     "q75": 99
+    },
+    "sottoLaPari": 0.8356164383561644,
+    "dtSec": {
+     "q25": 10,
+     "mediana": 40,
+     "q75": 191
+    },
+    "entro120s": 0.680365296803653,
+    "seguitoMaker": 0.9406392694063926,
+    "velociSottoLaPari": 0.9731543624161074
+   },
+   "B": {
+    "n": 171,
+    "deltaC": {
+     "q25": -3.0000000000000027,
+     "mediana": -1.0000000000000009,
+     "q75": 0
+    },
+    "dtSec": {
+     "mediana": 156
+    },
+    "seguitoMaker": 0.6842105263157895,
+    "inGuadagno": 0.23976608187134502
+   },
+   "D": {
+    "n": 76,
+    "dtSec": {
+     "mediana": 75.5
+    }
+   },
+   "fillTaker": 0.05783582089552239,
+   "censurati": 250
+  },
+  "top5": {
+   "tot": 15804,
+   "quote": {
+    "A": {
+     "n": 5156,
+     "pct": 0.32624651986838776
+    },
+    "B": {
+     "n": 2171,
+     "pct": 0.1373702860035434
+    },
+    "C": {
+     "n": 2405,
+     "pct": 0.15217666413566186
+    },
+    "D": {
+     "n": 5762,
+     "pct": 0.3645912427233612
+    },
+    "E": {
+     "n": 310,
+     "pct": 0.019615287269045812
+    }
+   },
+   "A": {
+    "n": 5156,
+    "costoCoppiaC": {
+     "q25": 98,
+     "mediana": 100,
+     "q75": 102
+    },
+    "sottoLaPari": 0.3783941039565555,
+    "dtSec": {
+     "q25": 453,
+     "mediana": 4460,
+     "q75": 18360
+    },
+    "entro120s": 0.21489526764934058,
+    "seguitoMaker": 0.754266873545384,
+    "velociSottoLaPari": 0.026173285198555957
+   },
+   "B": {
+    "n": 2171,
+    "deltaC": {
+     "q25": -4.999999999999993,
+     "mediana": -1.0000000000000009,
+     "q75": 0
+    },
+    "dtSec": {
+     "mediana": 1012
+    },
+    "seguitoMaker": 0.3583602026715799,
+    "inGuadagno": 0.21188392445877477
+   },
+   "D": {
+    "n": 5762,
+    "dtSec": {
+     "mediana": 5049
+    }
+   },
+   "fillTaker": 0.2802455074664642,
+   "censurati": 1218
+  },
+  "sensibilita": {
+   "tot": 10752,
+   "quote": {
+    "A": {
+     "n": 5208,
+     "pct": 0.484375
+    },
+    "B": {
+     "n": 660,
+     "pct": 0.06138392857142857
+    },
+    "C": {
+     "n": 1643,
+     "pct": 0.15280877976190477
+    },
+    "D": {
+     "n": 3212,
+     "pct": 0.29873511904761907
+    },
+    "E": {
+     "n": 29,
+     "pct": 0.002697172619047619
+    }
+   },
+   "A": {
+    "n": 5208,
+    "costoCoppiaC": {
+     "q25": 98,
+     "mediana": 100,
+     "q75": 102
+    },
+    "sottoLaPari": 0.4685099846390169,
+    "dtSec": {
+     "q25": 18,
+     "mediana": 155,
+     "q75": 1629
+    },
+    "entro120s": 0.4696620583717358,
+    "seguitoMaker": 0.716973886328725,
+    "velociSottoLaPari": 0.4771054783319706
+   },
+   "B": {
+    "n": 660,
+    "deltaC": {
+     "q25": -2.6999999999999997,
+     "mediana": -1.0000000000000002,
+     "q75": 0
+    },
+    "dtSec": {
+     "mediana": 213
+    },
+    "seguitoMaker": 0.30303030303030304,
+    "inGuadagno": 0.1606060606060606
+   },
+   "D": {
+    "n": 3212,
+    "dtSec": {
+     "mediana": 129
+    }
+   },
+   "fillTaker": 0.255859375,
+   "censurati": 578
+  }
+ }
+}

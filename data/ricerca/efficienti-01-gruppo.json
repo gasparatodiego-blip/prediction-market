@@ -1,0 +1,339 @@
+{
+  "generatoIl": "2026-08-15T14:05:49.985Z",
+  "fonte": [
+    "screening-02-storico.json",
+    "screening-03-posizioni.json",
+    "screening-04-referto.json"
+  ],
+  "soglie": {
+    "capitaleUsd": [
+      500,
+      6000
+    ],
+    "capitaleUsdAllargato": [
+      500,
+      15000
+    ],
+    "pnl7gAssolutoMax": 100,
+    "rewards14gMin": 300,
+    "dueLatiMin": 0.4,
+    "minimoUtile": 8,
+    "pnl7gSensibilita": 250
+  },
+  "imbuto": {
+    "dei65": 65,
+    "soloCapitale6k": 35,
+    "soloCapitale15k": 42,
+    "soloPnl": 37,
+    "soloRewards": 34,
+    "soloDueLati": 35,
+    "tuttiEQuattro": 4,
+    "senzaVincoloCapitale": 4,
+    "senzaVincoloPnl": 13,
+    "senzaVincoloRewards": 11,
+    "senzaVincoloDueLati": 4,
+    "capitaleNonMisurato": 0,
+    "pnlNonMisurato": 0
+  },
+  "allargamentoChiesto": {
+    "applicato": true,
+    "da": 6000,
+    "a": 15000,
+    "utile": false,
+    "walletAggiunti": [],
+    "nota": "INERTE: il vincolo che decide è |P&L 7g|, non il capitale — vedi `imbuto.senzaVincoloCapitale`"
+  },
+  "forzati": [
+    {
+      "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+      "neiSessantacinque": true,
+      "giaDentroDaSolo": true,
+      "perche": "passa tutti e quattro i filtri da solo"
+    },
+    {
+      "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+      "neiSessantacinque": true,
+      "giaDentroDaSolo": true,
+      "perche": "passa tutti e quattro i filtri da solo"
+    }
+  ],
+  "gruppo": [
+    {
+      "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+      "rewards14g": 1626.9805000000001,
+      "medianaGiornaliera": 65.60785,
+      "giorniAttivi": 14,
+      "capitaleStimato": 4118.80731,
+      "contanteUsd": 4115.49421,
+      "valorePosizioni": 3.3131,
+      "pnl7g": 21.37170031916503,
+      "quotaDueLati": 0.75,
+      "mercatiScambiati": 20,
+      "mercatiConPosizione": 0,
+      "rendimentoPct": 39.501253094551785
+    },
+    {
+      "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+      "rewards14g": 1353.6626999999999,
+      "medianaGiornaliera": 102.0226,
+      "giorniAttivi": 14,
+      "capitaleStimato": 995.331148,
+      "contanteUsd": 808.763548,
+      "valorePosizioni": 186.5676,
+      "pnl7g": 14.943597360000005,
+      "quotaDueLati": 0.5142857142857142,
+      "mercatiScambiati": 35,
+      "mercatiConPosizione": 13,
+      "rendimentoPct": 136.00123965978807
+    },
+    {
+      "wallet": "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+      "rewards14g": 982.9163000000001,
+      "medianaGiornaliera": 25.393250000000002,
+      "giorniAttivi": 14,
+      "capitaleStimato": 653.308093,
+      "contanteUsd": 586.318793,
+      "valorePosizioni": 66.9893,
+      "pnl7g": -63.941376042500266,
+      "quotaDueLati": 0.8309859154929577,
+      "mercatiScambiati": 142,
+      "mercatiConPosizione": 2,
+      "rendimentoPct": 150.4521848928022
+    },
+    {
+      "wallet": "0x16a092c7d8a641e94016ed6a785fac4b713a227f",
+      "rewards14g": 384.5957,
+      "medianaGiornaliera": 33.0657,
+      "giorniAttivi": 11,
+      "capitaleStimato": 563.1255560000001,
+      "contanteUsd": 532.165556,
+      "valorePosizioni": 30.96,
+      "pnl7g": -4.838991249999999,
+      "quotaDueLati": 0.42857142857142855,
+      "mercatiScambiati": 21,
+      "mercatiConPosizione": 3,
+      "rendimentoPct": 68.29661625230874
+    }
+  ],
+  "gruppoSensibilita": [
+    {
+      "wallet": "0x41e6de55cf3bd608b50952f681dfb562187466b7",
+      "rewards14g": 1827.2179,
+      "medianaGiornaliera": 86.82195,
+      "giorniAttivi": 14,
+      "capitaleStimato": 4264.202712,
+      "contanteUsd": 1969.641012,
+      "valorePosizioni": 2294.5617,
+      "pnl7g": -242.54829816586852,
+      "quotaDueLati": 0.562962962962963,
+      "mercatiScambiati": 135,
+      "mercatiConPosizione": 121,
+      "rendimentoPct": 42.85016504628123
+    },
+    {
+      "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+      "rewards14g": 1626.9805000000001,
+      "medianaGiornaliera": 65.60785,
+      "giorniAttivi": 14,
+      "capitaleStimato": 4118.80731,
+      "contanteUsd": 4115.49421,
+      "valorePosizioni": 3.3131,
+      "pnl7g": 21.37170031916503,
+      "quotaDueLati": 0.75,
+      "mercatiScambiati": 20,
+      "mercatiConPosizione": 0,
+      "rendimentoPct": 39.501253094551785
+    },
+    {
+      "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+      "rewards14g": 1353.6626999999999,
+      "medianaGiornaliera": 102.0226,
+      "giorniAttivi": 14,
+      "capitaleStimato": 995.331148,
+      "contanteUsd": 808.763548,
+      "valorePosizioni": 186.5676,
+      "pnl7g": 14.943597360000005,
+      "quotaDueLati": 0.5142857142857142,
+      "mercatiScambiati": 35,
+      "mercatiConPosizione": 13,
+      "rendimentoPct": 136.00123965978807
+    },
+    {
+      "wallet": "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+      "rewards14g": 982.9163000000001,
+      "medianaGiornaliera": 25.393250000000002,
+      "giorniAttivi": 14,
+      "capitaleStimato": 653.308093,
+      "contanteUsd": 586.318793,
+      "valorePosizioni": 66.9893,
+      "pnl7g": -63.941376042500266,
+      "quotaDueLati": 0.8309859154929577,
+      "mercatiScambiati": 142,
+      "mercatiConPosizione": 2,
+      "rendimentoPct": 150.4521848928022
+    },
+    {
+      "wallet": "0x3b6930e90b206755a20e89f7bae00588391e01d7",
+      "rewards14g": 852.7384,
+      "medianaGiornaliera": 46.65495,
+      "giorniAttivi": 14,
+      "capitaleStimato": 1042.158707,
+      "contanteUsd": 907.053707,
+      "valorePosizioni": 135.105,
+      "pnl7g": -207.7960306490541,
+      "quotaDueLati": 0.4077669902912621,
+      "mercatiScambiati": 103,
+      "mercatiConPosizione": 5,
+      "rendimentoPct": 81.82423600861398
+    },
+    {
+      "wallet": "0xc37d459c8124f8d3d69a7fce81a60d63ec6db48c",
+      "rewards14g": 671.8379,
+      "medianaGiornaliera": 39.0163,
+      "giorniAttivi": 14,
+      "capitaleStimato": 592.048634,
+      "contanteUsd": 592.048634,
+      "valorePosizioni": 0,
+      "pnl7g": -218.12059024904275,
+      "quotaDueLati": 0.8138297872340425,
+      "mercatiScambiati": 188,
+      "mercatiConPosizione": 0,
+      "rendimentoPct": 113.47680940684342
+    },
+    {
+      "wallet": "0x7cd6fab8b2fa66f53e1c1252245ad1245cb8b33c",
+      "rewards14g": 480.2106999999999,
+      "medianaGiornaliera": 31.80285,
+      "giorniAttivi": 14,
+      "capitaleStimato": 1777.163074,
+      "contanteUsd": 734.637374,
+      "valorePosizioni": 1042.5257,
+      "pnl7g": -114.72451393019614,
+      "quotaDueLati": 0.453125,
+      "mercatiScambiati": 64,
+      "mercatiConPosizione": 11,
+      "rendimentoPct": 27.021195017244654
+    },
+    {
+      "wallet": "0x82ae434f983771a5bc94092a6850da80368e2890",
+      "rewards14g": 469.1427,
+      "medianaGiornaliera": 25.06485,
+      "giorniAttivi": 14,
+      "capitaleStimato": 10016.873986999999,
+      "contanteUsd": 4447.362887,
+      "valorePosizioni": 5569.5111,
+      "pnl7g": -124.64286356863994,
+      "quotaDueLati": 0.8947368421052632,
+      "mercatiScambiati": 38,
+      "mercatiConPosizione": 177,
+      "rendimentoPct": 4.683524027644335
+    },
+    {
+      "wallet": "0x2f5242b73c0f0222b44f5b35351ebf9c0d339fba",
+      "rewards14g": 436.1923,
+      "medianaGiornaliera": 28.022,
+      "giorniAttivi": 14,
+      "capitaleStimato": 1065.301019,
+      "contanteUsd": 557.510819,
+      "valorePosizioni": 507.7902,
+      "pnl7g": -173.47206133616652,
+      "quotaDueLati": 0.631578947368421,
+      "mercatiScambiati": 152,
+      "mercatiConPosizione": 28,
+      "rendimentoPct": 40.94545036758291
+    },
+    {
+      "wallet": "0x16a092c7d8a641e94016ed6a785fac4b713a227f",
+      "rewards14g": 384.5957,
+      "medianaGiornaliera": 33.0657,
+      "giorniAttivi": 11,
+      "capitaleStimato": 563.1255560000001,
+      "contanteUsd": 532.165556,
+      "valorePosizioni": 30.96,
+      "pnl7g": -4.838991249999999,
+      "quotaDueLati": 0.42857142857142855,
+      "mercatiScambiati": 21,
+      "mercatiConPosizione": 3,
+      "rendimentoPct": 68.29661625230874
+    }
+  ],
+  "top5": [
+    {
+      "wallet": "0x30fb41b5a08fff5d3dd983f6323e3343931a7db4",
+      "rewards14g": 49457.7258,
+      "medianaGiornaliera": 2893.22285,
+      "giorniAttivi": 14,
+      "capitaleStimato": 72290.238735,
+      "contanteUsd": 23550.340835,
+      "valorePosizioni": 48739.8979,
+      "pnl7g": -12379.735327889608,
+      "quotaDueLati": 0.3933649289099526,
+      "mercatiScambiati": 211,
+      "mercatiConPosizione": 495,
+      "rendimentoPct": 68.4154965669723
+    },
+    {
+      "wallet": "0x403f2471f8aaa1e8a224f1338b073bfa3fdb94f1",
+      "rewards14g": 9851.041,
+      "medianaGiornaliera": 414.1697,
+      "giorniAttivi": 13,
+      "capitaleStimato": 45862.260693000004,
+      "contanteUsd": 24802.602893,
+      "valorePosizioni": 21059.6578,
+      "pnl7g": 1273.1396089460802,
+      "quotaDueLati": 0.3333333333333333,
+      "mercatiScambiati": 75,
+      "mercatiConPosizione": 105,
+      "rendimentoPct": 21.47962366256309
+    },
+    {
+      "wallet": "0x5c0af092b533934008144d223d704b4cbebfa2c3",
+      "rewards14g": 8220.026899999999,
+      "medianaGiornaliera": 405.41510000000005,
+      "giorniAttivi": 14,
+      "capitaleStimato": 13056.807759,
+      "contanteUsd": 12840.243359,
+      "valorePosizioni": 216.5644,
+      "pnl7g": -1415.7325816826867,
+      "quotaDueLati": 0.3119266055045872,
+      "mercatiScambiati": 109,
+      "mercatiConPosizione": 11,
+      "rendimentoPct": 62.95586985520233
+    },
+    {
+      "wallet": "0xeed8c2be411025120fb511ea2332dd0a1f6135f0",
+      "rewards14g": 8182.2235,
+      "medianaGiornaliera": 644.26235,
+      "giorniAttivi": 14,
+      "capitaleStimato": 3254.703907,
+      "contanteUsd": 1235.242007,
+      "valorePosizioni": 2019.4619,
+      "pnl7g": -3559.309473005073,
+      "quotaDueLati": 0.6232558139534884,
+      "mercatiScambiati": 215,
+      "mercatiConPosizione": 80,
+      "rendimentoPct": 251.39686231986326
+    },
+    {
+      "wallet": "0xf7aa193b1d7c880db7f8e2bde9177c4559a8ddd6",
+      "rewards14g": 5146.0327,
+      "medianaGiornaliera": 331.81449999999995,
+      "giorniAttivi": 14,
+      "capitaleStimato": 1638.8541850000001,
+      "contanteUsd": 1445.469485,
+      "valorePosizioni": 193.3847,
+      "pnl7g": -1114.5347060784288,
+      "quotaDueLati": 0.8428571428571429,
+      "mercatiScambiati": 140,
+      "mercatiConPosizione": 7,
+      "rendimentoPct": 314.0018646625355
+    }
+  ],
+  "riepilogoGruppo": {
+    "n": 4,
+    "rewards14gMediana": 1168.2894999999999,
+    "capitaleMediano": 824.3196204999999,
+    "rendimentoPctMediano": 102.1489279560484,
+    "dueLatiMediana": 0.6321428571428571
+  }
+}
