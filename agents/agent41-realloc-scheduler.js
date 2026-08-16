@@ -473,7 +473,11 @@ const PLAN_MAX_BUFFER = 48 * 1024 * 1024;
 function restringiAllaSelezione(opzioni) {
   const sel = selezioneAttiva();
   if (!sel.attiva) return opzioni;
-  const scelti = new Set(sel.ids);
+  // ⚠ `idsAttivi`, NON `ids`: il piano apre posizioni, e un mercato in gestione sta chiudendo la sua.
+  // Aprirci sopra rifarebbe l'esposizione che la scala d'uscita sta smontando. La GESTIONE di quel
+  // mercato non passa da qui — passa dalla regola di copertura di §4.8, che lo tiene dentro perche'
+  // ha capitale esposto.
+  const scelti = new Set(sel.idsAttivi);
   const prima = Array.isArray(opzioni.onlyMarketIds) ? opzioni.onlyMarketIds.map((x) => String(x).trim().toLowerCase()) : null;
   const dopo = prima ? prima.filter((x) => scelti.has(x)) : [...scelti];
   return { ...opzioni, onlyMarketIds: dopo.length ? dopo : ['0x' + '0'.repeat(64)] };
@@ -1144,9 +1148,19 @@ async function rilasciaDallaSelezione({ marketId, motivo }) {
 function selezioneAttiva() {
   try {
     const s = SELS.leggiStato();
-    if (!s.leggibile || s.attiva !== true) return { attiva: false, ids: [] };
-    return { attiva: true, ids: Object.keys(s.stato.selezionati || {}) };
-  } catch { return { attiva: false, ids: [] }; }
+    if (!s.leggibile || s.attiva !== true) return { attiva: false, ids: [], idsAttivi: [] };
+    const sel = s.stato.selezionati || {};
+    // ⚠ DUE ELENCHI, E LA DIFFERENZA E' LA ROTAZIONE (15 agosto 2026).
+    //   `ids`       tutti: attivi + in gestione. E' l'insieme che il bot sta seguendo.
+    //   `idsAttivi` i soli che QUOTANO. E' l'insieme a cui il PIANO puo' aprire posizioni nuove.
+    // Un mercato in gestione sta completando una coppia: aprirci sopra una gamba nuova rifarebbe
+    // esattamente l'esposizione che si sta chiudendo.
+    return {
+      attiva: true,
+      ids: Object.keys(sel),
+      idsAttivi: Object.entries(sel).filter(([, v]) => v && v.inGestione !== true).map(([k]) => k),
+    };
+  } catch { return { attiva: false, ids: [], idsAttivi: [] }; }
 }
 
 /**
@@ -1168,8 +1182,16 @@ async function selezionaMercati(deps = {}) {
   const posizioni = deps.leggiPosizioni ? deps.leggiPosizioni() : posizioniPerSelezione();
   const quarantena = (() => { try { return Object.keys(leggiQuarantena() || {}); } catch { return []; } })();
 
+  // ⚠ IL TETTO D'ORIZZONTE ARRIVA DA `horizon.js`, NON DA UNA COSTANTE RICOPIATA (15 agosto 2026).
+  // `selezione-mercati` e' puro per costruzione (zero `require`, e un test lo pretende), quindi il
+  // valore glielo passa il cablaggio. Senza, la selezione potrebbe occupare uno slot con un mercato
+  // che l'allocatore rifiuta per orizzonte: uno slot vivo che non ricevera' mai un ordine.
+  const orizzonteMassimoOre = (() => {
+    try { const H = require('../lib/rewards/horizon'); return Number(H.MAX_HORIZON_DAYS) * 24 || null; }
+    catch { return null; }   // non leggibile ⇒ nessun tetto, cioe' il comportamento di prima
+  })();
   const d = SELM.decidiSelezione({
-    board, stato: stato.stato, posizioni, ora: Date.now(), escludi: quarantena,
+    board, stato: stato.stato, posizioni, ora: Date.now(), escludi: quarantena, orizzonteMassimoOre,
   });
   if (!d.ok) {
     annuncia('log', `selezione automatica: nessuna decisione — ${d.motivo}`);
@@ -1211,17 +1233,21 @@ async function selezionaMercati(deps = {}) {
   const salvato = SELS.scriviStato(statoDaSalvare, { by: 'agent41 · selezione automatica',
     reason: `${entrati.filter((x) => x.aperto).length} entrati, ${usciti.length} usciti, ${d.liberati.length} slot liberati` });
 
-  const riassunto = `selezione automatica: ${d.occupati}/${SELM.MAX_MERCATI_CONTEMPORANEI} slot occupati`
+  const riassunto = `selezione automatica: ${d.occupati}/${SELM.MAX_MERCATI_CONTEMPORANEI} slot attivi`
+    + (d.inGestione.length ? ` (+${d.inGestione.length} in gestione, fuori dal conteggio)` : '')
     + ` · ${d.ammissibili} mercati ammissibili su ${d.valutati} valutati`
     + (entrati.length ? ` · ENTRATI ${entrati.map((x) => `${x.id.slice(0, 10)}…${x.aperto ? '' : ' (RIFIUTATO: ' + x.motivo + ')'}`).join(', ')}` : '')
+    // ROTAZIONE: il fill che libera lo slot va detto, o «3 slot e 5 mercati» sembra un errore.
+    + (d.entratiInGestione.length ? ` · IN GESTIONE per un fill ${d.entratiInGestione.map((x) => x.id.slice(0, 10) + '…').join(', ')}` : '')
     + (usciti.length ? ` · USCITI ${usciti.map((x) => `${x.id.slice(0, 10)}… (${x.motivo})`).join(', ')}` : '')
-    + (d.liberati.length ? ` · SLOT LIBERATI ${d.liberati.map((x) => x.id.slice(0, 10) + '…').join(', ')}` : '');
-  if (entrati.length || usciti.length || d.liberati.length) annuncia('log', riassunto);
+    + (d.liberati.length ? ` · SLOT LIBERATI ${d.liberati.map((x) => `${x.id.slice(0, 10)}… (${x.motivo})`).join(', ')}` : '');
+  if (entrati.length || usciti.length || d.liberati.length || d.entratiInGestione.length) annuncia('log', riassunto);
 
   const rec = {
     tipo: 'selezione-mercati', esito: 'applicata',
     occupati: d.occupati, ammissibili: d.ammissibili, valutati: d.valutati,
     tenuti: d.tenuti.map((x) => x.id), entrati, usciti, liberati: d.liberati,
+    entratiInGestione: d.entratiInGestione, inGestione: d.inGestione,
     statoSalvato: salvato.ok, statoErrore: salvato.ok ? null : salvato.error,
   };
   scrivi(rec);

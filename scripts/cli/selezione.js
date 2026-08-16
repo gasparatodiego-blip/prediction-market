@@ -115,7 +115,12 @@ function prova() {
     + C.col.spento(pos.leggibile ? `  · snapshot di ${C.eta(pos.ageMs)}` : ''));
   console.log(`  quarantena al venue   : ${quar.length ? C.col.giallo(quar.length + ' mercati') : C.col.spento('nessuno')}`);
 
-  const d = SELM.decidiSelezione({ board, stato: s.stato, posizioni: pos, ora: Date.now(), escludi: quar });
+  // Lo STESSO tetto d'orizzonte che aggancia agent41, letto dalla stessa fonte: se `prova` girasse
+  // senza, mostrerebbe una scelta che il bot vero non farebbe.
+  const orizzonteMassimoOre = (() => {
+    try { return Number(require('../../lib/rewards/horizon').MAX_HORIZON_DAYS) * 24 || null; } catch { return null; }
+  })();
+  const d = SELM.decidiSelezione({ board, stato: s.stato, posizioni: pos, ora: Date.now(), escludi: quar, orizzonteMassimoOre });
   if (!d.ok) {
     console.log('\n  ' + C.col.giallo('NESSUNA DECISIONE: ') + d.motivo);
     console.log('  ' + C.col.spento('e questo e\' il verso giusto: nessun mercato entra e — soprattutto — nessuno esce'));
