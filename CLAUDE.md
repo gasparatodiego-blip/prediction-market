@@ -1482,7 +1482,22 @@ banda» provata su sei griglie), più i tre che passavano `bordiConMargine` senz
 **123** · I RESIDUI SOTTO IL MINIMO — BUCO STRUTTURALE APERTO, non implementato
 
 
-**138** · LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA
+**138 · LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA — ⚠ LA DIAGNOSI DI QUESTA VOCE ERA SBAGLIATA,
+corretta il 16 agosto 2026 con la misura.** Qui c'era scritto che «l'orologio si azzera a ogni nuovo
+ingresso in modalità chiusura». **NON È VERO, e chi riapre non deve rifare quella diagnosi**: il
+16 agosto una posizione su FL-27 è rimasta aperta **cinque ore**, e `data/modalita-chiusura.json`
+portava `da: 15:20:41Z` — l'istante esatto del fill — per tutte e cinque, con la dep `chiusura`
+cablata correttamente in agent40. L'ancora non si era mai mossa.
+**LE DUE CAUSE VERE**, trovate contando `urgenzaLivello` nel giornale (**una sola occorrenza in
+cinque ore**): ① il ramo **`already-covered`** di `decideClose` **ritorna prima di ricalcolare il
+prezzo** — l'uscita si piazza una volta, al gradino di quel momento, e non scende mai più; ② **
+`planExit` produce un PAVIMENTO, non un prezzo**: al gradino 2 concedeva 19¢ e l'uscita restava a
+20¢ sopra un book 16/18. Il permesso c'era, il prezzo no, e nessuno consumava il pavimento.
+**Corretto**: `already-covered` ricalcola e, dal gradino 1 in su, l'uscita **insegue il miglior ask**
+fermandosi al pavimento — la scala dice quanto si può perdere, il book dove si viene presi, vince il
+più stretto. Riduce e basta (solo se il prezzo nuovo è più basso di un tick), e `peggiorativa` segue
+il prezzo finale. Test `uscita-scende-con-la-scala.test.js`: 16 asserzioni che esercitano ogni
+gradino **fino allo scatto sul prezzo**, non fino alla condizione.
 
 
 **152** · IL BORDO DELLA BANDA NON CONVIENE — ⚠ NUMERI CORRETTI DA §5-bis p.155
