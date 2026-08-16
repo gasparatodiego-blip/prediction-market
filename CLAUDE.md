@@ -21,11 +21,15 @@ Ultima verifica contro codice/stato reali: **16 agosto 2026** (§4.1, §4.2, §4
 > `planFromCollection` è una funzione). pm2 **7.0.3** installato; PostgreSQL **16** con database e
 > utente `rewardsbot`, **14 tabelle** applicate da `prisma migrate deploy`; `.env` creato (gitignored,
 > `chmod 600`) con i segreti generati a caso e **cinque TODO vuoti** che li deve fornire l'operatore.
-> **STATO AL 16 AGOSTO 2026, VERIFICATO DAI MODULI VERI** e non dai file: `MAKER_MODE=**live-min**` ·
-> `MAKER_ADAPTER_DRYRUN=true` · **`MAKER_PLACEMENT` vuota (DRY-RUN: nessun ordine può partire)** ·
-> KILL spento · AVVIA **FERMA** · zero mercati in lista · interruttore riprezzo **spento** · selezione
-> automatica **accesa** con zero voci. **Il giro di prova è CONFIGURATO e NON ARMATO**: per inviare
-> davvero servono, tutte insieme e a mano, `MAKER_PLACEMENT` + il riprezzo generale + AVVIA (§4.13).
+> **STATO AL 16 AGOSTO 2026 ore 09:0xZ, LETTO DAI PROCESSI VIVI** (`/proc/<pid>/environ`) e non dai file:
+> **`MAKER_MODE=off`** · `MAKER_ADAPTER_DRYRUN=true` · **`MAKER_PLACEMENT` vuota** · freno di agent41
+> **inserito** ⇒ **quattro cinture indipendenti, nessun ordine può partire** · KILL spento ·
+> AVVIA **ACCESO** (15/08 12:54, `by: cli/avvia`) · interruttore riprezzo **ACCESO** (16/08 08:52:23Z,
+> `by: operatore · chat`) · selezione automatica **accesa** con **3 mercati** scelti alle 08:38:56Z.
+> **⚠ `MAKER_MODE` NEL `.env` DICE `live-min` ED È INERTE**: pm2 tiene la propria copia dell'ambiente e i
+> caricatori `.env` degli agent scrivono solo le chiavi **assenti**, quindi `off` vince. Per armare non
+> basta il `.env`: serve dichiararlo in `agents/ecosystem.config.js` e riavviare **dal file**.
+> **Il giro di prova è CONFIGURATO e NON ARMATO.**
 > **LA RIDUZIONE**: 568 file su 1.267 **spostati** — mai cancellati — in `/root/bot/_archivio`, che
 > conserva i percorsi (`mv _archivio/<p> <p>` riporta indietro; `INDICE-SPOSTATI.json` è l'elenco).
 > La catena è stata decisa camminando il grafo dei `require`/`import`: **486 file**.
