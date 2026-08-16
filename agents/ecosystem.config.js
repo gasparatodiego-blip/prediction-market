@@ -238,7 +238,16 @@ module.exports = {
       // per costruzione — MAKER_MODE assente non e' in LIVE_MODES ⇒ rifiuto; MAKER_PLACEMENT assente ⇒
       // placement='dry-run'. Togliere e' piu' sicuro che scrivere, ed e' voluto.
       env:           { NODE_ENV: 'production', HOME: '/root', MAKER_FUNDING_APPROVED: 'true',
-        MAKER_AUTO_REPRICE_POLL_MS: '1000',
+        // ⚠ 1000 → 5000 ms IL 16 AGOSTO 2026, DOPO AVER MISURATO IL DANNO. Il pavimento a 1 s era stato
+        // chiesto per il riprezzo «event-driven»; con il lock per mercato in servizio ha prodotto
+        // **789 `riprezzo-in-corso` e ZERO `manual-replace` in 22 minuti**, piu' 3 ordini morti di GTD
+        // senza rinnovo. A 1 s i cicli di agent40 si sovrappongono quasi sempre — un giro dura piu' di
+        // un secondo — quindi il lock, che e' corretto, blocca anche il percorso di RINNOVO invece
+        // della sola corsa cancel+place.
+        // ⚠ NON SI PERDE L'EVENT-DRIVEN: `cadenza-adattiva` valuta ADESSO appena il feed di agent34
+        // pubblica un book piu' recente. Questo numero e' il PAVIMENTO DI RIPOSO, cioe' quanto si
+        // aspetta quando il feed tace — non il tetto alla reattivita'.
+        MAKER_AUTO_REPRICE_POLL_MS: '5000',
         // ══ IL TIMEOUT DEL MID STANTIO: 20 s → 120 s — 16 agosto 2026 ═══════════════════════════════
         // ⚠ LA RAGIONE NON E' «era scomodo», e' UN'INCOERENZA MISURATA. `decideReprice` rifiuta di
         // MUOVERE un ordine quando il mid supera i **60 s** in regime «vivo» (letto dal giornale:

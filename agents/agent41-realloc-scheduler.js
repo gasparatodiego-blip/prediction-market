@@ -1343,11 +1343,27 @@ async function riconciliaCopertura(deps = {}) {
       annuncia('log', `copertura ${id.slice(0, 12)}…: ${v.stato} (${v.gambeVive}/2 gambe) — ${v.motivo}`);
     }
   }
-  // Uno slot scoperto e' capitale che non lavora: si CHIEDE il ripiazzamento al percorso che piazza,
-  // invece di piazzare qui. `controlloCapitaleFermo` ricostruisce il piano e apre le gambe mancanti.
+  // ⚠ QUI C'ERA UNA CHIAMATA A `controlloCapitaleFermo`, ED E' STATA TOLTA IL 16 AGOSTO 2026 DOPO
+  // AVERLA VISTA FARE DANNO. L'idea era «uno slot scoperto e' capitale che non lavora: si chiede il
+  // ripiazzamento a chi piazza». Misurato in due ore di produzione: **799 record `da-coprire`
+  // consecutivi**, cioe' una ricostruzione del piano forzata a OGNI ciclo — ognuna con un processo
+  // figlio e un buffer da 48 MB — e agent41 passato da 9 a **14 riavvii**.
+  //
+  // E il danno peggiore non era il thrash: `controlloCapitaleFermo` abilita i mercati che il PIANO
+  // sceglie, e il piano non conosce i tre slot della selezione. Forzandolo a ogni giro ha aggiunto un
+  // QUARTO mercato (`0xf2b0c93903a1…`) alla allowlist, scavalcando in silenzio il tetto che la
+  // selezione esiste per tenere.
+  //
+  // LA LEZIONE, che vale oltre questa riga: un riconciliatore OSSERVA. Nel momento in cui agisce
+  // sull'anello che sta osservando, e l'azione non risolve la condizione osservata, l'anello non si
+  // chiude piu' — e la frequenza del ciclo diventa la frequenza dell'azione. La condizione
+  // «scoperto» qui non poteva essere risolta dalla chiamata, perche' i mercati non erano quotabili:
+  // ogni giro ritrovava lo stesso stato e riprovava.
+  //
+  // Adesso si DICHIARA e basta. Il ripiazzamento resta al trigger a capitale fermo, che gira gia' ogni
+  // 120 s con il suo cooldown e la sua soglia — cioe' esattamente il lavoro che stavo duplicando.
   if (scoperti > 0) {
-    try { await controlloCapitaleFermo({ forzatoDa: 'copertura-incompleta' }); }
-    catch (e) { annuncia('log', `ripiazzamento delle gambe mancanti non riuscito: ${e.message}`); }
+    esito.motivo = `${scoperti} mercato/i scoperto/i: dichiarati, il ripiazzamento resta al trigger a capitale fermo`;
   }
   return esito;
 }

@@ -2186,4 +2186,39 @@ Regole di manutenzione:
   sessione** — non si rimanda.
 - **§2 non si tocca** senza istruzione esplicita dell'utente in chat.
 - Aggiorna la data di «ultima verifica» in cima quando rivedi §3/§4.
-- Il file va **committato e pushato** insieme al lavoro che lo ha reso obsoleto, non dopo.
+- Il file va **committato e pushato** insieme al lavoro che lo ha reso obsoleto, non dopo.> ## 🔁 IL GIRO DI PROVA È ARMATO, E LA PRIMA GIORNATA HA INSEGNATO TRE COSE — 16 agosto 2026
+> **ARMATO**: `MAKER_MODE=live-min` · `MAKER_PLACEMENT=send` · `MAKER_ADAPTER_DRYRUN` vuota · freno di
+> agent41 disinserito · **`MANUAL_ORDER_PLACEMENT=send`** — ed è **la quinta cintura, non un doppione**:
+> governa la CORSIA MANUALE (`manual-order.js:250`, «Deliberately NOT MAKER_PLACEMENT»), che è la strada
+> da cui il bot piazza davvero (`source: manual-ui`). Con le altre quattro già tolte, i `postOrder`
+> uscivano `dry-run-validated` — costruiti, passati da tutti i gate, fermati prima della POST.
+> **PRIMI ORDINI VERI alle 10:46:42Z**, due gambe su FL-27, `status:"live"`.
+> **⚠ TRE DIFETTI TROVATI IN PRODUZIONE, TUTTI MIEI, E VALE PIÙ LA CLASSE DEL SINGOLO CASO:**
+> **① LA CORSA DEL RIPREZZO** — due `manual-replace` a 3 s sullo stesso `orderId` ⇒ due ordini identici
+> a libro, due volte in un'ora. L'anti-churn **era già ancorato al mercato**: non ha protetto perché
+> `readAutoRepriceState` legge a inizio ciclo e scrive alla fine. Corsa lettura/scrittura, non di chiave.
+> Cura: `lib/maker/lock-mercato.js`, lock per `conditionId` sull'intera sequenza cancel+place, rilasciato
+> in un `finally` (il giro esce da venti `continue`), TTL **20 s** che dichiara lo stato **incoerente**.
+> **② UN RICONCILIATORE CHE AGISCE SULL'ANELLO CHE OSSERVA NON SI FERMA PIÙ.** Avevo fatto chiamare
+> `controlloCapitaleFermo` a ogni giro scoperto: **799 ricostruzioni del piano consecutive**, agent41 da
+> 9 a 14 riavvii, e — peggio — un **quarto mercato** aggiunto alla allowlist, perché quel trigger abilita
+> ciò che il PIANO sceglie e il piano non conosce i tre slot. Ora dichiara e basta.
+> **③ UN LOCK CORRETTO PUÒ ESSERE PEGGIO DEL DIFETTO SE LA CADENZA È SBAGLIATA.** Con `POLL_MS=1000` i
+> cicli si sovrappongono quasi sempre: **789 `riprezzo-in-corso` e ZERO `manual-replace` in 22 minuti**,
+> 3 ordini morti di GTD senza rinnovo. Riportato a **5000 ms** — l'event-driven resta (`cadenza-adattiva`
+> valuta appena il feed pubblica); 5000 è il PAVIMENTO DI RIPOSO, non il tetto alla reattività.
+> **LE ALTRE DECISIONI DELLA GIORNATA**: orizzonte minimo **168 → 24 h** (fra 48 e 168 h il board è
+> vuoto: 168/96/48 danno piano identico e VUOTO, 24 h sblocca 27 ammissibili) · **vincolo delle tre
+> categorie TOLTO** (23 dei 26 ammissibili sono `elections`: la diversificazione teneva due slot sui
+> mercati **peggiori**, netto −$0,111/g e +$0,026/g contro +$10,64/g escluso) · **selezione ordinata per
+> NETTO del knapsack** iniettato, non per lordo a $500 · **riclassificazione** con isteresi
+> `max($0,50/g, 25%)`, che non spodesta chi ha ordini vivi o una gamba in attesa · **tetto per mercato
+> anche sul nozionale A RIPOSO** (`nozionale-mercato-oltre-tetto`) e **divieto di doppioni** al
+> piazzamento · `maxOpenNotionalUsd` **600 → 150** con le chiusure esentate per prova ·
+> **mid stantio 20 → 120 s**: cancellava a 20 s ciò che `decideReprice` non era disposto a riprezzare
+> prima di 60 s.
+> **⚠ APERTO**: la allowlist ha **4 mercati** contro i 3 della selezione — il trigger a capitale fermo
+> abilita fuori dagli slot. `0x776841ce` è stato sostituito da `0xf2b0c93903a1` ma è rimasto abilitato.
+
+
+
