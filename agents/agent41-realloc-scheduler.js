@@ -1368,6 +1368,62 @@ async function riconciliaCopertura(deps = {}) {
   return esito;
 }
 
+// ══ LA ALLOWLIST DERIVA DALLA SELEZIONE — 16 agosto 2026 ═══════════════════════════════════════════
+//
+// ⚠ IL DIFETTO, OSSERVATO: `data/maker-auto-reprice.json` aveva **4 mercati abilitati** contro i **3**
+// della selezione. `0x776841ce…` era stato sostituito alle 12:34 e non era mai stato disabilitato.
+//
+// LA CAUSA E' STRUTTURALE, NON UN CASO. Le uscite dalla selezione finiscono in TRE liste — `uscenti`
+// (vincolo violato), `spodestati` (riclassificazione) e `liberati` (coppia chiusa, riga sparita dal
+// board, gia' dichiarato uscente) — e il cablaggio chiamava `rilasciaDallaSelezione` solo sulle prime
+// due. Ogni percorso nuovo che libera uno slot doveva ricordarsi di spegnere anche la allowlist, e
+// prima o poi uno non se ne ricorda. E' successo.
+//
+// ⚠ LA CURA NON E' AGGIUNGERE LA TERZA CHIAMATA: e' smettere di sincronizzare due elenchi a mano. La
+// allowlist si DERIVA dalla selezione — chi non e' nella selezione non e' abilitato — cosi' un
+// percorso di uscita nuovo non ha niente da ricordare. E' la stessa regola di `occupati` derivato
+// dallo stato invece che sommato dai delta, e di §4.5 (`alLavoro` per differenza, mai risommato).
+//
+// ⚠ SI SPEGNE E BASTA, NON SI ACCENDE. Abilitare un mercato richiede QUATTRO scritture coordinate
+// (`preparaMercatoNuovo`: allowlist, gestione manuale, uscita automatica, catalogo di ripiego) e una
+// sola di quelle mancante produce un mercato con ordini e senza via d'uscita. Una derivazione che
+// accendesse ricreerebbe quel rischio da una porta laterale.
+//
+// ⚠ I MERCATI IN GESTIONE RESTANO ABILITATI (§4.13): si confronta con `sel.ids`, che li comprende, e
+// non con `idsAttivi`. Toglierli farebbe morire la gamba sorella per GTD in ≤ 23 minuti, cioe' prima
+// dei 30 che la scala d'uscita le concede.
+//
+// ⚠ FAIL-CLOSED: selezione spenta o illeggibile ⇒ NON si tocca niente. Una selezione che non si legge
+// farebbe sembrare estranei tutti i mercati, e la derivazione li spegnerebbe tutti in un colpo.
+async function riconciliaAllowlist(deps = {}) {
+  // ⚠ `!== undefined` E NON `||`: una selezione iniettata a `null` — che significa «non leggibile» —
+  // con l'`||` ricadeva sulla funzione VERA, cioe' su una selezione attiva, e la derivazione spegneva
+  // i mercati veri credendo di lavorare su una finta. E' la classe `deps.stato` di §5.3, e l'ha presa
+  // il test invece del ragionamento.
+  const sel = deps.selezione !== undefined ? deps.selezione : selezioneAttiva();
+  if (!sel || sel.attiva !== true || !Array.isArray(sel.ids)) {
+    return { ok: false, motivo: 'selezione non attiva o illeggibile: la allowlist non si tocca', spenti: [] };
+  }
+  const dentro = new Set(sel.ids.map((x) => String(x).trim().toLowerCase()));
+  let cfg;
+  try { cfg = (deps.leggiConfig || readAutoRepriceConfig)(); }
+  catch (e) { return { ok: false, motivo: `allowlist non leggibile: ${e.message}`, spenti: [] }; }
+  if (!cfg || cfg.readable === false) return { ok: false, motivo: 'allowlist non leggibile', spenti: [] };
+
+  const spenti = [];
+  for (const [id, m] of Object.entries(cfg.markets || {})) {
+    const k = String(id).trim().toLowerCase();
+    if (!m || m.enabled !== true || dentro.has(k)) continue;
+    const r = await (deps.rilascia || rilasciaDallaSelezione)({ marketId: k, motivo: 'fuori-selezione' });
+    spenti.push({ id: k, spento: !!(r && r.ok), error: (r && r.error) || null });
+    scrivi({ tipo: 'allowlist-derivata', esito: (r && r.ok) ? 'spento' : 'spegnimento-fallito', marketId: k,
+      motivo: 'abilitato al riprezzo ma fuori dalla selezione: la allowlist deriva dalla selezione,'
+        + ' non da chi ha abilitato per ultimo' });
+    annuncia('log', `allowlist: ${k.slice(0, 12)}… era abilitato fuori dalla selezione ⇒ spento`);
+  }
+  return { ok: true, motivo: null, spenti, dentro: dentro.size };
+}
+
 async function selezionaMercati(deps = {}) {
   const stato = deps.leggiStatoSelezione ? deps.leggiStatoSelezione() : SELS.leggiStato();
   if (!stato.leggibile) {
@@ -2477,6 +2533,10 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   catch (e) { annuncia('log', `riconciliazione della copertura non eseguita: ${e.message}`); }
   try { await selezionaMercati(); }
   catch (e) { annuncia('log', `selezione automatica non eseguita: ${e.message} — si prosegue con la lista di prima`); }
+  // ⚠ DOPO la selezione, sempre: e' la derivazione che tiene allineati allowlist e selezione senza
+  // che ogni percorso di uscita debba ricordarsene. Vedi `riconciliaAllowlist`.
+  try { await riconciliaAllowlist(); }
+  catch (e) { annuncia('log', `allowlist non riconciliata: ${e.message}`); }
   let saldo = null;
   try { saldo = await leggiSaldo(); } catch (e) { saldo = { readable: false, error: e.message }; }
   const st = leggiStato();
@@ -2778,6 +2838,7 @@ if (require.main === module) main();
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
   selezionaMercati, rilasciaDallaSelezione, selezioneAttiva, restringiAllaSelezione, leggiBoardReward, posizioniPerSelezione,
+  riconciliaAllowlist, riconciliaCopertura,
   autodiagnosiPeriodica, eseguiGradino, messaggioFeedRiseminato, nozionalePiazzato,
   LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,
