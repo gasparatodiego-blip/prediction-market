@@ -605,11 +605,32 @@ sulla **gamba peggiore quotabile**, non sulla media. Conseguenza derivata e non 
   cresce col tetto mentre il margine di $5 sul tetto per ordine resta fisso e la **finestra di mid si
   stringe**. La leva è più capitale, non una manopola.
 
+> **🔓 IL TETTO DI ESPOSIZIONE NON PUÒ PIÙ MURARE UNA GAMBA NUDA — 16 agosto 2026, §5-bis p.168.**
+> `evaluateLimits` limite 2 confrontava `openNotionalUsd + notional > cap` **su qualunque ordine**, che è
+> l'aritmetica di uno che APRE. Su uno che CHIUDE è sbagliata **di segno**, e al tetto produceva una
+> trappola **nei due versi**: la gamba riempita è già dentro `openNotionalUsd`, quindi veniva rifiutato
+> sia il **BUY** che completa la coppia sia la **SELL** che liquiderebbe la gamba nuda — anche la sua
+> size veniva sommata invece che sottratta. Verificato sul codice di ieri: **entrambi `allow:false`,
+> gate `max-open-notional`.** Terza occorrenza della classe «regola nata per limitare l'APERTURA
+> applicata a un'azione che non apre» (§5-bis p.133, p.147).
+> **⚠ NON È UNA DICHIARAZIONE DI CUI FIDARSI**: l'esenzione arriva già **provata** da
+> `esenzione-chiusura.provaChiusura`, la **stessa** funzione del tetto per ordine — importata, non
+> ricopiata, e calcolata **una volta sola** per ordine (memoizzata in `adapter.js`). SELL entro il
+> posseduto, BUY entro `manca`, letti dallo snapshot del venue; qualunque lettura mancante lascia il
+> tetto applicato. Si guarda `=== true`, mai la truthiness.
+> **⚠ ESENTA QUESTO TETTO E BASTA**: tetto per ordine, rate limit, perdita giornaliera, posizioni
+> illeggibili, esposizione non misurabile, allowlist e KILL restano davanti e **identici** — sei
+> asserzioni lo verificano una per una. L'esenzione **si dichiara** nell'audit
+> (`outcome: 'esenzione-esposizione-chiusura'`) e **non** si dichiara quando il tetto non stava
+> mordendo, o il conteggio di domani sarebbe sporco.
+
 **Tetto di ordini per finestra** (`data/safety-risk-limits.json`): **40 invii / 60 s**, con **quota
 60/40** — al più 24 posti alle aperture, **16 riservati a rinnovi e chiusure protettive**. Invariante
 difesa da un test: `rateCap ≥ 2 × mercatiPerGiro` con almeno 8 posti di margine. Un'apertura rimandata
 è un **rinvio dichiarato** (`rimandato-per-quota`), non un errore. Cap per ordine di safety **$80**
-(era $1000 — 16 agosto 2026, decisione dell'operatore) e cap cumulativo di esposizione aperta **$600**
+(era $1000 — 16 agosto 2026, decisione dell'operatore) e cap cumulativo di esposizione aperta **$150**
+(era $600 — 16 agosto 2026, decisione dell'operatore: è la cintura scelta per limitare la rotazione di
+§4.13, e conta i **fill riconciliati**, non gli ordini a riposo)
 (invariato). **Perdita giornaliera massima $100** (era $25), che è il kill switch chiesto per il giro di
 prova. ⚠ `data/safety-risk-limits.json` è **gitignored**: è stato dedotto sul disco, non nel commit.
 **Mercati per giro: 10** (era 12 — 13 agosto 2026), dichiarati in
@@ -976,8 +997,19 @@ test lo asserisce); il cablaggio sta in `agent41` e passa dalle **stesse** funzi
 > due liste dichiarate nel giornale (`entratiInGestione`, `liberati`).
 > **⚠ LA CONSEGUENZA VA DETTA PER INTERO: L'ESPOSIZIONE TOTALE NON È PIÙ LIMITATA A TRE MERCATI.**
 > Tre quotano mentre N completano. Ciò che la limita ora sono, in ordine: il **tetto per mercato**
-> ($61,25), il cap cumulativo di esposizione aperta (**$600**) e il **kill a $100** di perdita
+> ($61,25), il cap cumulativo di esposizione aperta (**$150** dal 16/08) e il **kill a $100** di perdita
 > giornaliera. Chi rialza uno di quei tre alza il rischio di questa regola, non di quella.
+> **⚠ IL CASO PEGGIORE ACCETTATO DALL'OPERATORE È ~$294** (16 agosto 2026, decisione in chat): 3 attivi
+> a $147 di ordini a riposo più una rotazione piena. **Non era il caso peggiore vero**: `inGestione` non
+> ha tetto, e l'unica cintura che morde è `maxOpenNotionalUsd`, che conta i **fill riconciliati** e
+> **ignora i $147 a riposo** ⇒ il soffitto era `$600 + $147 ≈ $747`. Per questo il cap è stato portato a
+> **$150**: `$147 a riposo + $150 riconciliati ≈ $297`, cioè la cifra chiesta.
+> **⚠ MA IL TETTO SI APPLICA ANCHE AGLI ORDINI DI APERTURA, CHE POI NON CI ENTRANO**: il gate confronta
+> `openNotionalUsd + notional`, quindi la gamba più cara del piano ($54,38) smette di essere piazzabile
+> quando i fill riconciliati superano ~$95. **La rotazione si ferma da sola lì, non a $150** — è la
+> conseguenza voluta di un tetto stretto, e va saputa prima di leggerla come un guasto.
+> **⚠ E $150 STA SOTTO `3 × tetto per mercato` ($183,75)**: tre test lo dicono e sono **rossi apposta**,
+> vedi §5.2 p.37. Non sono stati ammorbiditi.
 > **⚠ UN MERCATO IN GESTIONE DEVE RESTARE ABILITATO AL RIPREZZO**: `restringiAllaSelezione` usa
 > `idsAttivi` (solo i non-in-gestione) per il **piano**, così il pianificatore non apre gambe nuove lì,
 > ma la lista del riprezzo tiene **tutti** gli id. Toglierlo farebbe morire la gamba sorella per GTD in
@@ -1115,6 +1147,17 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
    decisione dell'operatore, e su questa copia il `dashboard` non è più nella flotta (§banner in testa),
    quindi il build di Next non serve a nessun processo vivo. Verifica usata al suo posto: la suite
    (`node scripts/ricerca/suite-rossi.js <nome>`) e i 5 selfcheck.
+37. **🟡 TRE TEST SONO ROSSI PERCHÉ $150 STA SOTTO `3 × TETTO PER MERCATO` — voluto, 16 agosto 2026.**
+   `maxOpenNotionalUsd` a $150 contro `3 × $61,25 = $183,75` rende **false** un'invariante che tre test
+   difendevano: `lib/maker/sette-punti.test.js` («il tetto di esposizione totale è 600» — è una
+   **fotografia del valore**, §5.3, e va riscritta per leggere il file), `lib/maker/tetti-per-giro-e-scope.test.js`
+   («il tetto regge la selezione intera al tetto per mercato — $150 contro $183,75») e
+   `lib/rewards/tetto-derivato-dallo-scaglione.test.js` («4 mercati pieni $245 vs $150»).
+   Gli ultimi due difendono una **proprietà vera**, che l'operatore ha deciso di non volere più.
+   **NON ammorbiditi**: cambiarli richiede decidere quale invariante è ora quella giusta, ed è una
+   decisione di rischio. **Il piano di prova gira lo stesso** — $147,00 su tre mercati, sotto il tetto.
+   ⚠ **E c'è $3 di esposizione preesistente** (una posizione meteo residua, `data/venue-positions.json`),
+   quindi il margine reale è $147 e non $150.
 32. **🟡 LE DUE COPIE DELLA POLICY DEI PERMESSI DIVERGONO — 15 agosto 2026.**
    `.claude/settings.json` (progetto) ha la policy completa; `~/.claude/settings.json` è di **22 byte**
    e non ha nessun blocco `permissions`. `lib/safety/policy-permessi.test.js` muore con un
@@ -1360,6 +1403,28 @@ funzione di `bot-enabled` è chiamata senza essere importata»), non la stringa;
 **davvero** contro una spia installata prima del `require`; e **rilegge `data/maker-bot-enabled.json`
 prima e dopo**, fallendo se è cambiato di un byte (§5 punto 1). Verificato che **fallisce sul codice
 vecchio** — l'unica prova che un test serva a qualcosa.
+
+**168 · IL TETTO DI ESPOSIZIONE ESENTA LE CHIUSURE PROVATE, E SCENDE A $150 — 16 agosto 2026.**
+Vedi §4.2 per la regola. Qui la forma e la prova. **Il difetto**: `lib/safety/risk-limits.evaluateLimits`
+limite 2 non riceveva nessuna nozione di «questo ordine chiude» — `adapter.js` gli passava
+`order: { notionalUsd }` e basta. L'esenzione di chiusura esisteva dal 12 agosto (§5-bis p.147) ma era
+cablata **solo** al tetto per ordine live-min e a `manual-order-cap`; al tetto di esposizione non
+arrivava. **Verificato sul codice di ieri, e la trappola è nei due versi**: con esposizione $145 su un
+tetto $150, un BUY da $20 che completa la coppia ⇒ `allow:false / max-open-notional`, **e anche** la
+SELL da $20 che liquiderebbe la gamba nuda ⇒ `allow:false`. La posizione restava murata.
+**La cura**: `esenzioneEsposizione` attraversa `adapter → safety/index → risk-limits`, ed è la **prova**
+di `esenzione-chiusura.provaChiusura` — importata, non ricopiata, e **memoizzata** in `adapter.js` così
+i due tetti condividono una lettura sola dello snapshot (ricopiarla sarebbe D1 su un limite di rischio).
+Esenta **solo** il limite 2: i due rami fail-closed che lo precedono restano davanti, e con essi tetto
+per ordine, rate limit, perdita giornaliera, allowlist e KILL.
+**Il tetto scende da $600 a $150** su decisione dell'operatore, per dare alla rotazione di §4.13 il
+soffitto di ~$294 che aveva accettato. **Due conseguenze dichiarate**: il gate confronta
+`openNotionalUsd + notional` anche sugli ordini di **apertura**, quindi la gamba più cara del piano
+($54,38) smette di essere piazzabile sopra ~$95 di fill riconciliati — la rotazione si ferma lì; e $150
+sta sotto `3 × $61,25`, il che rende rossi tre test **apposta** (§5.2 p.37), non ammorbiditi.
+Test: `lib/safety/esposizione-esenta-chiusure.test.js`, **19 asserzioni**, fra cui la spazzata di 341
+combinazioni (esposizione 0-300 × size 1-80) che difende la **proprietà** invece del valore del tetto —
+il tetto vive in un file gitignored e cambierà ancora. **Verificato che fallisce sul codice di ieri.**
 
 **167 · SELEZIONE A TRE, PER COMPOSIZIONE, CON ROTAZIONE — decisione dell'operatore, 16 agosto 2026.**
 Vedi §4.13. `selezione-mercati.js` resta **puro** (un test conta zero `require`). Cosa è cambiato:
