@@ -544,6 +544,12 @@ e non al mercato: su un mercato a tick 0,1¢ un tick è il **2,2%** della banda,
 **⚠ Il margine non può mai avvicinare al mid oltre il prezzo di coda**: è applicato come `Math.min` col
 prezzo che «mai primo sul libro» ha già scelto, e quando cede il fatto è dichiarato (`margineCeduto`).
 Bordi che si incrociano (banda più stretta del doppio margine) ⇒ margine **non applicato** e dichiarato.
+**⚠ E IL MARGINE SI FERMA A METÀ BANDA** (`FRAZIONE_MASSIMA_DEL_RAGGIO = 0,5`, costante di sorgente,
+**nessun env**): oltre `v/2` l'ordine starebbe nella metà **interna** della banda, cioè più vicino al
+mid che al bordo — chi ha chiesto il bordo esterno otterrebbe il contrario. Il tetto può portare il
+margine a **zero** su una banda più stretta di due tick, e allora il bordo torna nudo: è la risposta
+onesta, non se ne inventa uno. **Trovato dal selfcheck del riprezzo**, non dal ragionamento: su banda
+±1,5¢ con tick 1,0¢ un tick di margine portava il bersaglio **esattamente sul mid**.
 
 **Fine scala**: sotto 3¢ o sopra 97¢ un mercato sta risolvendo e non si quota (`end-of-scale.js`,
 soglie da `.env` rilette a ogni chiamata; un valore che non si capisce viene **scartato** in favore del
@@ -1420,7 +1426,14 @@ l'ordine restava a 4,4¢ dal mid con **S = 0,0011**. 0,22 è esattamente un tick
 esce. Misurato sulla formula del venue: **S 0,0123 al bordo nudo contro 0,1111 un tick dentro, 9×**.
 **⚠ Il margine non può mai superare il prezzo di coda** (`Math.min` col prezzo che «mai primo sul
 libro» ha già scelto, con `margineCeduto` dichiarato) e bordi incrociati ⇒ margine non applicato.
-Test: `distanza-obiettivo.test.js` blocco ③-bis, più i tre che passavano `bordiConMargine` senza banda.
+**⚠ E UN SECONDO DIFETTO, trovato dal selfcheck del riprezzo e non dal ragionamento**: su banda ±1,5¢
+con tick 1,0¢ il margine portava il bersaglio da 0,52 a **0,53, che È il mid** — il margine difendeva
+il bordo sostituendolo col centro. Cura: `FRAZIONE_MASSIMA_DEL_RAGGIO = 0,5`, costante di sorgente e
+**senza env** (un margine che può diventare il mid è un rischio di fill, e i rischi non si aprono con
+una variabile d'ambiente). Su una banda più stretta di due tick il margine vale **zero**, e il bordo
+torna nudo.
+Test: `distanza-obiettivo.test.js` blocco ③-bis (58 asserzioni, con la proprietà «margine ≤ metà
+banda» provata su sei griglie), più i tre che passavano `bordiConMargine` senza banda.
 
 **163 · GLI «EFFICIENTI» DENTRO I 65: CAPITALE PICCOLO E TRADING IN PARI — sola ricerca, 15 agosto 2026.**
 `data/ricerca/sintesi-efficienti.md`, script `efficienti-01/02/03` (numerati fuori dalla serie
