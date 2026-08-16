@@ -256,4 +256,13 @@ async function main() {
   console.log(`scritto ${f}`);
 }
 
-main().catch((e) => { console.error('errore:', e.message); process.exit(1); });
+// ⚠ LA GUARDIA È QUELLA CHE RENDE IL FILE IMPORTABILE. `classifica` e `unisciParziali` sono la
+// definizione delle classi A/B/C/D/E e della fusione dei parziali: il censimento fase 2 le RIUSA
+// invece di ricopiarle, o le due misure divergerebbero in silenzio (reperto D1) — e la prima a
+// divergere sarebbe la fusione, che è già stata sbagliata una volta (2.049 eventi finiti in D).
+// Senza `require.main` un `require` di questo file farebbe partire lo stadio 5 per intero.
+if (require.main === module) {
+  main().catch((e) => { console.error('errore:', e.message); process.exit(1); });
+}
+
+module.exports = { scarica, unisciParziali, classifica, chiave, prezzo, FINESTRA_UNIONE_S };

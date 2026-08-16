@@ -1,0 +1,174 @@
+{
+  "at": "2026-08-15T22:15:36.657Z",
+  "istantanea": "dopo-config",
+  "totali": {
+    "eseguiti": 187,
+    "verdi": 154,
+    "rossi": 31,
+    "nonParte": 2
+  },
+  "rossi": [
+    "lib/maker/allowlist-con-posizioni.test.js",
+    "lib/maker/bordo-esterno-soli.test.js",
+    "lib/maker/cancellazione-riconosciuta.test.js",
+    "lib/maker/chiusura-forzata-raggiungibile.test.js",
+    "lib/maker/chiusura-rapida.test.js",
+    "lib/maker/chiusura-senza-tetto.test.js",
+    "lib/maker/controparte-primo-assoluto.test.js",
+    "lib/maker/decisione-merge-sempre-un-esito.test.js",
+    "lib/maker/difese-automatiche.test.js",
+    "lib/maker/dipendenze-collegate.test.js",
+    "lib/maker/distanza-2c.test.js",
+    "lib/maker/distanza-obiettivo.test.js",
+    "lib/maker/end-of-scale-cycle.test.js",
+    "lib/maker/fill-senza-conflitti.test.js",
+    "lib/maker/mai-primo-sul-libro.test.js",
+    "lib/maker/merge-livelli-vivi.test.js",
+    "lib/maker/punti-di-filtro.test.js",
+    "lib/maker/scaduto-senza-rinnovo.test.js",
+    "lib/maker/selezione-mercati.test.js",
+    "lib/maker/sette-punti.test.js",
+    "lib/maker/strategia-merge.test.js",
+    "lib/maker/tetti-per-giro-e-scope.test.js",
+    "lib/maker/tetto-per-ordine.test.js",
+    "lib/maker/top-of-book-cycle.test.js",
+    "lib/maker/top-of-book.test.js",
+    "lib/rewards/categoria-mercato.test.js",
+    "lib/rewards/scadenza-ereditata.test.js",
+    "lib/rewards/tetto-derivato-dallo-scaglione.test.js",
+    "lib/rewards/tetto-e-scoperta.test.js",
+    "lib/safety/hook-piazzamento.test.js",
+    "lib/safety/policy-permessi.test.js"
+  ],
+  "rossiDettaglio": [
+    {
+      "file": "lib/maker/allowlist-con-posizioni.test.js",
+      "coda": "NATA ALL'INTERRUTTORE GENERALE\n  ✓ le posizioni si leggono solo se il master è acceso\n  ✓   e la lista è vuota col master spento\n  ✓ riusa readVenuePositions, non una fonte nuova\n  ✓ una lettura fallita non apre niente\n  ✓ il commento dichiara che non allarga il rischio\n\nROSSI: 13 passati, 4 falliti"
+    },
+    {
+      "file": "lib/maker/bordo-esterno-soli.test.js",
+      "coda": "T\n  ✓ il modo è una stringa distinta, non riusa quella vecchia\n  ✓   e la contiene come prefisso, così le due serie storiche restano confrontabili\n  ✓ il referto porta la banda usata, non solo il prezzo\n  ✓   e l'offset effettivo dal mid, per poterlo contare nel tempo\n\n❌ ROSSI: 28 passati, 3 falliti"
+    },
+    {
+      "file": "lib/maker/cancellazione-riconosciuta.test.js",
+      "coda": "tro ci sono cancellazioni con elenco valorizzato — 0 su 0 chiamate\n  ✓   i record post-correzione hanno l id leggibile — 0 leggibili · 0 redatti (scritti prima della correzione)\n  ✓   con il redattore corretto lo stesso record si legge come RIUSCITO\n\ncancellazione riconosciuta: 15 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/chiusura-forzata-raggiungibile.test.js",
+      "coda": "l board (0 su 0)\n  ✗   e per 0 di essi la scadenza ORA si legge, dove prima era null\n\n── 4 · LA REGOLA DI COPERTURA, DICHIARATA DOVE VALE\n  ✓ `scadenzaMercato` consulta DUE fonti, non una\n  ✓   e nomina la regola di copertura, così un riordino non la perde in silenzio\n\n❌ ROSSI: 21 passati, 2 falliti"
+    },
+    {
+      "file": "lib/maker/chiusura-rapida.test.js",
+      "coda": " da mai-primo ⇒ si rinuncia — nessuna gamba di riposizionamento e passata: il capital\n  ✓   UN tentativo per gamba, nessun ritentativo — 2 chiamate\n  ✓ (d) una gamba sola ⇒ ritirata, non lasciata direzionale — una sola gamba e passata: ritirata, il capitale torna al cic\n\nROSSI: 78 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/chiusura-senza-tetto.test.js",
+      "coda": "ulo non nomina «audit.jsonl»\n  ✓   il modulo non nomina «unlinkSync»\n  ✓   il modulo non nomina «rmSync»\n  ✓   e non chiama `redeemPosition`\n  ✓ il redeem ha UN solo chiamante, ed è il riscatto automatico\n  ✓   e la pulizia del mercato chiuso continua a NON riscattare\n\n❌ ROSSI: 94 passati, 3 falliti"
+    },
+    {
+      "file": "lib/maker/controparte-primo-assoluto.test.js",
+      "coda": "a inCoda (9 punti) — 9\n  ✓ nessun altro file ha imparato la deroga\n  ✓ coppia completata ⇒ il giro dopo è «merge» — la coppia e' gia' completa per 66.3 share: non c e niente da\n  ✓   e la size da fondere è quella intera — 66.3\n  ✓   e quel ramo chiama davvero il relayer\n\nROSSI: 39 passati, 2 falliti"
+    },
+    {
+      "file": "lib/maker/decisione-merge-sempre-un-esito.test.js",
+      "coda": "l'interruttore del merge è quello di prima\n  ✓ con il KILL attivo il ciclo non parte — kill\n  ✓   e non scrive nessuna decisione — 0 righe\n  ✓ un mercato chiuso non riceve ordini — 0\n  ✓ nessun ordine sotto il prezzo di carico sul lato posseduto — nessuno sul lato posseduto\n\n❌  42 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/difese-automatiche.test.js",
+      "coda": "✗ DIVERGENZA ②, i 631 `manual-order-cap`: a mid estremo il capitale SCENDE invece di essere rifiutato\n    la riga deve essere adattata, non lasciata a sfondare"
+    },
+    {
+      "file": "lib/maker/dipendenze-collegate.test.js",
+      "coda": "-difetto\n  ✓ «const x = (deps && typeof deps.tizio === 'function')» → con-difetto — con-difetto\n  ✓ «if (typeof deps.tizio === 'function') { deps.tizio()» → facoltativa — facoltativa\n  ✓ «const r = await deps.tizio({ a: 1 });» → obbligatoria — obbligatoria\n\ndipendenze collegate: 9 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/distanza-2c.test.js",
+      "coda": "ard, agent24-liquidity-rewards, agent-monitor, agent34-clob-ws, agent40-manual-reprice, agent38-tape-watchdog, agent41-realloc-scheduler, agent42-watch-makers, agent43-guardian, agent44-audit-scoperta, agent45-osservatore\n  ✓ …e nemmeno fra i processi critici da tenere sempre vivi\n\n41 verdi, 4 rossi"
+    },
+    {
+      "file": "lib/maker/distanza-obiettivo.test.js",
+      "coda": "ernal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: 1,\n  expected: 0,\n  operator: 'strictEqual'\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/maker/end-of-scale-cycle.test.js",
+      "coda": "azza senza intervento — 2 nuovi ordini\n\n── la soglia non e duplicata: i due motori leggono lo stesso numero\n  ✓ nessuno dei due motori scrive 3.0 o 97.0 per conto suo\n  ✓ entrambi importano end-of-scale\n  ✓   e il modulo esporta un solo confine per lato\n\nend-of-scale nei cicli: 25 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/fill-senza-conflitti.test.js",
+      "coda": "utti i rami — la gerarchia non ha scorciatoie\n  ✓ `provaCoppia` è chiamata da tre rami — 4 chiamate\n  ✓   il ramo «already-covered» la usa\n  ✓   il ramo «close-at-market» la usa\n  ✓   il ramo «uscita-ordinaria» la usa\n  ✓ esiste una sola funzione che piazza il completamento\n\n❌  25 passati, 4 falliti"
+    },
+    {
+      "file": "lib/maker/mai-primo-sul-libro.test.js",
+      "coda": " non impiegato è dichiarato\n  ✓   accanto a quello pianificato, per poterli confrontare\n  ✓ un mercato scartato non produce gambe piazzabili\n  ✓   e senza due gambe il bottone non compare: compare il rifiuto\n  ✓ e l elenco degli esclusi mostra il dettaglio\n\nmai primo sul libro: 47 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/merge-livelli-vivi.test.js",
+      "coda": "a un ordine che riposa\n\n5g · agent40 inietta davvero le dipendenze del merge\n  ✓ closeTask inietta readDepth\n  ✓ closeTask inietta il registro delle attese\n  ✓   e quel registro e' costruito una volta per giro, prima del ciclo\n  ✓ il registro scrive su disco, non in memoria\n\n❌  59 passati, 6 falliti"
+    },
+    {
+      "file": "lib/maker/punti-di-filtro.test.js",
+      "coda": "nternal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '=='\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/maker/scaduto-senza-rinnovo.test.js",
+      "coda": "numeri strutturati\n  ✓ il pannello ha il tipo\n  ✓   la casella riassuntiva nella sezione «Stato wallet e piazzamento»\n  ✓   che compare solo quando ce n è almeno uno\n  ✓   col capitale tornato libero\n  ✓   e una spiegazione in italiano di cosa è successo\n\nscaduto senza rinnovo: 46 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/selezione-mercati.test.js",
+      "coda": "nternal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '=='\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/maker/sette-punti.test.js",
+      "coda": "cito — poter isolare un meccanismo senza usare il KILL vale piu della garanzia che nessuno lo spenga\n  ✓   e riaccenderlo funziona\n  ✓ generale acceso ma mercato non scelto ⇒ NON agisce\n  ✓   entrambi accesi ⇒ agisce\n  ✓   generale spento ⇒ il mercato torna inerte\n\nsette punti: 42 passati, 2 falliti"
+    },
+    {
+      "file": "lib/maker/strategia-merge.test.js",
+      "coda": " del relayer lo dichiara\n  ✓   dicendo anche CHI lo chiama (un interruttore senza chiamante non e un interruttore)\n  ✓   e che split e redeem restano senza chiamanti\n  ✓   l intestazione dice che e acceso e perche\n  ✓   e dichiara il differimento del capitale\n\nstrategia merge: 25 passati, 14 falliti"
+    },
+    {
+      "file": "lib/maker/tetti-per-giro-e-scope.test.js",
+      "coda": "nternal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '=='\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/maker/tetto-per-ordine.test.js",
+      "coda": "ernal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: 6,\n  expected: 0,\n  operator: 'strictEqual'\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/maker/top-of-book-cycle.test.js",
+      "coda": "roduce «bestOther» — 0.495\n  ✓   il ciclo produce «offsetCents» — 0.6\n  ✓   il ciclo produce «priceCents» — 49.4\n  ✓   e la distanza reale è DIVERSA da quella configurata — 0.6¢ reali contro 1¢ configurato — è esattamente il dato falso che la UI mostrava\n\nmai in cima nel ciclo: 58 passati, 2 falliti"
+    },
+    {
+      "file": "lib/maker/top-of-book.test.js",
+      "coda": " 1¢ ⇒ non si tocca — 0.05¢\n  ✓   ed e la STESSA soglia gia configurata, non una nuova\n  ✓ bersaglio a 1.2¢ con soglia 1¢ ⇒ si sposta — 1.2¢\n  ✓ senza bersaglio non si decide nulla\n  ✓ soglia assente ⇒ si ripiega sul tick, non su zero — 0.05¢ contro un tick\n\nmai in cima al book: 54 passati, 2 falliti"
+    },
+    {
+      "file": "lib/rewards/categoria-mercato.test.js",
+      "coda": "amma: 110/110 — 100.0% (soglia 90%)\n\n4 · il modulo è uno strumento di misura, non una regola del motore\n  ✗ nessun modulo di lib/, agents/ o app/ lo importa — lib/safety/riavvio-condizionato.js\n  ✓   e non legge file né rete\n  ✓   le categorie dichiarate sono le otto attese\n\n❌  40 passati, 1 falliti"
+    },
+    {
+      "file": "lib/rewards/scadenza-ereditata.test.js",
+      "coda": "nternal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '=='\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/rewards/tetto-derivato-dallo-scaglione.test.js",
+      "coda": "ernal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: 3,\n  expected: 0,\n  operator: 'strictEqual'\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/rewards/tetto-e-scoperta.test.js",
+      "coda": " più largo» ≠ «filtro spento»\n  ✓   e fallisce chiuso se la config non si legge\n  ✓ sottile e NON gestito ⇒ soppresso\n  ✓ sottile e GESTITO ⇒ resta sul board\n  ✓   e uno sano resta comunque, gestito o no\n  ✓ il cancello di profondità pre-knapsack non conosce l'esenzione\n\nROSSI: 59 passati, 3 falliti"
+    },
+    {
+      "file": "lib/safety/hook-piazzamento.test.js",
+      "coda": "ude/settings.json sotto PreToolUse\n  ✓   con matcher Bash — Bash\n  ✓   di tipo command\n  ✓   e con un timeout dichiarato — un hook che pende è un hook che blocca tutto\n  ✓ un tool che non è Bash non viene giudicato — il matcher è Bash, e l hook lo ricontrolla\n\nhook piazzamento: 69 passati, 1 falliti"
+    },
+    {
+      "file": "lib/safety/policy-permessi.test.js",
+      "coda": "js/loader:1623:10)\n    at Module.load (node:internal/modules/cjs/loader:1266:32)\n    at Module._load (node:internal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49\n\nNode.js v20.20.2"
+    }
+  ],
+  "nonParte": [
+    "lib/leg-order.test.js",
+    "lib/rewards/tetto-orizzonte.test.js"
+  ],
+  "statoToccato": []
+}

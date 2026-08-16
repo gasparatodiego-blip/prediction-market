@@ -25,9 +25,14 @@ let n = 0;
 const tmp = (x) => path.join(TMP, `${x}-${process.pid}-${n++}`);
 
 // Wide band (±4¢) so the reference example's ±3¢ distance fits inside it.
+//
+// ⚠ RIMESSO IN SCALA il 15 agosto 2026 — `maxSpreadCents` era 8 per ottenere un raggio di 4¢ sotto la
+// lettura DIMEZZATA (`v = maxSpread/2`) che §5-bis p.155 ha dimostrato sbagliata. Sotto la definizione
+// vera (`v = maxSpread`, lib/banda-premiante) lo stesso raggio si scrive con METÀ del numero. Le
+// asserzioni non sono state toccate: cambia il numero che produce la banda, non la banda.
 const rulesAt = (mid, over = {}) => ({
   readable: true, missing: [], marketId: '0xesempio', title: 'esempio',
-  mid, tick: 0.001, maxSpreadCents: 8, minSize: 50, tokenId: 'Y', tokenIdNo: 'N', negRisk: false,
+  mid, tick: 0.001, maxSpreadCents: 4, minSize: 50, tokenId: 'Y', tokenIdNo: 'N', negRisk: false,
   bandRadiusCents: 4, feedLive: true, feedAgeSec: 1, midSource: 'live-book', midAgeSec: 1,
   books: { yes: { tokenId: 'Y', scoringMid: mid }, no: { tokenId: 'N', scoringMid: +(1 - mid).toFixed(6) } },
   ...over,
@@ -85,7 +90,9 @@ console.log('\n18. la soglia minima ferma i riprezzi su micro-movimenti');
 console.log('\n19. la banda del premio resta il vincolo superiore');
 {
   // Banda stretta (raggio 1c) con distanza target 3c: il target e' incompatibile.
-  const narrow = rulesAt(0.11, { maxSpreadCents: 2, bandRadiusCents: 1 });
+  // ⚠ RIMESSO IN SCALA (15 agosto 2026): `maxSpreadCents` era 2 per ottenere il raggio 1¢ sotto la
+  // lettura dimezzata. Il raggio voluto e l'asserzione sono gli stessi; il numero che lo produce no.
+  const narrow = rulesAt(0.11, { maxSpreadCents: 1, bandRadiusCents: 1 });
   const d = decideReprice({ order: order(0.107), rules: narrow, config: TUN, now: 1e6 }, withOffset(3, 0.1));
   ok(d.action === 'reprice' && d.bandClamped === true,
     'distanza target 3c contro banda ±1c ⇒ si riprezza comunque, ma LIMITATI dalla banda');

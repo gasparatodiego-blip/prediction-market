@@ -1,0 +1,7082 @@
+{
+  "generatoIl": "2026-08-15T16:36:07.081Z",
+  "wallet": 65,
+  "efficienti": [
+    "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+    "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+    "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+    "0x16a092c7d8a641e94016ed6a785fac4b713a227f"
+  ],
+  "tettoOffsetTrades": 10000,
+  "chiamate": {
+    "api": 2384,
+    "ritentate": 0,
+    "errori": 0
+  },
+  "righe": [
+    {
+      "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+      "efficiente": true,
+      "tradeTotali": 2506,
+      "tradeTroncati": false,
+      "primoTrade": "2026-03-25T06:55:45.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T03:19:21.000Z",
+      "giorniDiVita": 144,
+      "giorniConTrade": 114,
+      "continuita": 0.7916666666666666,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-03-24",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 120,
+      "rewardPerMese": [
+        {
+          "mese": "2026-03",
+          "usd": 400.81,
+          "pagamenti": 15,
+          "giorniConReward": 8
+        },
+        {
+          "mese": "2026-04",
+          "usd": 1430.08,
+          "pagamenti": 55,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-05",
+          "usd": 547.24,
+          "pagamenti": 18,
+          "giorniConReward": 15
+        },
+        {
+          "mese": "2026-06",
+          "usd": 2248,
+          "pagamenti": 41,
+          "giorniConReward": 22
+        },
+        {
+          "mese": "2026-07",
+          "usd": 3703.22,
+          "pagamenti": 43,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 1747.41,
+          "pagamenti": 20,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 10076.76,
+      "tradePerMese": [
+        {
+          "mese": "2026-03",
+          "trade": 217,
+          "giorniConTrade": 7,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 217,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 606,
+          "giorniConTrade": 28,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 606,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 228,
+          "giorniConTrade": 16,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 228,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 411,
+          "giorniConTrade": 22,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 411,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 912,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 912,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 132,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 132,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 6
+      }
+    },
+    {
+      "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+      "efficiente": true,
+      "tradeTotali": 82,
+      "tradeTroncati": false,
+      "primoTrade": "2026-07-25T20:28:48.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-13T06:02:22.000Z",
+      "giorniDiVita": 19,
+      "giorniConTrade": 8,
+      "continuita": 0.42105263157894735,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-26",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 19,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 920.09,
+          "pagamenti": 4,
+          "giorniConReward": 4
+        },
+        {
+          "mese": "2026-08",
+          "usd": 1540.11,
+          "pagamenti": 15,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 2460.2,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 53,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 53,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 29,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 29,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": null,
+        "motivo": "meno di due mesi con ≥30 trade (1): non si giudica"
+      }
+    },
+    {
+      "wallet": "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+      "efficiente": true,
+      "tradeTotali": 1836,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-13T20:26:54.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T16:27:01.000Z",
+      "giorniDiVita": 64,
+      "giorniConTrade": 61,
+      "continuita": 0.953125,
+      "primoUpDown": "2026-08-13",
+      "primoUpDown15": "2026-08-14",
+      "primoMeteo": null,
+      "rewardPrimo": "2026-06-14",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 62,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 405.4,
+          "pagamenti": 20,
+          "giorniConReward": 16
+        },
+        {
+          "mese": "2026-07",
+          "usd": 1981.69,
+          "pagamenti": 36,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 1153.07,
+          "pagamenti": 17,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 3540.16,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 423,
+          "giorniConTrade": 18,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 423,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 343,
+          "giorniConTrade": 28,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 343,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 1073,
+          "giorniConTrade": 15,
+          "upDown": 862,
+          "upDown15": 806,
+          "meteo": 0,
+          "altro": 211,
+          "quotaUpDown": 0.8033550792171482,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": true,
+        "passaggi": [
+          {
+            "famiglia": "quotaUpDown",
+            "da": "2026-07",
+            "a": "2026-08",
+            "verso": "dentro",
+            "quotaPrima": 0,
+            "quotaDopo": 0.8033550792171482
+          }
+        ],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0x16a092c7d8a641e94016ed6a785fac4b713a227f",
+      "efficiente": true,
+      "tradeTotali": 40,
+      "tradeTroncati": false,
+      "primoTrade": "2026-07-29T10:58:11.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T09:27:09.000Z",
+      "giorniDiVita": 18,
+      "giorniConTrade": 9,
+      "continuita": 0.5,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-30",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 14,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 1097.58,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2026-08",
+          "usd": 637.34,
+          "pagamenti": 12,
+          "giorniConReward": 12
+        }
+      ],
+      "rewardTotale": 1734.92,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 19,
+          "giorniConTrade": 3,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 19,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 21,
+          "giorniConTrade": 6,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 21,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": null,
+        "motivo": "meno di due mesi con ≥30 trade (0): non si giudica"
+      }
+    },
+    {
+      "wallet": "0x30fb41b5a08fff5d3dd983f6323e3343931a7db4",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-08-13T00:02:40.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:30:06.000Z",
+      "giorniDiVita": 4,
+      "giorniConTrade": 3,
+      "continuita": 0.75,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-08-13",
+      "rewardPrimo": "2026-06-19",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 58,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 3835.83,
+          "pagamenti": 22,
+          "giorniConReward": 12
+        },
+        {
+          "mese": "2026-07",
+          "usd": 52201.74,
+          "pagamenti": 59,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 52033.8,
+          "pagamenti": 31,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 108071.37,
+      "tradePerMese": [
+        {
+          "mese": "2026-08",
+          "trade": 10500,
+          "giorniConTrade": 3,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 7947,
+          "altro": 2553,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.7568571428571429
+        }
+      ],
+      "mestiere": {
+        "cambiato": null,
+        "motivo": "meno di due mesi con ≥30 trade (1): non si giudica"
+      }
+    },
+    {
+      "wallet": "0x403f2471f8aaa1e8a224f1338b073bfa3fdb94f1",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-29T00:54:16.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T15:59:43.000Z",
+      "giorniDiVita": 19,
+      "giorniConTrade": 17,
+      "continuita": 0.8947368421052632,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-06-30",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 46,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 470.77,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2026-07",
+          "usd": 19068.44,
+          "pagamenti": 45,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 9874.34,
+          "pagamenti": 19,
+          "giorniConReward": 14
+        }
+      ],
+      "rewardTotale": 29413.55,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 1599,
+          "giorniConTrade": 3,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1599,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 8901,
+          "giorniConTrade": 14,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 8901,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x5c0af092b533934008144d223d704b4cbebfa2c3",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-19T22:31:45.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:24:42.000Z",
+      "giorniDiVita": 28,
+      "giorniConTrade": 28,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-07-19",
+      "rewardPrimo": "2026-02-09",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 177,
+      "rewardPerMese": [
+        {
+          "mese": "2026-02",
+          "usd": 74.75,
+          "pagamenti": 15,
+          "giorniConReward": 9
+        },
+        {
+          "mese": "2026-03",
+          "usd": 700.43,
+          "pagamenti": 62,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-04",
+          "usd": 3583.08,
+          "pagamenti": 58,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-05",
+          "usd": 15672.22,
+          "pagamenti": 52,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-06",
+          "usd": 29687.83,
+          "pagamenti": 64,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-07",
+          "usd": 24400.98,
+          "pagamenti": 58,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 8787.2,
+          "pagamenti": 26,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 82906.48999999999,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 5223,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1943,
+          "altro": 3280,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.3720084242772353
+        },
+        {
+          "mese": "2026-08",
+          "trade": 5277,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1081,
+          "altro": 4196,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.2048512412355505
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0xeed8c2be411025120fb511ea2332dd0a1f6135f0",
+      "efficiente": false,
+      "tradeTotali": 9039,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-30T20:52:55.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T16:27:19.000Z",
+      "giorniDiVita": 47,
+      "giorniConTrade": 45,
+      "continuita": 0.9574468085106383,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-01",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 30,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 1146.41,
+          "pagamenti": 20,
+          "giorniConReward": 15
+        },
+        {
+          "mese": "2026-08",
+          "usd": 8321.82,
+          "pagamenti": 29,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 9468.23,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 60,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 60,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 1373,
+          "giorniConTrade": 29,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1373,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 7606,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 7606,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0xf7aa193b1d7c880db7f8e2bde9177c4559a8ddd6",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-08-06T06:39:03.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:30:06.000Z",
+      "giorniDiVita": 10,
+      "giorniConTrade": 10,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-08-06",
+      "rewardPrimo": "2026-07-10",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 37,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 2355.95,
+          "pagamenti": 27,
+          "giorniConReward": 22
+        },
+        {
+          "mese": "2026-08",
+          "usd": 5428.06,
+          "pagamenti": 23,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 7784.01,
+      "tradePerMese": [
+        {
+          "mese": "2026-08",
+          "trade": 10500,
+          "giorniConTrade": 10,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 10500,
+          "altro": 0,
+          "quotaUpDown": 0,
+          "quotaMeteo": 1
+        }
+      ],
+      "mestiere": {
+        "cambiato": null,
+        "motivo": "meno di due mesi con ≥30 trade (1): non si giudica"
+      }
+    },
+    {
+      "wallet": "0x4b8ae011176b76888949476d7fb7a56985faf4a4",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-07T17:57:02.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:31:27.000Z",
+      "giorniDiVita": 40,
+      "giorniConTrade": 40,
+      "continuita": 1,
+      "primoUpDown": "2026-08-07",
+      "primoUpDown15": "2026-08-07",
+      "primoMeteo": "2026-07-08",
+      "rewardPrimo": "2025-10-17",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 231,
+      "rewardPerMese": [
+        {
+          "mese": "2025-10",
+          "usd": 558.1,
+          "pagamenti": 13,
+          "giorniConReward": 13
+        },
+        {
+          "mese": "2025-11",
+          "usd": 5594.29,
+          "pagamenti": 29,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2025-12",
+          "usd": 118.06,
+          "pagamenti": 8,
+          "giorniConReward": 8
+        },
+        {
+          "mese": "2026-01",
+          "usd": 1086.86,
+          "pagamenti": 22,
+          "giorniConReward": 22
+        },
+        {
+          "mese": "2026-02",
+          "usd": 945.65,
+          "pagamenti": 33,
+          "giorniConReward": 22
+        },
+        {
+          "mese": "2026-03",
+          "usd": 3333.27,
+          "pagamenti": 57,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-04",
+          "usd": 699.92,
+          "pagamenti": 16,
+          "giorniConReward": 12
+        },
+        {
+          "mese": "2026-05",
+          "usd": 257.68,
+          "pagamenti": 29,
+          "giorniConReward": 21
+        },
+        {
+          "mese": "2026-06",
+          "usd": 5169.4,
+          "pagamenti": 50,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-07",
+          "usd": 9150.99,
+          "pagamenti": 38,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 5071.79,
+          "pagamenti": 20,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 31986.010000000002,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 5954,
+          "giorniConTrade": 25,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 69,
+          "altro": 5885,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.011588847833389319
+        },
+        {
+          "mese": "2026-08",
+          "trade": 4546,
+          "giorniConTrade": 15,
+          "upDown": 61,
+          "upDown15": 1,
+          "meteo": 1,
+          "altro": 4484,
+          "quotaUpDown": 0.013418389793224813,
+          "quotaMeteo": 0.0002199736031676199
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x4c9affa3a4f5ba6b9ab3dd272c20e47ea47e0cd4",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-11T05:36:44.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:31:24.000Z",
+      "giorniDiVita": 36,
+      "giorniConTrade": 24,
+      "continuita": 0.6666666666666666,
+      "primoUpDown": "2026-07-11",
+      "primoUpDown15": "2026-07-11",
+      "primoMeteo": "2026-07-15",
+      "rewardPrimo": "2026-06-22",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 14,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 3.17,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2026-07",
+          "usd": 21.36,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2026-08",
+          "usd": 3987.47,
+          "pagamenti": 18,
+          "giorniConReward": 10
+        }
+      ],
+      "rewardTotale": 4012,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 4054,
+          "giorniConTrade": 11,
+          "upDown": 3532,
+          "upDown15": 3532,
+          "meteo": 301,
+          "altro": 221,
+          "quotaUpDown": 0.871238283177109,
+          "quotaMeteo": 0.07424765663542181
+        },
+        {
+          "mese": "2026-08",
+          "trade": 6446,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 2236,
+          "altro": 4210,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.3468817871548247
+        }
+      ],
+      "mestiere": {
+        "cambiato": true,
+        "passaggi": [
+          {
+            "famiglia": "quotaUpDown",
+            "da": "2026-07",
+            "a": "2026-08",
+            "verso": "fuori",
+            "quotaPrima": 0.871238283177109,
+            "quotaDopo": 0
+          }
+        ],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x2d6ce0b703efb60f8f356246bcdb98544a54e3f5",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-23T04:17:42.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:27:33.000Z",
+      "giorniDiVita": 25,
+      "giorniConTrade": 24,
+      "continuita": 0.96,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-05-09",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 97,
+      "rewardPerMese": [
+        {
+          "mese": "2026-05",
+          "usd": 732.02,
+          "pagamenti": 40,
+          "giorniConReward": 22
+        },
+        {
+          "mese": "2026-06",
+          "usd": 670.45,
+          "pagamenti": 47,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-07",
+          "usd": 2123.57,
+          "pagamenti": 50,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 4411.98,
+          "pagamenti": 26,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 7938.0199999999995,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 3276,
+          "giorniConTrade": 9,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 3276,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 7224,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 7224,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x44354bfba2a60adacb5c80f09952ed9cbeb8786f",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-06T22:27:49.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T15:57:27.000Z",
+      "giorniDiVita": 41,
+      "giorniConTrade": 38,
+      "continuita": 0.926829268292683,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-07-06",
+      "rewardPrimo": "2026-05-08",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 96,
+      "rewardPerMese": [
+        {
+          "mese": "2026-05",
+          "usd": 3372.98,
+          "pagamenti": 43,
+          "giorniConReward": 24
+        },
+        {
+          "mese": "2026-06",
+          "usd": 11434.77,
+          "pagamenti": 60,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-07",
+          "usd": 8322.27,
+          "pagamenti": 41,
+          "giorniConReward": 27
+        },
+        {
+          "mese": "2026-08",
+          "usd": 3529.94,
+          "pagamenti": 23,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 26659.96,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 7127,
+          "giorniConTrade": 23,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 5522,
+          "altro": 1605,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.7748000561245966
+        },
+        {
+          "mese": "2026-08",
+          "trade": 3373,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1373,
+          "altro": 2000,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.40705603320486217
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x9edafdc25b112e399374f72863eb5231e7d86e19",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-04T05:18:49.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:20:48.000Z",
+      "giorniDiVita": 43,
+      "giorniConTrade": 43,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-07-04",
+      "rewardPrimo": "2026-05-16",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 92,
+      "rewardPerMese": [
+        {
+          "mese": "2026-05",
+          "usd": 743.45,
+          "pagamenti": 31,
+          "giorniConReward": 16
+        },
+        {
+          "mese": "2026-06",
+          "usd": 6444.14,
+          "pagamenti": 59,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-07",
+          "usd": 8323.59,
+          "pagamenti": 50,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 3251.33,
+          "pagamenti": 23,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 18762.510000000002,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 7757,
+          "giorniConTrade": 28,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 4201,
+          "altro": 3556,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.541575351295604
+        },
+        {
+          "mese": "2026-08",
+          "trade": 2743,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1132,
+          "altro": 1611,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.41268683922712357
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0xd49829353a5e33f4d29bf976ac9be8bde744a6c5",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-14T06:33:52.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T15:34:22.000Z",
+      "giorniDiVita": 33,
+      "giorniConTrade": 33,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-07-14",
+      "rewardPrimo": "2026-06-20",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 48,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 1626.7,
+          "pagamenti": 7,
+          "giorniConReward": 6
+        },
+        {
+          "mese": "2026-07",
+          "usd": 7297.32,
+          "pagamenti": 33,
+          "giorniConReward": 27
+        },
+        {
+          "mese": "2026-08",
+          "usd": 3274.23,
+          "pagamenti": 15,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 12198.25,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 6298,
+          "giorniConTrade": 18,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 6298,
+          "altro": 0,
+          "quotaUpDown": 0,
+          "quotaMeteo": 1
+        },
+        {
+          "mese": "2026-08",
+          "trade": 4202,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 4202,
+          "altro": 0,
+          "quotaUpDown": 0,
+          "quotaMeteo": 1
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x204b382df532a8106768ccceaf699a89c4ed8ca3",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-06-04T11:34:04.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-14T20:22:19.000Z",
+      "giorniDiVita": 72,
+      "giorniConTrade": 56,
+      "continuita": 0.7777777777777778,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-07-14",
+      "rewardPrimo": "2026-01-10",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 133,
+      "rewardPerMese": [
+        {
+          "mese": "2026-01",
+          "usd": 112.07,
+          "pagamenti": 17,
+          "giorniConReward": 17
+        },
+        {
+          "mese": "2026-02",
+          "usd": 29.31,
+          "pagamenti": 19,
+          "giorniConReward": 15
+        },
+        {
+          "mese": "2026-03",
+          "usd": 13.15,
+          "pagamenti": 8,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2026-04",
+          "usd": 402.9,
+          "pagamenti": 15,
+          "giorniConReward": 14
+        },
+        {
+          "mese": "2026-05",
+          "usd": 1234.64,
+          "pagamenti": 33,
+          "giorniConReward": 24
+        },
+        {
+          "mese": "2026-06",
+          "usd": 4921.44,
+          "pagamenti": 33,
+          "giorniConReward": 21
+        },
+        {
+          "mese": "2026-07",
+          "usd": 3557.62,
+          "pagamenti": 29,
+          "giorniConReward": 25
+        },
+        {
+          "mese": "2026-08",
+          "usd": 2594.93,
+          "pagamenti": 15,
+          "giorniConReward": 12
+        }
+      ],
+      "rewardTotale": 12866.060000000001,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 4558,
+          "giorniConTrade": 18,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 4558,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 3945,
+          "giorniConTrade": 27,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 77,
+          "altro": 3868,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.019518377693282636
+        },
+        {
+          "mese": "2026-08",
+          "trade": 1997,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1997,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0x41e6de55cf3bd608b50952f681dfb562187466b7",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-15T08:27:55.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:31:54.000Z",
+      "giorniDiVita": 32,
+      "giorniConTrade": 32,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-07-15",
+      "rewardPrimo": "2026-06-28",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 49,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 101.26,
+          "pagamenti": 3,
+          "giorniConReward": 3
+        },
+        {
+          "mese": "2026-07",
+          "usd": 4278.74,
+          "pagamenti": 41,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 1923.78,
+          "pagamenti": 22,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 6303.78,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 6403,
+          "giorniConTrade": 17,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 2697,
+          "altro": 3706,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.42120880837107605
+        },
+        {
+          "mese": "2026-08",
+          "trade": 4097,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 2497,
+          "altro": 1600,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.6094703441542593
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0xc50c05d454f0681ea57b254df8ad97bc210f3017",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-05-13T22:26:27.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:16:58.000Z",
+      "giorniDiVita": 95,
+      "giorniConTrade": 89,
+      "continuita": 0.9368421052631579,
+      "primoUpDown": "2026-05-13",
+      "primoUpDown15": "2026-05-13",
+      "primoMeteo": "2026-07-23",
+      "rewardPrimo": "2026-05-18",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 76,
+      "rewardPerMese": [
+        {
+          "mese": "2026-05",
+          "usd": 64.57,
+          "pagamenti": 9,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2026-06",
+          "usd": 1031.57,
+          "pagamenti": 32,
+          "giorniConReward": 28
+        },
+        {
+          "mese": "2026-07",
+          "usd": 2376.15,
+          "pagamenti": 32,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 1831.87,
+          "pagamenti": 19,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 5304.16,
+      "tradePerMese": [
+        {
+          "mese": "2026-05",
+          "trade": 527,
+          "giorniConTrade": 13,
+          "upDown": 514,
+          "upDown15": 399,
+          "meteo": 0,
+          "altro": 13,
+          "quotaUpDown": 0.9753320683111955,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 1038,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1038,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 3407,
+          "giorniConTrade": 31,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 2043,
+          "altro": 1364,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.5996477839741708
+        },
+        {
+          "mese": "2026-08",
+          "trade": 5528,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1851,
+          "altro": 3677,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.3348408104196816
+        }
+      ],
+      "mestiere": {
+        "cambiato": true,
+        "passaggi": [
+          {
+            "famiglia": "quotaUpDown",
+            "da": "2026-05",
+            "a": "2026-06",
+            "verso": "fuori",
+            "quotaPrima": 0.9753320683111955,
+            "quotaDopo": 0
+          }
+        ],
+        "mesiUtili": 4
+      }
+    },
+    {
+      "wallet": "0xa6dcc89a31d7d68c961969eed282690ed41912ec",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-06-11T05:25:30.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T15:21:03.000Z",
+      "giorniDiVita": 66,
+      "giorniConTrade": 66,
+      "continuita": 1,
+      "primoUpDown": "2026-07-08",
+      "primoUpDown15": "2026-07-10",
+      "primoMeteo": "2026-06-11",
+      "rewardPrimo": "2026-04-10",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 124,
+      "rewardPerMese": [
+        {
+          "mese": "2026-04",
+          "usd": 339.28,
+          "pagamenti": 25,
+          "giorniConReward": 18
+        },
+        {
+          "mese": "2026-05",
+          "usd": 2898.3,
+          "pagamenti": 45,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-06",
+          "usd": 4819.34,
+          "pagamenti": 55,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-07",
+          "usd": 3202.1,
+          "pagamenti": 45,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 1713.67,
+          "pagamenti": 21,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 12972.69,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 4556,
+          "giorniConTrade": 20,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 34,
+          "altro": 4522,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.007462686567164179
+        },
+        {
+          "mese": "2026-07",
+          "trade": 4854,
+          "giorniConTrade": 31,
+          "upDown": 969,
+          "upDown15": 33,
+          "meteo": 175,
+          "altro": 3710,
+          "quotaUpDown": 0.1996291718170581,
+          "quotaMeteo": 0.03605274000824062
+        },
+        {
+          "mese": "2026-08",
+          "trade": 1090,
+          "giorniConTrade": 15,
+          "upDown": 563,
+          "upDown15": 173,
+          "meteo": 32,
+          "altro": 495,
+          "quotaUpDown": 0.5165137614678899,
+          "quotaMeteo": 0.029357798165137616
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0x87ec6cd961d326bd6caa54b8a2a194440522138f",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-19T19:41:46.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:30:09.000Z",
+      "giorniDiVita": 28,
+      "giorniConTrade": 24,
+      "continuita": 0.8571428571428571,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-07-20",
+      "rewardPrimo": "2026-07-24",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 19,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 130.29,
+          "pagamenti": 6,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2026-08",
+          "usd": 1616.54,
+          "pagamenti": 17,
+          "giorniConReward": 14
+        }
+      ],
+      "rewardTotale": 1746.83,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 3828,
+          "giorniConTrade": 9,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1214,
+          "altro": 2614,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.31713688610240337
+        },
+        {
+          "mese": "2026-08",
+          "trade": 6672,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 6672,
+          "altro": 0,
+          "quotaUpDown": 0,
+          "quotaMeteo": 1
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0xf2f2df41cd3ff33147e622869ac052ce5ad2d1f0",
+      "efficiente": false,
+      "tradeTotali": 5808,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-10T13:01:16.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T16:26:55.000Z",
+      "giorniDiVita": 67,
+      "giorniConTrade": 67,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-06-12",
+      "rewardPrimo": "2026-06-11",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 66,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 529.96,
+          "pagamenti": 33,
+          "giorniConReward": 20
+        },
+        {
+          "mese": "2026-07",
+          "usd": 1451.78,
+          "pagamenti": 45,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 1595.36,
+          "pagamenti": 30,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 3577.1,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 604,
+          "giorniConTrade": 21,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 168,
+          "altro": 436,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.2781456953642384
+        },
+        {
+          "mese": "2026-07",
+          "trade": 2153,
+          "giorniConTrade": 31,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 550,
+          "altro": 1603,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.25545750116117044
+        },
+        {
+          "mese": "2026-08",
+          "trade": 3052,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1073,
+          "altro": 1979,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.3515727391874181
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0x0503c17bfdedab64c1d70d1768f11c00a1db4155",
+      "efficiente": false,
+      "tradeTotali": 8343,
+      "tradeTroncati": false,
+      "primoTrade": "2025-11-24T13:39:01.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-14T13:59:25.000Z",
+      "giorniDiVita": 264,
+      "giorniConTrade": 99,
+      "continuita": 0.375,
+      "primoUpDown": "2026-02-09",
+      "primoUpDown15": "2026-02-09",
+      "primoMeteo": null,
+      "rewardPrimo": "2025-11-26",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 47,
+      "rewardPerMese": [
+        {
+          "mese": "2025-11",
+          "usd": 1.26,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2026-03",
+          "usd": 0.86,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2026-04",
+          "usd": 20.74,
+          "pagamenti": 6,
+          "giorniConReward": 6
+        },
+        {
+          "mese": "2026-05",
+          "usd": 4.53,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2026-06",
+          "usd": 47.42,
+          "pagamenti": 4,
+          "giorniConReward": 4
+        },
+        {
+          "mese": "2026-07",
+          "usd": 1147.71,
+          "pagamenti": 21,
+          "giorniConReward": 21
+        },
+        {
+          "mese": "2026-08",
+          "usd": 900.19,
+          "pagamenti": 13,
+          "giorniConReward": 11
+        }
+      ],
+      "rewardTotale": 2122.71,
+      "tradePerMese": [
+        {
+          "mese": "2025-11",
+          "trade": 17,
+          "giorniConTrade": 5,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 17,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-12",
+          "trade": 22,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 22,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-01",
+          "trade": 1,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 4935,
+          "giorniConTrade": 18,
+          "upDown": 4925,
+          "upDown15": 4925,
+          "meteo": 0,
+          "altro": 10,
+          "quotaUpDown": 0.9979736575481256,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 206,
+          "giorniConTrade": 14,
+          "upDown": 101,
+          "upDown15": 101,
+          "meteo": 0,
+          "altro": 105,
+          "quotaUpDown": 0.49029126213592233,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 145,
+          "giorniConTrade": 7,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 145,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 72,
+          "giorniConTrade": 8,
+          "upDown": 48,
+          "upDown15": 48,
+          "meteo": 0,
+          "altro": 24,
+          "quotaUpDown": 0.6666666666666666,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 154,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 154,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 1539,
+          "giorniConTrade": 23,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1539,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 1252,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1252,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 7
+      }
+    },
+    {
+      "wallet": "0x3b6930e90b206755a20e89f7bae00588391e01d7",
+      "efficiente": false,
+      "tradeTotali": 1173,
+      "tradeTroncati": false,
+      "primoTrade": "2026-07-08T22:24:22.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T16:22:21.000Z",
+      "giorniDiVita": 39,
+      "giorniConTrade": 38,
+      "continuita": 0.9743589743589743,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-09",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 38,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 997.11,
+          "pagamenti": 23,
+          "giorniConReward": 23
+        },
+        {
+          "mese": "2026-08",
+          "usd": 921.7,
+          "pagamenti": 16,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 1918.81,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 411,
+          "giorniConTrade": 23,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 411,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 762,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 762,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x2e62eddf5acffa59a97706de674348a2e600b22e",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-19T20:08:19.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:20:15.000Z",
+      "giorniDiVita": 28,
+      "giorniConTrade": 28,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-07-19",
+      "rewardPrimo": "2025-06-26",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 294,
+      "rewardPerMese": [
+        {
+          "mese": "2025-06",
+          "usd": 132.07,
+          "pagamenti": 5,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2025-07",
+          "usd": 143.41,
+          "pagamenti": 23,
+          "giorniConReward": 23
+        },
+        {
+          "mese": "2025-08",
+          "usd": 25.97,
+          "pagamenti": 15,
+          "giorniConReward": 15
+        },
+        {
+          "mese": "2025-09",
+          "usd": 17.96,
+          "pagamenti": 8,
+          "giorniConReward": 8
+        },
+        {
+          "mese": "2025-10",
+          "usd": 4.38,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2025-11",
+          "usd": 9.6,
+          "pagamenti": 5,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2025-12",
+          "usd": 52.94,
+          "pagamenti": 17,
+          "giorniConReward": 17
+        },
+        {
+          "mese": "2026-01",
+          "usd": 392.17,
+          "pagamenti": 26,
+          "giorniConReward": 26
+        },
+        {
+          "mese": "2026-02",
+          "usd": 514.57,
+          "pagamenti": 38,
+          "giorniConReward": 28
+        },
+        {
+          "mese": "2026-03",
+          "usd": 639.87,
+          "pagamenti": 62,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-04",
+          "usd": 941.31,
+          "pagamenti": 55,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-05",
+          "usd": 778.27,
+          "pagamenti": 43,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-06",
+          "usd": 353.21,
+          "pagamenti": 37,
+          "giorniConReward": 27
+        },
+        {
+          "mese": "2026-07",
+          "usd": 1207.53,
+          "pagamenti": 49,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 806.1,
+          "pagamenti": 17,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 6019.360000000001,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 6911,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 2498,
+          "altro": 4413,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.3614527564751845
+        },
+        {
+          "mese": "2026-08",
+          "trade": 3589,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 2351,
+          "altro": 1238,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.6550571189746448
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0xc37d459c8124f8d3d69a7fce81a60d63ec6db48c",
+      "efficiente": false,
+      "tradeTotali": 2860,
+      "tradeTroncati": false,
+      "primoTrade": "2026-07-16T18:40:19.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T16:14:04.000Z",
+      "giorniDiVita": 31,
+      "giorniConTrade": 31,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-07-18",
+      "rewardPrimo": "2026-07-17",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 30,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 683.97,
+          "pagamenti": 16,
+          "giorniConReward": 15
+        },
+        {
+          "mese": "2026-08",
+          "usd": 693.17,
+          "pagamenti": 25,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 1377.1399999999999,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 1044,
+          "giorniConTrade": 16,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 32,
+          "altro": 1012,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.03065134099616858
+        },
+        {
+          "mese": "2026-08",
+          "trade": 1816,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 832,
+          "altro": 984,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.4581497797356828
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x19243fa24e3a6097d1145680259dde028650dff3",
+      "efficiente": false,
+      "tradeTotali": 3839,
+      "tradeTroncati": false,
+      "primoTrade": "2025-12-06T17:09:03.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T15:52:19.000Z",
+      "giorniDiVita": 253,
+      "giorniConTrade": 72,
+      "continuita": 0.2845849802371542,
+      "primoUpDown": "2025-12-06",
+      "primoUpDown15": null,
+      "primoMeteo": "2026-06-22",
+      "rewardPrimo": "2026-06-23",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 54,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 223.7,
+          "pagamenti": 9,
+          "giorniConReward": 8
+        },
+        {
+          "mese": "2026-07",
+          "usd": 895.08,
+          "pagamenti": 33,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 698.92,
+          "pagamenti": 20,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 1817.6999999999998,
+      "tradePerMese": [
+        {
+          "mese": "2025-12",
+          "trade": 42,
+          "giorniConTrade": 8,
+          "upDown": 4,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 38,
+          "quotaUpDown": 0.09523809523809523,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-01",
+          "trade": 14,
+          "giorniConTrade": 5,
+          "upDown": 2,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 12,
+          "quotaUpDown": 0.14285714285714285,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 36,
+          "giorniConTrade": 2,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 36,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 663,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 113,
+          "altro": 550,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.17043740573152338
+        },
+        {
+          "mese": "2026-07",
+          "trade": 1963,
+          "giorniConTrade": 31,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 61,
+          "altro": 1902,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.03107488537952114
+        },
+        {
+          "mese": "2026-08",
+          "trade": 1121,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 45,
+          "altro": 1076,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.04014272970561998
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 5
+      }
+    },
+    {
+      "wallet": "0x45a22737a76fafd5dd101eb0dc6030986eb13c01",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-06-04T18:30:15.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:06:27.000Z",
+      "giorniDiVita": 73,
+      "giorniConTrade": 53,
+      "continuita": 0.726027397260274,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2025-11-18",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 127,
+      "rewardPerMese": [
+        {
+          "mese": "2025-11",
+          "usd": 24.91,
+          "pagamenti": 10,
+          "giorniConReward": 10
+        },
+        {
+          "mese": "2025-12",
+          "usd": 44.8,
+          "pagamenti": 8,
+          "giorniConReward": 8
+        },
+        {
+          "mese": "2026-02",
+          "usd": 216.67,
+          "pagamenti": 32,
+          "giorniConReward": 22
+        },
+        {
+          "mese": "2026-03",
+          "usd": 89.94,
+          "pagamenti": 28,
+          "giorniConReward": 14
+        },
+        {
+          "mese": "2026-04",
+          "usd": 101.47,
+          "pagamenti": 41,
+          "giorniConReward": 26
+        },
+        {
+          "mese": "2026-06",
+          "usd": 254.83,
+          "pagamenti": 19,
+          "giorniConReward": 16
+        },
+        {
+          "mese": "2026-07",
+          "usd": 292.14,
+          "pagamenti": 17,
+          "giorniConReward": 16
+        },
+        {
+          "mese": "2026-08",
+          "usd": 662.75,
+          "pagamenti": 19,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 1687.51,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 7418,
+          "giorniConTrade": 22,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 7418,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 645,
+          "giorniConTrade": 16,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 645,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 2437,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 2437,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0xffee18b118b9ea6c3062a4ce3aabd51cbcdaea6b",
+      "efficiente": false,
+      "tradeTotali": 2200,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-22T20:18:46.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T15:22:18.000Z",
+      "giorniDiVita": 55,
+      "giorniConTrade": 52,
+      "continuita": 0.9454545454545454,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-06-28",
+      "rewardPrimo": "2026-06-28",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 49,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 41.29,
+          "pagamenti": 3,
+          "giorniConReward": 3
+        },
+        {
+          "mese": "2026-07",
+          "usd": 993.44,
+          "pagamenti": 34,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 609.66,
+          "pagamenti": 23,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 1644.3899999999999,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 56,
+          "giorniConTrade": 6,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 9,
+          "altro": 47,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.16071428571428573
+        },
+        {
+          "mese": "2026-07",
+          "trade": 1486,
+          "giorniConTrade": 31,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 460,
+          "altro": 1026,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.30955585464333785
+        },
+        {
+          "mese": "2026-08",
+          "trade": 658,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 87,
+          "altro": 571,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.13221884498480244
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0xcf006e28309313be21b36d22bde515882182353f",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-06-22T16:09:50.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T15:45:39.000Z",
+      "giorniDiVita": 55,
+      "giorniConTrade": 51,
+      "continuita": 0.9272727272727272,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-06-23",
+      "rewardPrimo": "2025-06-26",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 313,
+      "rewardPerMese": [
+        {
+          "mese": "2025-06",
+          "usd": 113.81,
+          "pagamenti": 5,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2025-07",
+          "usd": 89.89,
+          "pagamenti": 17,
+          "giorniConReward": 17
+        },
+        {
+          "mese": "2025-08",
+          "usd": 44.96,
+          "pagamenti": 12,
+          "giorniConReward": 12
+        },
+        {
+          "mese": "2025-09",
+          "usd": 27.21,
+          "pagamenti": 13,
+          "giorniConReward": 13
+        },
+        {
+          "mese": "2025-10",
+          "usd": 26.24,
+          "pagamenti": 16,
+          "giorniConReward": 16
+        },
+        {
+          "mese": "2025-11",
+          "usd": 34.36,
+          "pagamenti": 16,
+          "giorniConReward": 16
+        },
+        {
+          "mese": "2025-12",
+          "usd": 92.69,
+          "pagamenti": 21,
+          "giorniConReward": 21
+        },
+        {
+          "mese": "2026-01",
+          "usd": 159.45,
+          "pagamenti": 23,
+          "giorniConReward": 23
+        },
+        {
+          "mese": "2026-02",
+          "usd": 548.38,
+          "pagamenti": 41,
+          "giorniConReward": 28
+        },
+        {
+          "mese": "2026-03",
+          "usd": 961.28,
+          "pagamenti": 62,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-04",
+          "usd": 570.63,
+          "pagamenti": 48,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-05",
+          "usd": 331.45,
+          "pagamenti": 43,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-06",
+          "usd": 458.69,
+          "pagamenti": 38,
+          "giorniConReward": 27
+        },
+        {
+          "mese": "2026-07",
+          "usd": 530.16,
+          "pagamenti": 32,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-08",
+          "usd": 567.03,
+          "pagamenti": 20,
+          "giorniConReward": 13
+        }
+      ],
+      "rewardTotale": 4556.23,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 1072,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 289,
+          "altro": 783,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.269589552238806
+        },
+        {
+          "mese": "2026-07",
+          "trade": 6168,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 2422,
+          "altro": 3746,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.39267185473411154
+        },
+        {
+          "mese": "2026-08",
+          "trade": 3260,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1529,
+          "altro": 1731,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.4690184049079755
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0xb40e89677d59665d5188541ad860450a6e2a7cc9",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-08-12T21:16:27.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:32:45.000Z",
+      "giorniDiVita": 4,
+      "giorniConTrade": 4,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-08-12",
+      "rewardPrimo": "2025-09-12",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 230,
+      "rewardPerMese": [
+        {
+          "mese": "2025-09",
+          "usd": 2.62,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2025-10",
+          "usd": 3.48,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2025-11",
+          "usd": 1.35,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2025-12",
+          "usd": 103.27,
+          "pagamenti": 10,
+          "giorniConReward": 10
+        },
+        {
+          "mese": "2026-01",
+          "usd": 408.2,
+          "pagamenti": 26,
+          "giorniConReward": 26
+        },
+        {
+          "mese": "2026-02",
+          "usd": 371.91,
+          "pagamenti": 32,
+          "giorniConReward": 24
+        },
+        {
+          "mese": "2026-03",
+          "usd": 580.99,
+          "pagamenti": 58,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-04",
+          "usd": 838.68,
+          "pagamenti": 55,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-05",
+          "usd": 625.6,
+          "pagamenti": 45,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-06",
+          "usd": 3458.77,
+          "pagamenti": 54,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-07",
+          "usd": 2686.95,
+          "pagamenti": 45,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-08",
+          "usd": 563.54,
+          "pagamenti": 21,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 9645.36,
+      "tradePerMese": [
+        {
+          "mese": "2026-08",
+          "trade": 10500,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 10232,
+          "altro": 268,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.9744761904761905
+        }
+      ],
+      "mestiere": {
+        "cambiato": null,
+        "motivo": "meno di due mesi con ≥30 trade (1): non si giudica"
+      }
+    },
+    {
+      "wallet": "0x7cd6fab8b2fa66f53e1c1252245ad1245cb8b33c",
+      "efficiente": false,
+      "tradeTotali": 752,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-08T21:48:54.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T13:48:37.000Z",
+      "giorniDiVita": 69,
+      "giorniConTrade": 55,
+      "continuita": 0.7971014492753623,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-06-09",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 50,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 46.71,
+          "pagamenti": 10,
+          "giorniConReward": 9
+        },
+        {
+          "mese": "2026-07",
+          "usd": 316.07,
+          "pagamenti": 29,
+          "giorniConReward": 26
+        },
+        {
+          "mese": "2026-08",
+          "usd": 490.17,
+          "pagamenti": 16,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 852.95,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 81,
+          "giorniConTrade": 12,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 81,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 449,
+          "giorniConTrade": 29,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 449,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 222,
+          "giorniConTrade": 14,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 222,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0x82ae434f983771a5bc94092a6850da80368e2890",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-08-10T22:18:37.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:32:57.000Z",
+      "giorniDiVita": 6,
+      "giorniConTrade": 6,
+      "continuita": 1,
+      "primoUpDown": "2026-08-10",
+      "primoUpDown15": "2026-08-10",
+      "primoMeteo": "2026-08-10",
+      "rewardPrimo": "2026-06-26",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 49,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 20.3,
+          "pagamenti": 4,
+          "giorniConReward": 4
+        },
+        {
+          "mese": "2026-07",
+          "usd": 1017.7,
+          "pagamenti": 40,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-08",
+          "usd": 478.34,
+          "pagamenti": 19,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 1516.34,
+      "tradePerMese": [
+        {
+          "mese": "2026-08",
+          "trade": 10500,
+          "giorniConTrade": 6,
+          "upDown": 4967,
+          "upDown15": 4373,
+          "meteo": 2009,
+          "altro": 3524,
+          "quotaUpDown": 0.47304761904761905,
+          "quotaMeteo": 0.19133333333333333
+        }
+      ],
+      "mestiere": {
+        "cambiato": null,
+        "motivo": "meno di due mesi con ≥30 trade (1): non si giudica"
+      }
+    },
+    {
+      "wallet": "0x2f5242b73c0f0222b44f5b35351ebf9c0d339fba",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-02-27T14:40:03.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:15:10.000Z",
+      "giorniDiVita": 170,
+      "giorniConTrade": 170,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-03-05",
+      "rewardPrimo": "2026-03-19",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 149,
+      "rewardPerMese": [
+        {
+          "mese": "2026-03",
+          "usd": 58.26,
+          "pagamenti": 26,
+          "giorniConReward": 13
+        },
+        {
+          "mese": "2026-04",
+          "usd": 276.78,
+          "pagamenti": 50,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-05",
+          "usd": 362.41,
+          "pagamenti": 40,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-06",
+          "usd": 414.15,
+          "pagamenti": 38,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-07",
+          "usd": 294.32,
+          "pagamenti": 32,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 451.54,
+          "pagamenti": 19,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 1857.4599999999998,
+      "tradePerMese": [
+        {
+          "mese": "2026-02",
+          "trade": 1211,
+          "giorniConTrade": 2,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1211,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 4192,
+          "giorniConTrade": 31,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 11,
+          "altro": 4181,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.0026240458015267176
+        },
+        {
+          "mese": "2026-04",
+          "trade": 1674,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1674,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 565,
+          "giorniConTrade": 31,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 565,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 991,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 991,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 955,
+          "giorniConTrade": 31,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 955,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 912,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 912,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 7
+      }
+    },
+    {
+      "wallet": "0x8f13db915cca106e6330e8a39996c0a875d8daae",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-06-06T04:45:48.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:15:52.000Z",
+      "giorniDiVita": 71,
+      "giorniConTrade": 68,
+      "continuita": 0.9577464788732394,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-06-06",
+      "rewardPrimo": "2025-06-26",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 335,
+      "rewardPerMese": [
+        {
+          "mese": "2025-06",
+          "usd": 111.03,
+          "pagamenti": 5,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2025-07",
+          "usd": 131.22,
+          "pagamenti": 26,
+          "giorniConReward": 26
+        },
+        {
+          "mese": "2025-08",
+          "usd": 32.85,
+          "pagamenti": 12,
+          "giorniConReward": 12
+        },
+        {
+          "mese": "2025-09",
+          "usd": 69.68,
+          "pagamenti": 19,
+          "giorniConReward": 19
+        },
+        {
+          "mese": "2025-10",
+          "usd": 28.76,
+          "pagamenti": 12,
+          "giorniConReward": 12
+        },
+        {
+          "mese": "2025-11",
+          "usd": 65.71,
+          "pagamenti": 19,
+          "giorniConReward": 19
+        },
+        {
+          "mese": "2025-12",
+          "usd": 103.97,
+          "pagamenti": 26,
+          "giorniConReward": 26
+        },
+        {
+          "mese": "2026-01",
+          "usd": 302.04,
+          "pagamenti": 25,
+          "giorniConReward": 25
+        },
+        {
+          "mese": "2026-02",
+          "usd": 520.79,
+          "pagamenti": 38,
+          "giorniConReward": 28
+        },
+        {
+          "mese": "2026-03",
+          "usd": 731.99,
+          "pagamenti": 62,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-04",
+          "usd": 689.33,
+          "pagamenti": 53,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-05",
+          "usd": 533.65,
+          "pagamenti": 39,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-06",
+          "usd": 287.31,
+          "pagamenti": 37,
+          "giorniConReward": 28
+        },
+        {
+          "mese": "2026-07",
+          "usd": 675.97,
+          "pagamenti": 40,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 440.41,
+          "pagamenti": 21,
+          "giorniConReward": 13
+        }
+      ],
+      "rewardTotale": 4724.71,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 2878,
+          "giorniConTrade": 24,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 583,
+          "altro": 2295,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.20257123002084781
+        },
+        {
+          "mese": "2026-07",
+          "trade": 5182,
+          "giorniConTrade": 31,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 2802,
+          "altro": 2380,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.5407178695484369
+        },
+        {
+          "mese": "2026-08",
+          "trade": 2440,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1155,
+          "altro": 1285,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.4733606557377049
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0xcd73809735f8a76552295611f8171a67f9f5f7ad",
+      "efficiente": false,
+      "tradeTotali": 1828,
+      "tradeTroncati": false,
+      "primoTrade": "2024-11-20T16:54:55.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-14T16:19:00.000Z",
+      "giorniDiVita": 633,
+      "giorniConTrade": 187,
+      "continuita": 0.29541864139020535,
+      "primoUpDown": "2026-01-09",
+      "primoUpDown15": null,
+      "primoMeteo": "2025-08-25",
+      "rewardPrimo": "2025-12-20",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 29,
+      "rewardPerMese": [
+        {
+          "mese": "2025-12",
+          "usd": 15.58,
+          "pagamenti": 4,
+          "giorniConReward": 4
+        },
+        {
+          "mese": "2026-04",
+          "usd": 3.66,
+          "pagamenti": 3,
+          "giorniConReward": 3
+        },
+        {
+          "mese": "2026-07",
+          "usd": 168.44,
+          "pagamenti": 10,
+          "giorniConReward": 7
+        },
+        {
+          "mese": "2026-08",
+          "usd": 300.97,
+          "pagamenti": 17,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 488.65000000000003,
+      "tradePerMese": [
+        {
+          "mese": "2024-11",
+          "trade": 38,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 38,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2024-12",
+          "trade": 91,
+          "giorniConTrade": 23,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 91,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-01",
+          "trade": 19,
+          "giorniConTrade": 7,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 19,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-02",
+          "trade": 13,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 13,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-03",
+          "trade": 22,
+          "giorniConTrade": 10,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 22,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-04",
+          "trade": 2,
+          "giorniConTrade": 2,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 2,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-07",
+          "trade": 15,
+          "giorniConTrade": 7,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 15,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-08",
+          "trade": 245,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 6,
+          "altro": 239,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.024489795918367346
+        },
+        {
+          "mese": "2025-09",
+          "trade": 111,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 111,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-10",
+          "trade": 7,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 7,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-11",
+          "trade": 163,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 163,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-12",
+          "trade": 274,
+          "giorniConTrade": 16,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 274,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-01",
+          "trade": 28,
+          "giorniConTrade": 14,
+          "upDown": 7,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 21,
+          "quotaUpDown": 0.25,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 11,
+          "giorniConTrade": 6,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 11,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 3,
+          "giorniConTrade": 2,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 3,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 39,
+          "giorniConTrade": 12,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 5,
+          "altro": 34,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.1282051282051282
+        },
+        {
+          "mese": "2026-05",
+          "trade": 12,
+          "giorniConTrade": 5,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 12,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 5,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 5,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 213,
+          "giorniConTrade": 12,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 213,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 517,
+          "giorniConTrade": 14,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 148,
+          "altro": 369,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.2862669245647969
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 9
+      }
+    },
+    {
+      "wallet": "0x3cd2bccc76e77916da8350289a456c75d239c545",
+      "efficiente": false,
+      "tradeTotali": 1627,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-27T23:58:34.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T16:20:24.000Z",
+      "giorniDiVita": 50,
+      "giorniConTrade": 49,
+      "continuita": 0.98,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-06-28",
+      "rewardPrimo": "2026-06-29",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 45,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 4.25,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2026-07",
+          "usd": 459.07,
+          "pagamenti": 29,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-08",
+          "usd": 275.41,
+          "pagamenti": 18,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 738.73,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 53,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 47,
+          "altro": 6,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.8867924528301887
+        },
+        {
+          "mese": "2026-07",
+          "trade": 742,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 742,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 832,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 32,
+          "altro": 800,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.038461538461538464
+        }
+      ],
+      "mestiere": {
+        "cambiato": true,
+        "passaggi": [
+          {
+            "famiglia": "quotaMeteo",
+            "da": "2026-06",
+            "a": "2026-07",
+            "verso": "fuori",
+            "quotaPrima": 0.8867924528301887,
+            "quotaDopo": 0
+          }
+        ],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0xee25992b23adb27fdf2ba2f765b5790dda7963cc",
+      "efficiente": false,
+      "tradeTotali": 7327,
+      "tradeTroncati": false,
+      "primoTrade": "2026-02-11T11:42:41.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T16:31:31.000Z",
+      "giorniDiVita": 186,
+      "giorniConTrade": 100,
+      "continuita": 0.5376344086021505,
+      "primoUpDown": "2026-02-11",
+      "primoUpDown15": "2026-02-11",
+      "primoMeteo": "2026-07-16",
+      "rewardPrimo": "2026-07-18",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 29,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 91.9,
+          "pagamenti": 14,
+          "giorniConReward": 14
+        },
+        {
+          "mese": "2026-08",
+          "usd": 266.27,
+          "pagamenti": 17,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 358.16999999999996,
+      "tradePerMese": [
+        {
+          "mese": "2026-02",
+          "trade": 1205,
+          "giorniConTrade": 18,
+          "upDown": 1200,
+          "upDown15": 1200,
+          "meteo": 0,
+          "altro": 5,
+          "quotaUpDown": 0.995850622406639,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 1062,
+          "giorniConTrade": 22,
+          "upDown": 1062,
+          "upDown15": 1062,
+          "meteo": 0,
+          "altro": 0,
+          "quotaUpDown": 1,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 144,
+          "giorniConTrade": 6,
+          "upDown": 140,
+          "upDown15": 138,
+          "meteo": 0,
+          "altro": 4,
+          "quotaUpDown": 0.9722222222222222,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 382,
+          "giorniConTrade": 15,
+          "upDown": 382,
+          "upDown15": 382,
+          "meteo": 0,
+          "altro": 0,
+          "quotaUpDown": 1,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 85,
+          "giorniConTrade": 8,
+          "upDown": 84,
+          "upDown15": 84,
+          "meteo": 0,
+          "altro": 1,
+          "quotaUpDown": 0.9882352941176471,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 1415,
+          "giorniConTrade": 16,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1405,
+          "altro": 10,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.9929328621908127
+        },
+        {
+          "mese": "2026-08",
+          "trade": 3034,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 3016,
+          "altro": 18,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.994067237969677
+        }
+      ],
+      "mestiere": {
+        "cambiato": true,
+        "passaggi": [
+          {
+            "famiglia": "quotaUpDown",
+            "da": "2026-06",
+            "a": "2026-07",
+            "verso": "fuori",
+            "quotaPrima": 0.9882352941176471,
+            "quotaDopo": 0
+          },
+          {
+            "famiglia": "quotaMeteo",
+            "da": "2026-06",
+            "a": "2026-07",
+            "verso": "dentro",
+            "quotaPrima": 0,
+            "quotaDopo": 0.9929328621908127
+          }
+        ],
+        "mesiUtili": 7
+      }
+    },
+    {
+      "wallet": "0x51ae4fd822503e81be9ea9d5d5e76500c309ce30",
+      "efficiente": false,
+      "tradeTotali": 4235,
+      "tradeTroncati": false,
+      "primoTrade": "2025-10-12T11:15:25.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-13T07:45:58.000Z",
+      "giorniDiVita": 306,
+      "giorniConTrade": 199,
+      "continuita": 0.6503267973856209,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2025-10-14",
+      "rewardPrimo": "2025-10-13",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 212,
+      "rewardPerMese": [
+        {
+          "mese": "2025-10",
+          "usd": 178.06,
+          "pagamenti": 18,
+          "giorniConReward": 18
+        },
+        {
+          "mese": "2025-11",
+          "usd": 64.46,
+          "pagamenti": 12,
+          "giorniConReward": 12
+        },
+        {
+          "mese": "2026-02",
+          "usd": 106.76,
+          "pagamenti": 25,
+          "giorniConReward": 19
+        },
+        {
+          "mese": "2026-03",
+          "usd": 287.77,
+          "pagamenti": 45,
+          "giorniConReward": 27
+        },
+        {
+          "mese": "2026-04",
+          "usd": 3963.14,
+          "pagamenti": 44,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-05",
+          "usd": 3013.43,
+          "pagamenti": 31,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-06",
+          "usd": 1380.47,
+          "pagamenti": 31,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-07",
+          "usd": 724.98,
+          "pagamenti": 32,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 270.56,
+          "pagamenti": 17,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 9989.629999999997,
+      "tradePerMese": [
+        {
+          "mese": "2025-10",
+          "trade": 586,
+          "giorniConTrade": 20,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 153,
+          "altro": 433,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.26109215017064846
+        },
+        {
+          "mese": "2025-11",
+          "trade": 183,
+          "giorniConTrade": 14,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 8,
+          "altro": 175,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.04371584699453552
+        },
+        {
+          "mese": "2026-01",
+          "trade": 1,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 795,
+          "giorniConTrade": 23,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 795,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 646,
+          "giorniConTrade": 29,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 382,
+          "altro": 264,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.5913312693498453
+        },
+        {
+          "mese": "2026-04",
+          "trade": 938,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 98,
+          "altro": 840,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.1044776119402985
+        },
+        {
+          "mese": "2026-05",
+          "trade": 659,
+          "giorniConTrade": 29,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 659,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 232,
+          "giorniConTrade": 28,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 37,
+          "altro": 195,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.15948275862068967
+        },
+        {
+          "mese": "2026-07",
+          "trade": 42,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 42,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 153,
+          "giorniConTrade": 12,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 110,
+          "altro": 43,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.7189542483660131
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 9
+      }
+    },
+    {
+      "wallet": "0x23ea5743b4a7c8264090220157c7bb6a8d255a98",
+      "efficiente": false,
+      "tradeTotali": 1867,
+      "tradeTroncati": false,
+      "primoTrade": "2026-07-13T03:48:53.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T08:59:39.000Z",
+      "giorniDiVita": 34,
+      "giorniConTrade": 26,
+      "continuita": 0.7647058823529411,
+      "primoUpDown": "2026-07-13",
+      "primoUpDown15": "2026-07-13",
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-26",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 20,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 40.56,
+          "pagamenti": 6,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2026-08",
+          "usd": 234.39,
+          "pagamenti": 16,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 274.95,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 1603,
+          "giorniConTrade": 11,
+          "upDown": 1547,
+          "upDown15": 1547,
+          "meteo": 0,
+          "altro": 56,
+          "quotaUpDown": 0.9650655021834061,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 264,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 264,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": true,
+        "passaggi": [
+          {
+            "famiglia": "quotaUpDown",
+            "da": "2026-07",
+            "a": "2026-08",
+            "verso": "fuori",
+            "quotaPrima": 0.9650655021834061,
+            "quotaDopo": 0
+          }
+        ],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x40e4d8ad998bea126b20f3534b540fbf34866ef7",
+      "efficiente": false,
+      "tradeTotali": 202,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-24T23:24:23.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-14T06:30:10.000Z",
+      "giorniDiVita": 51,
+      "giorniConTrade": 32,
+      "continuita": 0.6274509803921569,
+      "primoUpDown": "2026-07-05",
+      "primoUpDown15": null,
+      "primoMeteo": "2026-08-10",
+      "rewardPrimo": "2026-07-27",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 19,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 38.1,
+          "pagamenti": 5,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2026-08",
+          "usd": 243.72,
+          "pagamenti": 14,
+          "giorniConReward": 14
+        }
+      ],
+      "rewardTotale": 281.82,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 9,
+          "giorniConTrade": 5,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 9,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 78,
+          "giorniConTrade": 14,
+          "upDown": 1,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 77,
+          "quotaUpDown": 0.01282051282051282,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 115,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 26,
+          "altro": 89,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.22608695652173913
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0xd3ecc080c3153881f838c9ff1e72cd60ae680a13",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-01-11T19:13:36.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-14T08:29:25.000Z",
+      "giorniDiVita": 216,
+      "giorniConTrade": 159,
+      "continuita": 0.7361111111111112,
+      "primoUpDown": "2026-01-11",
+      "primoUpDown15": "2026-01-13",
+      "primoMeteo": "2026-07-30",
+      "rewardPrimo": "2026-06-26",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 39,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 18.88,
+          "pagamenti": 6,
+          "giorniConReward": 4
+        },
+        {
+          "mese": "2026-07",
+          "usd": 490.3,
+          "pagamenti": 22,
+          "giorniConReward": 22
+        },
+        {
+          "mese": "2026-08",
+          "usd": 202.99,
+          "pagamenti": 14,
+          "giorniConReward": 13
+        }
+      ],
+      "rewardTotale": 712.1700000000001,
+      "tradePerMese": [
+        {
+          "mese": "2026-01",
+          "trade": 6621,
+          "giorniConTrade": 21,
+          "upDown": 6621,
+          "upDown15": 25,
+          "meteo": 0,
+          "altro": 0,
+          "quotaUpDown": 1,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 889,
+          "giorniConTrade": 15,
+          "upDown": 889,
+          "upDown15": 284,
+          "meteo": 0,
+          "altro": 0,
+          "quotaUpDown": 1,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 716,
+          "giorniConTrade": 25,
+          "upDown": 716,
+          "upDown15": 343,
+          "meteo": 0,
+          "altro": 0,
+          "quotaUpDown": 1,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 824,
+          "giorniConTrade": 24,
+          "upDown": 824,
+          "upDown15": 129,
+          "meteo": 0,
+          "altro": 0,
+          "quotaUpDown": 1,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 54,
+          "giorniConTrade": 7,
+          "upDown": 54,
+          "upDown15": 43,
+          "meteo": 0,
+          "altro": 0,
+          "quotaUpDown": 1,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 263,
+          "giorniConTrade": 24,
+          "upDown": 172,
+          "upDown15": 166,
+          "meteo": 0,
+          "altro": 91,
+          "quotaUpDown": 0.6539923954372624,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 668,
+          "giorniConTrade": 31,
+          "upDown": 173,
+          "upDown15": 162,
+          "meteo": 2,
+          "altro": 493,
+          "quotaUpDown": 0.25898203592814373,
+          "quotaMeteo": 0.0029940119760479044
+        },
+        {
+          "mese": "2026-08",
+          "trade": 465,
+          "giorniConTrade": 12,
+          "upDown": 97,
+          "upDown15": 97,
+          "meteo": 214,
+          "altro": 154,
+          "quotaUpDown": 0.2086021505376344,
+          "quotaMeteo": 0.46021505376344085
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 8
+      }
+    },
+    {
+      "wallet": "0xe5fca09203243073a269b23be9b59139b9fd4c49",
+      "efficiente": false,
+      "tradeTotali": 319,
+      "tradeTroncati": false,
+      "primoTrade": "2025-12-09T13:44:34.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T16:22:21.000Z",
+      "giorniDiVita": 250,
+      "giorniConTrade": 34,
+      "continuita": 0.136,
+      "primoUpDown": "2026-02-21",
+      "primoUpDown15": "2026-02-21",
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-18",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 29,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 335.12,
+          "pagamenti": 14,
+          "giorniConReward": 14
+        },
+        {
+          "mese": "2026-08",
+          "usd": 203.03,
+          "pagamenti": 17,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 538.15,
+      "tradePerMese": [
+        {
+          "mese": "2025-12",
+          "trade": 1,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-01",
+          "trade": 6,
+          "giorniConTrade": 5,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 6,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 28,
+          "giorniConTrade": 2,
+          "upDown": 26,
+          "upDown15": 26,
+          "meteo": 0,
+          "altro": 2,
+          "quotaUpDown": 0.9285714285714286,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 203,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 203,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 81,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 81,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x91fc54f2ae283dd4454b0bf52c8b208dedc20109",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-01-14T17:31:18.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T13:35:09.000Z",
+      "giorniDiVita": 214,
+      "giorniConTrade": 151,
+      "continuita": 0.705607476635514,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2025-10-09",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 182,
+      "rewardPerMese": [
+        {
+          "mese": "2025-10",
+          "usd": 6.14,
+          "pagamenti": 4,
+          "giorniConReward": 4
+        },
+        {
+          "mese": "2025-11",
+          "usd": 16.51,
+          "pagamenti": 8,
+          "giorniConReward": 8
+        },
+        {
+          "mese": "2025-12",
+          "usd": 81.23,
+          "pagamenti": 24,
+          "giorniConReward": 24
+        },
+        {
+          "mese": "2026-01",
+          "usd": 73.37,
+          "pagamenti": 18,
+          "giorniConReward": 18
+        },
+        {
+          "mese": "2026-02",
+          "usd": 20.55,
+          "pagamenti": 7,
+          "giorniConReward": 7
+        },
+        {
+          "mese": "2026-03",
+          "usd": 177.55,
+          "pagamenti": 48,
+          "giorniConReward": 24
+        },
+        {
+          "mese": "2026-04",
+          "usd": 422.7,
+          "pagamenti": 45,
+          "giorniConReward": 26
+        },
+        {
+          "mese": "2026-05",
+          "usd": 556.51,
+          "pagamenti": 34,
+          "giorniConReward": 24
+        },
+        {
+          "mese": "2026-06",
+          "usd": 174.12,
+          "pagamenti": 24,
+          "giorniConReward": 15
+        },
+        {
+          "mese": "2026-07",
+          "usd": 313.41,
+          "pagamenti": 26,
+          "giorniConReward": 20
+        },
+        {
+          "mese": "2026-08",
+          "usd": 187.33,
+          "pagamenti": 16,
+          "giorniConReward": 12
+        }
+      ],
+      "rewardTotale": 2029.4199999999998,
+      "tradePerMese": [
+        {
+          "mese": "2026-01",
+          "trade": 740,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 740,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 769,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 769,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 3535,
+          "giorniConTrade": 26,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 3535,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 2695,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 2695,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 1435,
+          "giorniConTrade": 27,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1435,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 490,
+          "giorniConTrade": 16,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 490,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 499,
+          "giorniConTrade": 20,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 499,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 337,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 337,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 8
+      }
+    },
+    {
+      "wallet": "0x5cb8165affd8de9f8a2943fda90245dfe73b7809",
+      "efficiente": false,
+      "tradeTotali": 3181,
+      "tradeTroncati": false,
+      "primoTrade": "2026-03-20T20:26:43.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T12:27:16.000Z",
+      "giorniDiVita": 149,
+      "giorniConTrade": 80,
+      "continuita": 0.5369127516778524,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-06-23",
+      "rewardPrimo": "2026-06-24",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 47,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 22.73,
+          "pagamenti": 4,
+          "giorniConReward": 4
+        },
+        {
+          "mese": "2026-07",
+          "usd": 264.01,
+          "pagamenti": 29,
+          "giorniConReward": 28
+        },
+        {
+          "mese": "2026-08",
+          "usd": 166.02,
+          "pagamenti": 18,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 452.76,
+      "tradePerMese": [
+        {
+          "mese": "2026-03",
+          "trade": 49,
+          "giorniConTrade": 2,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 49,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 57,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 57,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 184,
+          "giorniConTrade": 26,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 76,
+          "altro": 108,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.41304347826086957
+        },
+        {
+          "mese": "2026-07",
+          "trade": 1982,
+          "giorniConTrade": 29,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1908,
+          "altro": 74,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.9626639757820383
+        },
+        {
+          "mese": "2026-08",
+          "trade": 909,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 902,
+          "altro": 7,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.9922992299229924
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 5
+      }
+    },
+    {
+      "wallet": "0x64befd4360723d4fd0ad845b99dd69f14b3ac653",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-01T20:05:02.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T15:49:18.000Z",
+      "giorniDiVita": 46,
+      "giorniConTrade": 46,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": "2026-07-17",
+      "rewardPrimo": "2026-02-04",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 189,
+      "rewardPerMese": [
+        {
+          "mese": "2026-02",
+          "usd": 376.41,
+          "pagamenti": 35,
+          "giorniConReward": 25
+        },
+        {
+          "mese": "2026-03",
+          "usd": 650.71,
+          "pagamenti": 62,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-04",
+          "usd": 347.94,
+          "pagamenti": 52,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-05",
+          "usd": 663.47,
+          "pagamenti": 47,
+          "giorniConReward": 28
+        },
+        {
+          "mese": "2026-06",
+          "usd": 1145.81,
+          "pagamenti": 56,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-07",
+          "usd": 389.27,
+          "pagamenti": 38,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 155.23,
+          "pagamenti": 17,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 3728.84,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 8289,
+          "giorniConTrade": 31,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1509,
+          "altro": 6780,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.18204849800941006
+        },
+        {
+          "mese": "2026-08",
+          "trade": 2211,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 1315,
+          "altro": 896,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.5947535052012664
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x2cc0c99d67eb1e06330418104a7529ec466104c0",
+      "efficiente": false,
+      "tradeTotali": 436,
+      "tradeTroncati": false,
+      "primoTrade": "2026-07-01T05:09:41.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-12T07:04:33.000Z",
+      "giorniDiVita": 43,
+      "giorniConTrade": 34,
+      "continuita": 0.7906976744186046,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-02",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 45,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 501,
+          "pagamenti": 31,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-08",
+          "usd": 152.19,
+          "pagamenti": 18,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 653.19,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 402,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 402,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 34,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 34,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x5c9eaa3575461ae1ead71b4b365b077c0af0bdb6",
+      "efficiente": false,
+      "tradeTotali": 1591,
+      "tradeTroncati": false,
+      "primoTrade": "2026-03-04T13:28:39.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T08:14:42.000Z",
+      "giorniDiVita": 165,
+      "giorniConTrade": 114,
+      "continuita": 0.6909090909090909,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-03-05",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 151,
+      "rewardPerMese": [
+        {
+          "mese": "2026-03",
+          "usd": 301.05,
+          "pagamenti": 39,
+          "giorniConReward": 20
+        },
+        {
+          "mese": "2026-04",
+          "usd": 178.4,
+          "pagamenti": 38,
+          "giorniConReward": 24
+        },
+        {
+          "mese": "2026-05",
+          "usd": 196.91,
+          "pagamenti": 42,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-06",
+          "usd": 409.39,
+          "pagamenti": 43,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-07",
+          "usd": 360.08,
+          "pagamenti": 32,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 150,
+          "pagamenti": 20,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 1595.83,
+      "tradePerMese": [
+        {
+          "mese": "2026-03",
+          "trade": 999,
+          "giorniConTrade": 21,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 999,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 210,
+          "giorniConTrade": 23,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 210,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 111,
+          "giorniConTrade": 19,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 111,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 154,
+          "giorniConTrade": 24,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 154,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 76,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 76,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 41,
+          "giorniConTrade": 12,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 41,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 6
+      }
+    },
+    {
+      "wallet": "0x19f158c6376882a4bcc012e817eed3f09be586bc",
+      "efficiente": false,
+      "tradeTotali": 52,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-20T21:48:22.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-13T15:55:49.000Z",
+      "giorniDiVita": 55,
+      "giorniConTrade": 20,
+      "continuita": 0.36363636363636365,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-06-22",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 54,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 75.46,
+          "pagamenti": 10,
+          "giorniConReward": 9
+        },
+        {
+          "mese": "2026-07",
+          "usd": 278.59,
+          "pagamenti": 36,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-08",
+          "usd": 150.21,
+          "pagamenti": 21,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 504.26,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 12,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 12,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 34,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 34,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 6,
+          "giorniConTrade": 3,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 6,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": null,
+        "motivo": "meno di due mesi con ≥30 trade (1): non si giudica"
+      }
+    },
+    {
+      "wallet": "0xc975d7bcf7363c8ca1046753c49a5bf95a531983",
+      "efficiente": false,
+      "tradeTotali": 472,
+      "tradeTroncati": false,
+      "primoTrade": "2026-07-16T20:58:13.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T09:45:21.000Z",
+      "giorniDiVita": 31,
+      "giorniConTrade": 30,
+      "continuita": 0.967741935483871,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-19",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 28,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 50.53,
+          "pagamenti": 13,
+          "giorniConReward": 13
+        },
+        {
+          "mese": "2026-08",
+          "usd": 136.91,
+          "pagamenti": 16,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 187.44,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 98,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 98,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 374,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 374,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x0cbb4364d1b617a7e52fa14abae056205bf1b9d1",
+      "efficiente": false,
+      "tradeTotali": 1412,
+      "tradeTroncati": false,
+      "primoTrade": "2026-02-17T13:38:33.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T13:23:22.000Z",
+      "giorniDiVita": 180,
+      "giorniConTrade": 120,
+      "continuita": 0.6666666666666666,
+      "primoUpDown": "2026-02-19",
+      "primoUpDown15": "2026-02-19",
+      "primoMeteo": null,
+      "rewardPrimo": "2026-02-18",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 127,
+      "rewardPerMese": [
+        {
+          "mese": "2026-02",
+          "usd": 34,
+          "pagamenti": 19,
+          "giorniConReward": 11
+        },
+        {
+          "mese": "2026-03",
+          "usd": 111.46,
+          "pagamenti": 46,
+          "giorniConReward": 27
+        },
+        {
+          "mese": "2026-04",
+          "usd": 129.12,
+          "pagamenti": 33,
+          "giorniConReward": 28
+        },
+        {
+          "mese": "2026-05",
+          "usd": 163.48,
+          "pagamenti": 33,
+          "giorniConReward": 28
+        },
+        {
+          "mese": "2026-06",
+          "usd": 8.8,
+          "pagamenti": 4,
+          "giorniConReward": 3
+        },
+        {
+          "mese": "2026-07",
+          "usd": 122.48,
+          "pagamenti": 16,
+          "giorniConReward": 15
+        },
+        {
+          "mese": "2026-08",
+          "usd": 139.8,
+          "pagamenti": 16,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 709.1399999999999,
+      "tradePerMese": [
+        {
+          "mese": "2026-02",
+          "trade": 276,
+          "giorniConTrade": 11,
+          "upDown": 4,
+          "upDown15": 4,
+          "meteo": 0,
+          "altro": 272,
+          "quotaUpDown": 0.014492753623188406,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 350,
+          "giorniConTrade": 24,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 350,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 304,
+          "giorniConTrade": 28,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 304,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 274,
+          "giorniConTrade": 24,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 274,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 18,
+          "giorniConTrade": 3,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 18,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 114,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 114,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 76,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 76,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 6
+      }
+    },
+    {
+      "wallet": "0x76b3b657068c3130e872a54681bb1c5d75bac36a",
+      "efficiente": false,
+      "tradeTotali": 217,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-28T22:57:47.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T07:59:07.000Z",
+      "giorniDiVita": 48,
+      "giorniConTrade": 21,
+      "continuita": 0.4375,
+      "primoUpDown": "2026-06-28",
+      "primoUpDown15": "2026-06-28",
+      "primoMeteo": null,
+      "rewardPrimo": "2026-06-30",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 22,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 21.94,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2026-07",
+          "usd": 72.44,
+          "pagamenti": 9,
+          "giorniConReward": 9
+        },
+        {
+          "mese": "2026-08",
+          "usd": 127.4,
+          "pagamenti": 13,
+          "giorniConReward": 12
+        }
+      ],
+      "rewardTotale": 221.78,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 25,
+          "giorniConTrade": 3,
+          "upDown": 1,
+          "upDown15": 1,
+          "meteo": 0,
+          "altro": 24,
+          "quotaUpDown": 0.04,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 59,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 59,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 133,
+          "giorniConTrade": 10,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 133,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0xf847df60af3d028b82949c7b76882a2a9244ee6a",
+      "efficiente": false,
+      "tradeTotali": 1746,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-05T07:32:36.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-14T03:41:19.000Z",
+      "giorniDiVita": 71,
+      "giorniConTrade": 57,
+      "continuita": 0.8028169014084507,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-06-10",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 61,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 254.89,
+          "pagamenti": 21,
+          "giorniConReward": 18
+        },
+        {
+          "mese": "2026-07",
+          "usd": 342.11,
+          "pagamenti": 33,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-08",
+          "usd": 116.06,
+          "pagamenti": 14,
+          "giorniConReward": 13
+        }
+      ],
+      "rewardTotale": 713.06,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 960,
+          "giorniConTrade": 22,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 960,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 736,
+          "giorniConTrade": 27,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 736,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 50,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 50,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0x256818aca89f3b3012e82831ecf856bf6055ef92",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-07-19T12:55:24.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T16:32:39.000Z",
+      "giorniDiVita": 28,
+      "giorniConTrade": 28,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-04-29",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 92,
+      "rewardPerMese": [
+        {
+          "mese": "2026-04",
+          "usd": 8.87,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2026-05",
+          "usd": 205.62,
+          "pagamenti": 33,
+          "giorniConReward": 26
+        },
+        {
+          "mese": "2026-06",
+          "usd": 630.14,
+          "pagamenti": 37,
+          "giorniConReward": 23
+        },
+        {
+          "mese": "2026-07",
+          "usd": 252.01,
+          "pagamenti": 35,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-08",
+          "usd": 96.96,
+          "pagamenti": 11,
+          "giorniConReward": 11
+        }
+      ],
+      "rewardTotale": 1193.6,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 5273,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 5273,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 5227,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 5227,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x6f1cabe66d3d7c7ebdbb0437cde8d88e323eeffa",
+      "efficiente": false,
+      "tradeTotali": 349,
+      "tradeTroncati": false,
+      "primoTrade": "2026-07-24T12:08:45.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T04:26:01.000Z",
+      "giorniDiVita": 23,
+      "giorniConTrade": 23,
+      "continuita": 1,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-28",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 19,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 23.04,
+          "pagamenti": 4,
+          "giorniConReward": 4
+        },
+        {
+          "mese": "2026-08",
+          "usd": 89,
+          "pagamenti": 15,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 112.03999999999999,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 128,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 128,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 221,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 221,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 2
+      }
+    },
+    {
+      "wallet": "0x758ae553acc82337cec98f89a8a5d0ad0034f23c",
+      "efficiente": false,
+      "tradeTotali": 1533,
+      "tradeTroncati": false,
+      "primoTrade": "2024-11-30T22:47:53.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-14T22:10:36.000Z",
+      "giorniDiVita": 623,
+      "giorniConTrade": 180,
+      "continuita": 0.28892455858747995,
+      "primoUpDown": "2026-02-17",
+      "primoUpDown15": "2026-02-17",
+      "primoMeteo": null,
+      "rewardPrimo": "2025-06-27",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 61,
+      "rewardPerMese": [
+        {
+          "mese": "2025-06",
+          "usd": 1.85,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2025-08",
+          "usd": 2.69,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2025-11",
+          "usd": 3.26,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2026-05",
+          "usd": 47.92,
+          "pagamenti": 6,
+          "giorniConReward": 6
+        },
+        {
+          "mese": "2026-06",
+          "usd": 60.24,
+          "pagamenti": 6,
+          "giorniConReward": 6
+        },
+        {
+          "mese": "2026-07",
+          "usd": 173.84,
+          "pagamenti": 30,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-08",
+          "usd": 77.13,
+          "pagamenti": 17,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 366.93,
+      "tradePerMese": [
+        {
+          "mese": "2024-11",
+          "trade": 3,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 3,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2024-12",
+          "trade": 50,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 50,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-01",
+          "trade": 49,
+          "giorniConTrade": 10,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 49,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-02",
+          "trade": 1,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-06",
+          "trade": 44,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 44,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-07",
+          "trade": 27,
+          "giorniConTrade": 10,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 27,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-08",
+          "trade": 47,
+          "giorniConTrade": 9,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 47,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-09",
+          "trade": 16,
+          "giorniConTrade": 6,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 16,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-10",
+          "trade": 31,
+          "giorniConTrade": 5,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 31,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-11",
+          "trade": 83,
+          "giorniConTrade": 17,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 83,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-12",
+          "trade": 45,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 45,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-01",
+          "trade": 27,
+          "giorniConTrade": 14,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 27,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 96,
+          "giorniConTrade": 7,
+          "upDown": 87,
+          "upDown15": 87,
+          "meteo": 0,
+          "altro": 9,
+          "quotaUpDown": 0.90625,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 11,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 11,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 4,
+          "giorniConTrade": 2,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 4,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 547,
+          "giorniConTrade": 13,
+          "upDown": 511,
+          "upDown15": 511,
+          "meteo": 0,
+          "altro": 36,
+          "quotaUpDown": 0.9341864716636198,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 250,
+          "giorniConTrade": 14,
+          "upDown": 172,
+          "upDown15": 172,
+          "meteo": 0,
+          "altro": 78,
+          "quotaUpDown": 0.688,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 151,
+          "giorniConTrade": 21,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 151,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 51,
+          "giorniConTrade": 12,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 51,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": true,
+        "passaggi": [
+          {
+            "famiglia": "quotaUpDown",
+            "da": "2025-12",
+            "a": "2026-02",
+            "verso": "dentro",
+            "quotaPrima": 0,
+            "quotaDopo": 0.90625
+          }
+        ],
+        "mesiUtili": 12
+      }
+    },
+    {
+      "wallet": "0x99dd407b80e45874638d783f54b0d8c097544303",
+      "efficiente": false,
+      "tradeTotali": 8713,
+      "tradeTroncati": false,
+      "primoTrade": "2025-10-26T02:44:21.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-06T10:49:36.000Z",
+      "giorniDiVita": 285,
+      "giorniConTrade": 231,
+      "continuita": 0.8105263157894737,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-01-06",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 175,
+      "rewardPerMese": [
+        {
+          "mese": "2026-01",
+          "usd": 59.79,
+          "pagamenti": 17,
+          "giorniConReward": 17
+        },
+        {
+          "mese": "2026-02",
+          "usd": 3.02,
+          "pagamenti": 5,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2026-03",
+          "usd": 195.98,
+          "pagamenti": 44,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-04",
+          "usd": 627.57,
+          "pagamenti": 54,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-05",
+          "usd": 1435.39,
+          "pagamenti": 40,
+          "giorniConReward": 29
+        },
+        {
+          "mese": "2026-06",
+          "usd": 125.84,
+          "pagamenti": 36,
+          "giorniConReward": 20
+        },
+        {
+          "mese": "2026-07",
+          "usd": 92.54,
+          "pagamenti": 31,
+          "giorniConReward": 30
+        },
+        {
+          "mese": "2026-08",
+          "usd": 76.51,
+          "pagamenti": 18,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 2616.6400000000003,
+      "tradePerMese": [
+        {
+          "mese": "2025-10",
+          "trade": 43,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 43,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-11",
+          "trade": 519,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 519,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-12",
+          "trade": 1610,
+          "giorniConTrade": 29,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1610,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-01",
+          "trade": 945,
+          "giorniConTrade": 29,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 945,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 1878,
+          "giorniConTrade": 28,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1878,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 2039,
+          "giorniConTrade": 31,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 2039,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 497,
+          "giorniConTrade": 27,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 497,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 764,
+          "giorniConTrade": 25,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 764,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 70,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 70,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 346,
+          "giorniConTrade": 16,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 346,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 2,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 2,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 10
+      }
+    },
+    {
+      "wallet": "0x9b3f000102cdd6c22d4b676f222728538bcc2e7c",
+      "efficiente": false,
+      "tradeTotali": 1937,
+      "tradeTroncati": false,
+      "primoTrade": "2026-05-31T18:32:18.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-14T19:29:24.000Z",
+      "giorniDiVita": 76,
+      "giorniConTrade": 46,
+      "continuita": 0.6052631578947368,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-23",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 17,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 48.97,
+          "pagamenti": 6,
+          "giorniConReward": 6
+        },
+        {
+          "mese": "2026-08",
+          "usd": 71.93,
+          "pagamenti": 13,
+          "giorniConReward": 11
+        }
+      ],
+      "rewardTotale": 120.9,
+      "tradePerMese": [
+        {
+          "mese": "2026-05",
+          "trade": 1,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 42,
+          "giorniConTrade": 10,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 42,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 1046,
+          "giorniConTrade": 24,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1046,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 848,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 848,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 3
+      }
+    },
+    {
+      "wallet": "0xbe1a34ce895c2e730c2c3702095df4752994bd22",
+      "efficiente": false,
+      "tradeTotali": 1579,
+      "tradeTroncati": false,
+      "primoTrade": "2026-05-30T13:59:20.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T15:00:18.000Z",
+      "giorniDiVita": 78,
+      "giorniConTrade": 52,
+      "continuita": 0.6666666666666666,
+      "primoUpDown": "2026-06-02",
+      "primoUpDown15": "2026-06-02",
+      "primoMeteo": "2026-07-18",
+      "rewardPrimo": "2026-08-02",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 13,
+      "rewardPerMese": [
+        {
+          "mese": "2026-08",
+          "usd": 60.32,
+          "pagamenti": 13,
+          "giorniConReward": 13
+        }
+      ],
+      "rewardTotale": 60.32,
+      "tradePerMese": [
+        {
+          "mese": "2026-05",
+          "trade": 87,
+          "giorniConTrade": 2,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 87,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 588,
+          "giorniConTrade": 16,
+          "upDown": 583,
+          "upDown15": 583,
+          "meteo": 0,
+          "altro": 5,
+          "quotaUpDown": 0.9914965986394558,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 373,
+          "giorniConTrade": 19,
+          "upDown": 215,
+          "upDown15": 215,
+          "meteo": 155,
+          "altro": 3,
+          "quotaUpDown": 0.5764075067024129,
+          "quotaMeteo": 0.4155495978552279
+        },
+        {
+          "mese": "2026-08",
+          "trade": 531,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 531,
+          "altro": 0,
+          "quotaUpDown": 0,
+          "quotaMeteo": 1
+        }
+      ],
+      "mestiere": {
+        "cambiato": true,
+        "passaggi": [
+          {
+            "famiglia": "quotaUpDown",
+            "da": "2026-05",
+            "a": "2026-06",
+            "verso": "dentro",
+            "quotaPrima": 0,
+            "quotaDopo": 0.9914965986394558
+          }
+        ],
+        "mesiUtili": 4
+      }
+    },
+    {
+      "wallet": "0x81abf8e4680cb2c6f94e3763daeeb9826e5d799a",
+      "efficiente": false,
+      "tradeTotali": 445,
+      "tradeTroncati": false,
+      "primoTrade": "2025-12-17T12:26:36.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-12T01:22:12.000Z",
+      "giorniDiVita": 239,
+      "giorniConTrade": 62,
+      "continuita": 0.2594142259414226,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2025-12-18",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 116,
+      "rewardPerMese": [
+        {
+          "mese": "2025-12",
+          "usd": 7.34,
+          "pagamenti": 5,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2026-01",
+          "usd": 36.34,
+          "pagamenti": 9,
+          "giorniConReward": 9
+        },
+        {
+          "mese": "2026-02",
+          "usd": 82.45,
+          "pagamenti": 23,
+          "giorniConReward": 14
+        },
+        {
+          "mese": "2026-03",
+          "usd": 190.15,
+          "pagamenti": 62,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-04",
+          "usd": 23.4,
+          "pagamenti": 9,
+          "giorniConReward": 7
+        },
+        {
+          "mese": "2026-05",
+          "usd": 1.96,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2026-06",
+          "usd": 11.87,
+          "pagamenti": 3,
+          "giorniConReward": 3
+        },
+        {
+          "mese": "2026-07",
+          "usd": 85.51,
+          "pagamenti": 31,
+          "giorniConReward": 31
+        },
+        {
+          "mese": "2026-08",
+          "usd": 61.28,
+          "pagamenti": 18,
+          "giorniConReward": 15
+        }
+      ],
+      "rewardTotale": 500.29999999999995,
+      "tradePerMese": [
+        {
+          "mese": "2025-12",
+          "trade": 107,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 107,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-01",
+          "trade": 31,
+          "giorniConTrade": 7,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 31,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 105,
+          "giorniConTrade": 10,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 105,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 136,
+          "giorniConTrade": 17,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 136,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 2,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 2,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 6,
+          "giorniConTrade": 2,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 6,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 33,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 33,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 25,
+          "giorniConTrade": 6,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 25,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 5
+      }
+    },
+    {
+      "wallet": "0x6bcd48f75827ddb6f965f7d96727e10adc3406b9",
+      "efficiente": false,
+      "tradeTotali": 7792,
+      "tradeTroncati": false,
+      "primoTrade": "2026-01-19T01:42:26.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T13:47:04.000Z",
+      "giorniDiVita": 210,
+      "giorniConTrade": 118,
+      "continuita": 0.5619047619047619,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-01-27",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 31,
+      "rewardPerMese": [
+        {
+          "mese": "2026-01",
+          "usd": 5.23,
+          "pagamenti": 3,
+          "giorniConReward": 3
+        },
+        {
+          "mese": "2026-02",
+          "usd": 11.23,
+          "pagamenti": 3,
+          "giorniConReward": 3
+        },
+        {
+          "mese": "2026-03",
+          "usd": 3.04,
+          "pagamenti": 7,
+          "giorniConReward": 7
+        },
+        {
+          "mese": "2026-04",
+          "usd": 1.71,
+          "pagamenti": 3,
+          "giorniConReward": 3
+        },
+        {
+          "mese": "2026-05",
+          "usd": 10.75,
+          "pagamenti": 3,
+          "giorniConReward": 3
+        },
+        {
+          "mese": "2026-06",
+          "usd": 0.12,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2026-07",
+          "usd": 3.78,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2026-08",
+          "usd": 52.16,
+          "pagamenti": 10,
+          "giorniConReward": 10
+        }
+      ],
+      "rewardTotale": 88.02,
+      "tradePerMese": [
+        {
+          "mese": "2026-01",
+          "trade": 530,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 530,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 272,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 272,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 1166,
+          "giorniConTrade": 16,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1166,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 2455,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 2455,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 1142,
+          "giorniConTrade": 21,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1142,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 1061,
+          "giorniConTrade": 18,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1061,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 427,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 427,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 739,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 739,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 8
+      }
+    },
+    {
+      "wallet": "0x3150113acc90e6fb128ce529597de3bdffbe3be9",
+      "efficiente": false,
+      "tradeTotali": 85,
+      "tradeTroncati": false,
+      "primoTrade": "2026-06-17T10:52:23.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-07-29T18:01:08.000Z",
+      "giorniDiVita": 43,
+      "giorniConTrade": 13,
+      "continuita": 0.3023255813953488,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-06-18",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 44,
+      "rewardPerMese": [
+        {
+          "mese": "2026-06",
+          "usd": 90.31,
+          "pagamenti": 10,
+          "giorniConReward": 10
+        },
+        {
+          "mese": "2026-07",
+          "usd": 228.49,
+          "pagamenti": 25,
+          "giorniConReward": 24
+        },
+        {
+          "mese": "2026-08",
+          "usd": 45.51,
+          "pagamenti": 11,
+          "giorniConReward": 10
+        }
+      ],
+      "rewardTotale": 364.31,
+      "tradePerMese": [
+        {
+          "mese": "2026-06",
+          "trade": 63,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 63,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 22,
+          "giorniConTrade": 5,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 22,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": null,
+        "motivo": "meno di due mesi con ≥30 trade (1): non si giudica"
+      }
+    },
+    {
+      "wallet": "0xaea5685107f6b48cbb95e4c4a022c290c6659f69",
+      "efficiente": false,
+      "tradeTotali": 42,
+      "tradeTroncati": false,
+      "primoTrade": "2026-07-27T01:42:24.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-15T08:51:16.000Z",
+      "giorniDiVita": 20,
+      "giorniConTrade": 10,
+      "continuita": 0.5,
+      "primoUpDown": null,
+      "primoUpDown15": null,
+      "primoMeteo": null,
+      "rewardPrimo": "2026-07-29",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 14,
+      "rewardPerMese": [
+        {
+          "mese": "2026-07",
+          "usd": 5.67,
+          "pagamenti": 3,
+          "giorniConReward": 3
+        },
+        {
+          "mese": "2026-08",
+          "usd": 44.25,
+          "pagamenti": 11,
+          "giorniConReward": 11
+        }
+      ],
+      "rewardTotale": 49.92,
+      "tradePerMese": [
+        {
+          "mese": "2026-07",
+          "trade": 11,
+          "giorniConTrade": 3,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 11,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 31,
+          "giorniConTrade": 7,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 31,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": null,
+        "motivo": "meno di due mesi con ≥30 trade (1): non si giudica"
+      }
+    },
+    {
+      "wallet": "0xf5d1d070865cfac18c29aa9fc12eda659b9767cc",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2025-08-16T04:39:22.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-15T13:35:04.000Z",
+      "giorniDiVita": 365,
+      "giorniConTrade": 259,
+      "continuita": 0.7095890410958904,
+      "primoUpDown": "2026-02-20",
+      "primoUpDown15": "2026-02-20",
+      "primoMeteo": "2025-08-18",
+      "rewardPrimo": "2025-09-07",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 98,
+      "rewardPerMese": [
+        {
+          "mese": "2025-09",
+          "usd": 7.92,
+          "pagamenti": 4,
+          "giorniConReward": 4
+        },
+        {
+          "mese": "2025-11",
+          "usd": 2.92,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2025-12",
+          "usd": 1.84,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2026-01",
+          "usd": 85.81,
+          "pagamenti": 21,
+          "giorniConReward": 21
+        },
+        {
+          "mese": "2026-02",
+          "usd": 116.78,
+          "pagamenti": 28,
+          "giorniConReward": 23
+        },
+        {
+          "mese": "2026-03",
+          "usd": 42.54,
+          "pagamenti": 33,
+          "giorniConReward": 21
+        },
+        {
+          "mese": "2026-04",
+          "usd": 46.93,
+          "pagamenti": 20,
+          "giorniConReward": 14
+        },
+        {
+          "mese": "2026-06",
+          "usd": 3.56,
+          "pagamenti": 2,
+          "giorniConReward": 2
+        },
+        {
+          "mese": "2026-08",
+          "usd": 41.68,
+          "pagamenti": 14,
+          "giorniConReward": 11
+        }
+      ],
+      "rewardTotale": 349.98,
+      "tradePerMese": [
+        {
+          "mese": "2025-08",
+          "trade": 224,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 11,
+          "altro": 213,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.049107142857142856
+        },
+        {
+          "mese": "2025-09",
+          "trade": 526,
+          "giorniConTrade": 28,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 127,
+          "altro": 399,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.2414448669201521
+        },
+        {
+          "mese": "2025-10",
+          "trade": 382,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 94,
+          "altro": 288,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.24607329842931938
+        },
+        {
+          "mese": "2025-11",
+          "trade": 228,
+          "giorniConTrade": 22,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 77,
+          "altro": 151,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.33771929824561403
+        },
+        {
+          "mese": "2025-12",
+          "trade": 254,
+          "giorniConTrade": 23,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 17,
+          "altro": 237,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.06692913385826772
+        },
+        {
+          "mese": "2026-01",
+          "trade": 957,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 8,
+          "altro": 949,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.008359456635318705
+        },
+        {
+          "mese": "2026-02",
+          "trade": 6469,
+          "giorniConTrade": 28,
+          "upDown": 4943,
+          "upDown15": 4943,
+          "meteo": 0,
+          "altro": 1526,
+          "quotaUpDown": 0.7641057350440563,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 651,
+          "giorniConTrade": 30,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 651,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 476,
+          "giorniConTrade": 21,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 476,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 3,
+          "giorniConTrade": 3,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 3,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 22,
+          "giorniConTrade": 6,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 22,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 66,
+          "giorniConTrade": 8,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 66,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 242,
+          "giorniConTrade": 15,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 242,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 11
+      }
+    },
+    {
+      "wallet": "0xd211865ad25b4c5527fd0d9f40e3bcb02007628b",
+      "efficiente": false,
+      "tradeTotali": 1427,
+      "tradeTroncati": false,
+      "primoTrade": "2024-11-15T22:28:35.000Z",
+      "primoTradeEsatto": true,
+      "ultimoTrade": "2026-08-14T22:10:18.000Z",
+      "giorniDiVita": 638,
+      "giorniConTrade": 135,
+      "continuita": 0.2115987460815047,
+      "primoUpDown": "2026-01-16",
+      "primoUpDown15": "2026-01-16",
+      "primoMeteo": "2026-08-11",
+      "rewardPrimo": "2026-02-19",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 46,
+      "rewardPerMese": [
+        {
+          "mese": "2026-02",
+          "usd": 1.34,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2026-04",
+          "usd": 1.23,
+          "pagamenti": 1,
+          "giorniConReward": 1
+        },
+        {
+          "mese": "2026-05",
+          "usd": 502.78,
+          "pagamenti": 26,
+          "giorniConReward": 16
+        },
+        {
+          "mese": "2026-06",
+          "usd": 381.77,
+          "pagamenti": 27,
+          "giorniConReward": 17
+        },
+        {
+          "mese": "2026-08",
+          "usd": 41.36,
+          "pagamenti": 11,
+          "giorniConReward": 11
+        }
+      ],
+      "rewardTotale": 928.4799999999999,
+      "tradePerMese": [
+        {
+          "mese": "2024-11",
+          "trade": 1,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2024-12",
+          "trade": 2,
+          "giorniConTrade": 2,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 2,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-01",
+          "trade": 9,
+          "giorniConTrade": 7,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 9,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-02",
+          "trade": 1,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 1,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-03",
+          "trade": 2,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 2,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-04",
+          "trade": 15,
+          "giorniConTrade": 5,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 15,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-08",
+          "trade": 23,
+          "giorniConTrade": 7,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 23,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-09",
+          "trade": 7,
+          "giorniConTrade": 3,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 7,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-10",
+          "trade": 21,
+          "giorniConTrade": 6,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 21,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-11",
+          "trade": 69,
+          "giorniConTrade": 13,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 69,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2025-12",
+          "trade": 30,
+          "giorniConTrade": 7,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 30,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-01",
+          "trade": 26,
+          "giorniConTrade": 5,
+          "upDown": 3,
+          "upDown15": 2,
+          "meteo": 0,
+          "altro": 23,
+          "quotaUpDown": 0.11538461538461539,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-02",
+          "trade": 251,
+          "giorniConTrade": 18,
+          "upDown": 8,
+          "upDown15": 8,
+          "meteo": 0,
+          "altro": 243,
+          "quotaUpDown": 0.03187250996015936,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-03",
+          "trade": 22,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 22,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 15,
+          "giorniConTrade": 3,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 15,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 432,
+          "giorniConTrade": 25,
+          "upDown": 10,
+          "upDown15": 9,
+          "meteo": 0,
+          "altro": 422,
+          "quotaUpDown": 0.023148148148148147,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 456,
+          "giorniConTrade": 17,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 456,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 3,
+          "giorniConTrade": 1,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 3,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 42,
+          "giorniConTrade": 9,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 4,
+          "altro": 38,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0.09523809523809523
+        }
+      ],
+      "mestiere": {
+        "cambiato": false,
+        "passaggi": [],
+        "mesiUtili": 6
+      }
+    },
+    {
+      "wallet": "0xc36fd737fb6ae96a69eda33cd8c443b41bb87422",
+      "efficiente": false,
+      "tradeTotali": 10001,
+      "tradeTroncati": true,
+      "primoTrade": "2026-03-27T03:48:23.000Z",
+      "primoTradeEsatto": false,
+      "ultimoTrade": "2026-08-11T08:08:18.000Z",
+      "giorniDiVita": 138,
+      "giorniConTrade": 54,
+      "continuita": 0.391304347826087,
+      "primoUpDown": "2026-03-27",
+      "primoUpDown15": "2026-03-27",
+      "primoMeteo": null,
+      "rewardPrimo": "2026-03-13",
+      "rewardUltimo": "2026-08-15",
+      "rewardGiorni": 66,
+      "rewardPerMese": [
+        {
+          "mese": "2026-03",
+          "usd": 14.09,
+          "pagamenti": 8,
+          "giorniConReward": 5
+        },
+        {
+          "mese": "2026-05",
+          "usd": 26.15,
+          "pagamenti": 13,
+          "giorniConReward": 8
+        },
+        {
+          "mese": "2026-06",
+          "usd": 35.36,
+          "pagamenti": 26,
+          "giorniConReward": 21
+        },
+        {
+          "mese": "2026-07",
+          "usd": 28.64,
+          "pagamenti": 20,
+          "giorniConReward": 18
+        },
+        {
+          "mese": "2026-08",
+          "usd": 35.32,
+          "pagamenti": 17,
+          "giorniConReward": 14
+        }
+      ],
+      "rewardTotale": 139.56,
+      "tradePerMese": [
+        {
+          "mese": "2026-03",
+          "trade": 8398,
+          "giorniConTrade": 3,
+          "upDown": 8394,
+          "upDown15": 8394,
+          "meteo": 0,
+          "altro": 4,
+          "quotaUpDown": 0.9995236961181234,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-04",
+          "trade": 1162,
+          "giorniConTrade": 6,
+          "upDown": 1160,
+          "upDown15": 1160,
+          "meteo": 0,
+          "altro": 2,
+          "quotaUpDown": 0.9982788296041308,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-05",
+          "trade": 879,
+          "giorniConTrade": 20,
+          "upDown": 832,
+          "upDown15": 832,
+          "meteo": 0,
+          "altro": 47,
+          "quotaUpDown": 0.9465301478953356,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-06",
+          "trade": 22,
+          "giorniConTrade": 10,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 22,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-07",
+          "trade": 31,
+          "giorniConTrade": 11,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 31,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        },
+        {
+          "mese": "2026-08",
+          "trade": 8,
+          "giorniConTrade": 4,
+          "upDown": 0,
+          "upDown15": 0,
+          "meteo": 0,
+          "altro": 8,
+          "quotaUpDown": 0,
+          "quotaMeteo": 0
+        }
+      ],
+      "mestiere": {
+        "cambiato": true,
+        "passaggi": [
+          {
+            "famiglia": "quotaUpDown",
+            "da": "2026-05",
+            "a": "2026-07",
+            "verso": "fuori",
+            "quotaPrima": 0.9465301478953356,
+            "quotaDopo": 0
+          }
+        ],
+        "mesiUtili": 4
+      }
+    }
+  ]
+}

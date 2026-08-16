@@ -1,9 +1,9 @@
 {
- "attivo": false,
- "valore": "0",
- "riconosciuto": true,
- "motivo": "REALLOC_SCHEDULER_DRY_RUN=0: freno DISINSERITO — agent41 può inviare ordini al venue",
+ "attivo": true,
+ "valore": null,
+ "riconosciuto": false,
+ "motivo": "REALLOC_SCHEDULER_DRY_RUN assente: freno INSERITO (fail-closed). Per piazzare serve REALLOC_SCHEDULER_DRY_RUN=0",
  "agente": "agent41-realloc-scheduler",
- "pid": 1572333,
- "atIso": "2026-08-12T17:22:36.779Z"
+ "pid": 153654,
+ "atIso": "2026-08-16T19:22:53.036Z"
 }

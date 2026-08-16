@@ -28,7 +28,7 @@
 // tutte residui. Il troncamento è quindi sui più piccoli, ed è dichiarato nel record (`troncato`).
 // Il valore TOTALE non si somma da lì — si legge da `/value`, che lo dà esatto in una chiamata.
 
-const { apiGet, rpc, inParallelo, scrivi, leggi, PUSD } = require('./screening-lib');
+const { apiGet, rpc, inParallelo, scrivi, leggi, PUSD, VALORE_MIN_MERCATO } = require('./screening-lib');
 
 const argomenti = process.argv.slice(2);
 const arg = (nome, difetto) => {
@@ -39,8 +39,6 @@ const GIORNI_MIN = arg('--giorni-min', 10);
 const LIMITE = arg('--limite', null);
 /** Il filtro sull'importo: «scarta … importi sotto $1», letto come «la giornata TIPICA sotto $1». */
 const MEDIANA_MIN_USD = 1;
-/** Sotto questa soglia una posizione è un residuo, non un mercato quotato. Vedi §5-bis p.123. */
-const VALORE_MIN_MERCATO = 5;
 /** «coppie simmetriche o quasi»: la gamba corta almeno il 70% della lunga. */
 const SOGLIA_SIMMETRIA = 0.70;
 const PER_PAGINA = 500;

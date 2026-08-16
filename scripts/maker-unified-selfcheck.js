@@ -177,7 +177,11 @@ ok('news-guard HIGH signal → forces close over the stored "lato opposto"');
 // thing that can withhold a price is the tick.
 console.log('\n3b. tick — snap is explicit, unknown tick fails closed');
 
-const rsTick = { poolDay: 100, mid: 0.5, maxSpreadCents: 6, minSize: 100, competitorQ: 500, refCapital: 1000, refShare: 0.1 };
+// ⚠ RIMESSO IN SCALA il 15 agosto 2026: `maxSpreadCents` era 6 perché la sezione (c) qui sotto vuole
+// una banda di raggio 3¢ ("Band radius = 6/2 = 3c") — l'aritmetica della lettura DIMEZZATA che §5-bis
+// p.155 ha dimostrato sbagliata. Sotto `v = maxSpread` lo stesso raggio si scrive con METÀ del numero,
+// e il 5¢ della coda torna a cadere FUORI dalla banda come l'asserzione richiede.
+const rsTick = { poolDay: 100, mid: 0.5, maxSpreadCents: 3, minSize: 100, competitorQ: 500, refCapital: 1000, refShare: 0.1 };
 
 // (a) tick unknown → no price at all, with a stated reason. Nothing else is missing.
 for (const badTick of [null, undefined, 0, -1, NaN]) {
@@ -239,7 +243,7 @@ assert.ok(g400 != null && g1000 != null && g400 < g1000,
   `personalised $/day scales with size: $400 → ${g400} must be < $1000 → ${g1000}`);
 ok(`headline $/day follows the operator's size: $400 → $${g400.toFixed(4)}/day vs $1000 → $${g1000.toFixed(4)}/day`);
 
-// (c) TAILS — an out-of-band offset earns a CORRECT $0 (never a small positive). Band radius = 6/2 = 3c; 5c is out.
+// (c) TAILS — an out-of-band offset earns a CORRECT $0 (never a small positive). Band radius = max_spread = 3c; 5c is out.
 const oob = computePriceRow({ rewardScore: rsTick, tick: 0.01, totalSizeUsd: 400, offsetCents: 5, market: mktDeep });
 assert.strictEqual(oob.grossPerDay, 0, 'an out-of-band offset earns exactly $0 (tails), never a small positive');
 assert.strictEqual(oob.anyOutOfBand, true, 'the out-of-band tail is flagged so the row can state WHY it is zero');

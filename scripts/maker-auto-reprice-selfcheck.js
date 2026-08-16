@@ -60,11 +60,17 @@ const NO = 'TOKEN_NO_2222';
 function stores() { return { configFile: tmp('cfg.json'), autoStateFile: tmp('state.json'), autoAuditFile: tmp('audit.jsonl') }; }
 
 // The market's live rules, exactly the resolveMarketRules() shape the real watcher passes in.
-// tick 0.01, max_spread 3¢ ⇒ reward band = mid ± 1.5¢.
+// tick 0.01, max_spread 1.5¢ ⇒ reward band = mid ± 1.5¢.
+//
+// ⚠ RIMESSO IN SCALA il 15 agosto 2026. `maxSpreadCents` era 3 per ottenere un raggio di 1,5¢ sotto la
+// lettura DIMEZZATA (`v = maxSpread/2`) che §5-bis p.155 ha dimostrato sbagliata contro l'esempio
+// ufficiale del venue. Sotto la definizione vera (`v = maxSpread`, lib/banda-premiante) lo stesso
+// raggio si scrive con METÀ del numero. La banda su cui il file ragiona — ±1,5¢ — non è cambiata, e
+// NESSUNA asserzione è stata toccata: è la stessa correzione dei 14 test di p.155 e degli 8 di p.156.
 function rulesAt(mid, over = {}) {
   return {
     readable: true, missing: [], marketId: MKT, title: 'selfcheck market',
-    mid, tick: 0.01, maxSpreadCents: 3, minSize: 50,
+    mid, tick: 0.01, maxSpreadCents: 1.5, minSize: 50,
     tokenId: YES, tokenIdNo: NO, negRisk: false,
     bandRadiusCents: 1.5, feedLive: true, feedAgeSec: 1,
     midSource: 'live-book', midAgeSec: 1,

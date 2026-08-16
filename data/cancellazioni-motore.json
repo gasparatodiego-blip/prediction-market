@@ -1,19 +1,32 @@
 {
-  "at": 1786275017715,
-  "atIso": "2026-08-09T11:30:17.715Z",
+  "at": 1786902484186,
+  "atIso": "2026-08-16T17:48:04.186Z",
   "cancellazioni": [
     {
-      "orderId": "0x9a4e4a0b3a16aecf6064aae2ad27ff506d4eb3d1559732465a8e4571903bd4aa",
-      "marketId": "0xbbd623c4191ca76dec466507375d6df85b403b7e14f9cbd3d09f2c450ae0cd96",
-      "marketTitle": "Will Mike Lindell win the 2026 Minnesota Governor Republican primary election?",
+      "orderId": "0xd196b0e2c0009a19eecb6e7b3451807b85f96f9a924c33923fd2f8ee2d2ab91d",
+      "marketId": "0xafb455a59296be3ef1ddae2c0d35a62ddda88198811ead667cad0e68c45d98a1",
+      "marketTitle": "Will Bernard Taylor be the FL-21 Democratic nominee?",
       "book": "yes",
-      "price": 0.43,
-      "size": 60.6,
-      "notionalUsd": 26.06,
-      "motivo": "mai-primo-sul-libro",
-      "dettaglio": "il libro si è mosso e questo ordine è ora il migliore del suo lato. un tick dietro il miglior bid altrui (43¢) darebbe 42¢, fuori dalla banda premiante [43¢–46¢]. Restare in banda vorrebbe dire risalire in CIMA al libro, e questo lato non si quota: meglio non impegnare capitale che impegnarlo nella posizione peggiore del libro. — si cancella senza rimpiazzo: non si resta in cima nemmeno per restare premianti.",
-      "at": "2026-08-09T11:30:16.857Z",
-      "motivoLeggibile": "mai primo sul libro"
+      "price": 0.34,
+      "size": 56.5,
+      "notionalUsd": 19.21,
+      "motivo": "gamba-orfana-scaduta",
+      "dettaglio": "rinnovo NON dovuto: una gamba sola a riposo e ZERO posizioni su entrambi i token, confermato dopo 1205s: la posizione con cui doveva accoppiarsi non esiste piu'. Si cancella invece di rinnovare, e il mercato torna da ripianificare.",
+      "at": "2026-08-16T17:48:02.385Z",
+      "motivoLeggibile": "gamba rimasta sola oltre la tolleranza"
+    },
+    {
+      "orderId": "0x4a733ecf4d00cc4b6ea32ed0abc0ab9749d349fd49a650560b6815e81560b88a",
+      "marketId": "0xc16fade4bbc06895f8e456e1e49c6aa51c1b2dc7f734b3ad8fe8a5900d6a4174",
+      "marketTitle": "Will Jim Schwartzel be the Republican nominee for FL-19?",
+      "book": "no",
+      "price": 0.813,
+      "size": 56.1,
+      "notionalUsd": 45.61,
+      "motivo": "gamba-orfana-scaduta",
+      "dettaglio": "rinnovo NON dovuto: una gamba sola a riposo e ZERO posizioni su entrambi i token, confermato dopo 1202s: la posizione con cui doveva accoppiarsi non esiste piu'. Si cancella invece di rinnovare, e il mercato torna da ripianificare.",
+      "at": "2026-08-16T17:24:12.187Z",
+      "motivoLeggibile": "gamba rimasta sola oltre la tolleranza"
     }
   ]
 }

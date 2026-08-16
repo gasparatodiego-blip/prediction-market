@@ -1,0 +1,874 @@
+{
+  "generatoIl": "2026-08-15T16:21:44.277Z",
+  "giornoOsservatorio": "2026-08-15",
+  "efficienti": [
+    "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+    "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+    "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+    "0x16a092c7d8a641e94016ed6a785fac4b713a227f"
+  ],
+  "mercatiBtc": 228,
+  "finestraOreTrade": 36,
+  "chiamate": {
+    "api": 273,
+    "ritentate": 0,
+    "errori": 0
+  },
+  "A": {
+    "montepremiGiornaliero": {
+      "mercatiLetti": 228,
+      "conMontepremi": 2,
+      "conRatesNull": 226,
+      "rapportoPremioLiquidita": null,
+      "rateMassimo": 0.001,
+      "conMontepremiSopraSogliaAgent24": 0,
+      "nota": "nessun mercato paga un premio di liquidita utilizzabile: 226 hanno `rewards.rates: null` e i 2 con un rate dichiarano $0,001/giorno, sotto la soglia con cui agent24 stesso li scarta. Il rapporto premio/liquidita e ZERO in pratica."
+    },
+    "liquiditaInBandaMetaVita": {
+      "fonte": "mercati VIVI della stessa famiglia (i 228 storici non hanno un book interrogabile a posteriori)",
+      "osservazioni": 8,
+      "mediana": 708.2321999999999,
+      "min": 85.9985,
+      "max": 4295.779199999999,
+      "q25": 460.627525,
+      "q75": 1563.6559750000001,
+      "dettaglio": [
+        {
+          "question": "Bitcoin Up or Down - August 15, 12:20PM-12:25PM ET",
+          "frazioneVita": 0.44664333333333334,
+          "usdTotale": 563.0402,
+          "usdBid": 191.23,
+          "usdAsk": 371.8102,
+          "mid": 0.685,
+          "livelli": 10
+        },
+        {
+          "question": "Ethereum Up or Down - August 15, 12:20PM-12:25PM ET",
+          "frazioneVita": 0.44745666666666667,
+          "usdTotale": 85.9985,
+          "usdBid": 25.262,
+          "usdAsk": 60.73650000000001,
+          "mid": 0.645,
+          "livelli": 6
+        },
+        {
+          "question": "Bitcoin Up or Down - August 15, 12:15PM-12:30PM ET",
+          "frazioneVita": 0.4827711111111111,
+          "usdTotale": 2315.6200000000003,
+          "usdBid": 2130.1800000000003,
+          "usdAsk": 185.44,
+          "mid": 0.515,
+          "livelli": 8
+        },
+        {
+          "question": "Ethereum Up or Down - August 15, 12:15PM-12:30PM ET",
+          "frazioneVita": 0.4830411111111111,
+          "usdTotale": 751.5,
+          "usdBid": 70.23,
+          "usdAsk": 681.27,
+          "mid": 0.505,
+          "livelli": 9
+        },
+        {
+          "question": "Ethereum Up or Down - August 15, 12:20PM-12:25PM ET",
+          "frazioneVita": 0.6003366666666666,
+          "usdTotale": 153.3895,
+          "usdBid": 87.4255,
+          "usdAsk": 65.964,
+          "mid": 0.795,
+          "livelli": 8
+        },
+        {
+          "question": "Bitcoin Up or Down - August 15, 12:20PM-12:25PM ET",
+          "frazioneVita": 0.60112,
+          "usdTotale": 1313.0013,
+          "usdBid": 505.71759999999995,
+          "usdAsk": 807.2837000000001,
+          "mid": 0.865,
+          "livelli": 10
+        },
+        {
+          "question": "Bitcoin Up or Down - August 15, 12:15PM-12:30PM ET",
+          "frazioneVita": 0.5846822222222222,
+          "usdTotale": 4295.779199999999,
+          "usdBid": 2550.4599999999996,
+          "usdAsk": 1745.3192,
+          "mid": 0.875,
+          "livelli": 10
+        },
+        {
+          "question": "Ethereum Up or Down - August 15, 12:15PM-12:30PM ET",
+          "frazioneVita": 0.5849544444444444,
+          "usdTotale": 664.9644,
+          "usdBid": 262.6344,
+          "usdAsk": 402.3299999999999,
+          "mid": 0.685,
+          "livelli": 9
+        }
+      ]
+    },
+    "tutteLeOsservazioni": 17
+  },
+  "B": {
+    "definizione": "somma dei BUY eseguiti per (wallet, mercato); il nozionale a riposo non e osservabile",
+    "perWallet": [
+      {
+        "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+        "mercati": 0,
+        "medianaUsd": null,
+        "q25": null,
+        "q75": null,
+        "min": null,
+        "max": null,
+        "totaleUsd": 0
+      },
+      {
+        "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+        "mercati": 0,
+        "medianaUsd": null,
+        "q25": null,
+        "q75": null,
+        "min": null,
+        "max": null,
+        "totaleUsd": 0
+      },
+      {
+        "wallet": "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+        "mercati": 228,
+        "medianaUsd": 10.88754850002211,
+        "q25": 8.798076000042247,
+        "q75": 16.331759500201915,
+        "min": 0.44,
+        "max": 59.098152999749985,
+        "totaleUsd": 3154.1378999993613
+      },
+      {
+        "wallet": "0x16a092c7d8a641e94016ed6a785fac4b713a227f",
+        "mercati": 0,
+        "medianaUsd": null,
+        "q25": null,
+        "q75": null,
+        "min": null,
+        "max": null,
+        "totaleUsd": 0
+      }
+    ]
+  },
+  "C": [
+    {
+      "conditionId": "0xad4ab4974e1190881db7caf0ac48d7f0423004725401a5a7ccc1a64a6c74d4bc",
+      "question": "Bitcoin Up or Down - August 15, 9:30AM-9:45AM ET",
+      "aperturaIso": "2026-08-14T13:37:55.000Z",
+      "scadenzaIso": "2026-08-15T13:45:00.000Z",
+      "durataFinestraMin": 15,
+      "vitaTotaleSec": 86825,
+      "inizioFinestraSecDaApertura": 85925,
+      "primoFillSec": 86001,
+      "ultimoFillSec": 86621,
+      "eventi": [
+        {
+          "secDaApertura": 86001,
+          "secDaInizioFinestra": 76,
+          "secAllaScadenza": 824,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 2.40476,
+          "prezzo": 0.5800000832,
+          "usd": 1.39,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86001,
+          "secDaInizioFinestra": 76,
+          "secAllaScadenza": 824,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 1.64,
+          "prezzo": 0.58,
+          "usd": 0.95,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86003,
+          "secDaInizioFinestra": 78,
+          "secAllaScadenza": 822,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.41,
+          "usd": 2.05,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86015,
+          "secDaInizioFinestra": 90,
+          "secAllaScadenza": 810,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 25.95,
+          "prezzo": 0.58,
+          "usd": 15.05,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86294,
+          "secDaInizioFinestra": 369,
+          "secAllaScadenza": 531,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 1.864404,
+          "prezzo": 0.4100001931,
+          "usd": 0.76,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86295,
+          "secDaInizioFinestra": 370,
+          "secAllaScadenza": 530,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 1.864404,
+          "prezzo": 0.4100001931,
+          "usd": 0.76,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86298,
+          "secDaInizioFinestra": 373,
+          "secAllaScadenza": 527,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 1.694914,
+          "prezzo": 0.4100001534,
+          "usd": 0.69,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86300,
+          "secDaInizioFinestra": 375,
+          "secAllaScadenza": 525,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5.3,
+          "prezzo": 0.41,
+          "usd": 2.17,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86301,
+          "secDaInizioFinestra": 376,
+          "secAllaScadenza": 524,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 14.25,
+          "prezzo": 0.41,
+          "usd": 5.84,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86357,
+          "secDaInizioFinestra": 432,
+          "secAllaScadenza": 468,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 1.9,
+          "prezzo": 0.41,
+          "usd": 0.78,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86357,
+          "secDaInizioFinestra": 432,
+          "secAllaScadenza": 468,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 3.118643,
+          "prezzo": 0.4100001186,
+          "usd": 1.28,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86393,
+          "secDaInizioFinestra": 468,
+          "secAllaScadenza": 432,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.58,
+          "usd": 2.9,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86405,
+          "secDaInizioFinestra": 480,
+          "secAllaScadenza": 420,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.58,
+          "usd": 2.9,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86486,
+          "secDaInizioFinestra": 561,
+          "secAllaScadenza": 339,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.41,
+          "usd": 2.05,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86522,
+          "secDaInizioFinestra": 597,
+          "secAllaScadenza": 303,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.39,
+          "usd": 1.95,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86621,
+          "secDaInizioFinestra": 696,
+          "secAllaScadenza": 204,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.58,
+          "usd": 2.9,
+          "outcome": "Down"
+        }
+      ]
+    },
+    {
+      "conditionId": "0x756c4069e689eeaa3b55194c033740a7441f3db8d0d3a68a958faa36c8555eb0",
+      "question": "Bitcoin Up or Down - August 15, 8:15AM-8:30AM ET",
+      "aperturaIso": "2026-08-14T12:22:45.000Z",
+      "scadenzaIso": "2026-08-15T12:30:00.000Z",
+      "durataFinestraMin": 15,
+      "vitaTotaleSec": 86835,
+      "inizioFinestraSecDaApertura": 85935,
+      "primoFillSec": 85954,
+      "ultimoFillSec": 86776,
+      "eventi": [
+        {
+          "secDaApertura": 85954,
+          "secDaInizioFinestra": 19,
+          "secAllaScadenza": 881,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 1.46515,
+          "prezzo": 0.34,
+          "usd": 0.5,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86059,
+          "secDaInizioFinestra": 124,
+          "secAllaScadenza": 776,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.53,
+          "usd": 2.65,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86068,
+          "secDaInizioFinestra": 133,
+          "secAllaScadenza": 767,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 3.703702,
+          "prezzo": 0.4600000216,
+          "usd": 1.7,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86125,
+          "secDaInizioFinestra": 190,
+          "secAllaScadenza": 710,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 1.29,
+          "prezzo": 0.46,
+          "usd": 0.59,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86181,
+          "secDaInizioFinestra": 246,
+          "secAllaScadenza": 654,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 2.127658,
+          "prezzo": 0.5300001222,
+          "usd": 1.13,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86193,
+          "secDaInizioFinestra": 258,
+          "secAllaScadenza": 642,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 2.87,
+          "prezzo": 0.53,
+          "usd": 1.52,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86223,
+          "secDaInizioFinestra": 288,
+          "secAllaScadenza": 612,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 1.85185,
+          "prezzo": 0.46,
+          "usd": 0.85,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86238,
+          "secDaInizioFinestra": 303,
+          "secAllaScadenza": 597,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 1.85185,
+          "prezzo": 0.46,
+          "usd": 0.85,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86242,
+          "secDaInizioFinestra": 307,
+          "secAllaScadenza": 593,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 1.28,
+          "prezzo": 0.46,
+          "usd": 0.59,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86253,
+          "secDaInizioFinestra": 318,
+          "secAllaScadenza": 582,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.46,
+          "usd": 2.3,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86665,
+          "secDaInizioFinestra": 730,
+          "secAllaScadenza": 170,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.53,
+          "usd": 2.65,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86682,
+          "secDaInizioFinestra": 747,
+          "secAllaScadenza": 153,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 6.44,
+          "prezzo": 0.47,
+          "usd": 3.03,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86773,
+          "secDaInizioFinestra": 838,
+          "secAllaScadenza": 62,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.46,
+          "usd": 2.3,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86776,
+          "secDaInizioFinestra": 841,
+          "secAllaScadenza": 59,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.36,
+          "usd": 1.8,
+          "outcome": "Up"
+        }
+      ]
+    },
+    {
+      "conditionId": "0xed9ad3378c862c6874cbf5a01119da1891d81e0d1fcc9c0a5f0c1b54539a0ba3",
+      "question": "Bitcoin Up or Down - August 15, 8:05AM-8:10AM ET",
+      "aperturaIso": "2026-08-14T12:12:19.000Z",
+      "scadenzaIso": "2026-08-15T12:10:00.000Z",
+      "durataFinestraMin": 5,
+      "vitaTotaleSec": 86261,
+      "inizioFinestraSecDaApertura": 85961,
+      "primoFillSec": 86015,
+      "ultimoFillSec": 86225,
+      "eventi": [
+        {
+          "secDaApertura": 86015,
+          "secDaInizioFinestra": 54,
+          "secAllaScadenza": 246,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 4.74,
+          "prezzo": 0.58,
+          "usd": 2.75,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86021,
+          "secDaInizioFinestra": 60,
+          "secAllaScadenza": 240,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.36,
+          "usd": 1.8,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86025,
+          "secDaInizioFinestra": 64,
+          "secAllaScadenza": 236,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 6.26,
+          "prezzo": 0.58,
+          "usd": 3.63,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86030,
+          "secDaInizioFinestra": 69,
+          "secAllaScadenza": 231,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 6,
+          "prezzo": 0.41,
+          "usd": 2.46,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86064,
+          "secDaInizioFinestra": 103,
+          "secAllaScadenza": 197,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.39,
+          "usd": 1.95,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86073,
+          "secDaInizioFinestra": 112,
+          "secAllaScadenza": 188,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.58,
+          "usd": 2.9,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86081,
+          "secDaInizioFinestra": 120,
+          "secAllaScadenza": 180,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.47,
+          "usd": 2.35,
+          "outcome": "Down"
+        },
+        {
+          "secDaApertura": 86222,
+          "secDaInizioFinestra": 261,
+          "secAllaScadenza": 39,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 5,
+          "prezzo": 0.41,
+          "usd": 2.05,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86223,
+          "secDaInizioFinestra": 262,
+          "secAllaScadenza": 38,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 0.84,
+          "prezzo": 0.14,
+          "usd": 0.12,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86223,
+          "secDaInizioFinestra": 262,
+          "secAllaScadenza": 38,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 4.16,
+          "prezzo": 0.14,
+          "usd": 0.58,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86225,
+          "secDaInizioFinestra": 264,
+          "secAllaScadenza": 36,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 0.87,
+          "prezzo": 0.13,
+          "usd": 0.11,
+          "outcome": "Up"
+        },
+        {
+          "secDaApertura": 86225,
+          "secDaInizioFinestra": 264,
+          "secAllaScadenza": 36,
+          "wallet": "0x71df28d9c7…",
+          "side": "BUY",
+          "size": 4.12643,
+          "prezzo": 0.1300000242,
+          "usd": 0.54,
+          "outcome": "Up"
+        }
+      ]
+    }
+  ],
+  "D": {
+    "definizione": "a fine mercato: PIATTO (niente in mano) · COPPIA COMPLETA (Up e Down in parti uguali: paga $1, esposizione direzionale zero) · DIREZIONALE (|netUp − netDown| > 0)",
+    "nota": "su un mercato binario possedere Up E Down in parti uguali NON e una posizione aperta in senso economico: alla risoluzione la coppia vale $1 comunque. La prima stesura contava il netto PER TOKEN e dichiarava 99,3% di posizioni aperte — ma erano coppie, cioe l opposto di un rischio direzionale.",
+    "perWallet": [
+      {
+        "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+        "mercatiValutati": 0,
+        "piatti": 0,
+        "coppiaCompleta": 0,
+        "direzionale": 0,
+        "percentualeDirezionale": null,
+        "percentualeCoppia": null
+      },
+      {
+        "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+        "mercatiValutati": 0,
+        "piatti": 0,
+        "coppiaCompleta": 0,
+        "direzionale": 0,
+        "percentualeDirezionale": null,
+        "percentualeCoppia": null
+      },
+      {
+        "wallet": "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+        "mercatiValutati": 228,
+        "piatti": 1,
+        "coppiaCompleta": 82,
+        "direzionale": 145,
+        "percentualeDirezionale": 63.59649122807018,
+        "percentualeCoppia": 35.96491228070175
+      },
+      {
+        "wallet": "0x16a092c7d8a641e94016ed6a785fac4b713a227f",
+        "mercatiValutati": 0,
+        "piatti": 0,
+        "coppiaCompleta": 0,
+        "direzionale": 0,
+        "percentualeDirezionale": null,
+        "percentualeCoppia": null
+      }
+    ],
+    "complessivo": {
+      "mercatiValutati": 228,
+      "piatti": 1,
+      "coppiaCompleta": 82,
+      "direzionale": 145,
+      "percentualeDirezionale": 63.59649122807018,
+      "percentualeCoppia": 35.96491228070175
+    }
+  },
+  "E": {
+    "totale": 749,
+    "perOra": [
+      47,
+      52,
+      48,
+      44,
+      28,
+      27,
+      19,
+      14,
+      22,
+      18,
+      17,
+      41,
+      54,
+      30,
+      14,
+      15,
+      17,
+      15,
+      17,
+      36,
+      32,
+      52,
+      37,
+      53
+    ],
+    "perOraPerWallet": [
+      {
+        "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+        "perOra": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "totale": 0
+      },
+      {
+        "wallet": "0x6d7f75befd422de6225ad7b4e256622a7b4d1d58",
+        "perOra": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "totale": 0
+      },
+      {
+        "wallet": "0x71df28d9c7adf5e158b5f6c579c69ab9058c9aa0",
+        "perOra": [
+          47,
+          52,
+          48,
+          44,
+          28,
+          27,
+          19,
+          14,
+          22,
+          18,
+          17,
+          41,
+          54,
+          30,
+          14,
+          15,
+          17,
+          15,
+          17,
+          36,
+          32,
+          52,
+          37,
+          53
+        ],
+        "totale": 749
+      },
+      {
+        "wallet": "0x16a092c7d8a641e94016ed6a785fac4b713a227f",
+        "perOra": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "totale": 0
+      }
+    ]
+  },
+  "F": {
+    "definizione": "quanti dei 65 wallet osservati compaiono sullo stesso mercato BTC",
+    "mercati": 228,
+    "mediana": 1,
+    "min": 1,
+    "max": 2,
+    "q25": 1,
+    "q75": 1,
+    "distribuzione": {
+      "1": 227,
+      "2": 1
+    }
+  }
+}

@@ -1,39 +1,93 @@
 {
-  "at": 1786528119280,
-  "atIso": "2026-08-12T09:48:39.280Z",
+  "at": 1786905129518,
+  "atIso": "2026-08-16T18:32:09.518Z",
   "residui": {
-    "0xfdd8daeffb5fd1f0c2bedab6ff47b82a38dc191d93ae716bbe969a58837a0a85:no": {
-      "marketId": "0xfdd8daeffb5fd1f0c2bedab6ff47b82a38dc191d93ae716bbe969a58837a0a85",
+    "0xde0b0b24bf0ec24b0b2ddde8363ea06a70a4037644f089c195989f18610999f7:no": {
+      "marketId": "0xde0b0b24bf0ec24b0b2ddde8363ea06a70a4037644f089c195989f18610999f7",
       "book": "no",
       "marketTitle": null,
-      "size": 59.5,
+      "size": 56.82,
       "minSize": 50,
       "manca": 0,
-      "prezzoCarico": 0.676,
-      "notionalUsd": 40.222,
-      "causa": "rinuncia · compra-taker",
-      "primoAt": 1786332256091,
-      "ultimoAt": 1786341673218,
-      "ultimoAtIso": "2026-08-10T06:01:13.218Z",
+      "prezzoCarico": 0.2,
+      "notionalUsd": 11.364,
+      "causa": "non-applicabile · livello 3",
+      "primoAt": 1786893641544,
+      "ultimoAt": 1786905129142,
+      "ultimoAtIso": "2026-08-16T18:32:09.142Z",
       "pronto": true,
       "voci": [
         {
-          "at": 1786332256091,
-          "atIso": "2026-08-10T03:24:16.091Z",
-          "size": 59.5,
+          "at": 1786897066804,
+          "atIso": "2026-08-16T16:17:46.804Z",
+          "size": 56.82,
           "causa": "non-applicabile · livello 3"
         },
         {
-          "at": 1786335971972,
-          "atIso": "2026-08-10T04:26:11.972Z",
-          "size": 59.5,
+          "at": 1786897131770,
+          "atIso": "2026-08-16T16:18:51.770Z",
+          "size": 56.82,
           "causa": "non-applicabile · livello 3"
         },
         {
-          "at": 1786341673218,
-          "atIso": "2026-08-10T06:01:13.218Z",
-          "size": 59.5,
-          "causa": "rinuncia · compra-taker"
+          "at": 1786897197094,
+          "atIso": "2026-08-16T16:19:57.094Z",
+          "size": 56.82,
+          "causa": "non-applicabile · livello 3"
+        },
+        {
+          "at": 1786897261706,
+          "atIso": "2026-08-16T16:21:01.706Z",
+          "size": 56.82,
+          "causa": "non-applicabile · livello 3"
+        },
+        {
+          "at": 1786897326338,
+          "atIso": "2026-08-16T16:22:06.338Z",
+          "size": 56.82,
+          "causa": "non-applicabile · livello 3"
+        },
+        {
+          "at": 1786897386510,
+          "atIso": "2026-08-16T16:23:06.510Z",
+          "size": 56.82,
+          "causa": "non-applicabile · livello 3"
+        },
+        {
+          "at": 1786897457342,
+          "atIso": "2026-08-16T16:24:17.342Z",
+          "size": 56.82,
+          "causa": "non-applicabile · livello 3"
+        },
+        {
+          "at": 1786897521594,
+          "atIso": "2026-08-16T16:25:21.594Z",
+          "size": 56.82,
+          "causa": "non-applicabile · livello 3"
+        },
+        {
+          "at": 1786899428685,
+          "atIso": "2026-08-16T16:57:08.685Z",
+          "size": 56.82,
+          "causa": "non-applicabile · livello 3"
+        },
+        {
+          "at": 1786901347998,
+          "atIso": "2026-08-16T17:29:07.998Z",
+          "size": 56.82,
+          "causa": "non-applicabile · livello 3"
+        },
+        {
+          "at": 1786903268258,
+          "atIso": "2026-08-16T18:01:08.258Z",
+          "size": 56.82,
+          "causa": "non-applicabile · livello 3"
+        },
+        {
+          "at": 1786905129142,
+          "atIso": "2026-08-16T18:32:09.142Z",
+          "size": 56.82,
+          "causa": "non-applicabile · livello 3"
         }
       ]
     }

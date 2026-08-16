@@ -44,6 +44,13 @@ const FINESTRA_PAGAMENTO_H = 6;
 
 const DIR_DATI = path.join(process.cwd(), 'data', 'ricerca');
 
+/**
+ * Sotto questo valore una posizione è un RESIDUO, non un mercato quotato (§5-bis p.123).
+ * Vive qui perché la usano lo stadio 3 e il censimento fase 2: due soglie con lo stesso nome e valori
+ * diversi farebbero contare «mercati aperti» diversi negli stessi due referti (reperto D1).
+ */
+const VALORE_MIN_MERCATO = 5;
+
 // ── THROTTLE E BACKOFF, PROPRI DI QUESTA CORSIA ──────────────────────────────────────────────────
 // Non condivide stato con la flotta: è una quota diversa e non può far morire un ordine.
 const MAX_RPS_API = 8;
@@ -201,6 +208,36 @@ function giornoDiCompetenza(timestampSec) {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/**
+ * LA FAMIGLIA DI UN MERCATO DAL TITOLO.
+ *
+ * ⚠ VIVE QUI, NON NELLO STADIO 4 DOVE È NATA, perché dal censimento in poi la usano in due. Due
+ * copie di questo elenco di regex sono il reperto **D1**: divergerebbero al primo mercato nuovo, e la
+ * divergenza sarebbe silenziosa — due referti che raccontano famiglie diverse dello stesso board.
+ *
+ * ⚠ CLASSIFICATORE A REGEX, quindi APPROSSIMATO: è una vista di lettura, non una misura. «altro»
+ * resta e resta grande, perché una categoria inventata per svuotarlo sarebbe peggio di una categoria
+ * onesta che dice «vario».
+ *
+ * ⚠ `rain` VUOLE LE ANCORE, ed è la trappola già scritta in §4.13: senza `\b` la parola sta dentro
+ * «Uk-rain-e», e «Ukraine signs peace deal with Russia» veniva classificato **meteo** — in silenzio,
+ * perché il ramo meteo è il primo e nessuno arrivava a leggere quello geopolitico. Trovato qui da una
+ * prova sui titoli veri, non dal ragionamento: **ottava occorrenza** della famiglia di §5.3, e la
+ * seconda volta che è proprio `rain` a farlo. `rainfall` va elencato a parte, o `\b` lo esclude.
+ */
+function famiglia(t) {
+  const s = String(t || '').toLowerCase();
+  if (/temperature|\brain\b|rainfall|weather|°c|°f/.test(s)) return 'meteo';
+  if (/bitcoin|ethereum|solana|crypto|\bbtc\b|\beth\b|\bxrp\b|dogecoin/.test(s)) return 'cripto';
+  if (/fed |fed rate|interest rate|rate cut|inflation|\bcpi\b|\bgdp\b|jolts|crude|oil|s&p|nasdaq|market cap|home value/.test(s)) return 'macro-finanza';
+  if (/iran|israel|ceasefire|invade|blockade|ukraine|russia|nato|war |troops|treaty|sanction/.test(s)) return 'geopolitica';
+  if (/election|nominee|president|governor|parliament|minister|senate|gubernatorial|\bparty\b|congress|house members|signed into law|\bh\.r\./.test(s)) return 'politica';
+  if (/\bai\b|gpt|gemini|claude|anthropic|openai|llm|model on|ai model|ai lab|baidu|deepseek/.test(s)) return 'ai-tech';
+  if (/netflix|box office|opening weekend|domestic gross|season \d|big brother|billboard|emmy|oscar|grammy|mrbeast|video get/.test(s)) return 'intrattenimento';
+  if (/join |transfer|ballon|premier league|champions|nba|nfl|mlb|\bf1\b|world cup|stay at|vs\./.test(s)) return 'sport';
+  return 'altro';
+}
+
 function scrivi(nome, oggetto) {
   fs.mkdirSync(DIR_DATI, { recursive: true });
   const f = path.join(DIR_DATI, nome);
@@ -222,4 +259,5 @@ const mediana = (xs) => {
 module.exports = {
   TOPIC_TRANSFER, PUSD, DATA_API, FINESTRA_PAGAMENTO_H, DIR_DATI,
   apiGet, rpc, inParallelo, giornoDiCompetenza, scrivi, leggi, mediana, env, contatore, attesa,
+  famiglia, VALORE_MIN_MERCATO,
 };

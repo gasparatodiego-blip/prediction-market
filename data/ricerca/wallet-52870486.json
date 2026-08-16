@@ -1,0 +1,280 @@
+{
+  "generatoIl": "2026-08-15T16:44:43.085Z",
+  "wallet": "0x52870486f74fcd2fe707821b9aa8da0f6d8c3a16",
+  "eventi": 1872,
+  "mercati": 78,
+  "coperturaMakerTakerDa": "2026-03-26T07:26:37.000Z",
+  "perMese": [
+    {
+      "mese": "2026-03",
+      "eventi": 135,
+      "mercati": 18,
+      "giorniAttivi": 7,
+      "famiglie": {
+        "altro": 18
+      },
+      "oreAllaScadenzaMediana": 352.55694444444447,
+      "oreQ25": -10.614722222222223,
+      "oreQ75": 6090.306388888889,
+      "maxSpreadMediano": 3,
+      "minSizeMediano": 50,
+      "liquiditaMediana": 7332.68529,
+      "liquiditaLette": 9,
+      "liquiditaMancanti": 9,
+      "capitalePerMercatoMediano": 268.32,
+      "capitaleQ25": 55.696175000000004,
+      "capitaleQ75": 2101.6038528000004,
+      "capitaleTotale": 40185.80536624498,
+      "quotaTaker": 0.037037037037037035,
+      "mercatiApertiInsiemeMediana": 9,
+      "mercatiApertiInsiemeMax": 15,
+      "distanzaMidCentsMediana": 0.7500000000000007,
+      "distanzaQ25": 0.5000000000000004,
+      "distanzaQ75": 1.9999999999999933,
+      "distanzaMisurati": 60,
+      "distanzaNonMisurati": 0,
+      "makerNelMese": 118
+    },
+    {
+      "mese": "2026-04",
+      "eventi": 447,
+      "mercati": 19,
+      "giorniAttivi": 28,
+      "famiglie": {
+        "altro": 19
+      },
+      "oreAllaScadenzaMediana": 5820.450833333333,
+      "oreQ25": 22.34916666666667,
+      "oreQ75": 6313.434444444444,
+      "maxSpreadMediano": 4.5,
+      "minSizeMediano": 50,
+      "liquiditaMediana": 22929.81737,
+      "liquiditaLette": 12,
+      "liquiditaMancanti": 7,
+      "capitalePerMercatoMediano": 972.4300000000001,
+      "capitaleQ25": 381.776970205,
+      "capitaleQ75": 4095.53445,
+      "capitaleTotale": 58973.227500646004,
+      "quotaTaker": 0.015659955257270694,
+      "mercatiApertiInsiemeMediana": 23,
+      "mercatiApertiInsiemeMax": 25,
+      "distanzaMidCentsMediana": 1.0000000000000009,
+      "distanzaQ25": 0.5000000000000004,
+      "distanzaQ75": 2.0000000000000018,
+      "distanzaMisurati": 61,
+      "distanzaNonMisurati": 0,
+      "makerNelMese": 440
+    },
+    {
+      "mese": "2026-05",
+      "eventi": 177,
+      "mercati": 20,
+      "giorniAttivi": 16,
+      "famiglie": {
+        "altro": 20
+      },
+      "oreAllaScadenzaMediana": 398.42555555555555,
+      "oreQ25": 310.65444444444444,
+      "oreQ75": 551.9272222222222,
+      "maxSpreadMediano": 4.5,
+      "minSizeMediano": 50,
+      "liquiditaMediana": 31479.57385,
+      "liquiditaLette": 12,
+      "liquiditaMancanti": 8,
+      "capitalePerMercatoMediano": 242.31875,
+      "capitaleQ25": 126.68856169,
+      "capitaleQ75": 386.6109,
+      "capitaleTotale": 11056.67672241,
+      "quotaTaker": 0.04519774011299435,
+      "mercatiApertiInsiemeMediana": 32,
+      "mercatiApertiInsiemeMax": 35,
+      "distanzaMidCentsMediana": 0.9500000000000064,
+      "distanzaQ25": 0.5000000000000004,
+      "distanzaQ75": 1.5000000000000013,
+      "distanzaMisurati": 61,
+      "distanzaNonMisurati": 0,
+      "makerNelMese": 169
+    },
+    {
+      "mese": "2026-06",
+      "eventi": 321,
+      "mercati": 40,
+      "giorniAttivi": 22,
+      "famiglie": {
+        "altro": 40
+      },
+      "oreAllaScadenzaMediana": 539.44,
+      "oreQ25": -9.069722222222222,
+      "oreQ75": 4352.395,
+      "maxSpreadMediano": 4.5,
+      "minSizeMediano": 54.5,
+      "liquiditaMediana": 65665.525795,
+      "liquiditaLette": 20,
+      "liquiditaMancanti": 20,
+      "capitalePerMercatoMediano": 919.2426611280001,
+      "capitaleQ25": 369.738125,
+      "capitaleQ75": 2524.2585922400003,
+      "capitaleTotale": 68847.785254416,
+      "quotaTaker": 0.018691588785046728,
+      "mercatiApertiInsiemeMediana": 44,
+      "mercatiApertiInsiemeMax": 47,
+      "distanzaMidCentsMediana": 0.5000000000000004,
+      "distanzaQ25": 0.5000000000000004,
+      "distanzaQ75": 1.5250000000000008,
+      "distanzaMisurati": 60,
+      "distanzaNonMisurati": 0,
+      "makerNelMese": 315
+    },
+    {
+      "mese": "2026-07",
+      "eventi": 705,
+      "mercati": 26,
+      "giorniAttivi": 30,
+      "famiglie": {
+        "altro": 26
+      },
+      "oreAllaScadenzaMediana": 2228.3488888888887,
+      "oreQ25": 367.42305555555555,
+      "oreQ75": 3370.3058333333333,
+      "maxSpreadMediano": 4.5,
+      "minSizeMediano": 50,
+      "liquiditaMediana": 18376.4783,
+      "liquiditaLette": 21,
+      "liquiditaMancanti": 5,
+      "capitalePerMercatoMediano": 2823.6099573000006,
+      "capitaleQ25": 348.7274,
+      "capitaleQ75": 5919.091615948,
+      "capitaleTotale": 88441.41535116301,
+      "quotaTaker": 0.03971631205673759,
+      "mercatiApertiInsiemeMediana": 59,
+      "mercatiApertiInsiemeMax": 59,
+      "distanzaMidCentsMediana": 1.0000000000000009,
+      "distanzaQ25": 0.5000000000000004,
+      "distanzaQ75": 1.924999999999999,
+      "distanzaMisurati": 60,
+      "distanzaNonMisurati": 0,
+      "makerNelMese": 677
+    },
+    {
+      "mese": "2026-08",
+      "eventi": 87,
+      "mercati": 9,
+      "giorniAttivi": 11,
+      "famiglie": {
+        "altro": 9
+      },
+      "oreAllaScadenzaMediana": 2959.5658333333336,
+      "oreQ25": 1079.9801388888889,
+      "oreQ75": 2963.4531944444443,
+      "maxSpreadMediano": 4.5,
+      "minSizeMediano": 50,
+      "liquiditaMediana": 65291.77609,
+      "liquiditaLette": 9,
+      "liquiditaMancanti": 0,
+      "capitalePerMercatoMediano": 1639.4118,
+      "capitaleQ25": 439.4725,
+      "capitaleQ75": 2993.4006,
+      "capitaleTotale": 16162.4608,
+      "quotaTaker": 0.04597701149425287,
+      "mercatiApertiInsiemeMediana": 59,
+      "mercatiApertiInsiemeMax": 59,
+      "distanzaMidCentsMediana": 0.5000000000000004,
+      "distanzaQ25": 0.5000000000000004,
+      "distanzaQ75": 1.5000000000000013,
+      "distanzaMisurati": 60,
+      "distanzaNonMisurati": 0,
+      "makerNelMese": 83
+    }
+  ],
+  "classi": {
+    "A": 24,
+    "B": 459,
+    "C": 58,
+    "D": 193,
+    "E": 5,
+    "n": 739
+  },
+  "classiPerMese": {
+    "2026-03": {
+      "A": 0,
+      "B": 30,
+      "C": 2,
+      "D": 22,
+      "E": 0,
+      "n": 54,
+      "taker": 2
+    },
+    "2026-04": {
+      "A": 7,
+      "B": 103,
+      "C": 12,
+      "D": 52,
+      "E": 1,
+      "n": 175,
+      "taker": 2
+    },
+    "2026-05": {
+      "A": 3,
+      "B": 43,
+      "C": 10,
+      "D": 12,
+      "E": 0,
+      "n": 68,
+      "taker": 4
+    },
+    "2026-06": {
+      "A": 0,
+      "B": 75,
+      "C": 12,
+      "D": 20,
+      "E": 0,
+      "n": 107,
+      "taker": 2
+    },
+    "2026-07": {
+      "A": 13,
+      "B": 185,
+      "C": 22,
+      "D": 83,
+      "E": 3,
+      "n": 306,
+      "taker": 20
+    },
+    "2026-08": {
+      "A": 1,
+      "B": 23,
+      "C": 0,
+      "D": 4,
+      "E": 1,
+      "n": 29,
+      "taker": 3
+    }
+  },
+  "censuratiUscite": 0,
+  "A": {
+    "n": 24,
+    "costoCoppiaMediano": 100.5,
+    "tempoMedianoSec": 991.5,
+    "quotaCompletamentoTaker": 0.08333333333333333
+  },
+  "B": {
+    "n": 459,
+    "deltaMediano": -0.5000000000000004,
+    "tempoMedianoSec": 1788
+  },
+  "board": {
+    "premiantiNelBoard": 108,
+    "suoiNelBoard": 5,
+    "selezionabiliDalBot": 0,
+    "selezionabili": []
+  },
+  "montepremiVero": {
+    "conMontepremi": 30,
+    "senzaMontepremi": 48
+  },
+  "chiamate": {
+    "api": 455,
+    "ritentate": 0,
+    "errori": 0
+  }
+}

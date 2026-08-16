@@ -24,7 +24,7 @@
 // wallet che quota due lati e chiude in pari è indistinguibile da un market maker che fa altro e
 // pareggia. Il referto dice «compatibile con», non «è».
 
-const { apiGet, scrivi, leggi, DIR_DATI } = require('./screening-lib');
+const { apiGet, scrivi, leggi, DIR_DATI, famiglia } = require('./screening-lib');
 
 const argomenti = process.argv.slice(2);
 const arg = (nome, difetto) => {
@@ -222,22 +222,10 @@ async function main() {
   // ── LE FAMIGLIE ───────────────────────────────────────────────────────────────────────────────
   // I singoli mercati meteo scadono ogni giorno: la classifica per NOME invecchia in 24 ore, la
   // classifica per FAMIGLIA no. È la vista che sopravvive al giorno in cui è stata misurata.
-  // ⚠ CLASSIFICATORE A REGEX, quindi APPROSSIMATO: è una vista di lettura, non una misura. Tarato
-  // guardando i titoli davvero presenti (il primo giro schiacciava 2.180 mercati su «altro», fra cui
-  // geopolitica, modelli AI e box office); «altro» resta e resta grande, perché una categoria
-  // inventata per svuotarlo sarebbe peggio di una categoria onesta che dice «vario».
-  const famiglia = (t) => {
-    const s = String(t || '').toLowerCase();
-    if (/temperature|rain|weather|°c|°f/.test(s)) return 'meteo';
-    if (/bitcoin|ethereum|solana|crypto|\bbtc\b|\beth\b|\bxrp\b|dogecoin/.test(s)) return 'cripto';
-    if (/fed |fed rate|interest rate|rate cut|inflation|\bcpi\b|\bgdp\b|jolts|crude|oil|s&p|nasdaq|market cap|home value/.test(s)) return 'macro-finanza';
-    if (/iran|israel|ceasefire|invade|blockade|ukraine|russia|nato|war |troops|treaty|sanction/.test(s)) return 'geopolitica';
-    if (/election|nominee|president|governor|parliament|minister|senate|gubernatorial|\bparty\b|congress|house members|signed into law|\bh\.r\./.test(s)) return 'politica';
-    if (/\bai\b|gpt|gemini|claude|anthropic|openai|llm|model on|ai model|ai lab|baidu|deepseek/.test(s)) return 'ai-tech';
-    if (/netflix|box office|opening weekend|domestic gross|season \d|big brother|billboard|emmy|oscar|grammy|mrbeast|video get/.test(s)) return 'intrattenimento';
-    if (/join |transfer|ballon|premier league|champions|nba|nfl|mlb|\bf1\b|world cup|stay at|vs\./.test(s)) return 'sport';
-    return 'altro';
-  };
+  // ⚠ IL CLASSIFICATORE VIVE IN `screening-lib`, NON QUI: dal censimento in poi lo usano in due, e
+  // due copie dello stesso elenco di regex sono il reperto D1. Era tarato guardando i titoli davvero
+  // presenti (il primo giro schiacciava 2.180 mercati su «altro», fra cui geopolitica, modelli AI e
+  // box office); il commento sul perché «altro» resta grande è rimasto accanto alla funzione.
   const perFamiglia = new Map();
   const perMinSize = new Map();
   for (const m of classifica) {

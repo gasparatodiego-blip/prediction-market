@@ -1,6 +1,6 @@
 # Screening dei maker da liquidity rewards — 14 giorni, sola lettura
 
-Generato 2026-08-15T13:20:01.553Z. Finestra **2026-08-02 … 2026-08-15** (14 date di pagamento).
+Generato 2026-08-15T13:37:34.288Z. Finestra **2026-08-02 … 2026-08-15** (14 date di pagamento).
 Fonti: `data-api.polymarket.com` (`/activity`, `/positions`, `/value`), `lb-api.polymarket.com/profit`,
 `gamma-api.polymarket.com/markets`, RPC Polygon (ricevuta della tx e `balanceOf` pUSD). **Nessuna transazione.**
 
@@ -66,7 +66,7 @@ Fonti: `data-api.polymarket.com` (`/activity`, `/positions`, `/value`), `lb-api.
 | **7** | 4 | 6 | 50 | 4.5 | Will Rodri join Barcelona? |
 | **7** | 4 | 6 | 20 | 4.5 | Will the highest temperature in Shanghai be 31°C on August 16? |
 | **7** | 4 | 7 | 20 | 4.5 | Will the highest temperature in Ankara be 27°C on August 16? |
-| **7** | 3 | 6 | 100 | 4.5 | Will the highest temperature in London be 26°C on August 15? |
+| **7** | 3 | 6 | 20 | 4.5 | Will the highest temperature in London be 26°C on August 15? |
 | **7** | 3 | 7 | 100 | 4.5 | Will the highest temperature in Los Angeles be between 76-77°F on August 15? |
 | **7** | 3 | 7 | 20 | 4.5 | Will the highest temperature in Paris be 30°C on August 16? |
 | **7** | 3 | 5 | 20 | 4.5 | Will the highest temperature in Munich be 35°C on August 15? |
@@ -105,7 +105,7 @@ Fonti: `data-api.polymarket.com` (`/activity`, `/positions`, `/value`), `lb-api.
 
 | minSize | presenze |
 |---|---|
-| 20 | 457 |
+| 20 | 464 |
 | 50 | 145 |
-| 100 | 95 |
+| 100 | 88 |
 | 200 | 79 |

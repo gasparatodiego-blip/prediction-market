@@ -1,0 +1,51 @@
+2026-08-15T18:10:41.881Z  ══════════════════════════════════════════════════════════════════════════════════════════════
+2026-08-15T18:10:41.883Z  CENSIMENTO FASE 2 · soglia 5 mercati · rewards 14g · trade 7g · orizzonte 24h
+2026-08-15T18:10:41.955Z  fase 1: 16032 wallet · con ≥5 mercati: 973
+2026-08-15T18:10:41.958Z  nessun checkpoint: si parte da zero
+2026-08-15T18:10:41.965Z  per-mercato: 106 mercati · già in cache 0 · da leggere 106
+2026-08-15T18:11:06.992Z    … per-mercato 100/106
+2026-08-15T18:11:08.491Z  per-mercato pronto: 106 mercati · con liquidità in banda letta 106
+2026-08-15T18:11:08.492Z  da profilare: 973 wallet · larghezza 5
+2026-08-15T18:12:37.804Z    … 25/973 · 25 profilati · 89s trascorsi · ~56.4 min alla fine · api 912 ritentate 1 errori 0
+2026-08-15T18:13:40.230Z    … 50/973 · 50 profilati · 152s trascorsi · ~46.7 min alla fine · api 1398 ritentate 1 errori 0
+2026-08-15T18:14:20.718Z    … 75/973 · 75 profilati · 192s trascorsi · ~38.4 min alla fine · api 1718 ritentate 1 errori 0
+2026-08-15T18:15:22.077Z    … 100/973 · 100 profilati · 254s trascorsi · ~36.9 min alla fine · api 2199 ritentate 1 errori 0
+2026-08-15T18:15:59.467Z    … 125/973 · 123 profilati · 291s trascorsi · ~32.9 min alla fine · api 2492 ritentate 1 errori 0
+2026-08-15T18:16:36.767Z    … 150/973 · 148 profilati · 328s trascorsi · ~30.0 min alla fine · api 2788 ritentate 1 errori 0
+2026-08-15T18:17:09.076Z    … 175/973 · 173 profilati · 361s trascorsi · ~27.4 min alla fine · api 3043 ritentate 1 errori 0
+2026-08-15T18:17:46.662Z    … 200/973 · 198 profilati · 398s trascorsi · ~25.6 min alla fine · api 3341 ritentate 1 errori 0
+2026-08-15T18:18:23.816Z    … 225/973 · 223 profilati · 435s trascorsi · ~24.1 min alla fine · api 3634 ritentate 1 errori 0
+2026-08-15T18:18:50.488Z    … 250/973 · 248 profilati · 462s trascorsi · ~22.3 min alla fine · api 3845 ritentate 1 errori 0
+2026-08-15T18:19:17.489Z    … 275/973 · 273 profilati · 489s trascorsi · ~20.7 min alla fine · api 4060 ritentate 1 errori 0
+2026-08-15T18:19:42.458Z    … 300/973 · 298 profilati · 514s trascorsi · ~19.2 min alla fine · api 4258 ritentate 1 errori 0
+2026-08-15T18:20:07.116Z    … 325/973 · 323 profilati · 539s trascorsi · ~17.9 min alla fine · api 4453 ritentate 1 errori 0
+2026-08-15T18:20:37.760Z    … 350/973 · 348 profilati · 569s trascorsi · ~16.9 min alla fine · api 4696 ritentate 1 errori 0
+2026-08-15T18:21:01.943Z    … 375/973 · 373 profilati · 593s trascorsi · ~15.8 min alla fine · api 4888 ritentate 2 errori 0
+2026-08-15T18:21:29.456Z    … 400/973 · 396 profilati · 621s trascorsi · ~14.8 min alla fine · api 5105 ritentate 2 errori 0
+2026-08-15T18:21:57.354Z    … 425/973 · 421 profilati · 649s trascorsi · ~13.9 min alla fine · api 5327 ritentate 2 errori 0
+2026-08-15T18:22:22.765Z    … 450/973 · 444 profilati · 674s trascorsi · ~13.1 min alla fine · api 5529 ritentate 2 errori 0
+2026-08-15T18:22:47.471Z    … 475/973 · 468 profilati · 699s trascorsi · ~12.2 min alla fine · api 5725 ritentate 2 errori 0
+2026-08-15T18:23:12.085Z    … 500/973 · 493 profilati · 724s trascorsi · ~11.4 min alla fine · api 5920 ritentate 2 errori 0
+2026-08-15T18:23:37.557Z    … 525/973 · 518 profilati · 749s trascorsi · ~10.7 min alla fine · api 6122 ritentate 2 errori 0
+2026-08-15T18:24:06.931Z    … 550/973 · 543 profilati · 778s trascorsi · ~10.0 min alla fine · api 6355 ritentate 2 errori 0
+2026-08-15T18:24:31.475Z    … 575/973 · 568 profilati · 803s trascorsi · ~9.3 min alla fine · api 6549 ritentate 2 errori 0
+2026-08-15T18:25:04.972Z    … 600/973 · 593 profilati · 836s trascorsi · ~8.7 min alla fine · api 6813 ritentate 2 errori 0
+2026-08-15T18:25:31.278Z    … 625/973 · 618 profilati · 863s trascorsi · ~8.0 min alla fine · api 7022 ritentate 2 errori 0
+2026-08-15T18:25:56.950Z    … 650/973 · 643 profilati · 888s trascorsi · ~7.4 min alla fine · api 7225 ritentate 2 errori 0
+2026-08-15T18:26:21.292Z    … 675/973 · 668 profilati · 913s trascorsi · ~6.7 min alla fine · api 7419 ritentate 2 errori 0
+2026-08-15T18:26:42.977Z    … 700/973 · 693 profilati · 934s trascorsi · ~6.1 min alla fine · api 7592 ritentate 2 errori 0
+2026-08-15T18:27:05.085Z    … 725/973 · 718 profilati · 957s trascorsi · ~5.5 min alla fine · api 7768 ritentate 2 errori 0
+2026-08-15T18:27:27.315Z    … 750/973 · 743 profilati · 979s trascorsi · ~4.9 min alla fine · api 7945 ritentate 2 errori 0
+2026-08-15T18:27:54.834Z    … 775/973 · 768 profilati · 1006s trascorsi · ~4.3 min alla fine · api 8164 ritentate 2 errori 0
+2026-08-15T18:28:21.490Z    … 800/973 · 793 profilati · 1033s trascorsi · ~3.7 min alla fine · api 8375 ritentate 2 errori 0
+2026-08-15T18:28:44.770Z    … 825/973 · 818 profilati · 1056s trascorsi · ~3.2 min alla fine · api 8560 ritentate 2 errori 0
+2026-08-15T18:29:09.875Z    … 850/973 · 843 profilati · 1081s trascorsi · ~2.6 min alla fine · api 8759 ritentate 2 errori 0
+2026-08-15T18:29:32.060Z    … 875/973 · 868 profilati · 1104s trascorsi · ~2.1 min alla fine · api 8935 ritentate 2 errori 0
+2026-08-15T18:29:54.355Z    … 900/973 · 893 profilati · 1126s trascorsi · ~1.5 min alla fine · api 9113 ritentate 2 errori 0
+2026-08-15T18:30:18.543Z    … 925/973 · 918 profilati · 1150s trascorsi · ~1.0 min alla fine · api 9305 ritentate 3 errori 0
+2026-08-15T18:30:40.330Z    … 950/973 · 943 profilati · 1172s trascorsi · ~0.5 min alla fine · api 9478 ritentate 5 errori 0
+2026-08-15T18:31:04.308Z  ══════════════════════════════════════════════════════════════════════════════════════════════
+2026-08-15T18:31:04.308Z  FINITO · profilati 966/973 · falliti 7 · 19.9 min
+2026-08-15T18:31:04.308Z     7× nessun trade nella finestra comune
+2026-08-15T18:31:04.308Z  scritto /root/bot/data/ricerca/censimento-109-fase2.json
+2026-08-15T18:31:04.308Z  ══════════════════════════════════════════════════════════════════════════════════════════════

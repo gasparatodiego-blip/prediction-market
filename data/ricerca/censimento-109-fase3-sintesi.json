@@ -1,0 +1,1986 @@
+{
+  "generatoIl": "2026-08-15T21:05:53.838Z",
+  "fonte": "censimento-109-fase2.json",
+  "resa": {
+    "walletConsiderati": 842,
+    "pavimentoCapitale": 100,
+    "distribuzione": {
+      "n": 842,
+      "q25": 0,
+      "mediana": 0.0009392075448162252,
+      "q75": 0.022042142407951642,
+      "max": 24.51940926132279
+    },
+    "presenti": {
+      "n": 281,
+      "distribuzione": {
+        "n": 281,
+        "q25": 0.0032082848622882153,
+        "mediana": 0.013657170544225335,
+        "q75": 0.12088409175636766,
+        "max": 4.62575054263487
+      },
+      "primi15": [
+        {
+          "wallet": "0x9129619d97c7c9bbb8c5b6a997dc30dcc275dd8e",
+          "resa": 4.62575054263487,
+          "rewards14gUsd": 3011.8235,
+          "capitaleUsd": 651.099421,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 43,
+          "distanzaMidMedianaCents": 0.2500000000000002,
+          "quote": {
+            "A": 0.12790697674418605,
+            "B": 0.5848837209302326,
+            "C": 0.22093023255813954,
+            "D": 0.02441860465116279,
+            "E": 0.04186046511627907
+          }
+        },
+        {
+          "wallet": "0x2a20cfc5814b416b28f4d729d2adceabf8a689d2",
+          "resa": 3.6179739453049025,
+          "rewards14gUsd": 4222.325400000001,
+          "capitaleUsd": 1167.041406,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 2,
+          "distanzaMidMedianaCents": 0.4749999999999994,
+          "quote": {
+            "A": 0.0014204545454545455,
+            "B": 0.9616477272727273,
+            "C": 0.02556818181818182,
+            "D": 0.007102272727272727,
+            "E": 0.004261363636363636
+          }
+        },
+        {
+          "wallet": "0xf33e2f782eb1c1c426badb50af841a18d9540ab8",
+          "resa": 3.437625944880997,
+          "rewards14gUsd": 3830.8261999999995,
+          "capitaleUsd": 1114.381338,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 2,
+          "distanzaMidMedianaCents": 0.375,
+          "quote": {
+            "A": 0,
+            "B": 0.9047619047619048,
+            "C": 0.08658008658008658,
+            "D": 0.008658008658008658,
+            "E": 0
+          }
+        },
+        {
+          "wallet": "0xca75fbadcc238afd23c317e253a8b5c47b390a64",
+          "resa": 3.236492419586866,
+          "rewards14gUsd": 9672.646700000001,
+          "capitaleUsd": 2988.6202240000002,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 75,
+          "distanzaMidMedianaCents": 0.4500000000000004,
+          "quote": {
+            "A": 0.07830551989730423,
+            "B": 0.6439880188275567,
+            "C": 0.10569105691056911,
+            "D": 0.1561831407787762,
+            "E": 0.015832263585793753
+          }
+        },
+        {
+          "wallet": "0xf0578c221843ccc43761d15a6e04ac3f3112ab54",
+          "resa": 2.9064982694008052,
+          "rewards14gUsd": 2828.4350999999997,
+          "capitaleUsd": 973.141849,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 9,
+          "distanzaMidMedianaCents": 0.6250000000000006,
+          "quote": {
+            "A": 0.10695187165775401,
+            "B": 0.32620320855614976,
+            "C": 0.34402852049910876,
+            "D": 0.18716577540106952,
+            "E": 0.035650623885918005
+          }
+        },
+        {
+          "wallet": "0xeed8c2be411025120fb511ea2332dd0a1f6135f0",
+          "resa": 2.6369332752996546,
+          "rewards14gUsd": 8182.2235,
+          "capitaleUsd": 3102.931567,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 78,
+          "distanzaMidMedianaCents": 0.5000000000000004,
+          "quote": {
+            "A": 0.32744186046511625,
+            "B": 0.14046511627906977,
+            "C": 0.32527131782945734,
+            "D": 0.1910077519379845,
+            "E": 0.01581395348837209
+          }
+        },
+        {
+          "wallet": "0x12f5bb11b90a25eeb59a9815da21ea895eb25ac4",
+          "resa": 2.475885561836462,
+          "rewards14gUsd": 2106.6088,
+          "capitaleUsd": 850.850634,
+          "giorniConRewards": 12,
+          "mercatiInsiemeOra": 2,
+          "distanzaMidMedianaCents": 1.4000000000000012,
+          "quote": {
+            "A": 0.029411764705882353,
+            "B": 0.9068627450980392,
+            "C": 0.03431372549019608,
+            "D": 0.0196078431372549,
+            "E": 0.00980392156862745
+          }
+        },
+        {
+          "wallet": "0x29efb149c85a53729c266b7918bfa921a70dddda",
+          "resa": 2.183485909593662,
+          "rewards14gUsd": 3464.2933,
+          "capitaleUsd": 1586.588347,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 39,
+          "distanzaMidMedianaCents": 0.5000000000000004,
+          "quote": {
+            "A": 0.006971677559912854,
+            "B": 0.9751633986928104,
+            "C": 0.013507625272331155,
+            "D": 0.00130718954248366,
+            "E": 0.0030501089324618735
+          }
+        },
+        {
+          "wallet": "0xcb58959b9a016b4e502a4f593e82d0b80e6accd0",
+          "resa": 1.9830944820828007,
+          "rewards14gUsd": 2366.3745,
+          "capitaleUsd": 1193.273705,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 3,
+          "distanzaMidMedianaCents": 1.649999999999996,
+          "quote": {
+            "A": 0,
+            "B": 0.9557894736842105,
+            "C": 0.031578947368421054,
+            "D": 0.01263157894736842,
+            "E": 0
+          }
+        },
+        {
+          "wallet": "0x30088d72c826065532ca9d0b25c66ccaa1c63c76",
+          "resa": 1.856150530516295,
+          "rewards14gUsd": 951.891,
+          "capitaleUsd": 512.8307130000001,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 38,
+          "distanzaMidMedianaCents": 1.4999999999999902,
+          "quote": {
+            "A": 0.08333333333333333,
+            "B": 0.5,
+            "C": 0.37103174603174605,
+            "D": 0.04365079365079365,
+            "E": 0.001984126984126984
+          }
+        },
+        {
+          "wallet": "0xe457dd299f14f8f097b0d7ec8d5be29761455ab3",
+          "resa": 1.7169593573411022,
+          "rewards14gUsd": 7840.0706,
+          "capitaleUsd": 4566.252874,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 74,
+          "distanzaMidMedianaCents": 0.4999999999999998,
+          "quote": {
+            "A": 0.0007920792079207921,
+            "B": 0.9813861386138614,
+            "C": 0.016633663366336635,
+            "D": 0.0007920792079207921,
+            "E": 0.00039603960396039607
+          }
+        },
+        {
+          "wallet": "0x270b3f559eae88ee2a076ed52abdadabb059e632",
+          "resa": 1.692313110247688,
+          "rewards14gUsd": 5672.485699999999,
+          "capitaleUsd": 3351.912637,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 6,
+          "distanzaMidMedianaCents": 0.5000000000000004,
+          "quote": {
+            "A": 0.01078167115902965,
+            "B": 0.954177897574124,
+            "C": 0.03099730458221024,
+            "D": 0.0026954177897574125,
+            "E": 0.0013477088948787063
+          }
+        },
+        {
+          "wallet": "0xbd14da5083afdef8518339c2c1b7b19a491576b4",
+          "resa": 1.403231948783385,
+          "rewards14gUsd": 27594.087700000004,
+          "capitaleUsd": 19664.666076,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 135,
+          "distanzaMidMedianaCents": 0.8,
+          "quote": {
+            "A": 0.01568415359653867,
+            "B": 0.8702001081665766,
+            "C": 0.09626825310978908,
+            "D": 0.008112493239588967,
+            "E": 0.009734991887506761
+          }
+        },
+        {
+          "wallet": "0x9edafdc25b112e399374f72863eb5231e7d86e19",
+          "resa": 1.2626742624904506,
+          "rewards14gUsd": 3033.9741,
+          "capitaleUsd": 2402.816142,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 2,
+          "distanzaMidMedianaCents": 1.5000000000000013,
+          "quote": {
+            "A": 0.0757825370675453,
+            "B": 0.6622734761120264,
+            "C": 0.10543657331136738,
+            "D": 0.057660626029654036,
+            "E": 0.09884678747940692
+          }
+        },
+        {
+          "wallet": "0x7a5cb991e181d3010c04c12d6a17a0b937ce767b",
+          "resa": 1.1768369290413858,
+          "rewards14gUsd": 1031.7430000000002,
+          "capitaleUsd": 876.708552,
+          "giorniConRewards": 14,
+          "mercatiInsiemeOra": 4,
+          "distanzaMidMedianaCents": 0.375,
+          "quote": {
+            "A": 0,
+            "B": 0.9479166666666666,
+            "C": 0.041666666666666664,
+            "D": 0.010416666666666666,
+            "E": 0
+          }
+        }
+      ]
+    },
+    "primi20": [
+      {
+        "wallet": "0xc3fca06e4c4eb130a46b38fb35fc0161ed54484a",
+        "resa": 24.51940926132279,
+        "rewards14gUsd": 16770.8619,
+        "capitaleUsd": 683.983114,
+        "mercatiInsiemeOra": 0,
+        "distanzaMidMedianaCents": null,
+        "quote": {
+          "A": 0,
+          "B": 1,
+          "C": 0,
+          "D": 0,
+          "E": 0
+        }
+      },
+      {
+        "wallet": "0x2b733d127f58809ecf9917100a7f7a946f6f174e",
+        "resa": 6.2845164812865795,
+        "rewards14gUsd": 928.5183999999999,
+        "capitaleUsd": 147.746991,
+        "mercatiInsiemeOra": 0,
+        "distanzaMidMedianaCents": 0.4999999999999949,
+        "quote": {
+          "A": 0.35070140280561124,
+          "B": 0.22444889779559118,
+          "C": 0.19939879759519039,
+          "D": 0.187374749498998,
+          "E": 0.03807615230460922
+        }
+      },
+      {
+        "wallet": "0x05f7958d7d6d2807a65719a313bb159f275922bc",
+        "resa": 4.7524761289778015,
+        "rewards14gUsd": 1364.4582,
+        "capitaleUsd": 287.104693,
+        "mercatiInsiemeOra": 0,
+        "distanzaMidMedianaCents": 1.6000000000000014,
+        "quote": {
+          "A": 0.03138075313807531,
+          "B": 0.9110878661087866,
+          "C": 0.038702928870292884,
+          "D": 0.006276150627615063,
+          "E": 0.012552301255230125
+        }
+      },
+      {
+        "wallet": "0x9129619d97c7c9bbb8c5b6a997dc30dcc275dd8e",
+        "resa": 4.62575054263487,
+        "rewards14gUsd": 3011.8235,
+        "capitaleUsd": 651.099421,
+        "mercatiInsiemeOra": 43,
+        "distanzaMidMedianaCents": 0.2500000000000002,
+        "quote": {
+          "A": 0.12790697674418605,
+          "B": 0.5848837209302326,
+          "C": 0.22093023255813954,
+          "D": 0.02441860465116279,
+          "E": 0.04186046511627907
+        }
+      },
+      {
+        "wallet": "0x0aa4ecc36a9e7dd7cbe6b9d6871541c9c886d61e",
+        "resa": 3.9748538089018797,
+        "rewards14gUsd": 604.5456,
+        "capitaleUsd": 152.092537,
+        "mercatiInsiemeOra": 7,
+        "distanzaMidMedianaCents": 0.4249999999999962,
+        "quote": {
+          "A": 0,
+          "B": 0.9822222222222222,
+          "C": 0,
+          "D": 0.017777777777777778,
+          "E": 0
+        }
+      },
+      {
+        "wallet": "0x37499246c9d3695d623c1244b58e7ebb94124094",
+        "resa": 3.8305921110110686,
+        "rewards14gUsd": 919.6325000000002,
+        "capitaleUsd": 240.07580900000002,
+        "mercatiInsiemeOra": 2,
+        "distanzaMidMedianaCents": 0.5000000000000004,
+        "quote": {
+          "A": 0,
+          "B": 0.9570815450643777,
+          "C": 0.02575107296137339,
+          "D": 0.017167381974248927,
+          "E": 0
+        }
+      },
+      {
+        "wallet": "0x2a20cfc5814b416b28f4d729d2adceabf8a689d2",
+        "resa": 3.6179739453049025,
+        "rewards14gUsd": 4222.325400000001,
+        "capitaleUsd": 1167.041406,
+        "mercatiInsiemeOra": 2,
+        "distanzaMidMedianaCents": 0.4749999999999994,
+        "quote": {
+          "A": 0.0014204545454545455,
+          "B": 0.9616477272727273,
+          "C": 0.02556818181818182,
+          "D": 0.007102272727272727,
+          "E": 0.004261363636363636
+        }
+      },
+      {
+        "wallet": "0xb31bc6957d75c0610cfea24ddde95e7fff11b140",
+        "resa": 3.489060715612764,
+        "rewards14gUsd": 1735.4414000000002,
+        "capitaleUsd": 497.395013,
+        "mercatiInsiemeOra": 4,
+        "distanzaMidMedianaCents": 1.5000000000000013,
+        "quote": {
+          "A": 0.05272407732864675,
+          "B": 0.7311072056239016,
+          "C": 0.10896309314586995,
+          "D": 0.040421792618629174,
+          "E": 0.06678383128295255
+        }
+      },
+      {
+        "wallet": "0xf33e2f782eb1c1c426badb50af841a18d9540ab8",
+        "resa": 3.437625944880997,
+        "rewards14gUsd": 3830.8261999999995,
+        "capitaleUsd": 1114.381338,
+        "mercatiInsiemeOra": 2,
+        "distanzaMidMedianaCents": 0.375,
+        "quote": {
+          "A": 0,
+          "B": 0.9047619047619048,
+          "C": 0.08658008658008658,
+          "D": 0.008658008658008658,
+          "E": 0
+        }
+      },
+      {
+        "wallet": "0xe550368332fe401df6756659a3a0e8ad37466f6e",
+        "resa": 3.286969088646595,
+        "rewards14gUsd": 1029.6041,
+        "capitaleUsd": 313.23814500000003,
+        "mercatiInsiemeOra": 4,
+        "distanzaMidMedianaCents": 0.40000000000000036,
+        "quote": {
+          "A": 0.0031847133757961785,
+          "B": 0.851380042462845,
+          "C": 0.14331210191082802,
+          "D": 0.0010615711252653928,
+          "E": 0.0010615711252653928
+        }
+      },
+      {
+        "wallet": "0xca75fbadcc238afd23c317e253a8b5c47b390a64",
+        "resa": 3.236492419586866,
+        "rewards14gUsd": 9672.646700000001,
+        "capitaleUsd": 2988.6202240000002,
+        "mercatiInsiemeOra": 75,
+        "distanzaMidMedianaCents": 0.4500000000000004,
+        "quote": {
+          "A": 0.07830551989730423,
+          "B": 0.6439880188275567,
+          "C": 0.10569105691056911,
+          "D": 0.1561831407787762,
+          "E": 0.015832263585793753
+        }
+      },
+      {
+        "wallet": "0xf0578c221843ccc43761d15a6e04ac3f3112ab54",
+        "resa": 2.9064982694008052,
+        "rewards14gUsd": 2828.4350999999997,
+        "capitaleUsd": 973.141849,
+        "mercatiInsiemeOra": 9,
+        "distanzaMidMedianaCents": 0.6250000000000006,
+        "quote": {
+          "A": 0.10695187165775401,
+          "B": 0.32620320855614976,
+          "C": 0.34402852049910876,
+          "D": 0.18716577540106952,
+          "E": 0.035650623885918005
+        }
+      },
+      {
+        "wallet": "0x83f48fe00855543d8e95027007942e962d62c2a8",
+        "resa": 2.700861744523862,
+        "rewards14gUsd": 464.1851,
+        "capitaleUsd": 171.865554,
+        "mercatiInsiemeOra": 6,
+        "distanzaMidMedianaCents": 0.5000000000000004,
+        "quote": {
+          "A": 0,
+          "B": 0.9607843137254902,
+          "C": 0.029411764705882353,
+          "D": 0.00980392156862745,
+          "E": 0
+        }
+      },
+      {
+        "wallet": "0xeed8c2be411025120fb511ea2332dd0a1f6135f0",
+        "resa": 2.6369332752996546,
+        "rewards14gUsd": 8182.2235,
+        "capitaleUsd": 3102.931567,
+        "mercatiInsiemeOra": 78,
+        "distanzaMidMedianaCents": 0.5000000000000004,
+        "quote": {
+          "A": 0.32744186046511625,
+          "B": 0.14046511627906977,
+          "C": 0.32527131782945734,
+          "D": 0.1910077519379845,
+          "E": 0.01581395348837209
+        }
+      },
+      {
+        "wallet": "0xcf157132f426f46916ab7d1def9c5bc55e4291c5",
+        "resa": 2.5487036041491735,
+        "rewards14gUsd": 551.5184,
+        "capitaleUsd": 216.391737,
+        "mercatiInsiemeOra": 4,
+        "distanzaMidMedianaCents": 0.49999999999998934,
+        "quote": {
+          "A": 0,
+          "B": 0.9609756097560975,
+          "C": 0.03902439024390244,
+          "D": 0,
+          "E": 0
+        }
+      },
+      {
+        "wallet": "0x508dc4b71e652d3d2b4f4dd66b452ebb9f70791a",
+        "resa": 2.5333011074524148,
+        "rewards14gUsd": 546.2924,
+        "capitaleUsd": 215.64448,
+        "mercatiInsiemeOra": 0,
+        "distanzaMidMedianaCents": 0.15000000000000568,
+        "quote": {
+          "A": 0,
+          "B": 0.988009592326139,
+          "C": 0.007194244604316547,
+          "D": 0.004796163069544364,
+          "E": 0
+        }
+      },
+      {
+        "wallet": "0x12f5bb11b90a25eeb59a9815da21ea895eb25ac4",
+        "resa": 2.475885561836462,
+        "rewards14gUsd": 2106.6088,
+        "capitaleUsd": 850.850634,
+        "mercatiInsiemeOra": 2,
+        "distanzaMidMedianaCents": 1.4000000000000012,
+        "quote": {
+          "A": 0.029411764705882353,
+          "B": 0.9068627450980392,
+          "C": 0.03431372549019608,
+          "D": 0.0196078431372549,
+          "E": 0.00980392156862745
+        }
+      },
+      {
+        "wallet": "0x29efb149c85a53729c266b7918bfa921a70dddda",
+        "resa": 2.183485909593662,
+        "rewards14gUsd": 3464.2933,
+        "capitaleUsd": 1586.588347,
+        "mercatiInsiemeOra": 39,
+        "distanzaMidMedianaCents": 0.5000000000000004,
+        "quote": {
+          "A": 0.006971677559912854,
+          "B": 0.9751633986928104,
+          "C": 0.013507625272331155,
+          "D": 0.00130718954248366,
+          "E": 0.0030501089324618735
+        }
+      },
+      {
+        "wallet": "0x065dd704409d11f5679f00f38e02f19f4418a672",
+        "resa": 2.051876769320187,
+        "rewards14gUsd": 939.2081,
+        "capitaleUsd": 457.73124099999995,
+        "mercatiInsiemeOra": 9,
+        "distanzaMidMedianaCents": 0.7499999999999993,
+        "quote": {
+          "A": 0,
+          "B": 0.7592592592592593,
+          "C": 0.05864197530864197,
+          "D": 0.18209876543209877,
+          "E": 0
+        }
+      },
+      {
+        "wallet": "0xcb58959b9a016b4e502a4f593e82d0b80e6accd0",
+        "resa": 1.9830944820828007,
+        "rewards14gUsd": 2366.3745,
+        "capitaleUsd": 1193.273705,
+        "mercatiInsiemeOra": 3,
+        "distanzaMidMedianaCents": 1.649999999999996,
+        "quote": {
+          "A": 0,
+          "B": 0.9557894736842105,
+          "C": 0.031578947368421054,
+          "D": 0.01263157894736842,
+          "E": 0
+        }
+      }
+    ]
+  },
+  "gruppoIncassa": {
+    "n": 8,
+    "uscite": {
+      "conteggi": {
+        "A": 324,
+        "B": 1820,
+        "C": 646,
+        "D": 759,
+        "E": 202,
+        "classificati": 3751,
+        "censurati": 83
+      },
+      "quote": {
+        "A": 0.08637696614236204,
+        "B": 0.4852039456145028,
+        "C": 0.17222074113569716,
+        "D": 0.20234604105571846,
+        "E": 0.05385230605171954
+      }
+    },
+    "wallet": [
+      "0x98ac23b264a9eb7fb0b50258086f11868a6240d9",
+      "0xf0578c221843ccc43761d15a6e04ac3f3112ab54",
+      "0xcd73809735f8a76552295611f8171a67f9f5f7ad",
+      "0x14a01800f651e682a7918302ebd80006eb98d8e3",
+      "0xfc926e7492e752a8c270a32a7da69b0ee62927c9",
+      "0xc90151ca931761870dddd89bfc84cd80bdfd0c1d",
+      "0x3cd2bccc76e77916da8350289a456c75d239c545",
+      "0xd6df99cedecd9ae5cf7b9f830a5d8ca59cc0d71d"
+    ]
+  },
+  "gruppo": {
+    "filtro": {
+      "mercatiMin": 5,
+      "mercatiMax": 24,
+      "capitaleMin": 800,
+      "capitaleMax": 3000
+    },
+    "nOra": 54,
+    "nMax": 73,
+    "misure": {
+      "rewardsGiorno": {
+        "n": 54,
+        "q25": 0,
+        "mediana": 0,
+        "q75": 0.8070875,
+        "max": 202.03107857142854
+      },
+      "capitale": {
+        "n": 54,
+        "q25": 1011.181149,
+        "mediana": 1543.4551035,
+        "q75": 2239.2771079999998,
+        "max": 2968.455934
+      },
+      "distanza": {
+        "n": 35,
+        "q25": 0.17500000000000016,
+        "mediana": 0.5000000000000004,
+        "q75": 1.0000000000000009,
+        "max": 2.5500000000000025
+      },
+      "mercatiOra": {
+        "n": 54,
+        "q25": 9,
+        "mediana": 12.5,
+        "q75": 16,
+        "max": 24
+      },
+      "mercatiCensiti": {
+        "n": 54,
+        "q25": 5,
+        "mediana": 8,
+        "q75": 9.75,
+        "max": 24
+      },
+      "capitalePerMercato": {
+        "n": 54,
+        "q25": 82.77319810416667,
+        "mediana": 134.78308640497738,
+        "q75": 183.97321656538463,
+        "max": 431.3446681666667
+      },
+      "liquiditaBanda": {
+        "n": 54,
+        "q25": 34800.67125,
+        "mediana": 121697.67000000001,
+        "q75": 322213.6325,
+        "max": 1128916.6123
+      },
+      "quotaTaker": {
+        "n": 54,
+        "q25": 0.121875,
+        "mediana": 0.42442358282463777,
+        "q75": 0.8927756598240469,
+        "max": 1
+      },
+      "pnl7g": {
+        "n": 54,
+        "q25": -120.71498703568183,
+        "mediana": -12.428849247938476,
+        "q75": 13.986726822522002,
+        "max": 4338.842447635954
+      },
+      "eta": {
+        "n": 54,
+        "q25": 53.720289351851854,
+        "mediana": 112.9321875,
+        "q75": 252.79846064814814,
+        "max": 1248.9777777777779
+      },
+      "giorniRewards": {
+        "n": 54,
+        "q25": 0,
+        "mediana": 0,
+        "q75": 5,
+        "max": 14
+      }
+    },
+    "uscite": {
+      "conteggi": {
+        "A": 4856,
+        "B": 5876,
+        "C": 13270,
+        "D": 11850,
+        "E": 311,
+        "classificati": 36163,
+        "censurati": 3004
+      },
+      "quote": {
+        "A": 0.1342808948372646,
+        "B": 0.16248651937062744,
+        "C": 0.366949644664436,
+        "D": 0.32768299090230346,
+        "E": 0.00859995022536847
+      }
+    },
+    "costoCoppiaMedianoCents": 100,
+    "deltaBMedianoCents": 0,
+    "confrontoResto": {
+      "conteggi": {
+        "A": 66365,
+        "B": 106517,
+        "C": 194073,
+        "D": 256398,
+        "E": 7740,
+        "classificati": 631093,
+        "censurati": 53044
+      },
+      "quote": {
+        "A": 0.10515882762128562,
+        "B": 0.16878178018136789,
+        "C": 0.3075188601363032,
+        "D": 0.4062760955992223,
+        "E": 0.012264436461821
+      }
+    },
+    "wallet": [
+      "0x895838e426ad0458a4938f7f2580b62c3a5d656d",
+      "0x9de6461495bd48520077608ac9ef012a6eabe7f0",
+      "0x839f591af24da3f1322de4620ca54e053418d3f5",
+      "0x0db98a11b12ab30fc1e43ea9c9b63df50849a4a8",
+      "0xd71776a8d4fddeb3c150c4607b3f8bec31213b85",
+      "0x0275ac8f6793cc3ffe90dc1095330e240622b936",
+      "0x98ac23b264a9eb7fb0b50258086f11868a6240d9",
+      "0xf0578c221843ccc43761d15a6e04ac3f3112ab54",
+      "0x4aea779b14c7c8dad013ee16a432661f7652faae",
+      "0x1bf561a7bcc510ed14484dfebc54c477f5c9ff5e",
+      "0xa5c7114b3c17cc6b64afd5883eaabc7272497e7b",
+      "0x977f071bb5699b80d8032f1a50409648c14f0981",
+      "0x040750c77dd98a2b67ddcc266fa98453f4cfbcfd",
+      "0xac644516c9791125f448871d1fbe32ce8c76866e",
+      "0xcd73809735f8a76552295611f8171a67f9f5f7ad",
+      "0x14a01800f651e682a7918302ebd80006eb98d8e3",
+      "0xfc926e7492e752a8c270a32a7da69b0ee62927c9",
+      "0x4a883ac38d3ea44033b65eefd417ce0b75e07190",
+      "0xe5b1377410ddd77dc3bf6fd5172e13fdc31330b2",
+      "0x51aa6b8fbd20aed3c4037056c0f3f841d7adb50e",
+      "0xc90151ca931761870dddd89bfc84cd80bdfd0c1d",
+      "0x3be56dec80a7ec937580b5a4daec22fb5e31f7fe",
+      "0x72b2d0ffab41c12727fdfe52e530320d50325548",
+      "0x3cd2bccc76e77916da8350289a456c75d239c545",
+      "0xde9cc24c0f13cf956a4a8ea947a5fe3b85b7b1d6",
+      "0x396665c13f6ae03bbcaaf710d2364071152bbe5f",
+      "0x0fa9ba2fd8585033b93367bd1032f74d3efa22eb",
+      "0x0325cdd441e451c887cde20621567584fa8c16e7",
+      "0xdb24bf3df1ea39f30a2bb7ecb9bbd8dfc990496b",
+      "0xd6df99cedecd9ae5cf7b9f830a5d8ca59cc0d71d",
+      "0x07ee6c054c1c6934ca618b7420a304f5b9b38dfe",
+      "0x9182ab8157689aa8fdb58aeca518e3fbed0b3368",
+      "0x15bbce8ac228aac2d406ede4d54fc62de66922b3",
+      "0x0ff9c15c5e8505c58b267cfe78b8f24e0506414c",
+      "0xdc394af7800ffe029351559f714e7cbd1e378ad8",
+      "0xbffe0ec796fa44bdb8b32908478c694a5566fe20",
+      "0xeda9da7fe9a6992128f5008ddbd7156cef74f624",
+      "0x16dac303d32dcc54171f3dc47c56bebf0e56ef29",
+      "0x92c7f6219053e1ad67779f7f4fe30cb0007b89f5",
+      "0x91ad42250b9c63ddc516905fdb16f5293ea6a5ca",
+      "0x184b4b04ea85411bd81eaca8b29c22df1fd367b2",
+      "0xd10a59fcc18955eeaebd06d1234cc3bd1e3fb9cd",
+      "0xd053b972f41216230108a6b90edf390f27b5a385",
+      "0x53059e9bd59ac40a6f907878a014d784e9bc57b6",
+      "0x00cdea4d807710807cdbc54ad34cfafcd992c0ae",
+      "0x33739438875aee79e98a26f87320d984f0703716",
+      "0xbc29b9e3a4c89d55c8a0629008ccaece830eb3b6",
+      "0xe9dcebc368efa90a5c7ceec819571cada34c4e23",
+      "0xde7c31e34d1e0e6663454298d409e50cc2aac5d2",
+      "0xd5a61951e34204cb0cdefde635ab65f96914f76d",
+      "0xf18c3ac5ad26ba302c36882ef530762ce9cd18c1",
+      "0x9047e6829b426c5b8eeda77c00ce763b6ca07663",
+      "0xfd022428bbc38a5280094c3734fef09cefe7fb6a",
+      "0x70ad3c12fa92a97e1c387ab594e645d940a3f1df"
+    ]
+  },
+  "selezionabili": {
+    "universo": 99,
+    "ammissibiliOggi": 12,
+    "ammissibiliConMinSize50": 22,
+    "perMotivo": [
+      {
+        "motivo": "minsize-oltre-soglia",
+        "n": 43
+      },
+      {
+        "motivo": "riga-assente",
+        "n": 39
+      },
+      {
+        "motivo": "scadenza-troppo-vicina",
+        "n": 5
+      }
+    ],
+    "dettaglio": [
+      {
+        "conditionId": "0xa875e0b4802818c2ed51fa4a44eeb303d2a11b1df946de66c0444d80468e78b6",
+        "quantiWallet": 12,
+        "question": "Will Megan Degenfelder win the 2026 Wyoming Governor Republican primary election?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 50.901711666666664,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0xfb481845055afdf15febad269fcb534be4c5e79d5789b72659a036660b46e11b",
+        "quantiWallet": 10,
+        "question": "Will Eric Barlow win the 2026 Wyoming Governor Republican primary election?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 50.901711666666664,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x1a01bf78f56a507fcb666d564d8c8b91b0750679163ed6e96746102c9b7d285d",
+        "quantiWallet": 10,
+        "question": "Will Flávio Bolsonaro win the 2026 Brazilian presidential election?",
+        "minSize": 100,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x7e50b661a2bedc670bcf32fc9ece12616f6fc4fba5dbe8526292bf3447374009",
+        "quantiWallet": 10,
+        "question": "Will Russia capture Kostyantynivka by December 31, 2026?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 3302.901711666667,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+        "quantiWallet": 10,
+        "question": "Fed rate hike in 2026?",
+        "minSize": 100,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x9345d5142a67f5541264c96515496affee02580f1c572680759eac9fd2a1588a",
+        "quantiWallet": 9,
+        "question": "Billionaire one-time wealth tax passes in California election 2026?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 1898.9017116666666,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0xf43d99c0b796e0e5226dffa31c71c9fab943e3f79c0182c144eea93dc6b77ae2",
+        "quantiWallet": 9,
+        "question": "Will Catalina Lauf be the Republican nominee for FL-19?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 50.901711666666664,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x5db999fad322cea2914535aae5517060c3f80ad6d8c0231cde2124a434d16846",
+        "quantiWallet": 9,
+        "question": "Will the U.S. invade Iran before 2027?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0xfbd0a65112e26d9a2a68dc47f8a95c6c14d22650cb4837c5429b546726661b71",
+        "quantiWallet": 8,
+        "question": "Will the Democrats win the Wisconsin governor race in 2026?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x5d2a3c8fa1bdb56f3145f5cdcdffa9f7b8540342e4135482d914b72db037a7a0",
+        "quantiWallet": 8,
+        "question": "Will Bola Oyebamiji win the 2026 Osun State gubernatorial elections?",
+        "minSize": 20,
+        "ammissibile": false,
+        "motivo": "scadenza-troppo-vicina",
+        "oreAllaScadenza": 2.885045,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "scadenza-troppo-vicina"
+      },
+      {
+        "conditionId": "0xd9e428d3af0ece1d660b4e3e68f556c4a36c63aaef509c00aca5cfcbcccd984c",
+        "quantiWallet": 8,
+        "question": "Will Angie Nixon be the Democratic nominee for Senate in Florida?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 50.901711666666664,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0xd1796c09d0d6f876f8580086ae9808ec991784e3a74b25a1830a25de71a78c96",
+        "quantiWallet": 8,
+        "question": "Netanyahu out by end of 2026?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0xc16fade4bbc06895f8e456e1e49c6aa51c1b2dc7f734b3ad8fe8a5900d6a4174",
+        "quantiWallet": 8,
+        "question": "Will Jim Schwartzel be the Republican nominee for FL-19?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 50.901711666666664,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x30f729ef18553d8956bfd7ae7a1e96dbad07e2476160239b23ec10e6cdc5f01b",
+        "quantiWallet": 8,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xa467b14d51f01b957109d9cbb1d6c124fab2a089d52ed8f471d23c2812e743b7",
+        "quantiWallet": 8,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x45ec36bb8d1d4c54973d1737677b977a0c719e3caccefbc75ecb8d156a7d2c30",
+        "quantiWallet": 7,
+        "question": "Will fewer than 25 ships transit the Strait of Hormuz between August 10-August 16?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 26.885045,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "scadenza-troppo-vicina"
+      },
+      {
+        "conditionId": "0x46c8159431f59839061bb4abe8795ff8c0ebf6b612451e303ebe7f34697f3f35",
+        "quantiWallet": 7,
+        "question": "Will GPT-6 be released by December 31, 2026?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x15d2e66dcf1d63c5695d6d0e9e2f8e06dd246d00fd5dfc254f2b22baa33bfa1b",
+        "quantiWallet": 7,
+        "question": "Mitch McConnell steps down from Senate before his term ends?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0xf232b565995e4b3a3e7fa6cef775eeff1cecd20ad7c013cb9fc8dadabfe279a9",
+        "quantiWallet": 7,
+        "question": "Will Alexandria Ocasio-Cortez win the 2028 US Presidential Election?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0xbb4d51e6364066d92eb6f9b8413dd7193de70966736044463b205834805a1f3b",
+        "quantiWallet": 7,
+        "question": "Will the Iranian regime fall before 2027?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+        "quantiWallet": 7,
+        "question": "Will Harry Kane win the 2026 Ballon d'Or?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 1826.9017116666666,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x7586a96520578acaaaa4ea84a2582f197f84255da1f3392a7aa300386c187b37",
+        "quantiWallet": 7,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+        "quantiWallet": 6,
+        "question": "Will 1 Fed rate cut happen in 2026?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 3290.901711666667,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+        "quantiWallet": 6,
+        "question": "Will Spider-Man: Brand New Day have the best domestic opening weekend in 2026?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 3290.901711666667,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0xb73f32c2884c65f5dae192c33bef3f7ce3faeec4ad313d2d3a6ad62ea2c95caf",
+        "quantiWallet": 6,
+        "question": "Will Alexander Vindman be the Democratic nominee for Senate in Florida?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 50.901711666666664,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x5718c98a675a2f8c70dab199db5bb86c77c67371ea3cda72c4d4a3541ed1da14",
+        "quantiWallet": 6,
+        "question": "Will 25-49 ships transit the Strait of Hormuz between August 10-August 16?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 26.885045,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "scadenza-troppo-vicina"
+      },
+      {
+        "conditionId": "0xbfeb6d4cf3eab6071e204219b0647c8224d63a12778df467311b5f2a4b3a5bd4",
+        "quantiWallet": 6,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x5fa9075d972f7c3d470549416d446b9da83678b9fb2384e6360151a7f369483b",
+        "quantiWallet": 6,
+        "question": "Will Ademola Adeleke win the 2026 Osun State gubernatorial elections?",
+        "minSize": 20,
+        "ammissibile": false,
+        "motivo": "scadenza-troppo-vicina",
+        "oreAllaScadenza": 2.885045,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "scadenza-troppo-vicina"
+      },
+      {
+        "conditionId": "0x8126317d621047fb13d508a2651eecc8d38305904671822a62309c5aabd353aa",
+        "quantiWallet": 6,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xdf8e2dc5860027decbe6164555c3c1c9645c3bd33e16b9dc57ca87125047d4a8",
+        "quantiWallet": 6,
+        "question": "Will Luiz Inácio Lula da Silva win the 2026 Brazilian presidential election?",
+        "minSize": 100,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0xe0d9f508a249e0070db06eb7d1e1fb17eb23c963f6fb722c4c3f81e23240c1cd",
+        "quantiWallet": 6,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xe6bcc2f1dd025ce5e1833190f7c60a71171c94f805df55b9ab0ded695ec93565",
+        "quantiWallet": 6,
+        "question": "Will Alexandria Ocasio-Cortez win the 2028 Democratic presidential nomination?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d",
+        "quantiWallet": 6,
+        "question": "Putin out as President of Russia by December 31, 2026?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0xd9fb1184af0064e5e34b129f5b79afa5a17b7e32f2953ab05efed82315fee6d4",
+        "quantiWallet": 6,
+        "question": "Will China invade Taiwan by end of 2026?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+        "quantiWallet": 5,
+        "question": "Will Lamine Yamal win the 2026 Ballon d'Or?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 1826.9017116666666,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x3fd189cac9280dfc49a07115581e8d4c9e0b7e1c1e8580a44e9ff3d74e39cf2d",
+        "quantiWallet": 5,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+        "quantiWallet": 5,
+        "question": "Will no Fed rate cuts happen in 2026?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 3290.901711666667,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x694595d0a008f10e4701285d071e4b08407495f6f8a6bd8cbdd7de522fa9b463",
+        "quantiWallet": 5,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xd99c7e88422df97c77f51913694945eb1afb41c7dee54fc575954d40706acae3",
+        "quantiWallet": 5,
+        "question": "Will \"PAW Patrol: The Dino Movie\" Opening Weekend Box Office be between 20m and 25m?",
+        "minSize": 100,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x42e5daca5bd254ad67e438d1627f2227a04c98cf1d0ac3a1a9cc1cccf6ecb819",
+        "quantiWallet": 5,
+        "question": "Will fewer than 180 ships transit the Bab el-Mandeb Strait between August 10-August 16?",
+        "minSize": 20,
+        "ammissibile": false,
+        "motivo": "scadenza-troppo-vicina",
+        "oreAllaScadenza": 26.885045,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "scadenza-troppo-vicina"
+      },
+      {
+        "conditionId": "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988",
+        "quantiWallet": 5,
+        "question": "Will Avengers: Doomsday have the best domestic opening weekend in 2026?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 3290.901711666667,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0xdbe93b5a701f36076a560fa4b9ba59e365a6e8e2ea6a83764640010657277ca4",
+        "quantiWallet": 5,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x66f5b8203ee1c36b993af623fd7f9ef7271dd87b3aebf6df508048ad4b563432",
+        "quantiWallet": 5,
+        "question": "Will OpenAI IPO by December 31 2026?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+        "quantiWallet": 5,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xd5d9fc47718bd553592d126b1fa5e87183d27f3936975b0c04cc0f2dec1f1bb4",
+        "quantiWallet": 5,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xc57bc9d0d9890815aa31d498d57af5d2d6e8d5245fd5ab104dfd7aed8c7b7081",
+        "quantiWallet": 5,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xd66eadbd64b3e815e31c7994470b44fe15c7ef1146f78937d0cfaa4c04fcfda7",
+        "quantiWallet": 5,
+        "question": "Will the Republicans win the Wisconsin governor race in 2026?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x909659c9436228e2be56d5582ba6188166f2f8bf3c596335512c8f2e380d01ec",
+        "quantiWallet": 5,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x16c63b7cc37f012b9f59ee164ec03877914c701d06d48291ae8d6fc08a088b0d",
+        "quantiWallet": 5,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x7ad403c3508f8e3912940fd1a913f227591145ca0614074208e0b962d5fcc422",
+        "quantiWallet": 5,
+        "question": "Will JD Vance win the 2028 US Presidential Election?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x86bfb53af7250a40928975c551d12c185b762fa4ce0b40c6a64a50c946d72587",
+        "quantiWallet": 5,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x3babe91f8d2fac44027f9ba7f0f1a59e61b72419828e6e517f96bbcf4e132498",
+        "quantiWallet": 4,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xeaea0f1d6af1ca91d331e5adefd5df4f9905f16bd0b34b54c37930f69a20d6a9",
+        "quantiWallet": 4,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xe368e5e6be50377d08d2af99c9ad18694aef2f3af9ccbf60b1146302c3ee3da1",
+        "quantiWallet": 4,
+        "question": "Will Thomas Chalifoux be the Republican nominee for FL-09?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 50.901711666666664,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x7844ad013088564a11d5d4d3b1766c57ad936a55247f0ae1efe28180d7285af3",
+        "quantiWallet": 4,
+        "question": "OpenAI IPO before 2027?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+        "quantiWallet": 4,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x87091dc5932f015d80c40e71e47cb043c3f8b6098484eb5bc3943cf35ee9afc1",
+        "quantiWallet": 4,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x0c9ada12c527451fbdd43c0397a8a006b8aaf2a01567ae069d37220b51937595",
+        "quantiWallet": 4,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+        "quantiWallet": 4,
+        "question": "Will J.D. Vance win the 2028 Republican presidential nomination?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 19538.901711666666,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x2053d8515f1b8cbeea4ccdb56e60e89c2617e43a8660d95166b8e71d27865277",
+        "quantiWallet": 4,
+        "question": "Will Marco Rubio win the 2028 US Presidential Election?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x4567b275e6b667a6217f5cb4f06a797d3a1eaf1d0281fb5bc8c75e2046ae7e57",
+        "quantiWallet": 4,
+        "question": "Will Gavin Newsom win the 2028 US Presidential Election?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0xc4b07998e8f9bf6b95f079d6dc0529f3c6f59698d4e168817ad5f99304de6c57",
+        "quantiWallet": 4,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x307a1ed89d60b61002dd5bbf00e1408c5ed2ab3fcdb056191ca7ef9bc34d38f3",
+        "quantiWallet": 4,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x51f624dbbf14f9edb575fef1be6f7a303751de70783fa144fce27b957452c803",
+        "quantiWallet": 4,
+        "question": "Zelenskyy out as Ukraine president by end of 2026?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0xe2b8ec1919a98ab894cb8074386695e3bd76bb234308ccd159ce222f1df4b0f1",
+        "quantiWallet": 3,
+        "question": "Will \"PAW Patrol: The Dino Movie\" Opening Weekend Box Office be between 15m and 20m?",
+        "minSize": 100,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x2cdee06270692f6cb227ebf3eb2c934b013ecc65c13763e7a981b29f46150df8",
+        "quantiWallet": 3,
+        "question": "Will \"The End of Oak Street\" Opening Weekend Box Office be between 17m and 20m?",
+        "minSize": 20,
+        "ammissibile": false,
+        "motivo": "scadenza-troppo-vicina",
+        "oreAllaScadenza": 26.885045,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "scadenza-troppo-vicina"
+      },
+      {
+        "conditionId": "0x3849e1d62e0807801913d3e2427e8caf3cc6dd1c8ef42d8d5c08c6f9c449dc5e",
+        "quantiWallet": 3,
+        "question": "Will OpenAI not IPO by December 31, 2026?",
+        "minSize": 100,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x176e84015b1cc54d470836ef1d8a60753e17fa232d9b55e9aa8dde580d03f436",
+        "quantiWallet": 3,
+        "question": "Friedrich Merz out as Chancellor of Germany before 2027?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x6522024c060166830e53a48b0db1cab9296601a8539ab005124db5e4bf50a303",
+        "quantiWallet": 3,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xda4fbe6eec3d6cc6f6d14785f25f86823514b0b4b37c63227af5b2670f2627f4",
+        "quantiWallet": 3,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x71a21eab87c301a53f2f33fad4dca7a1e7da8911b847c82ca37ed49d859a17a0",
+        "quantiWallet": 3,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x46f2f457e14ee9021ebd0ef4c27eacd98fdceaf7f2938b484e2551e9e3275ae8",
+        "quantiWallet": 3,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x2cefe6009ea518f77b8a82714e54c0af1d0f25e99b37d4861f4a5d3ebbf142d3",
+        "quantiWallet": 3,
+        "question": "Will Lewis Hamilton be the 2026 F1 Drivers' Champion?",
+        "minSize": 100,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x21ad31a46bfaa51650766eff6dc69c866959e32d965ffb116020e37694b6317d",
+        "quantiWallet": 3,
+        "question": "Will Marco Rubio win the 2028 Republican presidential nomination?",
+        "minSize": 50,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": 19538.901711666666,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0xf2b0c93903a116cc841c2be960d4f5309153d4b93d6901f69a82f34259365770",
+        "quantiWallet": 3,
+        "question": "Will Ben Butler be the Republican nominee for FL-09?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 50.901711666666664,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x747dc809fb79e1b05be09c42d6179459a58de2ef3e40f02484a4e1260f741f75",
+        "quantiWallet": 3,
+        "question": "Will the US confirm that aliens exist before 2027?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x0f49db97f71c68b1e42a6d16e3de93d85dbf7d4148e3f018eb79e88554be9f75",
+        "quantiWallet": 3,
+        "question": "Will Gavin Newsom win the 2028 Democratic presidential nomination?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x61600d487069f99e775307a0655c1a79f26e4fc6d8d1ba66790c64d78d0beba2",
+        "quantiWallet": 3,
+        "question": "Will Jon Ossoff win the 2028 US Presidential Election?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x74dba1ce1ae9dd535414e85f2d9ab5ea32c0fb1acc9b7130b67e6d91217e24e1",
+        "quantiWallet": 3,
+        "question": "Will Jon Ossoff win the 2028 Democratic presidential nomination?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x4167e22670f31e5f93d132f78108f3fae809bd15cadf78983eff096845ed1415",
+        "quantiWallet": 2,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x3e0845c4736ae232c57b347d05f6145650416dfd3adb0fa5d7ddd335c64a84ca",
+        "quantiWallet": 2,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x15f442103bfad36b0dcc569d9698b4d020d12a2c935b9ac9050bb190a9238ec6",
+        "quantiWallet": 2,
+        "question": "Will Saudi Arabia join the Abraham Accords before 2027?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0xf53d2cf86bf4ea3c6a0bfb739cc0dded28001dde6eee5f90b8bb6716ce33571a",
+        "quantiWallet": 2,
+        "question": "Will OpenAI launch a new consumer hardware product by December 31, 2026?",
+        "minSize": 200,
+        "ammissibile": false,
+        "motivo": "minsize-oltre-soglia",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "minsize-oltre-soglia"
+      },
+      {
+        "conditionId": "0x938e6a0a011f9534ffd2d86c65dde3aeb7c66ad06cee29ead70b832179c3b6de",
+        "quantiWallet": 2,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x650e3ebc043ddbcfa1d1ffda0c5830f19da7389827889fb5db3474bde5b007fb",
+        "quantiWallet": 2,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xca63763d6aba6e9318362110d97fcc83944b539b3efbcabfb92b885485311057",
+        "quantiWallet": 2,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xfcbef067579700f97b575e3a64945aeb788c8ae0c0e791804659426e2d913977",
+        "quantiWallet": 2,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xe4f4b614a6c2b4ecd8eb700d19c0e6533d3fbd1bc28193b2255394ef74006e6f",
+        "quantiWallet": 2,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xfeabf3d2911a3718cc48e1d2b9679b1169fe5952c656697a64b0b83eb1030b26",
+        "quantiWallet": 2,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xfd516863c645e716dd507bd159267c85362b9b9b4a8bc9af340c2dda3b3751d7",
+        "quantiWallet": 2,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xc5eae79d1ffe716572353962eb926b1e3964c500a4880a7a94f58408218ee76b",
+        "quantiWallet": 2,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0xcede29c8af89d8bd2118088768dcee36736ed43af143e70d59f60d7b365a98ef",
+        "quantiWallet": 1,
+        "question": "Will a team from LPL (China) win LoL Worlds 2026?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 3290.901711666667,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+        "quantiWallet": 1,
+        "question": "Will a team from LCK (South Korea) win LoL Worlds 2026?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 3290.901711666667,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x30d4a64f70d80faee66508a797b347ef65e63913e4200bca954718fc824ea10e",
+        "quantiWallet": 1,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x7a97cbf39c31ab569f8bd71e21423b851316cb9b4bcfe7accf29a2897c213e3c",
+        "quantiWallet": 1,
+        "question": "Will Jorge Martinez be the Republican nominee for FL-09?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 50.901711666666664,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x016fbba075191c3366e459c5997a8b7253299ede03fd132f12f4fcac0f1e8a20",
+        "quantiWallet": 1,
+        "question": "Will Dan Green be the Republican nominee for FL-09?",
+        "minSize": 20,
+        "ammissibile": true,
+        "motivo": "ammissibile",
+        "oreAllaScadenza": 50.901711666666664,
+        "ammissibileConMinSize50": true,
+        "motivoConMinSize50": "ammissibile"
+      },
+      {
+        "conditionId": "0x2777616cff306c74af9cb89eff77bef7e481d489c79aad479efea35eae637020",
+        "quantiWallet": 1,
+        "question": "Will 220 or more ships transit the Bab el-Mandeb Strait between August 10-August 16?",
+        "minSize": 20,
+        "ammissibile": false,
+        "motivo": "scadenza-troppo-vicina",
+        "oreAllaScadenza": 26.885045,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "scadenza-troppo-vicina"
+      },
+      {
+        "conditionId": "0x0a26a2aeaee92f943b6a5649c4a096766f07675c6c710527fca730bd1e395797",
+        "quantiWallet": 1,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      },
+      {
+        "conditionId": "0x1b7fd0fe5dbf07c9f7aab729a6688686e5d2df9b443233cd29004bd11818553d",
+        "quantiWallet": 1,
+        "question": null,
+        "minSize": null,
+        "ammissibile": false,
+        "motivo": "riga-assente",
+        "oreAllaScadenza": null,
+        "ammissibileConMinSize50": false,
+        "motivoConMinSize50": "riga-assente"
+      }
+    ]
+  },
+  "senzaTrade": [
+    {
+      "wallet": "0xd322042a30de8e21855f35d064a734aa0c228503",
+      "tradesTutti": 100,
+      "tradesTaker": 0,
+      "ultimoTradeIso": "2026-08-15T21:03:57.000Z",
+      "giorniDaUltimoTrade": 0.0013522916673510163,
+      "activityTrade": 1,
+      "censimento": {
+        "fill": 103,
+        "mercati": 19,
+        "ultimoIso": "2026-08-15T12:32:13.000Z"
+      }
+    },
+    {
+      "wallet": "0x2213ea2051bd7706ff0e294d6ed05c0802d2492c",
+      "tradesTutti": 100,
+      "tradesTaker": 0,
+      "ultimoTradeIso": "2026-08-15T21:03:57.000Z",
+      "giorniDaUltimoTrade": 0.0013522916673510163,
+      "activityTrade": 1,
+      "censimento": {
+        "fill": 77,
+        "mercati": 18,
+        "ultimoIso": "2026-08-15T15:22:19.000Z"
+      }
+    },
+    {
+      "wallet": "0xe9cd050fce922e029a6acd521263ed5422e5be3f",
+      "tradesTutti": 100,
+      "tradesTaker": 0,
+      "ultimoTradeIso": "2026-08-15T20:19:51.000Z",
+      "giorniDaUltimoTrade": 0.03197729166735102,
+      "activityTrade": 1,
+      "censimento": {
+        "fill": 12,
+        "mercati": 9,
+        "ultimoIso": "2026-08-15T13:28:28.000Z"
+      }
+    },
+    {
+      "wallet": "0x01d6b8fb1ea12033f1ad0292b0f703c068a692d6",
+      "tradesTutti": 100,
+      "tradesTaker": 0,
+      "ultimoTradeIso": "2026-08-13T02:10:58.000Z",
+      "giorniDaUltimoTrade": 2.7881462731488327,
+      "activityTrade": 1,
+      "censimento": {
+        "fill": 37,
+        "mercati": 8,
+        "ultimoIso": "2026-08-12T00:39:15.000Z"
+      }
+    },
+    {
+      "wallet": "0xced156af8868abdd55e2d6591cdf2733b018d7cd",
+      "tradesTutti": 100,
+      "tradesTaker": 0,
+      "ultimoTradeIso": "2026-08-15T20:19:51.000Z",
+      "giorniDaUltimoTrade": 0.03197729166735102,
+      "activityTrade": 1,
+      "censimento": {
+        "fill": 15,
+        "mercati": 8,
+        "ultimoIso": "2026-08-15T12:45:46.000Z"
+      }
+    },
+    {
+      "wallet": "0x48c5c26b046b955ed463411963c70df5a48710fc",
+      "tradesTutti": 100,
+      "tradesTaker": 0,
+      "ultimoTradeIso": "2026-08-15T20:37:15.000Z",
+      "giorniDaUltimoTrade": 0.01989395833401768,
+      "activityTrade": 1,
+      "censimento": {
+        "fill": 14,
+        "mercati": 8,
+        "ultimoIso": "2026-08-15T12:47:15.000Z"
+      }
+    },
+    {
+      "wallet": "0xaf5366d48911a66f87bcb3a83429699e5533ca3b",
+      "tradesTutti": 100,
+      "tradesTaker": 0,
+      "ultimoTradeIso": "2026-08-15T20:37:15.000Z",
+      "giorniDaUltimoTrade": 0.01989395833401768,
+      "activityTrade": 1,
+      "censimento": {
+        "fill": 12,
+        "mercati": 8,
+        "ultimoIso": "2026-08-15T12:45:46.000Z"
+      }
+    }
+  ]
+}

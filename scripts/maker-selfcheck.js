@@ -453,8 +453,13 @@ async function noWriteProof() {
   //     and it reaches the SAME verdict as the UI because it calls the SAME function (lib/maker/venue-rules).
   {
     const { validateQuote, validateQuotePair, CODES } = require('../lib/maker/venue-rules');
-    // A concrete market: 0.01 tick, scoring mid 0.50, 6¢ full band → radius 3¢ → band [0.47, 0.53], min 100.
-    const VG = { tick: 0.01, scoringMid: 0.50, maxSpreadCents: 6, minSize: 100 };
+    // A concrete market: 0.01 tick, scoring mid 0.50, max_spread 3¢ → radius 3¢ → band [0.47, 0.53], min 100.
+    //
+    // ⚠ RESCALED 2026-08-15. `maxSpreadCents` was 6 to obtain a 3¢ radius under the HALVED reading
+    // (`v = maxSpread/2`) that §5-bis p.155 disproved against the venue's own published example. Under
+    // `v = maxSpread` (lib/banda-premiante) the same radius is written with HALF the number. The band the
+    // cases below reason about — [0.47, 0.53] — is unchanged, and not one expectation was touched.
+    const VG = { tick: 0.01, scoringMid: 0.50, maxSpreadCents: 3, minSize: 100 };
     const codesOf = (o) => (o.reasons || []).map((x) => x.code).sort();
 
     // An observing adapter: paper mode (no venue, no key), audit records captured to an array so we can PROVE
@@ -685,11 +690,29 @@ const { reconcile } = require('../lib/maker/reconcile');
   const expPartial = F.computeExposure({ userId: 'op', now: NOWMS, sentOrders: [{ idempotencyKey: 'k1', notionalUsd: 250, ts: dayStart + 900 }] }, { fillsFile: fp });
   ok(expPartial.ok && Math.abs(expPartial.openNotionalUsd - 60) < 1e-6, 'fills: a PARTIAL fill (120/500) counts at its partial notional ($60), never rounded up to the full order ($250)');
 
-  // 12b. An UNKNOWN sent order (ledger never saw it) does NOT reduce exposure — counted at full notional,
-  //      never assumed unfilled (the dangerous direction).
+  // 12b. AN UNKNOWN SENT ORDER — REWRITTEN 2026-08-15, and this one is NOT a band rescale.
+  //
+  // WHAT THIS ASSERTED UNTIL TODAY: that a sent-but-unreconciled order was added to exposure at its FULL
+  // notional, and surfaced in `unknowns`. That was the pre-emptive count, and it was REMOVED on
+  // 2026-08-02 at the operator's explicit request — see the long block in lib/safety/fills.js
+  // ("IL CONTEGGIO ANTICIPATO E' STATO RIMOSSO"). Exposure now reflects ONLY what has been reconciled
+  // against the venue, and `unknowns` is empty BY CONSTRUCTION. The accepted risk is documented where it
+  // lives: for up to 60s after a placement the cap does not see the order.
+  //
+  // Leaving the old assertion here would have meant a selfcheck that fails because the code is CORRECT —
+  // the sixth occurrence of "a test that photographs the code instead of the property" (§5.3). The
+  // property that survives is that the two QUESTIONS stay separate, and both still get an answer.
   const expUnknown = F.computeExposure({ userId: 'op', now: NOWMS, sentOrders: [{ idempotencyKey: 'k1', notionalUsd: 250, ts: dayStart + 900 }, { idempotencyKey: 'GHOST', notionalUsd: 250, ts: dayStart + 900 }] }, { fillsFile: fp });
-  ok(expUnknown.ok && Math.abs(expUnknown.openNotionalUsd - 310) < 1e-6 && expUnknown.unknowns.some(u => u.idempotencyKey === 'GHOST'), 'fills: an UNKNOWN sent order adds full notional ($250) — never treated as zero (understating exposure is the dangerous direction)');
-  ok(F.computeExposure({ userId: 'op', now: NOWMS, sentOrders: [{ idempotencyKey: 'GHOST2' /* notionalUsd missing */ }] }, { fillsFile: fp }).ok === false, 'fills: an unknown order whose notional cannot even be bounded → FAIL CLOSED (ok:false)');
+  ok(expUnknown.ok && Math.abs(expUnknown.openNotionalUsd - 60) < 1e-6 && expUnknown.unknowns.length === 0,
+    'fills: a sent-but-UNRECONCILED order does NOT enter exposure ($60, unchanged) and `unknowns` is empty by construction — the operator\'s 2026-08-02 decision, with its risk stated in the source');
+  // …and the OTHER question — "did the ledger ever resolve this order?" — is a property of the LEDGER,
+  // not of exposure, and it still answers. If this went quiet too, a ghost order would be invisible to
+  // everyone (that is exactly what happened between 2026-08-02 and 2026-08-10: 1,294 sent orders with no
+  // ledger row and `unknowns.length === 0`, and agent40's reconciliation silently stopped running).
+  const ledgerRows = F.readFills({ userId: 'op' }, { fillsFile: fp }).rows;
+  const unresolved = F.ordiniNonRisolti([{ idempotencyKey: 'k1', notionalUsd: 250 }, { idempotencyKey: 'GHOST', notionalUsd: 250 }], ledgerRows);
+  ok(unresolved.length === 1 && unresolved[0].idempotencyKey === 'GHOST',
+    'fills: but the ledger still calls it UNRESOLVED (ordiniNonRisolti lists GHOST, not k1) — exposure and resolution are two questions, and the second one did not go quiet');
 
   // 12c. Exposure from a REAL book (executable bid/ask) matches a hand-checked figure FIELD BY FIELD.
   const fb = tmpFile('fills-book.jsonl');
@@ -724,7 +747,36 @@ const { reconcile } = require('../lib/maker/reconcile');
   // 12g. The RECONCILER: partial→partial, gone+no-trades→no-fill, venue-unreachable→UNKNOWN (never fabricate).
   const sent = [{ idempotencyKey: 'rk', orderId: 'oX', tokenId: 'T', side: 'BUY', price: 0.5, size: 500, notionalUsd: 250, userId: 'op', venue: 'polymarket' }];
   ok(RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [], venueReachable: true, venueOrders: [{ id: 'oX', asset_id: 'T', side: 'BUY', price: '0.5', original_size: '500', size_matched: '120' }] }).toRecord[0].filledSize === 120, 'reconcile: a resting order with size_matched=120 records a PARTIAL fill of 120 (not 500)');
-  ok(RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [{ kind: 'fill', idempotencyKey: 'rk', filledSize: 120 }], venueReachable: true, venueOrders: [{ id: 'oX', asset_id: 'T', side: 'BUY', price: '0.5', original_size: '500', size_matched: '200' }] }).toRecord[0].filledSize === 80, 'reconcile: partial fills accumulate incrementally (already 120, now 200 → records the 80 delta, never double-counts)');
+  // ⚠ SPLIT IN TWO ON 2026-08-15, AND THE SECOND HALF PINS A DEFECT RATHER THAN HIDING IT.
+  //
+  // The original single assertion handed in a ledger row WITHOUT `orderId` and expected the 80 delta. It
+  // fails today, and the selfcheck is RIGHT while lib/ is wrong — so it was not softened.
+  //
+  // WHAT CHANGED IN lib/: `planReconcile` now compares venue truth per VENUE ORDER ID
+  // (`recordedFilledByOrderId`) instead of per idempotency key, which is the correct fix for §5-bis p.72
+  // — one venue order can be matched by several of our keys. But the fallback is guarded on the wrong
+  // side: `const giaVO = idVO ? (recordedVO.get(idVO) || 0) : already;` falls back to the by-key count
+  // only when the VENUE's id is unreadable. When the venue id IS readable and the LEDGER ROW has no
+  // `orderId`, the lookup silently returns 0 and the whole cumulative `size_matched` is recorded again.
+  //
+  // ⚠ AND IT IS REACHABLE: `mkFill` writes `orderId: o.orderId || null` — the id of the SENT order, not
+  // of the venue order it just matched. `findVenueOrder` also matches by token+side+price, so a
+  // placement whose venue id we never captured produces exactly this ledger row. That is the phantom-fill
+  // shape that blocked the bot against the $600 cap on 2026-08-09 (2,790 ghost shares against zero at the
+  // venue).
+  //
+  // NOT FIXED HERE, and the reason is discipline, not doubt: `lib/safety/reconcile-fills.js` is on the
+  // risk path, and this repo's rule is to PROVE and QUANTIFY a defect on real journals before touching a
+  // defence. This checkout has no production journal to count occurrences in. The one-line candidate is
+  // `const giaVO = (idVO && recordedVO.has(idVO)) ? recordedVO.get(idVO) : already;` — strictly safer,
+  // since a venue id with no ledger rows falls back to a count that is 0 for a fresh order anyway.
+  //
+  // ① THE REALISTIC CASE — the ledger row carries the venue order id, which is what the reconciler
+  //    itself writes whenever it knew that id. The incremental property holds.
+  ok(RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [{ kind: 'fill', idempotencyKey: 'rk', orderId: 'oX', filledSize: 120 }], venueReachable: true, venueOrders: [{ id: 'oX', asset_id: 'T', side: 'BUY', price: '0.5', original_size: '500', size_matched: '200' }] }).toRecord[0].filledSize === 80, 'reconcile: partial fills accumulate incrementally (already 120, now 200 → records the 80 delta, never double-counts)');
+  // ② THE DEGENERATE CASE — pinned, so that fixing lib/ makes THIS line fail and forces whoever fixes it
+  //    to read the note above instead of discovering the change by accident.
+  ok(RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [{ kind: 'fill', idempotencyKey: 'rk', filledSize: 120 }], venueReachable: true, venueOrders: [{ id: 'oX', asset_id: 'T', side: 'BUY', price: '0.5', original_size: '500', size_matched: '200' }] }).toRecord[0].filledSize === 200, 'reconcile ⚠ KNOWN DEFECT PINNED: a ledger row WITHOUT orderId against a venue order WITH one re-records the full 200 instead of the 80 delta — see the note above; when this line starts failing, the defect has been fixed and the assertion must become 80');
   ok(RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [], venueReachable: false }).stillUnknown.length === 1 && RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [], venueReachable: false }).toRecord.length === 0, 'reconcile: an UNREACHABLE venue leaves the order UNKNOWN and records NOTHING (never fabricates a fill)');
   ok(RF.planReconcile({ userId: 'op', sentOrders: sent, ledgerRows: [], venueReachable: true, venueOrders: [], venueFills: null }).stillUnknown.length === 1, 'reconcile: an order that vanished with NO /trades cross-check stays UNKNOWN (never assumed filled AND never fabricated)');
 
@@ -752,6 +804,16 @@ const { reconcile } = require('../lib/maker/reconcile');
   fs.writeFileSync(limitsFile, JSON.stringify({ global: { maxOrderNotionalUsd: 25, maxOpenNotionalUsd: 500, maxOrdersPerWindow: 30, windowMs: 60000, maxDailyLossUsd: 50, venues: ['polymarket'] }, users: {} }));
   const dlAudit = tmpFile('dl-audit.jsonl');
   const dlFills = tmpFile('dl-fills.jsonl');
+  // ⚠ AGGIUNTO IL 2026-08-15 — UN GATE PIU' RECENTE PRECEDE QUELLO SOTTO PROVA.
+  // `risk-limits.evaluateLimits` rifiuta ora con `venue-positions-unreadable` quando lo snapshot delle
+  // posizioni del venue non e' leggibile: non si apre esposizione nuova senza sapere quanta ce n'e' gia'.
+  // Senza fixture questa sezione riceveva QUEL rifiuto e concludeva che il gate daily-loss non scattava —
+  // cioe' misurava la protezione sbagliata. Un test che vuole esercitare UN gate deve soddisfare tutti
+  // gli altri, esattamente come `permissiveSafety()` fa piu' sopra. Lo snapshot e' FRESCO e VUOTO: nessuna
+  // posizione aperta, quindi non aggiunge esposizione e non puo' mascherare il limite che si sta provando.
+  const dlPositions = tmpFile('dl-positions.json');
+  fs.writeFileSync(dlPositions, JSON.stringify({ at: NOWMS, positions: [] }));
+  const dlDeps = { auditFile: dlAudit, fillsFile: dlFills, snapshotFile: dlPositions, now: () => NOWMS };
   // a realised −$50 loss TODAY for 'op' (buy 100@0.60, sell 100@0.10 → −50), position now flat (open exposure 0).
   F.recordFill({ userId: 'op', venue: 'polymarket', tokenId: 'Z', side: 'BUY', filledSize: 100, filledPrice: 0.60, feeUsd: 0, idempotencyKey: 'z1', source: 'sc', ts: NOWMS - 3000 }, { fillsFile: dlFills });
   F.recordFill({ userId: 'op', venue: 'polymarket', tokenId: 'Z', side: 'SELL', filledSize: 100, filledPrice: 0.10, feeUsd: 0, idempotencyKey: 'z2', source: 'sc', ts: NOWMS - 2000 }, { fillsFile: dlFills });
@@ -761,7 +823,7 @@ const { reconcile } = require('../lib/maker/reconcile');
       const resolved = RL.resolveLimits({ userId }, { configFile: limitsFile });
       if (!resolved.ok) return { venueAllowed: false, limits: { allow: false, gate: 'limits-unreadable' }, clampEvents: [] };
       const venueAllowed = RL.isVenueAllowed({ venue, limits: resolved.limits });
-      const usage = readUsage({ userId, now: NOWMS }, { auditFile: dlAudit, fillsFile: dlFills });
+      const usage = readUsage({ userId, now: NOWMS }, dlDeps);
       const limits = RL.evaluateLimits({ order, usage, limits: resolved.limits });
       return { venueAllowed, limits, clampEvents: resolved.clampEvents || [], usage };
     },
@@ -771,7 +833,7 @@ const { reconcile } = require('../lib/maker/reconcile');
     setUserKill: ({ userId, reason, by }) => KS.setUserKill({ userId, reason, by }, { stateFile: killFile, auditFile: killAudit }),
   };
   // sanity: the daily-loss limit is what usage now measures
-  ok(readUsage({ userId: 'op', now: NOWMS }, { auditFile: dlAudit, fillsFile: dlFills }).realisedDailyPnlUsd === -50, 'usage: realised daily P&L reads −$50 from the fill ledger (the input the daily-loss limit needed)');
+  ok(readUsage({ userId: 'op', now: NOWMS }, dlDeps).realisedDailyPnlUsd === -50, 'usage: realised daily P&L reads −$50 from the fill ledger (the input the daily-loss limit needed)');
   const dlAdapter = createMakerAdapter({ mode: 'live-min', liveMinMarket: LIVE_MKT, allowedMarketIds: [], fundingApproved: true, credsProvider: async () => { throw new Error('unused'); }, signerProvider: async () => { throw new Error('unused'); }, safety: dlSafety });
   return dlAdapter.postOrder({ marketId: LIVE_MKT, tokenId: '0xZ', side: 'BUY', price: 0.5, size: 10, tickSize: 0.01, userId: 'op', venueRules: VR }).then(dlRes => {
     ok(dlRes.ok === false && dlRes.gate === 'limit-daily-loss', 'daily-loss: a placement while realised loss ≤ −cap is REFUSED at the daily-loss gate (limit-daily-loss)');

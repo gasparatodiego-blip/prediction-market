@@ -1,0 +1,2181 @@
+{
+  "generatoIl": "2026-08-15T20:58:04.210Z",
+  "capitale": 1500,
+  "tettoPerMercato": 61.25,
+  "tettoPerOrdine": 35.625,
+  "frazioneEcosystem": "0.95",
+  "faseA": {
+    "n": 112,
+    "periodo": {
+      "da": "2026-08-15T10:15:42.696Z",
+      "a": "2026-08-15T14:07:40.273Z",
+      "minuti": 232
+    },
+    "source": [
+      [
+        "manual-ui",
+        112
+      ]
+    ],
+    "op": [
+      [
+        "manual-place",
+        112
+      ]
+    ],
+    "outcome": [
+      [
+        "reject-live-min-market-unset",
+        56
+      ],
+      [
+        "reject-cap-missing",
+        42
+      ],
+      [
+        "reject-end-of-scale",
+        14
+      ]
+    ],
+    "userId": [
+      [
+        "operator",
+        112
+      ]
+    ],
+    "placement": [
+      [
+        "undefined",
+        56
+      ],
+      [
+        "dry-run",
+        56
+      ]
+    ],
+    "marketRef": [
+      [
+        "cid_7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c",
+        84
+      ],
+      [
+        "cid_9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a",
+        28
+      ]
+    ],
+    "marketRefSintetici": [
+      [
+        "cid_7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c",
+        84
+      ],
+      [
+        "cid_9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a",
+        28
+      ]
+    ],
+    "righeSuRefSintetici": 112,
+    "distanzeDistinte": [
+      0,
+      2
+    ],
+    "conDepth": 0,
+    "conDistanzaObiettivo": 0,
+    "accettate": 0
+  },
+  "faseAUtilizzabili": false,
+  "board": {
+    "generatoIl": "2026-08-15T20:49:00.840Z",
+    "righe": 95,
+    "ammissibili": 12,
+    "esclusiPerMotivo": [
+      [
+        "minsize-oltre-soglia",
+        47
+      ],
+      [
+        "scadenza-troppo-vicina",
+        36
+      ]
+    ]
+  },
+  "distribuzioni": {
+    "ecosystem": {
+      "frazione": "0.95",
+      "nGambe": 24,
+      "gambeNonQuotabili": 0,
+      "q25": 4.3374999999999995,
+      "mediana": 4.35,
+      "q75": 4.5,
+      "min": 4,
+      "max": 4.5
+    },
+    "manopola-spenta": {
+      "frazione": null,
+      "nGambe": 24,
+      "gambeNonQuotabili": 0,
+      "q25": 0.1875,
+      "mediana": 1.05,
+      "q75": 1.5,
+      "min": 0.15,
+      "max": 2
+    }
+  },
+  "mercati": [
+    {
+      "conditionId": "0xcede29c8af89d8bd2118088768dcee36736ed43af143e70d59f60d7b365a98ef",
+      "titolo": "Will a team from LPL (China) win LoL Worlds 2026?",
+      "categoria": "Esports",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.01,
+      "montepremiGiorno": 20,
+      "oreAllaScadenza": 3291,
+      "bestBidYes": 0.27,
+      "bestAskYes": 0.28,
+      "bestBidNo": 0.72,
+      "midYes": 0.275,
+      "midNo": 0.725,
+      "costoCoppia": 1,
+      "spreadYesC": 1,
+      "Qcomp": 5866.728,
+      "QcompBids": 5866.728,
+      "QcompAsks": 6118.024,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.23,
+            "distanzaC": 4.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.27,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.68,
+            "distanzaC": 4.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.72,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.26,
+            "distanzaC": 1.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.27,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.71,
+            "distanzaC": 1.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.72,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0xf43d99c0b796e0e5226dffa31c71c9fab943e3f79c0182c144eea93dc6b77ae2",
+      "titolo": "Will Catalina Lauf be the Republican nominee for FL-19?",
+      "categoria": "Elections",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.01,
+      "montepremiGiorno": 59,
+      "oreAllaScadenza": 51,
+      "bestBidYes": 0.81,
+      "bestAskYes": 0.82,
+      "bestBidNo": 0.18,
+      "midYes": 0.815,
+      "midNo": 0.185,
+      "costoCoppia": 1,
+      "spreadYesC": 1,
+      "Qcomp": 758.765,
+      "QcompBids": 758.765,
+      "QcompAsks": 1337.815,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.77,
+            "distanzaC": 4.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.81,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.14,
+            "distanzaC": 4.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.18,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.8,
+            "distanzaC": 1.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.81,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.17,
+            "distanzaC": 1.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.18,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0xb73f32c2884c65f5dae192c33bef3f7ce3faeec4ad313d2d3a6ad62ea2c95caf",
+      "titolo": "Will Alexander Vindman be the Democratic nominee for Senate in Florida?",
+      "categoria": "Elections",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.001,
+      "montepremiGiorno": 50,
+      "oreAllaScadenza": 51,
+      "bestBidYes": 0.926,
+      "bestAskYes": 0.928,
+      "bestBidNo": 0.072,
+      "midYes": 0.927,
+      "midNo": 0.073,
+      "costoCoppia": 1,
+      "spreadYesC": 0.2,
+      "Qcomp": 2252.258,
+      "QcompBids": 2252.258,
+      "QcompAsks": 5118.276,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.884,
+            "distanzaC": 4.3,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.926,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.03,
+            "distanzaC": 4.3,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.072,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.925,
+            "distanzaC": 0.2,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.926,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.071,
+            "distanzaC": 0.2,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.072,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0xfb481845055afdf15febad269fcb534be4c5e79d5789b72659a036660b46e11b",
+      "titolo": "Will Eric Barlow win the 2026 Wyoming Governor Republican primary election?",
+      "categoria": "Elections",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.001,
+      "montepremiGiorno": 50,
+      "oreAllaScadenza": 51,
+      "bestBidYes": 0.784,
+      "bestAskYes": 0.785,
+      "bestBidNo": 0.215,
+      "midYes": 0.7845,
+      "midNo": 0.2155,
+      "costoCoppia": 1,
+      "spreadYesC": 0.1,
+      "Qcomp": 5703.451,
+      "QcompBids": 5703.451,
+      "QcompAsks": 9296.155,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.741,
+            "distanzaC": 4.35,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.784,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.172,
+            "distanzaC": 4.35,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.215,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.783,
+            "distanzaC": 0.15,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.784,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.214,
+            "distanzaC": 0.15,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.215,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0xa875e0b4802818c2ed51fa4a44eeb303d2a11b1df946de66c0444d80468e78b6",
+      "titolo": "Will Megan Degenfelder win the 2026 Wyoming Governor Republican primary election?",
+      "categoria": "Elections",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.001,
+      "montepremiGiorno": 50,
+      "oreAllaScadenza": 51,
+      "bestBidYes": 0.218,
+      "bestAskYes": 0.219,
+      "bestBidNo": 0.781,
+      "midYes": 0.2185,
+      "midNo": 0.7815,
+      "costoCoppia": 1,
+      "spreadYesC": 0.1,
+      "Qcomp": 6075.758,
+      "QcompBids": 6075.758,
+      "QcompAsks": 8535.395,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.175,
+            "distanzaC": 4.35,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.218,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.738,
+            "distanzaC": 4.35,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.781,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.217,
+            "distanzaC": 0.15,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.218,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.78,
+            "distanzaC": 0.15,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.781,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0xe368e5e6be50377d08d2af99c9ad18694aef2f3af9ccbf60b1146302c3ee3da1",
+      "titolo": "Will Thomas Chalifoux be the Republican nominee for FL-09?",
+      "categoria": "Elections",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.01,
+      "montepremiGiorno": 29,
+      "oreAllaScadenza": 51,
+      "bestBidYes": 0.28,
+      "bestAskYes": 0.29,
+      "bestBidNo": 0.71,
+      "midYes": 0.285,
+      "midNo": 0.715,
+      "costoCoppia": 1,
+      "spreadYesC": 1,
+      "Qcomp": 874.312,
+      "QcompBids": 874.312,
+      "QcompAsks": 1328.858,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.24,
+            "distanzaC": 4.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.28,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.67,
+            "distanzaC": 4.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.71,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.27,
+            "distanzaC": 1.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.28,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.7,
+            "distanzaC": 1.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.71,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0x7a97cbf39c31ab569f8bd71e21423b851316cb9b4bcfe7accf29a2897c213e3c",
+      "titolo": "Will Jorge Martinez be the Republican nominee for FL-09?",
+      "categoria": "Elections",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.001,
+      "montepremiGiorno": 22,
+      "oreAllaScadenza": 51,
+      "bestBidYes": 0.231,
+      "bestAskYes": 0.232,
+      "bestBidNo": 0.768,
+      "midYes": 0.2315,
+      "midNo": 0.7685,
+      "costoCoppia": 1,
+      "spreadYesC": 0.1,
+      "Qcomp": 3605.28,
+      "QcompBids": 9382.752,
+      "QcompAsks": 3605.28,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.188,
+            "distanzaC": 4.35,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.231,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.725,
+            "distanzaC": 4.35,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.768,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.23,
+            "distanzaC": 0.15,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.231,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.767,
+            "distanzaC": 0.15,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.768,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0x016fbba075191c3366e459c5997a8b7253299ede03fd132f12f4fcac0f1e8a20",
+      "titolo": "Will Dan Green be the Republican nominee for FL-09?",
+      "categoria": "Elections",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.01,
+      "montepremiGiorno": 21,
+      "oreAllaScadenza": 51,
+      "bestBidYes": 0.21,
+      "bestAskYes": 0.22,
+      "bestBidNo": 0.78,
+      "midYes": 0.22,
+      "midNo": 0.78,
+      "costoCoppia": 1,
+      "spreadYesC": 1,
+      "Qcomp": 918.986,
+      "QcompBids": 918.986,
+      "QcompAsks": 1635.145,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.18,
+            "distanzaC": 4,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.21,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": true,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.74,
+            "distanzaC": 4,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.78,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": true,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.2,
+            "distanzaC": 2,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.21,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.77,
+            "distanzaC": 1,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.78,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+      "titolo": "Will a team from LCK (South Korea) win LoL Worlds 2026?",
+      "categoria": "Esports",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.01,
+      "montepremiGiorno": 27,
+      "oreAllaScadenza": 3291,
+      "bestBidYes": 0.65,
+      "bestAskYes": 0.66,
+      "bestBidNo": 0.34,
+      "midYes": 0.655,
+      "midNo": 0.345,
+      "costoCoppia": 1,
+      "spreadYesC": 1,
+      "Qcomp": 5896.185,
+      "QcompBids": 12151.893,
+      "QcompAsks": 5896.185,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.61,
+            "distanzaC": 4.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.65,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.3,
+            "distanzaC": 4.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.34,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.64,
+            "distanzaC": 1.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.65,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.33,
+            "distanzaC": 1.5,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.34,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0xd9e428d3af0ece1d660b4e3e68f556c4a36c63aaef509c00aca5cfcbcccd984c",
+      "titolo": "Will Angie Nixon be the Democratic nominee for Senate in Florida?",
+      "categoria": "Elections",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.001,
+      "montepremiGiorno": 50,
+      "oreAllaScadenza": 51,
+      "bestBidYes": 0.071,
+      "bestAskYes": 0.074,
+      "bestBidNo": 0.926,
+      "midYes": 0.072,
+      "midNo": 0.928,
+      "costoCoppia": 1,
+      "spreadYesC": 0.3,
+      "Qcomp": 2711.851,
+      "QcompBids": 5342.333,
+      "QcompAsks": 2711.851,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.029,
+            "distanzaC": 4.3,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.071,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.885,
+            "distanzaC": 4.3,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.926,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.07,
+            "distanzaC": 0.2,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.071,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.925,
+            "distanzaC": 0.3,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.926,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0xc16fade4bbc06895f8e456e1e49c6aa51c1b2dc7f734b3ad8fe8a5900d6a4174",
+      "titolo": "Will Jim Schwartzel be the Republican nominee for FL-19?",
+      "categoria": "Elections",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.001,
+      "montepremiGiorno": 41,
+      "oreAllaScadenza": 51,
+      "bestBidYes": 0.135,
+      "bestAskYes": 0.154,
+      "bestBidNo": 0.846,
+      "midYes": 0.1445,
+      "midNo": 0.8555,
+      "costoCoppia": 1,
+      "spreadYesC": 1.9,
+      "Qcomp": 997.189,
+      "QcompBids": 2991.566,
+      "QcompAsks": 790.064,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.101,
+            "distanzaC": 4.35,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.135,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.812,
+            "distanzaC": 4.35,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.846,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.134,
+            "distanzaC": 1.05,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.135,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.845,
+            "distanzaC": 1.05,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.846,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    },
+    {
+      "conditionId": "0xf2b0c93903a116cc841c2be960d4f5309153d4b93d6901f69a82f34259365770",
+      "titolo": "Will Ben Butler be the Republican nominee for FL-09?",
+      "categoria": "Elections",
+      "minSize": 20,
+      "maxSpreadC": 4.5,
+      "raggioBandaC": 4.5,
+      "tick": 0.001,
+      "montepremiGiorno": 28,
+      "oreAllaScadenza": 51,
+      "bestBidYes": 0.272,
+      "bestAskYes": 0.291,
+      "bestBidNo": 0.709,
+      "midYes": 0.2815,
+      "midNo": 0.7185,
+      "costoCoppia": 1,
+      "spreadYesC": 1.9,
+      "Qcomp": 590.499,
+      "QcompBids": 667.382,
+      "QcompAsks": 590.499,
+      "scenari": {
+        "ecosystem": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.238,
+            "distanzaC": 4.35,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.272,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.675,
+            "distanzaC": 4.35,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.709,
+            "alone": false,
+            "manopola": {
+              "spostato": true,
+              "alBordo": false,
+              "richiestaC": 4.275
+            }
+          }
+        },
+        "manopola-spenta": {
+          "yes": {
+            "ok": true,
+            "prezzo": 0.271,
+            "distanzaC": 1.05,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.272,
+            "alone": false,
+            "manopola": null
+          },
+          "no": {
+            "ok": true,
+            "prezzo": 0.708,
+            "distanzaC": 1.05,
+            "modo": "behind-best",
+            "onTop": false,
+            "bestOther": 0.709,
+            "alone": false,
+            "manopola": null
+          }
+        }
+      }
+    }
+  ],
+  "stime": [
+    {
+      "conditionId": "0xc16fade4bbc06895f8e456e1e49c6aa51c1b2dc7f734b3ad8fe8a5900d6a4174",
+      "titolo": "Will Jim Schwartzel be the Republican nominee for FL-19?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 41,
+      "capitale": 61.25,
+      "Qcomp": 997.189,
+      "distEcosystemC": {
+        "yes": 4.35,
+        "no": 4.35
+      },
+      "distSpentaC": {
+        "yes": 1.05,
+        "no": 1.05
+      },
+      "tickC": 0.1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001111,
+        "Sno": 0.001111,
+        "Qu": 0.068,
+        "Qcomp": 997.189,
+        "quota": 0.000068,
+        "montepremiGiorno": 41,
+        "rewardGiorno": 0.0028
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.587778,
+        "Sno": 0.587778,
+        "Qu": 36.001,
+        "Qcomp": 997.189,
+        "quota": 0.034845,
+        "montepremiGiorno": 41,
+        "rewardGiorno": 1.4286
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 58.558,
+        "Qcomp": 997.189,
+        "quota": 0.055466,
+        "montepremiGiorno": 41,
+        "rewardGiorno": 2.2741
+      },
+      "gambaCaraUsd": 52.4,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 41.64,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 41.64,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001111,
+        "Sno": 0.001111,
+        "Qu": 0.046,
+        "Qcomp": 997.189,
+        "quota": 0.000046,
+        "montepremiGiorno": 41,
+        "rewardGiorno": 0.0019
+      },
+      "spentaEff": {
+        "shareLato": 41.64,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.587778,
+        "Sno": 0.587778,
+        "Qu": 24.476,
+        "Qcomp": 997.189,
+        "quota": 0.023957,
+        "montepremiGiorno": 41,
+        "rewardGiorno": 0.9823
+      },
+      "unTickEff": {
+        "shareLato": 41.64,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 39.812,
+        "Qcomp": 997.189,
+        "quota": 0.038392,
+        "montepremiGiorno": 41,
+        "rewardGiorno": 1.5741
+      }
+    },
+    {
+      "conditionId": "0xd9e428d3af0ece1d660b4e3e68f556c4a36c63aaef509c00aca5cfcbcccd984c",
+      "titolo": "Will Angie Nixon be the Democratic nominee for Senate in Florida?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 50,
+      "capitale": 61.25,
+      "Qcomp": 2711.851,
+      "distEcosystemC": {
+        "yes": 4.3,
+        "no": 4.3
+      },
+      "distSpentaC": {
+        "yes": 0.2,
+        "no": 0.3
+      },
+      "tickC": 0.1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001975,
+        "Sno": 0.001975,
+        "Qu": 0.121,
+        "Qcomp": 2711.851,
+        "quota": 0.000045,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.0022
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.913086,
+        "Sno": 0.871111,
+        "Qu": 53.356,
+        "Qcomp": 2711.851,
+        "quota": 0.019295,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.9648
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 58.558,
+        "Qcomp": 2711.851,
+        "quota": 0.021137,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 1.0568
+      },
+      "gambaCaraUsd": 56.84,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 38.39,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 38.39,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001975,
+        "Sno": 0.001975,
+        "Qu": 0.076,
+        "Qcomp": 2711.851,
+        "quota": 0.000028,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.0014
+      },
+      "spentaEff": {
+        "shareLato": 38.39,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.913086,
+        "Sno": 0.871111,
+        "Qu": 33.441,
+        "Qcomp": 2711.851,
+        "quota": 0.012181,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.6091
+      },
+      "unTickEff": {
+        "shareLato": 38.39,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 36.702,
+        "Qcomp": 2711.851,
+        "quota": 0.013353,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.6677
+      }
+    },
+    {
+      "conditionId": "0xf2b0c93903a116cc841c2be960d4f5309153d4b93d6901f69a82f34259365770",
+      "titolo": "Will Ben Butler be the Republican nominee for FL-09?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 28,
+      "capitale": 61.25,
+      "Qcomp": 590.499,
+      "distEcosystemC": {
+        "yes": 4.35,
+        "no": 4.35
+      },
+      "distSpentaC": {
+        "yes": 1.05,
+        "no": 1.05
+      },
+      "tickC": 0.1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001111,
+        "Sno": 0.001111,
+        "Qu": 0.068,
+        "Qcomp": 590.499,
+        "quota": 0.000115,
+        "montepremiGiorno": 28,
+        "rewardGiorno": 0.0032
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.587778,
+        "Sno": 0.587778,
+        "Qu": 36.001,
+        "Qcomp": 590.499,
+        "quota": 0.057464,
+        "montepremiGiorno": 28,
+        "rewardGiorno": 1.609
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 58.558,
+        "Qcomp": 590.499,
+        "quota": 0.09022,
+        "montepremiGiorno": 28,
+        "rewardGiorno": 2.5262
+      },
+      "gambaCaraUsd": 44.01,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 49.58,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 49.58,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001111,
+        "Sno": 0.001111,
+        "Qu": 0.055,
+        "Qcomp": 590.499,
+        "quota": 0.000093,
+        "montepremiGiorno": 28,
+        "rewardGiorno": 0.0026
+      },
+      "spentaEff": {
+        "shareLato": 49.58,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.587778,
+        "Sno": 0.587778,
+        "Qu": 29.143,
+        "Qcomp": 590.499,
+        "quota": 0.047033,
+        "montepremiGiorno": 28,
+        "rewardGiorno": 1.3169
+      },
+      "unTickEff": {
+        "shareLato": 49.58,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 47.403,
+        "Qcomp": 590.499,
+        "quota": 0.074311,
+        "montepremiGiorno": 28,
+        "rewardGiorno": 2.0807
+      }
+    },
+    {
+      "conditionId": "0xf43d99c0b796e0e5226dffa31c71c9fab943e3f79c0182c144eea93dc6b77ae2",
+      "titolo": "Will Catalina Lauf be the Republican nominee for FL-19?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 59,
+      "capitale": 61.25,
+      "Qcomp": 758.765,
+      "distEcosystemC": {
+        "yes": 4.5,
+        "no": 4.5
+      },
+      "distSpentaC": {
+        "yes": 1.5,
+        "no": 1.5
+      },
+      "tickC": 1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0,
+        "Sno": 0,
+        "Qu": 0,
+        "Qcomp": 758.765,
+        "quota": 0,
+        "montepremiGiorno": 59,
+        "rewardGiorno": 0
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.444444,
+        "Sno": 0.444444,
+        "Qu": 27.222,
+        "Qcomp": 758.765,
+        "quota": 0.034634,
+        "montepremiGiorno": 59,
+        "rewardGiorno": 2.0434
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.604938,
+        "Sno": 0.604938,
+        "Qu": 37.052,
+        "Qcomp": 758.765,
+        "quota": 0.046559,
+        "montepremiGiorno": 59,
+        "rewardGiorno": 2.747
+      },
+      "gambaCaraUsd": 49.92,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 43.71,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 43.71,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0,
+        "Sno": 0,
+        "Qu": 0,
+        "Qcomp": 758.765,
+        "quota": 0,
+        "montepremiGiorno": 59,
+        "rewardGiorno": 0
+      },
+      "spentaEff": {
+        "shareLato": 43.71,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.444444,
+        "Sno": 0.444444,
+        "Qu": 19.427,
+        "Qcomp": 758.765,
+        "quota": 0.024965,
+        "montepremiGiorno": 59,
+        "rewardGiorno": 1.4729
+      },
+      "unTickEff": {
+        "shareLato": 43.71,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.604938,
+        "Sno": 0.604938,
+        "Qu": 26.443,
+        "Qcomp": 758.765,
+        "quota": 0.033676,
+        "montepremiGiorno": 59,
+        "rewardGiorno": 1.9869
+      }
+    },
+    {
+      "conditionId": "0xe368e5e6be50377d08d2af99c9ad18694aef2f3af9ccbf60b1146302c3ee3da1",
+      "titolo": "Will Thomas Chalifoux be the Republican nominee for FL-09?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 29,
+      "capitale": 61.25,
+      "Qcomp": 874.312,
+      "distEcosystemC": {
+        "yes": 4.5,
+        "no": 4.5
+      },
+      "distSpentaC": {
+        "yes": 1.5,
+        "no": 1.5
+      },
+      "tickC": 1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0,
+        "Sno": 0,
+        "Qu": 0,
+        "Qcomp": 874.312,
+        "quota": 0,
+        "montepremiGiorno": 29,
+        "rewardGiorno": 0
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.444444,
+        "Sno": 0.444444,
+        "Qu": 27.222,
+        "Qcomp": 874.312,
+        "quota": 0.030195,
+        "montepremiGiorno": 29,
+        "rewardGiorno": 0.8757
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.604938,
+        "Sno": 0.604938,
+        "Qu": 37.052,
+        "Qcomp": 874.312,
+        "quota": 0.040656,
+        "montepremiGiorno": 29,
+        "rewardGiorno": 1.179
+      },
+      "gambaCaraUsd": 43.79,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 49.83,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 49.83,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0,
+        "Sno": 0,
+        "Qu": 0,
+        "Qcomp": 874.312,
+        "quota": 0,
+        "montepremiGiorno": 29,
+        "rewardGiorno": 0
+      },
+      "spentaEff": {
+        "shareLato": 49.83,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.444444,
+        "Sno": 0.444444,
+        "Qu": 22.145,
+        "Qcomp": 874.312,
+        "quota": 0.024702,
+        "montepremiGiorno": 29,
+        "rewardGiorno": 0.7164
+      },
+      "unTickEff": {
+        "shareLato": 49.83,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.604938,
+        "Sno": 0.604938,
+        "Qu": 30.141,
+        "Qcomp": 874.312,
+        "quota": 0.033325,
+        "montepremiGiorno": 29,
+        "rewardGiorno": 0.9664
+      }
+    },
+    {
+      "conditionId": "0x016fbba075191c3366e459c5997a8b7253299ede03fd132f12f4fcac0f1e8a20",
+      "titolo": "Will Dan Green be the Republican nominee for FL-09?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 21,
+      "capitale": 61.25,
+      "Qcomp": 918.986,
+      "distEcosystemC": {
+        "yes": 4,
+        "no": 4
+      },
+      "distSpentaC": {
+        "yes": 2,
+        "no": 1
+      },
+      "tickC": 1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.012346,
+        "Sno": 0.012346,
+        "Qu": 0.756,
+        "Qcomp": 918.986,
+        "quota": 0.000822,
+        "montepremiGiorno": 21,
+        "rewardGiorno": 0.0173
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.308642,
+        "Sno": 0.604938,
+        "Qu": 18.904,
+        "Qcomp": 918.986,
+        "quota": 0.020156,
+        "montepremiGiorno": 21,
+        "rewardGiorno": 0.4233
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.604938,
+        "Sno": 0.604938,
+        "Qu": 37.052,
+        "Qcomp": 918.986,
+        "quota": 0.038756,
+        "montepremiGiorno": 21,
+        "rewardGiorno": 0.8139
+      },
+      "gambaCaraUsd": 47.77,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 45.67,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 45.67,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.012346,
+        "Sno": 0.012346,
+        "Qu": 0.564,
+        "Qcomp": 918.986,
+        "quota": 0.000613,
+        "montepremiGiorno": 21,
+        "rewardGiorno": 0.0129
+      },
+      "spentaEff": {
+        "shareLato": 45.67,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.308642,
+        "Sno": 0.604938,
+        "Qu": 14.097,
+        "Qcomp": 918.986,
+        "quota": 0.015108,
+        "montepremiGiorno": 21,
+        "rewardGiorno": 0.3173
+      },
+      "unTickEff": {
+        "shareLato": 45.67,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.604938,
+        "Sno": 0.604938,
+        "Qu": 27.629,
+        "Qcomp": 918.986,
+        "quota": 0.029188,
+        "montepremiGiorno": 21,
+        "rewardGiorno": 0.6129
+      }
+    },
+    {
+      "conditionId": "0xa875e0b4802818c2ed51fa4a44eeb303d2a11b1df946de66c0444d80468e78b6",
+      "titolo": "Will Megan Degenfelder win the 2026 Wyoming Governor Republican primary election?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 50,
+      "capitale": 61.25,
+      "Qcomp": 6075.758,
+      "distEcosystemC": {
+        "yes": 4.35,
+        "no": 4.35
+      },
+      "distSpentaC": {
+        "yes": 0.15,
+        "no": 0.15
+      },
+      "tickC": 0.1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001111,
+        "Sno": 0.001111,
+        "Qu": 0.068,
+        "Qcomp": 6075.758,
+        "quota": 0.000011,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.0006
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.934444,
+        "Sno": 0.934444,
+        "Qu": 57.235,
+        "Qcomp": 6075.758,
+        "quota": 0.009332,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.4666
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 58.558,
+        "Qcomp": 6075.758,
+        "quota": 0.009546,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.4773
+      },
+      "gambaCaraUsd": 47.87,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 45.59,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 45.59,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001111,
+        "Sno": 0.001111,
+        "Qu": 0.051,
+        "Qcomp": 6075.758,
+        "quota": 0.000008,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.0004
+      },
+      "spentaEff": {
+        "shareLato": 45.59,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.934444,
+        "Sno": 0.934444,
+        "Qu": 42.597,
+        "Qcomp": 6075.758,
+        "quota": 0.006962,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.3481
+      },
+      "unTickEff": {
+        "shareLato": 45.59,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 43.582,
+        "Qcomp": 6075.758,
+        "quota": 0.007122,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.3561
+      }
+    },
+    {
+      "conditionId": "0xb73f32c2884c65f5dae192c33bef3f7ce3faeec4ad313d2d3a6ad62ea2c95caf",
+      "titolo": "Will Alexander Vindman be the Democratic nominee for Senate in Florida?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 50,
+      "capitale": 61.25,
+      "Qcomp": 2252.258,
+      "distEcosystemC": {
+        "yes": 4.3,
+        "no": 4.3
+      },
+      "distSpentaC": {
+        "yes": 0.2,
+        "no": 0.2
+      },
+      "tickC": 0.1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001975,
+        "Sno": 0.001975,
+        "Qu": 0.121,
+        "Qcomp": 2252.258,
+        "quota": 0.000054,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.0027
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.913086,
+        "Sno": 0.913086,
+        "Qu": 55.927,
+        "Qcomp": 2252.258,
+        "quota": 0.02423,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 1.2115
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 58.558,
+        "Qcomp": 2252.258,
+        "quota": 0.025341,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 1.267
+      },
+      "gambaCaraUsd": 56.78,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 38.43,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 38.43,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001975,
+        "Sno": 0.001975,
+        "Qu": 0.076,
+        "Qcomp": 2252.258,
+        "quota": 0.000034,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.0017
+      },
+      "spentaEff": {
+        "shareLato": 38.43,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.913086,
+        "Sno": 0.913086,
+        "Qu": 35.09,
+        "Qcomp": 2252.258,
+        "quota": 0.015341,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.7671
+      },
+      "unTickEff": {
+        "shareLato": 38.43,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 36.741,
+        "Qcomp": 2252.258,
+        "quota": 0.016051,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.8026
+      }
+    },
+    {
+      "conditionId": "0x7a97cbf39c31ab569f8bd71e21423b851316cb9b4bcfe7accf29a2897c213e3c",
+      "titolo": "Will Jorge Martinez be the Republican nominee for FL-09?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 22,
+      "capitale": 61.25,
+      "Qcomp": 3605.28,
+      "distEcosystemC": {
+        "yes": 4.35,
+        "no": 4.35
+      },
+      "distSpentaC": {
+        "yes": 0.15,
+        "no": 0.15
+      },
+      "tickC": 0.1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001111,
+        "Sno": 0.001111,
+        "Qu": 0.068,
+        "Qcomp": 3605.28,
+        "quota": 0.000019,
+        "montepremiGiorno": 22,
+        "rewardGiorno": 0.0004
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.934444,
+        "Sno": 0.934444,
+        "Qu": 57.235,
+        "Qcomp": 3605.28,
+        "quota": 0.015627,
+        "montepremiGiorno": 22,
+        "rewardGiorno": 0.3438
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 58.558,
+        "Qcomp": 3605.28,
+        "quota": 0.015983,
+        "montepremiGiorno": 22,
+        "rewardGiorno": 0.3516
+      },
+      "gambaCaraUsd": 47.07,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 46.36,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 46.36,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001111,
+        "Sno": 0.001111,
+        "Qu": 0.052,
+        "Qcomp": 3605.28,
+        "quota": 0.000014,
+        "montepremiGiorno": 22,
+        "rewardGiorno": 0.0003
+      },
+      "spentaEff": {
+        "shareLato": 46.36,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.934444,
+        "Sno": 0.934444,
+        "Qu": 43.318,
+        "Qcomp": 3605.28,
+        "quota": 0.011872,
+        "montepremiGiorno": 22,
+        "rewardGiorno": 0.2612
+      },
+      "unTickEff": {
+        "shareLato": 46.36,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 44.319,
+        "Qcomp": 3605.28,
+        "quota": 0.012144,
+        "montepremiGiorno": 22,
+        "rewardGiorno": 0.2672
+      }
+    },
+    {
+      "conditionId": "0xcede29c8af89d8bd2118088768dcee36736ed43af143e70d59f60d7b365a98ef",
+      "titolo": "Will a team from LPL (China) win LoL Worlds 2026?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 20,
+      "capitale": 61.25,
+      "Qcomp": 5866.728,
+      "distEcosystemC": {
+        "yes": 4.5,
+        "no": 4.5
+      },
+      "distSpentaC": {
+        "yes": 1.5,
+        "no": 1.5
+      },
+      "tickC": 1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0,
+        "Sno": 0,
+        "Qu": 0,
+        "Qcomp": 5866.728,
+        "quota": 0,
+        "montepremiGiorno": 20,
+        "rewardGiorno": 0
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.444444,
+        "Sno": 0.444444,
+        "Qu": 27.222,
+        "Qcomp": 5866.728,
+        "quota": 0.004619,
+        "montepremiGiorno": 20,
+        "rewardGiorno": 0.0924
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.604938,
+        "Sno": 0.604938,
+        "Qu": 37.052,
+        "Qcomp": 5866.728,
+        "quota": 0.006276,
+        "montepremiGiorno": 20,
+        "rewardGiorno": 0.1255
+      },
+      "gambaCaraUsd": 44.41,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 49.14,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 49.14,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0,
+        "Sno": 0,
+        "Qu": 0,
+        "Qcomp": 5866.728,
+        "quota": 0,
+        "montepremiGiorno": 20,
+        "rewardGiorno": 0
+      },
+      "spentaEff": {
+        "shareLato": 49.14,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.444444,
+        "Sno": 0.444444,
+        "Qu": 21.839,
+        "Qcomp": 5866.728,
+        "quota": 0.003709,
+        "montepremiGiorno": 20,
+        "rewardGiorno": 0.0742
+      },
+      "unTickEff": {
+        "shareLato": 49.14,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.604938,
+        "Sno": 0.604938,
+        "Qu": 29.725,
+        "Qcomp": 5866.728,
+        "quota": 0.005041,
+        "montepremiGiorno": 20,
+        "rewardGiorno": 0.1008
+      }
+    },
+    {
+      "conditionId": "0xfb481845055afdf15febad269fcb534be4c5e79d5789b72659a036660b46e11b",
+      "titolo": "Will Eric Barlow win the 2026 Wyoming Governor Republican primary election?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 50,
+      "capitale": 61.25,
+      "Qcomp": 5703.451,
+      "distEcosystemC": {
+        "yes": 4.35,
+        "no": 4.35
+      },
+      "distSpentaC": {
+        "yes": 0.15,
+        "no": 0.15
+      },
+      "tickC": 0.1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001111,
+        "Sno": 0.001111,
+        "Qu": 0.068,
+        "Qcomp": 5703.451,
+        "quota": 0.000012,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.0006
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.934444,
+        "Sno": 0.934444,
+        "Qu": 57.235,
+        "Qcomp": 5703.451,
+        "quota": 0.009935,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.4968
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 58.558,
+        "Qcomp": 5703.451,
+        "quota": 0.010163,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.5081
+      },
+      "gambaCaraUsd": 48.05,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 45.41,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 45.41,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.001111,
+        "Sno": 0.001111,
+        "Qu": 0.05,
+        "Qcomp": 5703.451,
+        "quota": 0.000009,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.0004
+      },
+      "spentaEff": {
+        "shareLato": 45.41,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.934444,
+        "Sno": 0.934444,
+        "Qu": 42.434,
+        "Qcomp": 5703.451,
+        "quota": 0.007385,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.3693
+      },
+      "unTickEff": {
+        "shareLato": 45.41,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.956049,
+        "Sno": 0.956049,
+        "Qu": 43.415,
+        "Qcomp": 5703.451,
+        "quota": 0.007555,
+        "montepremiGiorno": 50,
+        "rewardGiorno": 0.3777
+      }
+    },
+    {
+      "conditionId": "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+      "titolo": "Will a team from LCK (South Korea) win LoL Worlds 2026?",
+      "minSize": 20,
+      "raggioBandaC": 4.5,
+      "montepremiGiorno": 27,
+      "capitale": 61.25,
+      "Qcomp": 5896.185,
+      "distEcosystemC": {
+        "yes": 4.5,
+        "no": 4.5
+      },
+      "distSpentaC": {
+        "yes": 1.5,
+        "no": 1.5
+      },
+      "tickC": 1,
+      "ecosystem": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0,
+        "Sno": 0,
+        "Qu": 0,
+        "Qcomp": 5896.185,
+        "quota": 0,
+        "montepremiGiorno": 27,
+        "rewardGiorno": 0
+      },
+      "spenta": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.444444,
+        "Sno": 0.444444,
+        "Qu": 27.222,
+        "Qcomp": 5896.185,
+        "quota": 0.004596,
+        "montepremiGiorno": 27,
+        "rewardGiorno": 0.1241
+      },
+      "unTick": {
+        "shareLato": 61.25,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.604938,
+        "Sno": 0.604938,
+        "Qu": 37.052,
+        "Qcomp": 5896.185,
+        "quota": 0.006245,
+        "montepremiGiorno": 27,
+        "rewardGiorno": 0.1686
+      },
+      "gambaCaraUsd": 40.12,
+      "entroTettoOrdine": false,
+      "capitaleEffettivo": 54.39,
+      "pavimentoPremiante": 24.5,
+      "sopraIlPavimento": true,
+      "ecosystemEff": {
+        "shareLato": 54.39,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0,
+        "Sno": 0,
+        "Qu": 0,
+        "Qcomp": 5896.185,
+        "quota": 0,
+        "montepremiGiorno": 27,
+        "rewardGiorno": 0
+      },
+      "spentaEff": {
+        "shareLato": 54.39,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.444444,
+        "Sno": 0.444444,
+        "Qu": 24.173,
+        "Qcomp": 5896.185,
+        "quota": 0.004083,
+        "montepremiGiorno": 27,
+        "rewardGiorno": 0.1102
+      },
+      "unTickEff": {
+        "shareLato": 54.39,
+        "sopraMinimo": true,
+        "minSize": 20,
+        "Syes": 0.604938,
+        "Sno": 0.604938,
+        "Qu": 32.902,
+        "Qcomp": 5896.185,
+        "quota": 0.005549,
+        "montepremiGiorno": 27,
+        "rewardGiorno": 0.1498
+      }
+    }
+  ],
+  "totali": {
+    "ecosystem": 0.03,
+    "spenta": 10.08,
+    "unTick": 13.495,
+    "ecosystemEff": 0.022,
+    "spentaEff": 7.345,
+    "unTickEff": 9.943
+  },
+  "totaliPrimiDue": {
+    "ecosystemEff": 0.003,
+    "spentaEff": 1.591,
+    "unTickEff": 2.242
+  },
+  "capitaleImpegnabile": 548.14
+}
