@@ -276,7 +276,13 @@ const TRIGGER_ATTIVO = process.env.TRIGGER_CAPITALE_FERMO !== '0';
 // Falliva CHIUSO (nessun rischio di capitale), ma il gradino non esisteva. `bot-enabled.test.js` non
 // poteva vederlo: la funzione c'era, mancava il filo. Vedi §5-bis p.153.
 const { statoBot, botAttivo, impostaBot, apertureDallAvvio, registraMercatoAperto, FILE: FILE_INTERRUTTORE } = require('../lib/maker/bot-enabled');
-const DASHBOARD = (process.env.REALLOC_DASHBOARD_BASE || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+// Il saldo pUSD del funder, dalla cache condivisa IN PROCESSO — la stessa che usano agent40, il trigger
+// a capitale fermo e agent45. Ha sostituito la fetch al dashboard su 127.0.0.1:3000 il 16 agosto 2026:
+// vedi `leggiSaldo` piu' sotto. `saldo-cache` fa un eth_call in sola lettura e non sa piazzare niente.
+// ⚠ SE QUESTA RIGA SPARISCE, `leggiSaldo` NON esplode in modo visibile: il suo `try` restituirebbe
+// `readable:false` e il bot pianificherebbe su capitale zero, in silenzio. E' la forma di §5-bis p.153,
+// ed e' il motivo per cui `saldo-da-cache-non-da-dashboard.test.js` asserisce l'import PER NOME.
+const { leggiSaldoUsd } = require('../lib/maker/saldo-cache');
 const CLOB_BASE = process.env.POLY_CLOB_BASE || 'https://clob.polymarket.com';
 // Un ciclo non parte mai nel primo minuto di vita del processo: un riavvio in serie di pm2 non deve
 // tradursi in una raffica di reset. E se l'ultimo ciclo è più recente dell'intervallo, si aspetta il
@@ -402,22 +408,37 @@ function scadenzaDalBoard(marketId, grezzaVenue) {
 }
 
 // ── IL SALDO ────────────────────────────────────────────────────────────────────────────────────────
-// Il lettore on-chain è lib/poly-chain-read.ts, TypeScript, che da un processo node semplice non si può
-// richiedere. La dashboard però lo espone già in sola lettura su /api/rewards/balance — nessuna
-// credenziale, nessuna firma, solo un eth_call sul saldo del proxy — e riusare quella strada evita di
-// scrivere un SECONDO lettore di saldo che possa dire un numero diverso dal primo.
+// ═══ ERA UNA CHIAMATA HTTP AL DASHBOARD, E IL DASHBOARD NON ESISTE PIÙ (16 agosto 2026) ═════════════
+// Qui c'era `GET ${DASHBOARD}/api/rewards/balance` su 127.0.0.1:3000, e la ragione di allora era buona:
+// il lettore on-chain era `lib/poly-chain-read.ts`, TypeScript, che da un processo node semplice non si
+// può richiedere — quindi si riusava la strada che c'era invece di scrivere un SECONDO lettore capace di
+// dire un numero diverso dal primo.
 //
-// `stale:true` significa che il refresh è fallito e si sta servendo una lettura precedente: qui vale
-// come non leggibile. Un saldo di ieri farebbe calcolare un piano su capitale che potrebbe non esserci,
-// e il ciclo si ripresenta fra sei ore comunque.
+// Quella premessa è caduta due volte. Il `dashboard` è uscito dalla flotta il 15 agosto (le decisioni si
+// prendono da `scripts/cli/`), quindi la fetch dava `ECONNREFUSED` a ogni giro; e `lib/maker/saldo-cache`
+// esiste ed è il lettore condiviso che agent40, il trigger e agent45 usano già — misurato nello stesso
+// istante in cui questa riga leggeva $0,00: agent40 leggeva **$1.499,64**.
+//
+// ⚠ NON È UN SECONDO LETTORE: è ESATTAMENTE il primo. `saldo-cache` è la fonte unica in processo
+// (eth_call su `balanceOf` del funder, nessuna credenziale, nessuna firma, nessuna superficie che sappia
+// piazzare), e passare di lì RIMUOVE una divergenza invece di aggiungerne una — il dashboard leggeva a
+// sua volta la stessa catena, con un salto HTTP in mezzo.
+//
+// ⚠ IL FALLIMENTO RESTA CHIUSO, E NELLA STESSA FORMA DI PRIMA. `affidabile:false` significa «la lettura
+// non autorizza esposizione nuova» ed è il gemello esatto del vecchio `stale:true`: la cache può avere
+// un `usd` in mano e dichiararlo comunque inaffidabile (lettura fallita, valore oltre il limite d'età).
+// In quel caso si restituisce `readable:false` e NON si passa il numero — un saldo di minuti fa farebbe
+// calcolare un piano su capitale che potrebbe non esserci, e il ciclo si ripresenta comunque.
+// `usd` non finito ⇒ non leggibile: «mai letto» è sconosciuto, non zero (§5.3, `Number(null) === 0`).
 async function leggiSaldo() {
-  let j;
-  try { j = await getJson(`${DASHBOARD}/api/rewards/balance`, 15_000); }
-  catch (e) { return { readable: false, error: `dashboard irraggiungibile: ${e.message}` }; }
-  if (!j || j.rpcReachable !== true) return { readable: false, error: 'RPC non raggiungibile', payload: j || null };
-  if (j.stale === true) return { readable: false, error: `saldo stantio (${j.ageSeconds}s): il refresh on-chain è fallito`, payload: j };
-  if (!fin(j.pusdBalance)) return { readable: false, error: 'saldo mai letto (pusdBalance null): sconosciuto, non zero', payload: j };
-  return { readable: true, usd: j.pusdBalance, readAt: j.readAt, ageSeconds: j.ageSeconds };
+  let s;
+  try { s = await leggiSaldoUsd(); }
+  catch (e) { return { readable: false, error: `lettura del saldo fallita: ${e && e.message ? e.message : String(e)}` }; }
+  if (!s) return { readable: false, error: 'lettore del saldo senza risposta' };
+  if (s.affidabile !== true) return { readable: false, error: s.motivo || 'saldo non affidabile', payload: { fonte: s.fonte || null, etaMs: s.etaMs ?? null } };
+  if (!fin(s.usd)) return { readable: false, error: 'saldo mai letto (usd null): sconosciuto, non zero', payload: { fonte: s.fonte || null } };
+  return { readable: true, usd: s.usd, readAt: fin(s.etaMs) ? Date.now() - s.etaMs : null,
+    ageSeconds: fin(s.etaMs) ? Math.round(s.etaMs / 1000) : null, fonte: s.fonte || null };
 }
 
 // ── IL PIANO, CALCOLATO IN UN PROCESSO FIGLIO CHE POI MUORE ─────────────────────────────────────────
