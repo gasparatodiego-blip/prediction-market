@@ -262,9 +262,9 @@ module.exports = {
         // scoperto molto prima che gli ordini invecchino.
         MAKER_MID_STANTIO_TIMEOUT_MS: '120000',
         MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95',
-        MAKER_MODE: 'live-min',
-        MAKER_ADAPTER_DRYRUN: '',
-        MAKER_PLACEMENT: 'send',
+        // MAKER_MODE — TOLTA A FINE SESSIONE 16/08/2026: assente ⇒ non e' in LIVE_MODES ⇒ rifiuto.
+        // MAKER_ADAPTER_DRYRUN — TOLTA: assente ⇒ il .env impone true ⇒ canWrite false.
+        // MAKER_PLACEMENT — TOLTA: assente ⇒ placement 'dry-run'.
         // ⚠ LA QUINTA CINTURA, E NON E' UN DOPPIONE DI `MAKER_PLACEMENT` — 16 agosto 2026.
         // `MAKER_PLACEMENT` governa l'ADAPTER; questa governa la CORSIA MANUALE
         // (`lib/maker/manual-order.js:250`, «Deliberately NOT MAKER_PLACEMENT»), che e' la strada da cui
@@ -273,7 +273,7 @@ module.exports = {
         // `outcome: dry-run-validated`, cioe' ordini costruiti, passati da TUTTI i gate e fermati
         // nell'istante prima della POST — `execution-audit.jsonl` a 0 byte, zero ordini al venue.
         // Qualunque valore diverso dalla stringa esatta `send` resta dry-run.
-        MANUAL_ORDER_PLACEMENT: 'send' },
+      },
     },
     {
       name:          'agent38-tape-watchdog',
@@ -431,15 +431,15 @@ module.exports = {
         //
         // COME SI DISARMA TUTTO: si cancellano queste quattro righe (e le tre di agent40) e si riavvia
         // dal file. Ogni assenza e' fail-closed per costruzione.
-        MAKER_MODE: 'live-min',
-        MAKER_ADAPTER_DRYRUN: '',
-        MAKER_PLACEMENT: 'send',
-        REALLOC_SCHEDULER_DRY_RUN: '0',
+        // MAKER_MODE — TOLTA A FINE SESSIONE 16/08/2026.
+        // MAKER_ADAPTER_DRYRUN — TOLTA.
+        // MAKER_PLACEMENT — TOLTA.
+        // REALLOC_SCHEDULER_DRY_RUN — TOLTA: assente ⇒ freno di prova INSERITO (fail-closed).
         // ⚠ LA QUINTA CINTURA — vedi il blocco gemello di agent40. E' QUESTO il processo che apre, e
         // quindi e' questa la riga che fa partire gli ordini veri: `bulk-allocate` di agent41 passa da
         // `lib/maker/manual-order`, non dall'adapter, e legge `MANUAL_ORDER_PLACEMENT` e non
         // `MAKER_PLACEMENT`. Con le altre quattro gia' tolte, era l'unica cosa fra il piano e il venue.
-        MANUAL_ORDER_PLACEMENT: 'send',
+        // MANUAL_ORDER_PLACEMENT — TOLTA: assente ⇒ la corsia manuale resta dry-run.
       },
     },
     {
