@@ -1386,90 +1386,20 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
 problema è già stato incontrato vale più del racconto di come. Il dettaglio integrale è in `git log`
 e nei commit citati nei sorgenti.
 
-**153 · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO.**
-`agents/agent41-realloc-scheduler.js:1766` chiamava `impostaBot({enabled:false, …})`, ma la
-destrutturazione da `lib/maker/bot-enabled` (riga 271) si fermava a `registraMercatoAperto`. Il `try`
-che avvolge `eseguiGradino` catturava il `ReferenceError` e lo restituiva come esito ordinario —
-`azione fallita: impostaBot is not defined` — quindi la scala di sblocco arrivava in fondo,
-**dichiarava di aver fermato il bot, e il bot restava su AVVIA**. **Sesta occorrenza della classe «dep
-non cablata» di §5.3**, e la più insidiosa: `bot-enabled.test.js` provava che la funzione funziona, i
-test su agent41 provavano i gradini 1-5 (tutti cablati), e nessuno provava il **filo**.
-**Falliva CHIUSO** — nessun rischio di capitale, il bot semplicemente non si fermava.
-**Misurato**: gradino 6 raggiunto **2 volte** in **11h20m** (il modulo esiste nel giornale solo dal
-13/08 07:39:06Z, prima non c'è nulla): 08:59:06Z, **falso positivo** del difetto `ultimoCicloOk` di
-p.135 (capitale al lavoro 82,7%, 28 ordini vivi), e 18:52:31Z, **vero** (23,8%, 1 ordine vivo).
-Sul codice post-restart-78: **1 scatto in 6h46m, corretto.**
-**Difetto minore, stesso commit**: il gradino 5 interpolava `pr.mercati` (l'array delle VOCI) invece
-di `pr.marketIds`, e logava `[object Object]` sessanta volte — mentre il ciclo normale usava già
-`marketIds.length`. Estratto in `messaggioFeedRiseminato`, puro, con l'assenza che **non diventa 0**.
-Test: `lib/maker/gradino-sei-cablato.test.js`, 25 asserzioni. Difende la **proprietà** («nessuna
-funzione di `bot-enabled` è chiamata senza essere importata»), non la stringa; esegue il gradino 6
-**davvero** contro una spia installata prima del `require`; e **rilegge `data/maker-bot-enabled.json`
-prima e dopo**, fallendo se è cambiato di un byte (§5 punto 1). Verificato che **fallisce sul codice
-vecchio** — l'unica prova che un test serva a qualcosa.
+**153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
 
-**168 · IL TETTO DI ESPOSIZIONE ESENTA LE CHIUSURE PROVATE, E SCENDE A $150 — 16 agosto 2026.**
-Vedi §4.2 per la regola. Qui la forma e la prova. **Il difetto**: `lib/safety/risk-limits.evaluateLimits`
-limite 2 non riceveva nessuna nozione di «questo ordine chiude» — `adapter.js` gli passava
-`order: { notionalUsd }` e basta. L'esenzione di chiusura esisteva dal 12 agosto (§5-bis p.147) ma era
-cablata **solo** al tetto per ordine live-min e a `manual-order-cap`; al tetto di esposizione non
-arrivava. **Verificato sul codice di ieri, e la trappola è nei due versi**: con esposizione $145 su un
-tetto $150, un BUY da $20 che completa la coppia ⇒ `allow:false / max-open-notional`, **e anche** la
-SELL da $20 che liquiderebbe la gamba nuda ⇒ `allow:false`. La posizione restava murata.
-**La cura**: `esenzioneEsposizione` attraversa `adapter → safety/index → risk-limits`, ed è la **prova**
-di `esenzione-chiusura.provaChiusura` — importata, non ricopiata, e **memoizzata** in `adapter.js` così
-i due tetti condividono una lettura sola dello snapshot (ricopiarla sarebbe D1 su un limite di rischio).
-Esenta **solo** il limite 2: i due rami fail-closed che lo precedono restano davanti, e con essi tetto
-per ordine, rate limit, perdita giornaliera, allowlist e KILL.
-**Il tetto scende da $600 a $150** su decisione dell'operatore, per dare alla rotazione di §4.13 il
-soffitto di ~$294 che aveva accettato. **Due conseguenze dichiarate**: il gate confronta
-`openNotionalUsd + notional` anche sugli ordini di **apertura**, quindi la gamba più cara del piano
-($54,38) smette di essere piazzabile sopra ~$95 di fill riconciliati — la rotazione si ferma lì; e $150
-sta sotto `3 × $61,25`, il che rende rossi tre test **apposta** (§5.2 p.37), non ammorbiditi.
-Test: `lib/safety/esposizione-esenta-chiusure.test.js`, **19 asserzioni**, fra cui la spazzata di 341
-combinazioni (esposizione 0-300 × size 1-80) che difende la **proprietà** invece del valore del tetto —
-il tetto vive in un file gitignored e cambierà ancora. **Verificato che fallisce sul codice di ieri.**
 
-**167 · SELEZIONE A TRE, PER COMPOSIZIONE, CON ROTAZIONE — decisione dell'operatore, 16 agosto 2026.**
-Vedi §4.13. `selezione-mercati.js` resta **puro** (un test conta zero `require`). Cosa è cambiato:
-`MIN_SIZE_MASSIMA` 20 → **50**, `ORIZZONTE_MINIMO_ORE` 48 → **168**, `MAX_MERCATI_CONTEMPORANEI` 2 → **3**,
-più tre vincoli che prima non esistevano — **quota per scaglione** (1 posto ai `minSize ≤ 20`, 2 ai
-`≤ 50`), **categorie tutte diverse**, e il tetto d'orizzonte **iniettato** da `agent41`
-(`MAX_HORIZON_DAYS × 24`) invece che ricopiato, o sarebbe stata la sesta copia D1.
-**La rotazione**: `haPosizione` ⇒ la voce diventa `inGestione: true`, **non consuma slot** e non viene
-rilasciata; `inGestione === true` senza posizione ⇒ **rilasciata** (`motivo: 'coppia-chiusa'`).
-Quota e categorie si contano **solo sugli attivi**, o un mercato in gestione bloccherebbe per sempre
-la sua categoria. **Uno scaglione senza candidati lascia il posto vuoto e lo dichiara**
-(`postiNonAssegnati`) invece di prenderlo dall'altro: sostituire porterebbe il capitale da $147 a
-$183,75, cioè cambierebbe in silenzio la cifra decisa dall'operatore.
-**⚠ 168 h sta in un VUOTO misurato** (board vivo: scadenze ammissibili a 50 h, poi 1.826 h), come la
-soglia di §5-bis p.140. **⚠ Il cablaggio che conta è `restringiAllaSelezione`, che usa `idsAttivi`**:
-il piano non apre gambe nuove sui mercati in gestione, ma la lista del riprezzo li tiene **tutti** —
-toglierli farebbe morire la gamba sorella per GTD in ≤ 23 min, prima dei 30 della scala d'uscita.
-Test: `selezione-mercati.test.js`, blocco 3-bis (composizione) e blocco rotazione; il blocco 5 dichiara
-per proprietà che **il numero totale di voci può superare il tetto**, ed è la conseguenza voluta.
+**168** · IL TETTO DI ESPOSIZIONE ESENTA LE CHIUSURE PROVATE, E SCENDE A $150 — 16 agosto 2026
 
-**166 · FILL PARZIALE: IL RESIDUO NON SI CANCELLA ALL'INGRESSO, MA ALLA COPPIA — 16 agosto 2026.**
-Vedi §4.6. La forma: `auto-close.runAutoCloseCycle` filtrava `resid.daCancellare` e cancellava tutto,
-compreso `residuo-non-fillato` — la parte **non riempita** dell'ordine che aveva prodotto il fill.
-Cancellarla all'ingresso butta via la gamba che il mercato stava già completando da solo; tenerla per
-sempre lascia una **gamba scoperta** appena la coppia si chiude. Adesso l'ingresso la **esclude** e un
-PASSO 2-bis la cancella quando `manca <= 0`. **Il passo NON è dentro `if (statoChiusura.nuova)`**: un
-fill parziale arriva quasi sempre a modalità chiusura già aperta, e metterlo lì l'avrebbe reso
-irraggiungibile — è la stessa forma di §5-bis p.44 («l'eccezione è scritta, ma la riga ci arriva?»).
-Test: blocco 1-bis di `modalita-chiusura.test.js`, che asserisce **entrambe** le metà — sopravvive
-all'ingresso, muore alla coppia completa.
 
-**165 · UN SOLO TETTO DI COPPIA, 101¢, E LA RESA A 60 MINUTI — decisione dell'operatore, 16 agosto 2026.**
-Vedi §4.6. Erano due tetti (99¢ merge, 120¢ chiusura rapida) e ora è uno.
-`strategia-merge.MERGE_TETTO_COPPIA_CENTS = 101` con `MERGE_MIN_MARGIN_CENTS` **derivato** (`100 − 101`),
-`chiusura-rapida.TETTO_COPPIA_DEFAULT_CENTS = 101`, `MERGE_WAIT_TIMEOUT_MIN` da 60 a **30**.
-`urgenza-scoperto`: gradino peggiorativo da **120 a 60 minuti**, concessione da **2 tick a 1**,
-`PERDITA_MAX_FRAZIONE` **non toccata a 0,05**. La misura che decide è §5-bis p.162: costo mediano di
-una coppia completata **100,00¢**, solo il 41,2% entro 99¢, la valvola oltre 110¢ usata dal 2,7%.
-**⚠ Il caso dichiarato nel selfcheck**: su un token da 9,5¢ un tick intero è il **10,5%** del carico,
-quindi la cintura del 5% porta la concessione a **zero** — il gradino 2 esiste e lì non concede nulla.
-Nello stesso commit sono caduti i due commenti a 110¢ di §5.2 p.28 (reperto D7).
+**167** · SELEZIONE A TRE, PER COMPOSIZIONE, CON ROTAZIONE — decisione dell'operatore, 16 agosto 2026
+
+
+**166** · FILL PARZIALE: IL RESIDUO NON SI CANCELLA ALL'INGRESSO, MA ALLA COPPIA — 16 agosto 2026
+
+
+**165** · UN SOLO TETTO DI COPPIA, 101¢, E LA RESA A 60 MINUTI — decisione dell'operatore, 16 agosto 2026
+
 
 **164 · IL TETTO PER ORDINE ERA «METÀ MERCATO» E RIFIUTAVA LA GAMBA CARA; IL BORDO DELLA BANDA ERA
 NUDO — 16 agosto 2026.** Due correzioni che nascono dalla stessa domanda dell'operatore («$147 al
@@ -1504,509 +1434,114 @@ torna nudo.
 Test: `distanza-obiettivo.test.js` blocco ③-bis (58 asserzioni, con la proprietà «margine ≤ metà
 banda» provata su sei griglie), più i tre che passavano `bordiConMargine` senza banda.
 
-**163 · GLI «EFFICIENTI» DENTRO I 65: CAPITALE PICCOLO E TRADING IN PARI — sola ricerca, 15 agosto 2026.**
-`data/ricerca/sintesi-efficienti.md`, script `efficienti-01/02/03` (numerati fuori dalla serie
-`screening-*` perché p.162 girava **in parallelo** su questa stessa copia e il 06 era già preso).
-**IL GRUPPO È DI 4, E ALLARGARE IL CAPITALE NON LO MUOVE**: filtro chiesto (capitale $500-6.000 ·
-|P&L 7g| ≤ $100 · rewards 14g ≥ $300 · due-lateralità ≥ 40%) ⇒ **4**; portando il tetto a $15.000 ⇒
-**4**; **togliendo del tutto il vincolo di capitale ⇒ 4**. Il collo è **|P&L 7g|** (37 su 65 lo
-passano da solo, ma è l'unico la cui rimozione porta il gruppo da 4 a 13). I due wallet indicati
-dall'operatore **passano da soli**, l'inclusione forzata non è servita. Gruppo di sensibilità
-(|P&L| ≤ $250) = 10, usato solo per dare un `n` alle misure.
-**① LA DISTANZA DAL MID NON È IL LORO VANTAGGIO, e la misura ribalta l'attesa**: mediana **2,38¢**
-contro **1,00¢** dei primi 5 — quotano *più lontano*, con coda molto più larga (q90 19,5¢ contro
-3,0¢). Normalizzata sul raggio di banda: 0,33 contro 0,27. **Metodo**: `clob/prices-history`
-`fidelity=1`, campione **strettamente precedente** il fill e scartato oltre 180 s, solo fill **maker**.
-La semantica della serie è stata **misurata, non assunta**: il campione successivo coincide col
-prezzo del fill nello **0-12%** dei casi ⇒ è un punto medio, non l'ultimo scambio.
-**② I MERCATI SONO QUASI DISGIUNTI**: solo il **9,1%** dei 374 mercati degli efficienti è toccato
-anche dai primi 5 (2.613 mercati). Book più sottili (volume 24 h mediano **$325** contro $1.020) e
-bande più larghe (`maxSpread` 6,5 nel **19%** dei loro mercati contro il 4%). `minSize` ≤ 50 nel
-**95%** contro l'87%.
-**③ L'USCITA È LA DIFFERENZA VERA, ED È DOPPIA.** ⓐ **le due gambe stanno a libro insieme**: il
-**94,1%** delle coppie si completa con un ordine **già a riposo** in **40 s** mediani, e il **97,3%**
-di quelle chiuse entro 120 s costa **meno di $1** — nei primi 5 le veloci sono il 21,5% e fra quelle
-solo il **2,6%** sta sotto la pari (quando i grossi chiudono in fretta stanno *attraversando*).
-ⓑ **quando la coppia non arriva la smontano invece di pagarla**: B = **31,9%** a **−1¢** in **156 s**,
-contro il 13,7% dei primi 5. Esito: restano direzionali il **26,5%** contro il **51,7%**, chiudono
-sopra la pari il **13,2%** contro il **49,6%**, e il costo mediano realizzato di un'uscita è
-**+1,00¢** contro **−0,58¢**.
-**IL CONFRONTO COL BOT**: il tetto 99¢ dei Livelli 1-2 (`strategia-merge.js:45,83`) coincide col
-costo mediano che loro pagano davvero (99¢) — **il numero è tarato bene**. L'escalation a 120¢ è una
-valvola che nessuno dei due gruppi usa (2,7% e 1,3%). **Lo scarto è sullo sgancio**: la rivendita a
-piccola perdita, che per loro è un terzo del comportamento dopo 156 s, il bot la consente (2 tick e
-5% del carico, `urgenza-scoperto.js:63,85,86`) **solo dopo 120 minuti di scopertura, ~46× più tardi**.
-**⚠ NON MISURATO, ed è la metà che deciderebbe**: uscire prima costa reward (un ordine smontato non
-matura), e il saldo fra costo d'uscita e reward richiede il reward **per mercato**, che §4.12 dà per
-non attribuibile. **⚠ Altri limiti**: n=4 wallet, 536 eventi (`0x16a092c7` ne porta 21, sotto ogni
-soglia di conclusione); 250 eventi censurati su 786; campione a numero fisso di pagine, quindi archi
-diversi per wallet (35 h per il primo dei grossi contro 584 h per il primo degli efficienti).
+**163** · GLI «EFFICIENTI» DENTRO I 65: CAPITALE PICCOLO E TRADING IN PARI — sola ricerca, 15 agosto 2026
 
-**162 · COME ESCONO I 65 DOPO UN FILL — sola ricerca, 15 agosto 2026.**
-`data/ricerca/sintesi-uscite-maker.md`, script `screening-05-uscite.js` + `screening-06-analisi-uscite.js`.
-**62.525 fill BUY** classificati su 65 wallet, copertura mediana 262 h, orizzonte 24 h.
-**LO STRUMENTO CHE MANCAVA**: `/activity` non dice taker o maker, **`/trades` sì** — accetta
-`takerOnly` (`true` è anche il difetto, verificato riga per riga), e l'etichetta si ricava per
-differenza fra le due liste. Le liste coprono archi diversi a parità di `limit`, quindi si classifica
-solo l'intervallo coperto da **entrambe**.
-**DISTRIBUZIONE**: A completa la coppia **32,1%** · B rivende **16,6%** · C non fa nulla **15,6%** ·
-D aumenta sullo stesso lato **33,6%** · E vende l'altro lato 2,1%. Fra le sole uscite vere (A+B+E)
-**A è il 63,2%**.
-**A**: costo coppia mediano **100,00¢** (q25 98 · q75 102); **≤99¢ solo il 41,2%**, ≤110¢ **93,8%**,
-≤120¢ 98,5%. Tempo mediano **28,6 min** (21,8% entro il minuto, 60,5% entro l'ora). **La gamba che
-completa è taker solo nel 24%.** Taker: 101,00¢ in 1,6 min · maker: 100,00¢ in 36,1 min ⇒
-**attraversare costa 1¢ di coppia e fa risparmiare 34,5 minuti.**
-**B**: mediana **−0,89¢**, in perdita nel 56,9%, tempo mediano 6,5 min, **taker nel 64,4%** — quando
-mollano, pagano lo spread.
-**C**: durata **realizzata** (mercati già chiusi, n=4.702) mediana **15,6 h**; i 4.350 ancora aperti
-sono censurati a 52 g. ⚠ Gamma restituisce di difetto i soli mercati **aperti**: senza la seconda
-passata `&closed=true` il campione conteneva **zero** mercati risolti, cioè l'esatto complemento
-della domanda.
-**IL TAGLIO PER REWARDS È LA COSA PIÙ DECISIONALE**: sopra la mediana ($418/14g) A **34,2%** e B
-**12,9%**; sotto, A **18,5%** e B **40,4%**. **Chi guadagna completa la coppia, chi guadagna poco
-liquida la gamba.** E chi guadagna usa più il taker (ingresso 21,5% contro 9,4%).
-**⚠ DUE ARTEFATTI TROVATI E CORRETTI, entrambi gonfiavano D**: fondere i fill parziali confrontando
-la riga PRECEDENTE nello stream non funziona (i fill sono interlacciati fra mercati) — 2.049 eventi;
-e i prezzi della API arrivano con rumore di virgola mobile (`0.8599999965` contro `0.86`) — altri
-1.155. Residuo finale: 4.
-**⚠ LIMITI**: la finestra è per wallet e non allineata; D non è un'uscita ma «continua a quotare»;
-E resta una classe a sé invece di finire schiacciata su B.
 
-**161 · CHI FA DAVVERO LIQUIDITY REWARDS, E DOVE QUOTA — sola ricerca, 15 agosto 2026.**
-`data/ricerca/sintesi-screening-maker.md`, script `scripts/ricerca/screening-0{1,2,3,4}-*.js`.
-Imbuto: **2.320** destinatari della giornata 2026-08-14 (la tx indicata dall'operatore è **1 batch su
-6**, il 17,2%) → **1.302** con ricorrenza ≥10/14 e mediana ≥$1 → **65** che quotano anche a due lati e
-hanno P&L da trading più piccolo dei premi. **Solo 10 dei 65 stavano nel batch dei 400**: screenare il
-solo batch avrebbe perso l'85% del gruppo cercato.
-**⚠ LA SIMMETRIA DELLE POSIZIONI NON FUNZIONA COME CRITERIO, ed è misurato**: simmetria media
-**0,00-0,06** su tutto il campione, perché una coppia completa si fonde o si riscatta e **sparisce da
-`/positions`** (§5-bis p.150) — chi appaia bene mostra meno simmetria di chi appaia male. La
-due-lateralità si misura sui **TRADE** (frazione di mercati con esecuzione su entrambi gli
-`outcomeIndex`), **calibrata sul funder di questo bot, maker a due lati noto: 52%** contro il 2-6% dei
-direzionali. Soglia 30% = q90, **non un varco**: la distribuzione è un decadimento liscio.
-**IL RISULTATO CHE SERVE**: i 65 sono **negativi sul trading e positivi sui premi** — il primo fa
-$49.458 in 14 giorni con P&L 7g **−$12.380**. **Pagano lo spread per incassare i reward, di proposito.**
-**DOVE QUOTANO**: 5.237 mercati, ma la classifica per sole posizioni è piatta (max **5** maker su 65) e
-va letta sull'unione posizione+trade (max **13**). Concentrazione per `minSize`: **20 → 457 presenze**
-contro 50 → 145, 100 → 95, 200 → 79. Per famiglia: meteo 2.183 presenze su 1.231 mercati, poi politica,
-macro-finanza, cripto. **⇒ il gruppo vive dove il tetto per mercato di §4.2 arriva** (`minSize ≤ 50`).
-**⚠ TRE LIMITI DICHIARATI**: `/positions` è una fotografia di adesso, il campione trade è a **numero
-fisso** (500) e copre archi da 3 a 377 ore, e il P&L viene dalla finestra **7g** del leaderboard perché
-14g non esiste. **Riscontro incrociato riuscito**: 2.098 wallet su 2.320 coincidono al centesimo fra
-Data API e on-chain; i 222 che divergono hanno **un secondo distributore** (`0x823c0e04…`, paga alle
-00:15) che l'API somma e la scansione del solo `0x2c2795ea…` non vede.
+**162** · COME ESCONO I 65 DOPO UN FILL — sola ricerca, 15 agosto 2026
 
-**160 · LA MANOPOLA DELLA DISTANZA ACCESA A 0,444 — TEST DELL'OPERATORE, 13 agosto 2026, sera.**
-**Valore precedente: NESSUNO.** La manopola era committata e **spenta** (`FRAZIONE_DEFAULT === null`),
-cioè la posizione la decideva `planBehindBest` da sola. **Lo `0,222` con cui il test è stato descritto è
-la MEDIANA MISURATA** degli ordini di oggi (1,0¢ su banda 4,5¢), non una configurazione: non esiste
-nessun `0.222` in nessun file. **Per tornare indietro si CANCELLA la riga**, non si scrive `0.222` —
-scriverlo installerebbe un pavimento dove prima non ce n'era nessuno.
-**Il valore vive in `agents/ecosystem.config.js`, su TRE processi** — `agent41`, `agent40`, `dashboard` —
-perché tutti e tre decidono un prezzo attraverso `prezzoInCoda`/`planBehindBest`: metterlo su uno solo
-sarebbe la divergenza D1, e il rinnovo di agent40 riporterebbe l'ordine alla distanza di prima.
-**Il paletto regge, e non per fiducia**: spazzata di **630 combinazioni** (mid 5-95¢ × banda 1-10¢ ×
-due tick × frazioni 0,444-50) — **zero** prezzi oltre il bordo premiante, **zero** prezzi più vicini al
-mid di quello di partenza. A 0,444 sulla banda modale il bordo **non viene nemmeno toccato** (2,0¢ su
-un raggio di 4,5¢); una frazione assurda si clampa a `FRAZIONE_MASSIMA` e si ferma **al bordo**.
-**«Mai primo» è preservato per costruzione**: la manopola è un `Math.min` nello spazio bid, può solo
-allontanare. **Ogni ordine porta la distanza effettiva** (`inCoda.distanzaMidC` + `distanzaObiettivo`)
-in `polymarket-maker-audit.jsonl` **e** in `execution-audit.jsonl` — già così da p.158, verificato.
-Test: `lib/maker/distanza-2c.test.js`, 43 asserzioni.
 
-**159 · IL GRADINO 6 DISARMATO PER CONFIGURAZIONE — decisione dell'operatore, 13 agosto 2026, sera.**
-Vedi il banner in testa. `SBLOCCO_GRADINO6_ARMATO` in `lib/maker/sblocco-progressivo.gradinoSeiArmato`
-(puro) + il ramo in `agent41.eseguiGradino`. **Solo la stringa `'0'` disarma**: assente, vuota o
-illeggibile ⇒ **ARMATO**, la stessa regola di `end-of-scale` e dell'orizzonte — un env che sparisce non
-può spegnere una difesa. **Il codice che ferma il bot non è stato rimosso** e la scala ha ancora sei
-gradini: riarmare è togliere una riga dall'ecosystem.
-**Tre esiti, non due**: `eseguito` / `FALLITO` / **`disarmato`**, perché schiacciare «spento» su
-`ok:false` lo mescolerebbe con «rotto» e il conteggio di domani sarebbe sporco.
-Test: `lib/maker/gradino-sei-disarmato.test.js`, 34 asserzioni. **Verificato che fallisce sul codice di
-ieri** su un worktree a `cec8c66` — e fallisce sull'asserzione **di comportamento** («l'interruttore non
-è stato chiamato», `chiamate=1`), non sull'assenza del simbolo: il file sostituisce la funzione mancante
-con una che risponde «armato», o crollerebbe a §1 senza mai eseguire il ramo che conta.
-`gradino-sei-cablato.test.js` ora **dichiara** la precondizione armata invece di ereditarla dalla shell.
+**161** · CHI FA DAVVERO LIQUIDITY REWARDS, E DOVE QUOTA — sola ricerca, 15 agosto 2026
 
-**158 · LA MANOPOLA DELLA POSIZIONE, INSTALLATA E SPENTA.** Vedi il banner.
-`lib/maker/distanza-obiettivo.js` (puro) + un ingresso opzionale in `planBehindBest`, applicato per
-ULTIMO e solo verso l'esterno. **39 asserzioni** in `distanza-obiettivo.test.js`, e difendono le due
-proprietà che contano — dentro banda **sempre**, mai davanti a nessuno — su tutti i valori provati
-(0,1 · 0,25 · 0,444 · 0,6 · 0,9 · 0,95 · 5 · 100), non su quello di default.
-**⚠ IL COSTO, MISURATO PRIMA DI INSTALLARLA** (`data/ricerca/manopola-distanza.json`, board vivo,
-37.410 finestre da 60 s su 89 mercati): a 1,5× la distanza il reward modellato fa **−19%**, a 2× **−38%**,
-a 2,5× **−57%**. E il **tasso di fill non si muove**: 4,60 → 4,40 → 4,36 → **4,13 al giorno**, cioè
-0,47 fill evitati al giorno per **$0,005** di costo d'uscita risparmiato. **Il movimento del mid è a
-raffiche molto più grandi della banda** (§5.2 p.20), quindi allontanarsi di uno o due centesimi non
-sposta la probabilità di essere raggiunti. **Lo scambio è sfavorevole di due ordini di grandezza**, ed
-è scritto qui perché l'operatore lo sappia mentre gira la manopola, non dopo.
 
-**157 · IL RIFERIMENTO DEL GUARDIANO: DRAWDOWN DA MASSIMO MOBILE.** Vedi il banner. Chiude §5.2 p.14.
-`lib/maker/guardian-riferimento.js` (puro) + cablaggio in `agent43-guardian`. **Il file resta uno solo**
-(`data/guardian-baseline.json`) e continua a portare `baselineUsd`: il codice vecchio, non ancora
-riavviato, legge il valore giusto invece di rompersi. Il record v1 si **MIGRA adottando** il valore che
-c'era e lasciando che il massimo lo alzi — non si ricrea da zero, perché il giorno in cui il totale
-corrente fosse più BASSO del riferimento vecchio ricreare cancellerebbe un drawdown in corso.
-**⚠ La guardia sul capitale illeggibile è stata spostata PRIMA del riferimento**: un massimo mobile
-aggiornato su una lettura fallita resterebbe sbagliato per sempre.
-**28 asserzioni** in `guardian-riferimento.test.js`, fra cui le quattro che decidono: un deposito non è
-un guadagno, un prelievo non è una perdita, un calo delle posizioni resta una perdita, un fill non è un
-movimento di cassa.
+**160** · LA MANOPOLA DELLA DISTANZA ACCESA A 0,444 — TEST DELL'OPERATORE, 13 agosto 2026, sera
 
-**156 · IL TETTO PER MERCATO PASSA A $61,25, E SMETTE DI DERIVARE DA `f_min`.**
-Vedi il banner per i numeri. Qui la forma. `lib/rewards/concentration.js`: `SCAGLIONE_FINANZIABILE = 50`
-⇒ `TETTO_BASE_USD = pavimentoPremiante(50) = $61,25`, e `F_MIN_OBIETTIVO` diventa **derivato** (`0,32`).
-**L'identità regge nei due versi** — `tetto = minSize × costo / f_min` — quindi i consumatori che
-leggevano `F_MIN_OBIETTIVO` non si rompono. `fin` è stato spostato in cima al file: `TETTO_BASE_USD`
-chiama `pavimentoPremiante`, che lo usa, e un `const` dichiarato dopo lo lasciava nella zona morta.
-**Le derivate si muovono da sole** e nessuno le ricopia: tetto per ordine **$21,34 → $35,63**, tetto
-assoluto di chiusura **$65,97 → $123,75**, finestra di mid **[0,36·0,64] → [0,43·0,57]**, mercati
-sostenibili **19 → 10**, soglia di carico **$1.306 → $2.450**.
-**⚠ `MAKER_LIVE_MIN_CAP_USD` NON ESISTE PIÙ**, verificato in `ecosystem.config.js` e in
-`/proc/<pid>/environ` di agent40 e agent41: il vincolo a $30 descritto in `safety-risk-limits.json` se
-n'è andato con `agent35-maker` il 9 agosto. Se ci fosse ancora, una gamba da $30,63 sarebbe stata
-rifiutata e il bot avrebbe smesso di piazzare — è il primo controllo che è stato fatto.
-**⚠ `maxOpenNotionalUsd = $600` NON limita quanti mercati si quotano**: conta i fill **riconciliati**
-(`lib/safety/fills.js`), non gli ordini a riposo. Oggi 22 posizioni per $139.
-**Test**: `lib/rewards/tetto-derivato-dallo-scaglione.test.js`, 25 asserzioni — fissa il tetto, le
-derivate, il fatto che `f_min < 1` per costruzione, e che **nessun modulo cabli il valore** (stessa
-forma di `banda-premiante.test.js`: filtra commenti e letterali di stringa).
-**8 test rimessi in scala, non ammorbiditi**: le loro fixture erano tarate sul tetto vecchio. Dove il
-test riproduce un INCIDENTE storico (`piano-non-si-svuota`, il deadlock del 13 agosto) il numero di
-allora è ora un **letterale dichiarato**, perché un fatto storico non può dipendere dal valore di oggi.
 
-**155 · LA BANDA PREMIANTE ERA LARGA LA METÀ — `v = max_spread`, NON `max_spread/2`.**
-Vedi il banner per la prova e per le tre conseguenze. Qui restano i numeri e la forma della correzione.
-**La SSOT**: `lib/banda-premiante.js` — `raggioBandaCents` · `raggioBandaPrezzo` · `dentroBanda` ·
-`punteggio`. **46 file** instradati su di lei; **nessuno** ricalcola più il raggio da sé. Era il reperto
-**D1** (costante ricopiata invece che importata) applicato al parametro che decide se un ordine matura:
-**60 punti** se lo calcolavano ciascuno per conto proprio, ed è per questo che **due letture opposte
-hanno potuto convivere** — `lib/reward-score.ts` aveva già la lettura giusta mentre tutto il resto no.
-**La misura del costo, e il bracket**: l'insieme di scelta fra i mercati finanziabili va da **28 a 51**
-(41 sbloccati sul board intero). Il guadagno modellato sui migliori 19 sta fra **1,32×** (somma dei
-montepremi, indipendente dal modello) e **3,35×** (col tetto di credibilità in uso), cioè **+$1,4 · +$10,3
-al giorno** sul consuntivo misurato di $4,40/g. **⚠ Il livello eredita i 4 giorni di presenza su 30 di
-§5-bis p.152; il rapporto no.** Il numero **mercati coperti non cambia** — è `capitale / tetto = 19` a
-qualunque distanza dal mid, perché il capitale per mercato è in dollari e non conosce la banda: **il
-collo è il capitale, mai la banda** (19 finanziabili contro 51 disponibili e `MAX_MERCATI` 40).
-**Allontanarsi dal mid non compra mercati e costa punteggio**: il massimo è alla distanza minima e
-**non è piatto** — da 1,0¢ a 0,5¢ è **+30,6%**, da 1,0¢ a 2,5¢ è **−67,4%**.
-**Test**: `lib/banda-premiante.test.js`, 29 asserzioni. Ancora la definizione all'**esempio ufficiale del
-venue** (l'unico riferimento numerico esterno verificabile senza credenziali) e difende la **proprietà**
-«nessun modulo divide un maxSpread per due», filtrando commenti **e letterali di stringa** — o
-un'etichetta di stampa basterebbe a farlo passare. **Verificato che fallisce sulla lettura vecchia.**
-Ha trovato da solo **due bugie nell'interfaccia** (`EventTerminal.tsx` diceva «± max_spread / 2»).
-**14 test sono stati rimessi in scala, non ammorbiditi**: le loro fixture sceglievano un `maxSpread` per
-ottenere un RAGGIO, e sotto la definizione corretta lo stesso raggio si scrive con metà del numero. Le
-asserzioni sono identiche. **Sesta occorrenza di «test che fotografa il codice»**: `tetto-per-ordine`
-asseriva su `git diff --name-only HEAD` (§5.3) ed è diventato rosso perché il codice era CORRETTO —
-sostituito con la proprietà vera.
-**Strumento trovato e NON cablato**: `GET /rewards/user/markets` del CLOB restituisce `earnings` e
-`earning_percentage` **per mercato**, cioè l'attribuzione che §4.12 dà per impossibile. Senza le
-credenziali L2 torna `maker_address: 0x000…` e zeri. **Cablarlo passa dall'adapter, cioè dalla
-superficie che sa piazzare**: è una decisione dell'operatore, non un dettaglio.
+**159** · IL GRADINO 6 DISARMATO PER CONFIGURAZIONE — decisione dell'operatore, 13 agosto 2026, sera
 
-**154 · IL FILTRO DI PROFONDITÀ NON STA AFFAMANDO IL PIANO — sola misura, niente toccato.**
-`data/ricerca/sintesi-profondita.md`. **q = 0,60 è `realistic-estimate.DEFAULTS.maxCredibleShare`, che
-il modulo etichetta da sé come ASSUNZIONE**: misurato fu il punto di applicazione, non il valore.
-La soglia **non dipende dal capitale**, per scelta: `escluso ⟺ minSize_venue > depth·q/(1−q)`.
-**⚠ `q/(1−q)` è CRESCENTE: abbassare q STRINGE il filtro** — 0,60 è già il più permissivo dei cinque
-valori richiesti. **Sui 46 mercati finanziabili ne esclude 5 e ne lascia 41 contro 16 minimi (2,6×): la
-precondizione dichiarata dal modulo REGGE.** E **da q=0,50 a q=0,90 il numero non cambia, perché tutti
-gli esclusi hanno `depth` ESATTAMENTE 0** ⇒ la manopola è **inerte**. **Dove sta il capitale**: 13
-posizioni su 22 ($73,35) in mercati AMMESSI, **1 sola ($2,19)** in un mercato escluso dalla profondità.
-**I residui nascono sui book SPESSI**, e su n=16 nessuna differenza sarebbe rilevabile comunque.
-**⚠ NON misurabile**: fill e costo di uscita sui mercati ESCLUSI (non ci abbiamo mai quotato), e reward
-per dollaro PER MERCATO (§4.12: il venue paga un bonifico aggregato).
+
+**158** · LA MANOPOLA DELLA POSIZIONE, INSTALLATA E SPENTA
+
+
+**157** · IL RIFERIMENTO DEL GUARDIANO: DRAWDOWN DA MASSIMO MOBILE
+
+
+**156** · IL TETTO PER MERCATO PASSA A $61,25, E SMETTE DI DERIVARE DA `f_min`
+
+
+**155** · LA BANDA PREMIANTE ERA LARGA LA METÀ — `v = max_spread`, NON `max_spread/2`
+
+
+**154** · IL FILTRO DI PROFONDITÀ NON STA AFFAMANDO IL PIANO — sola misura, niente toccato
+
 
 ### Le tre voci del 13 agosto 2026
 
-**120 · IL DEADLOCK ARITMETICO CHE HA FERMATO IL BOT PER TRE ORE.** `unitUsd = round(budget/50)` = $12
-contro un tetto per mercato di $32,67 ⇒ `floor(32,67/12) = 2` livelli ⇒ **ogni riga di ogni piano
-allocata a $24,00**; il mini-ciclo chiedeva `pavimentoPremiante(20)` = **$24,50** ⇒ **114 rifiuti
-consecutivi identici** dalle 02:04 alle 05:56, con $609,10 liquidi e zero ordini a riposo. Non un caso
-isolato ma un **dente di sega**: bloccato anche a $900, $1.000, $1.200, cioè **peggiorava crescendo il
-capitale**. Due correzioni: la griglia limitata anche dal tetto (8 livelli minimi ⇒ passo $4, massimo
-$32) e il pavimento di una riga misurato sulla **riga** (`minSizeShares × costoCoppia`) invece che su un
-mercato tipico col margine del 25% applicato **due volte** — il margine vive già in `mercatoAmmissibile`.
-**Il ciclo da 6 ore piazzava quelle stesse righe da $24 senza problemi**: due corsie, due minimi, sullo
-stesso piano. Misurato: **0 mercati / $0 ⇒ 6 mercati / $180 in un giro**, utilizzo 8,4% ⇒ 35,4%.
-Effetto collaterale voluto: `f_min` reale da 0,82 a **0,61**, cioè meno residui bloccati.
-*(La premessa del prompt — «il piano si svuota» — era un sintomo: il mini-ciclo **ricalcolava già** a
-ogni giro e trovava 12-19 righe. Le righe c'erano; nessuna passava il pavimento.)*
-
-**121 · LA SENTINELLA SUL VUOTO.** Zero ordini a riposo per più di **5 minuti** con KILL spento e AVVIA
-acceso è un'**anomalia**: allarme una volta per episodio nel log e nel giornale (`op: sentinella-vuoto`)
-con la **ripartizione del fermo in dollari**, e **ricostruzione del piano chiesta a ogni giro** finché
-dura. Rilevazione ogni 120 s ⇒ scoperta in **≤ 7 minuti contro i 180**. Cinque minuti perché un libro
-sano non è mai vuoto se non per i secondi fra una cancellazione e il suo rimpiazzo — dieci volte quella
-finestra, e ben sotto una finestra GTD. **Non allenta niente**: la sua unica azione è far girare
-`controlloCapitaleFermo` adesso invece che al prossimo cooldown. È una sola **lettura**, e la quota
-60/40 conta gli `intent`: **non toglie un posto ai rinnovi**. Conteggio illeggibile ⇒ **non arma e non
-disarma** (un allarme che grida al primo 429 smette di essere letto). Bot fermo o kill attivo ⇒ il vuoto
-è lo stato **corretto** e l'orologio si azzera.
-
-**122 · UNA POSIZIONE SENZA SCADENZA È UNA POSIZIONE CHE NESSUNO CHIUDERÀ.**
-`market-catalog.recordDaRigaBoard` **non mappava `endDate`**: ogni mercato preso in carico da agent41
-finiva nel catalogo di ripiego con `endDate: null`, quindi appena usciva dal board `scadenzaMercato`
-rispondeva `null` e `chiusuraForzataPreScadenza` rispondeva `forza:false`. **La seconda metà della
-copertura era scritta e non veniva nutrita** — misurato: **5 posizioni su 7**. Adesso il mapper copia la
-data **già unificata** più `endDateFonte`, e `lib/maker/scadenza-recupero.js` aggiunge la **terza
-fonte**: quando board e ripiego tacciono si chiede al **venue** e si scrive nel ripiego, da cui
-`scadenzaMercato` — che resta **sincrona**, per non toccare ogni suo chiamante — la trova al ciclo dopo.
-Al più 5 richieste per giro, solo per i mercati con capitale dentro, mai più dopo la prima riuscita, e
-chi ha già fallito non si richiede prima di 30 minuti. **Una data non parsabile non viene MAI scritta**:
-una scadenza indovinata è peggio di una mancante — la seconda lascia la posizione aperta, la prima la fa
-vendere al momento sbagliato.
-
-**123 · I RESIDUI SOTTO IL MINIMO — BUCO STRUTTURALE APERTO, non implementato.** Il banner in testa
-e §5.2 p.1 portano il fatto e la tabella dei cinque residui ($26,30); qui resta il **perché nessuna
-delle tre porte si apre**, che è la parte che si dimentica: ① il riposizionamento vuole un ordine
-≥ `minSize` e la size non ci arriva; ② il completamento della coppia vuole comprare `manca`, che è
-sotto `minSize`; ③ il registro cresce **solo** con nuovi fill sullo stesso mercato/lato, e 3 mercati su
-4 sono fuori dalla allowlist del riprezzo ⇒ **la size non crescerà mai**. `BELOW_MIN_SIZE` è
-bloccante ed è giusto: un ordine sotto il minimo immobilizza capitale per un premio che vale **zero**.
-**Cosa li chiude, e in quanto tempo: NIENTE, e mai** — restano fino alla risoluzione, da cui solo
-`redeemPositions` li riporta a pUSD. Il capitale non è perso: è **irraggiungibile**. La proposta (redeem
-quando `pulizia-mercato-chiuso` rileva la risoluzione) è scritta e **non implementata perché è
-capitale**. **Mitigazione già attiva**: §120 ha portato `f_min` da 0,82 a **0,61**, cioè riduce il
-tasso a cui il buco si riempie — **non chiude il buco**. Vedi anche §5-bis p.128 (non si può impedire
-che nascano: la cura costa più della malattia) e p.150/151 (la via d'uscita è il redeem, non l'ordine).
-
-**138 · LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA.** Vedi il banner per la scala, le soglie e i
-limiti. `lib/maker/urgenza-scoperto.js` (puro) + `concessioneTick`/`profitPct` in `exit-plan.planExit`
-+ `urgenza` in `auto-close.decideClose`. **La misura che ha deciso le soglie**, e che vale la pena
-tenere: 24 episodi di scopertura in 48 h su 19 mercati, **bimodali** — 7 chiusi (mediana 10,5 min,
-q75 29,3) contro 17 aperti (mediana 126,5 min, max 553,7). **11 episodi oltre l'ora, 61,1 ore-scoperto
-complessive, $99,32 di nozionale di picco; $137,80 scoperti nell'istante della misura.**
-**Il difetto NON era «il bot ripete identico»** — la premessa da verificare — ed è stato verificato:
-11 prezzi distinti su 17 mid distinti. Il difetto era che **la gerarchia ha un solo orologio**.
-**Cinque test nuovi** in `scoperto-oltre-soglia.test.js` (38 asserzioni) più 23 nel selfcheck del
-modulo; tre asserzioni preesistenti sono passate **dalla frase alla proprietà** perché fotografavano il
-testo del messaggio, e una in `chiusura-rapida.test.js` fotografava una **riga del sorgente** di
-auto-close — la stessa classe di difetto di §5.3, alla quarta occorrenza.
-
-**152 · IL BORDO DELLA BANDA NON CONVIENE — ⚠ NUMERI CORRETTI DA §5-bis p.155.**
-`data/ricerca/sintesi-posizione-banda.md`. **La formula è verificata sulla documentazione ufficiale
-viva**: `S(v,s) = ((v−s)/v)²·b`, `Q_min` con **c = 3,0**, size in **share**, **10.080 campioni per
-epoca** (campionamento al minuto ⇒ il tempo a libro conta), soglia minima **per mercato**, banda
-simmetrica. Al bordo `s → v` ⇒ `S → 0`: il bordo estremo **non matura quasi nulla, per costruzione**.
-**⚠ MA QUESTA VOCE APPLICAVA `v = 2,25¢` SU MERCATI CON `max_spread = 4,5¢`** — la definizione giusta
-col numero sbagliato. Rifatto su **42.834** osservazioni (`scripts/ricerca/nostri-s-reali.js`): **S
-medio 0,4951, non 0,2981**; la leva ② vale **+13,5%**, non +53%. ⚠ Il campione è la valutazione di
-riprezzo, non i minuti a libro: è un **proxy**.
-**Restano validi**: un fill costa **$0,05/g** di spread contro **$0,91/g** di capitale immobilizzato,
-cioè **18×** — «andare al bordo» è sbagliata **di segno**; e la leva ① **presenza 4/30→29/30**, la più
-grande. **⚠ Incertezza**: 4 giorni di presenza e 13 vendite. Servono **~15 giorni** di bot acceso.
+**120** · IL DEADLOCK ARITMETICO CHE HA FERMATO IL BOT PER TRE ORE
 
 
-**151 · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — corregge §150.**
-`data/ricerca/sintesi-redeem.md`, 5.087 redeem su 8 wallet, **94,0% vinte: SANNO**. Due modi opposti —
-**famiglia A** compra esiti già decisi (carico 0,999, PnL +0,2/+0,6%), **famiglia B** ha edge vero.
-**⚠ Il 94% è una proprietà della loro SELEZIONE, non del meccanismo**: i nostri residui nascono da fill
-parziali di coppie neutrali, quindi redimendoli incasseremmo il **valore equo**.
-**Resta valido per altra ragione**: il redeem **non ha size minima** ⇒ per le posizioni murate il
-confronto è «valore equo, zero spread» contro «capitale congelato».
-**⚠ La famiglia A opera dove `end-of-scale` ci vieta di andare**: a 99,9¢ un errore cancella ~mille
-operazioni riuscite, ed è il modo di fallire contro cui la regola esiste.
+**121** · LA SENTINELLA SUL VUOTO
 
-**150 · COSA FANNO GLI ALTRI DOPO UN FILL — sola ricerca.** `data/ricerca/sintesi-post-fill.md`,
-82 wallet, 35.520 episodi. **Siamo già meglio su tre assi su quattro**: durata mediana **21,8 min**
-contro 121,5-489,3 · merge **43%** contro 1-5% · costo d'uscita **0,25 ¢/share** contro 1,24.
-**⚠ L'UNICO PUNTO PEGGIORE SONO I RESIDUI (18,0% contro 8,3-13,4%), E LA CAUSA NON È LA SIZE**:
-correlazione taglio-ordine ↔ quota-residui **−0,141**. La causa è la **via d'uscita** — chi ha meno
-residui esce via redeem (87-98%) o merge ⇒ le posizioni murate (§5-bis p.123) non hanno bisogno di un
-ordine più grande, hanno bisogno del **redeem**, che non ha minimo.
-**⚠ Limite: la nostra riga poggia su 61 episodi in 26 ore**; maker-vs-taker non è misurabile.
 
-**149 · CHI INCASSA DAVVERO I REWARD — sola ricerca, 30 giorni on-chain.**
-`data/ricerca/sintesi-incassatori.md`: **$3.974.198 a 14.836 wallet**; **172 wallet (1,9%) prendono il
-59,2%**, presenti 29 giorni su 30. **NOI: percentile 39,3**, presenti **4 giorni su 30**.
-⚠ Fonte **Etherscan V2 multichain**, query **partizionata per blocchi giornalieri** o si scambia una
-pagina troncata per l'ultima. **⚠ Il consuntivo del pannello è CORRETTO**: coincide a quattro decimali,
-sfalsato di un giorno (maturato vs pagato). **⚠ I top sono DIREZIONALI**: solo 4 su 50 superano il 5%
-di mercati appaiati, e i premi sono un sottoprodotto. **⚠ I 21 del manuale NON sono i top** (il migliore
-è 67°). **L'unica differenza replicabile a questo capitale è la PRESENZA**: il taglio dei nostri ordini
-è già dentro il range dei top.
+**122** · UNA POSIZIONE SENZA SCADENZA È UNA POSIZIONE CHE NESSUNO CHIUDERÀ
 
-**147 · L'ESENZIONE DAL TETTO PER ORDINE VALE SU TUTTI I PERCORSI CHE RIDUCONO.** Il ramo
-`riposizionamento-scoperto` (`auto-close.js:1412`) era l'unico percorso di chiusura a NON dichiarare
-`chiudePosizione: true`. Misurato: una **SELL di 52,6 share GIÀ POSSEDUTE** rifiutata, e **1.331
-rifiuti `manual-order-cap`**. ⚠ **Il guard esisteva già ed è sul percorso**: il GATE 4 rifà
-l'aritmetica con `provaChiusura` sullo snapshot del venue — SELL oltre il posseduto o BUY oltre `manca`
-**non** vengono esentate — e il tetto di safety resta intatto. **I sette percorsi sono TUTTI in
-riduzione**, difeso da un test anche per proprietà (`bulk-allocate` non la dichiara mai).
 
-**148 · IL REGISTRO DEI RESIDUI HA FINALMENTE UN CONSUMATORE.** `lib/maker/ritenta-residui.js` (puro)
-+ cablaggio in `agent40` dentro `closeTask`: i mercati con una voce `pronto: true` entrano
-nell'insieme che il ciclo di chiusura visita già. **Non è un lasciapassare**: il registro dice SOLO che
-la size ha ripreso il minimo del venue, e da lì in giù valgono banda, tetti, «mai primo», profondità.
-**Cadenza `INTERVALLO_RITENTATIVO_MS = 10 min`**, backoff ×2 sui fallimenti **con lo stesso motivo**
-(un motivo diverso azzera: è un libro che si muove, non un blocco), tetto **2 ore**, al più **3 residui
-per giro** — è manutenzione, non la corsia principale.
-**⚠ IL REGISTRO NON SI SCRIVE MAI DA QUI**: un tentativo fallito lascia la voce dov'è, e un test lo
-verifica. L'unico scrittore resta `accumulo-residui`. Il contatore del backoff vive in memoria: un
-riavvio lo azzera e si ritenta prima, che è la direzione innocua.
-Ogni tentativo va nel giornale (`op: ritenta-residuo`, esiti `residuo-pronto-rivisitato` /
-`residuo-ripiazzato` / `residuo-ancora-bloccato`), così l'osservatore lo vede.
+**123** · I RESIDUI SOTTO IL MINIMO — BUCO STRUTTURALE APERTO, non implementato
 
-**145 · LE DUE CONFERME DEVONO ESSERE DUE OSSERVAZIONI, NON DUE COPIE.** Il terzo scatto (11:24:15Z)
-è avvenuto **con k=2 attivo**: le due letture erano lo stesso numero (−32,58335, $627,98) perché
-`SALDO_CACHE_TTL_MS = 45_000` contro `GUARDIAN_POLL_MS = 30_000`. **La correzione**: `confermaScatto`
-riceve `osservazione.saldoLetturaAt` (`now − etaMs`) e conta la conferma **solo se cambiato**; se
-uguale o illeggibile il contatore **resta dov'è**. ⚠ **Scartato abbassare il TTL**: la cache è
-condivisa con agent40 (~5 s), col trigger e con agent45. **Verifica su 7.249 letture: senza la
-condizione la simulazione riproduce esattamente lo scatto vero, con la condizione ne restano ZERO.**
-Script: `scripts/ricerca/verifica-letture-distinte.js`.
 
-**146 · I RESIDUI BLOCCATI, MISURATI — sola diagnosi.** 16 posizioni a gamba singola per **$158,44**
-dopo il cancel-all del guardiano; **10 sotto il minimo** per **$51,78**; uscire a mercato costa
-**$8,81**, sul `bestBid` VERO del lato posseduto e non sul mark di mezzo.
-`scripts/ricerca/diagnosi-residui-bloccati.js`.
+**138** · LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA
 
-**144 · L'OSSERVATORE MUTO (agent45).** Vedi §3. `lib/osservatore/campionamento.js` è puro e testato
-(47 asserzioni); l'agente importa SOLO `saldo-cache` (eth_call senza signer), lo snapshot posizioni e
-`guardian-perdite` (puro). **Ordini a riposo e nozionale a book sono RICOSTRUITI** e il campo lo
-dichiara: leggerli dal venue richiede una chiamata autenticata che passa dall'adapter, cioè dalla
-stessa superficie che sa piazzare, e quella proprietà vale più della freschezza del campo.
-**`ordiniPerMercato` resta `null` per sempre** con la strumentazione di oggi: il giornale REDIGE
-`requested.marketId` sulle righe di elenco. Stessa famiglia di §5.2 p.10.
-⚠ Il suo primo test ha trovato un `Number(null) === 0` **nel codice nuovo** (`curPrice` assente che
-diventava una posizione da $0): settima occorrenza, e di nuovo trovata da una prova e non dal
-ragionamento.
 
-**141 · IL GUARDIANO NON SCATTA PIÙ SULLA PRIMA LETTURA (k=2).** Vedi il banner.
-`confermaScatto` in `lib/maker/guardian-perdite.js` (puro) + cablaggio in `agent43-guardian.js`.
-**Verifica retroattiva**: 7.213 letture su 5 giorni rigiocate con le funzioni vere ⇒ **da 2 scatti a
-0**, entrambi falsi positivi con evidenza indipendente. `scripts/ricerca/verifica-persistenza.js`.
+**152** · IL BORDO DELLA BANDA NON CONVIENE — ⚠ NUMERI CORRETTI DA §5-bis p.155
 
-**142 · LA SENTINELLA SUL COLLASSO DELLA COPERTURA (85%), SOLO OSSERVA.** Vedi il banner.
-`lib/maker/sentinella-collasso.js` (puro) + cablaggio in `agent41` accanto a quella sul vuoto.
-Chiude §5.2 p.9. Non agisce: log e giornale.
 
-**143 · LA GAMBA SORELLA SI ABBASSA DENTRO LA BANDA.** Vedi il banner. `lib/maker/auto-close.js`,
-Livello 2: `prezzo = min(tetto, bordo alto della banda)`. Il commento «non si può alzare, è algebra»
-resta vero e resta lì: la domanda nuova era l'opposta, e nessuno l'aveva posta.
+**151** · IL REDEEM È UNA VIEW, NON GESTIONE DEL RESIDUO — corregge §150
 
-**140 · LA SOGLIA SULLA DERIVATA È 85%, E IL DIVARIO FRA LE DUE POPOLAZIONI È VUOTO — sola misura.**
-Serie A · ordini aperti: **osservazione DIRETTA** (`manual-list` con `requested.marketId` nullo ⇒
-`response.count` è il totale vivo), 7.860 campioni su **4,1 giorni**, cadenza mediana 60,0 s.
-**La forma è il calo % dal MASSIMO delle ultime 10 min**, non la differenza fra campioni consecutivi:
-la cadenza è irregolare e un crollo in due campioni verrebbe spezzato in due pezzi sotto soglia.
-**Sensibilità (veri/falsi)**: 30% ⇒ 5/183 · 50% ⇒ 5/20 · 70% ⇒ 5/2 · **80% ⇒ 5/0**. **85% perché il
-divario è VUOTO**: fisiologico massimo 75%, patologico minimo 92,9%, in mezzo nessun episodio.
-⚠ **5 soli eventi positivi.** **Copertura e PnL NON sono correlati** (Pearson −0,048): le perdite non
-maturano perché il book è scoperto. `scripts/ricerca/{estrai-serie-copertura,analizza-collasso}.js`.
 
-**139 · IL SECONDO SCATTO DEL GUARDIANO — 13 agosto 2026, 09:08:33Z.** −$36,15 / −5,47% su baseline
-$660,56, oltre **entrambe** le soglie: 23 ordini cancellati su 12 mercati, bot su FERMA. Il primo
-scatto fu il 9 agosto (§5-bis p.70). **Latch poi rimosso dall'operatore; AVVIA dalle 12:29:11Z.**
-Il riferimento di allora è superato dal massimo mobile di p.157.
+**150** · COSA FANNO GLI ALTRI DOPO UN FILL — sola ricerca
+
+
+**149** · CHI INCASSA DAVVERO I REWARD — sola ricerca, 30 giorni on-chain
+
+
+**147** · L'ESENZIONE DAL TETTO PER ORDINE VALE SU TUTTI I PERCORSI CHE RIDUCONO
+
+
+**148** · IL REGISTRO DEI RESIDUI HA FINALMENTE UN CONSUMATORE
+
+
+**145** · LE DUE CONFERME DEVONO ESSERE DUE OSSERVAZIONI, NON DUE COPIE
+
+
+**146** · I RESIDUI BLOCCATI, MISURATI — sola diagnosi
+
+
+**144** · L'OSSERVATORE MUTO (agent45)
+
+
+**141** · IL GUARDIANO NON SCATTA PIÙ SULLA PRIMA LETTURA (k=2)
+
+
+**142** · LA SENTINELLA SUL COLLASSO DELLA COPERTURA (85%), SOLO OSSERVA
+
+
+**143** · LA GAMBA SORELLA SI ABBASSA DENTRO LA BANDA
+
+
+**140** · LA SOGLIA SULLA DERIVATA È 85%, E IL DIVARIO FRA LE DUE POPOLAZIONI È VUOTO — sola misura
+
+
+**139** · IL SECONDO SCATTO DEL GUARDIANO — 13 agosto 2026, 09:08:33Z
+
 
 ### Le voci del 13 agosto 2026, sera
 
-**124 · IL CAPITALE AL LAVORO DICEVA L'INTENZIONE.** Vedi il banner. La correzione vale anche per le
-**passate**: `esito` è solo l'ultima, e senza sommare le precedenti si dichiarerebbe meno del fatto.
-
-**125 · RIFIUTI RIPETUTI: RICONOSCERE E REAGIRE** (`lib/maker/sblocco-progressivo.js`, puro).
-Scala, classi e famiglie sono nel banner di §5 p.124-127. **N = 5** viene dai dati: sul giornale 9-13
-agosto la stessa coppia (mercato, gate) si è ripetuta fino a **3.309 volte di fila**, quindi qualunque
-soglia sarebbe scattata; a decidere è l'altro lato — un ordine si riprezza ogni ~60 s, quindi 5
-ripetizioni identiche sono ~5 minuti in cui il libro si è mosso e la risposta non è cambiata. Sotto
-(2-3) si prenderebbero i rimbalzi di un book che oscilla. Azzeramento su un **successo** o dopo
-**15 minuti** di silenzio. **37 famiglie** classificate in `rischio` / `stato-bot` / `transitorio`;
-una famiglia **sconosciuta vale rischio**.
+**124** · IL CAPITALE AL LAVORO DICEVA L'INTENZIONE
 
 
-**126 · COERENZA FRA I MODULI** (`lib/maker/coerenza-soglie.js`, puro). La classe di difetto: chi
-propone non conosce le soglie di chi riceve, e ogni modulo preso da solo risponde correttamente alla
-propria domanda. Due divergenze misurate: ① griglia $24,00 contro pavimento $24,50 ⇒ **114 rifiuti
-identici, 3 ore di capitale fermo**; ② tetto per **mercato** $32,67 contro tetto per **ordine** $21,34
-sulla gamba cara ⇒ **243 mercati su 321 (76%)** sfonderebbero, **631 `manual-order-cap` in 3 giorni**.
-L'aritmetica di ②: `capitale ≤ tettoOrdine × costoCoppia / max(p_yes, p_no)`. Il capitale **può solo
-scendere** (`Math.min`), quindi nessun tetto viene alzato. Il modulo **non importa nessuna costante**:
-le soglie gliele passa chi le possiede, o nascerebbe la settima copia del tetto.
+**125** · RIFIUTI RIPETUTI: RICONOSCERE E REAGIRE
 
 
-**127 · SCALA DI SBLOCCO E AUTODIAGNOSI.** Gradini e soglie nel banner. Le scelte: **5 minuti** per
-gradino (il tempo in cui la sentinella vede un vuoto, più di due cadenze del trigger); **50%** di
-capitale al lavoro come soglia di guasto — non il 95% dell'obiettivo, perché l'obiettivo è una tensione
-e la soglia è un sintomo — perché sul giornale delle 48 h precedenti il regime bloccato stava a 8-40% e
-quello sano a 44-63%; **15 minuti** sotto soglia perché un singolo giro sotto il 50% è normale dopo un
-ribilanciamento. **L'ultimo gradino non è un'azione: è FERMA.**
-**⚠ VERIFICA STORICA, e il risultato non è quello che si spererebbe.** Sui 102 mini-cicli del 10-13
-agosto ci sono **4 finestre di blocco per 610 minuti**; **tre su quattro hanno la stessa causa — il
-deadlock aritmetico — e per quelle la scala NON avrebbe sbloccato niente**: il bot sarebbe arrivato a
-**FERMA in ~30 minuti**. Il guadagno è **da 286 minuti di finto lavoro a 30 minuti e un allarme grave**,
-non a un bot che riparte. A sbloccare quelle tre è stata la griglia (§120). Capitale fermo: ~**6.190 $·ora**.
+**126** · COERENZA FRA I MODULI
 
 
-**128 · RESIDUI SOTTO SOGLIA: NON SI PUÒ IMPEDIRE CHE NASCANO — non implementato, con i numeri.**
-**(a) Il venue non offre un vincolo di esecuzione utile, e la prova è nei tipi dell'SDK.**
-`createAndPostOrder<T extends OrderType.GTC | OrderType.GTD>` — un ordine **a riposo può essere solo
-GTC o GTD**, il sistema di tipi vieta l'alternativa. `FOK`/`FAK` esistono ma **solo** su
-`createAndPostMarketOrder<T extends OrderType.FOK | OrderType.FAK>`, cioè su ordini **market**: eseguono
-subito e **non riposano mai**, quindi maturano **zero reward** — che è l'intero ricavo di questo bot — e
-attraversano lo spread. Nessun parametro di quantità minima eseguibile esiste (`minFill`, `allOrNone`,
-`minExecutable`: **zero occorrenze** nei tipi). ⇒ **(a) è un no definitivo.**
-**(b) Nessuna alternativa lato bot funziona, e la prima è aritmetica.** Il residuo scoperto dopo un
-fill di frazione `f` vale `Q·f` share ed è copribile solo se `Q·f ≥ minSize`: essendo **continuo in
-`f`**, per qualunque size esiste sempre un `f` che lascia un residuo sotto soglia. *Dimensionare gli
-ordini perché il residuo resti sopra soglia è impossibile, non costoso.* *Spezzare in blocchi da
-minimo-venue* non aiuta: un ordine da 20 share può essere riempito per 7. *Completare subito il fill* è
-ciò che il bot **già fa** (Livelli 1-2, chiusura rapida, riposizionamento) e fallisce esattamente
-quando `manca < minSize`, che è il caso in questione.
-**(c) L'unica leva è `f_min`, e va nella direzione OPPOSTA a quella che sembra.** Il residuo si incastra
-quando `f < f_min = minSize × costoCoppia / capitale`: quindi un tetto **più alto** abbassa `f_min` e
-**restringe** la finestra che incastra. La correzione della griglia (§120) ha già portato le righe da
-$24 a $32, cioè `f_min` da **0,817 a 0,600** — il tetto è già al massimo che il tetto per ordine e il
-pavimento premiante consentono. Andare nell'altro verso costa: a `f_min = 1,00` il tetto scenderebbe a
-$19,60 e la size per lato da **$16,34 a $9,80 (−40%)** su ogni mercato, per **13 eventi di residuo in
-3 giorni** e **$35,03** oggi murati (5,3% del portafoglio). Una perdita anche solo del 20% sul
-realistico (~$51/g) costa **più dell'intero capitale murato in tre giorni e mezzo**, e quel capitale non
-è perso — è illiquido fino alla risoluzione. ⇒ **NON implementato: la cura costa più della malattia.**
-**I cinque residui già esistenti restano una questione aperta** (§123): niente li chiude, `redeemPosition`
-continua a non avere chiamanti, e la proposta del redeem dopo la risoluzione resta da decidere.
+**127** · SCALA DI SBLOCCO E AUTODIAGNOSI
 
-**129 · IL FILTRO ORIZZONTE COSTA 5,4× E NON PROTEGGE DA CIÒ CHE DICHIARA — misurato, NON implementato.**
-Sola misura: `scripts/ricerca/orizzonte-{popolazione,sensibilita,brevi-rischio,maturazione}.js`, referto
-in `data/ricerca/sintesi-orizzonte.md`. **`MIN_HORIZON_DAYS` resta 0,75** — `orizzonte-sensibilita.js`
-sostituisce `horizonVerdict` **in memoria nel proprio processo figlio**, prima che `allocator.js:78` lo
-destrutturi; il resto della catena è il codice di produzione.
-**(a) IL COSTO, sulla stessa fotografia del board (20:17:13, $650, tetto $32,67).** Pavimento **0,75 g ⇒
-3 mercati, $96 al lavoro, $554 fermi, $64,10/g**; pavimento **0,50 g ⇒ 21 mercati, $648 al lavoro,
-$347,68/g**. Il gradino è **tutto fra 12 h e 18 h** (63 mercati); 0,25 / 0,40 / 0,50 danno il **piano
-identico**, cioè il pianoro di insensibilità oggi è **6–12 h** e 18 h sta sull'altro lato. **Il rapporto
-5,4× regge al taglio prudente delle quote a 15% (5,5×: $31,75 → $173,51/g)** — è l'unico numero della
-misura che non dipende dal credere alle quote alte. Il livello no: **metà del lordo viene da 3 righe con
-quota modellata 45–59%** su book sottili.
-**(b) L'ORIGINE DELLA SOGLIA è documentata e derivata** (commit `123d812`, intestazione di `horizon.js`):
-mediana **22,7 h** sugli ingressi premianti dei 21 maker contro 2,2 h sui non premianti, e 18 h scelte
-perché **fra 12,4 h e 19,6 h il campione premiante era VUOTO**. Tre limiti dichiarati: il file stesso la
-chiama «**un'assunzione**»; è tarata su **cosa fanno i vincitori**, non su cosa ci costa; e il commit
-scriveva «**EFFETTO MISURATO: zero, oggi**» — oggi la stessa soglia toglie il **76%** del board, e il
-vuoto 12,4–19,6 h su cui poggiava l'argomento **non esiste più**.
-**(c) IL RISCHIO VERO STA A 6 ORE, NON A 18.** 21 maker, 120 coppie ingresso→ritiro premianti: uscite
-**dopo** la risoluzione **35,1% sotto 6 h** (13/37), **0% fra 6 e 12 h** (0/36), **0% fra 12 e 18 h**
-(0/15), **0% fra 18 e 48 h** (0/32). Regola del tre: 0/15 ammette fino a ~18%.
-**(d) IL FILTRO AGISCE ALL'INGRESSO, IL RISCHIO ARRIVA DALL'INVECCHIAMENTO.** `nostro:` **22 gambe su 22
-mercati, 22 NUDE, zero coppie complete**; delle 17 con scadenza leggibile **17 sono sotto le 18 h**
-(tutte a 15,51 h). `modalita-chiusura`: 18 coppie su 23 con la sorella **mai piazzata**, età mediana
-**9,5 h**. Residui: 25, **21 sotto il minimo del venue**, $145,07 murati, **18 dei 25 mercati sotto le
-18 h e ZERO sopra**. Stiamo già correndo per intero il rischio da cui il filtro dovrebbe proteggere.
-**(e) LA MATURAZIONE NON È IL VINCOLO.** Il venue campiona **1.440 volte al giorno** (uno al minuto —
-già citato in `auto-reprice-config.js`): 6 h = 360 campioni = 25% di una giornata. Alla quota mediana
-del piano (~14%) **il costo del giro rientra in meno di un'ora**.
-**(f) L'ORIZZONTE VALE PIÙ DEL TETTO, E VANNO MOSSI UNO ALLA VOLTA.** Stessa fotografia: tetto $32,67→$245
-a pavimento 0,75 fa **+5%** ($64,10 → $67,55: riempie il capitale e non muove il lordo, perché con 3
-mercati il capitale in più va contro il tetto di credibilità); pavimento 0,75→0,50 a tetto fermo fa
-**+442%**. E sotto il taglio prudente il tetto alto **si inverte** ($245 ⇒ $135,90/g contro $173,51/g a
-$32,67), perché concentra su 9 righe con quote 24–60%. ⇒ **l'orizzonte per primo, il tetto non insieme.**
-**(g) ⚠ IL COSTO VARIA DI ORA IN ORA.** Sulle 33 fotografie del 13 agosto i mercati corti vanno da **2
-(15:16)** a **88 (18:18)**: un piano calcolato alle 16:00 e uno alle 20:00 vedono due board diversi, e
-qualunque misura su una fotografia sola va marcata con l'ora. Deriva fra due giri identici: **~3%**.
-**NON MISURATO:** il nostro tasso di fill per orizzonte (servirebbe lo stream del giornale maker da
-340 MB con il join tokenId→conditionId). I nostri numeri ereditano i **4 giorni di presenza su 30**.
+
+**128** · RESIDUI SOTTO SOGLIA: NON SI PUÒ IMPEDIRE CHE NASCANO — non implementato, con i numeri
+
+
+**129** · IL FILTRO ORIZZONTE COSTA 5,4× E NON PROTEGGE DA CIÒ CHE DICHIARA — misurato, NON implementato
+
 
 ### Le classi di difetto che si ripetono — leggerle prima di scrivere codice qui
 
