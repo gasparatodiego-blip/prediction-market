@@ -283,6 +283,9 @@ const { statoBot, botAttivo, impostaBot, apertureDallAvvio, registraMercatoApert
 // `readable:false` e il bot pianificherebbe su capitale zero, in silenzio. E' la forma di §5-bis p.153,
 // ed e' il motivo per cui `saldo-da-cache-non-da-dashboard.test.js` asserisce l'import PER NOME.
 const { leggiSaldoUsd } = require('../lib/maker/saldo-cache');
+// Il riconciliatore della copertura: niente doppioni, nessuno slot vuoto. Vedi `riconciliaCopertura`.
+const DOPP = require('../lib/maker/doppioni');
+const COP = require('../lib/maker/copertura-gambe');
 const CLOB_BASE = process.env.POLY_CLOB_BASE || 'https://clob.polymarket.com';
 // Un ciclo non parte mai nel primo minuto di vita del processo: un riavvio in serie di pm2 non deve
 // tradursi in una raffica di reset. E se l'ultimo ciclo è più recente dell'intervallo, si aspetta il
@@ -1191,6 +1194,164 @@ function selezioneAttiva() {
  * Non piazza e non cancella niente. Non solleva mai: un guasto qui deve lasciare il bot esattamente
  * come lo ha trovato, non fermarlo.
  */
+// ══ I NETTI DEI CANDIDATI, PER LA RICLASSIFICAZIONE DELLA SELEZIONE — 16 agosto 2026 ═══════════════
+//
+// La selezione ordina e spodesta col NETTO del knapsack (`selezione-mercati.valoreCandidato`), non col
+// lordo del board. Il netto pero' nasce da `planFromCollection`, quindi va calcolato qui e iniettato:
+// il modulo di selezione e' puro e non puo' chiamarlo.
+//
+// ⚠ NON SI PUO' RIUSARE IL PIANO DEL MINI-CICLO, ed e' il punto che rende necessaria questa funzione.
+// `calcolaPianoFuoriProcesso` applica `restringiAllaSelezione`, cioe' restringe l'universo ai mercati
+// GIA' SCELTI: un piano cosi' non sa niente degli SFIDANTI, che per definizione sono fuori dalla
+// selezione. Chiedergli i netti dei candidati sarebbe chiedere a chi ha gia' deciso di rivalutare la
+// propria decisione con i propri dati. Qui si chiama il pianificatore DIRETTAMENTE, senza restrizione.
+//
+// ⚠ E SI CHIAMA CON PARSIMONIA. Il processo figlio costa secondi e la selezione gira ogni 120 s, ma i
+// netti si muovono col BOARD, che agent24 riscrive ogni 15 minuti: ricalcolarli piu' spesso del board
+// e' lavoro buttato. Cache a 10 minuti — meno del periodo del board, cosi' un board nuovo viene sempre
+// visto entro un giro.
+const NETTI_TTL_MS = 10 * 60_000;
+let _netti = { at: 0, mappa: null };
+
+async function nettiDeiCandidati(board, orizzonteMassimoOre) {
+  const ora = Date.now();
+  if (_netti.mappa && (ora - _netti.at) < NETTI_TTL_MS) return _netti.mappa;
+  try {
+    const ammissibili = (board || [])
+      .filter((r) => SELM.valutaAmmissibilita(r, { ora, orizzonteMassimoOre }).ammissibile)
+      .map((r) => String(r.conditionId || '').trim().toLowerCase())
+      .filter(Boolean);
+    if (!ammissibili.length) { _netti = { at: ora, mappa: {} }; return _netti.mappa; }
+    const capitale = await (async () => { const s = await leggiSaldo(); return s && s.readable === true ? s.usd : null; })();
+    if (!fin(capitale)) return null;   // capitale ignoto ⇒ nessun netto ⇒ nessuno spodestamento
+    const piano = await new Promise((risolvi, rifiuta) => {
+      const figlio = execFile('node', ['-e', RUNNER_PIANO],
+        { timeout: PLAN_TIMEOUT_MS, maxBuffer: PLAN_MAX_BUFFER },
+        (err, stdout) => {
+          if (err) return rifiuta(new Error(err.killed ? `timeout ${PLAN_TIMEOUT_MS}ms` : err.message));
+          try { risolvi(JSON.parse(stdout)); } catch (e) { rifiuta(new Error(`JSON non valido: ${e.message}`)); }
+        });
+      figlio.on('error', (e) => rifiuta(e));
+      // ⚠ NIENTE `restringiAllaSelezione`: qui servono i netti degli SFIDANTI. La finestra e' 24 h e non
+      // 6 h perche' sotto le 24 h molti mercati rispondono `nessun-fill-osservato`, cioe' netto `null`,
+      // e un netto che non si sa non spodesta e non si fa spodestare: la selezione resterebbe congelata.
+      figlio.stdin.end(JSON.stringify({
+        capital: capitale, maxPerMarketUsd: MARKET_CAP_FIXED_USD,
+        from: new Date(ora - 24 * 3_600_000).toISOString(), to: new Date(ora).toISOString(),
+        horizonFilter: true, onlyMarketIds: ammissibili,
+      }));
+    });
+    const mappa = {};
+    for (const c of (piano && piano.candidates) || []) {
+      const id = String(c.marketId || '').trim().toLowerCase();
+      if (id && fin(c.bestNetPerDay)) mappa[id] = c.bestNetPerDay;
+    }
+    _netti = { at: ora, mappa };
+    return mappa;
+  } catch (e) {
+    // ⚠ FALLISCE CHIUSO: `null` ⇒ la selezione ordina col lordo e NON spodesta nessuno. Non si tiene la
+    // mappa vecchia: un netto di venti minuti fa deciderebbe di cancellare ordini di adesso.
+    annuncia('log', `netti dei candidati non calcolabili (${e.message}) — la selezione ordina col lordo e non spodesta nessuno`);
+    return null;
+  }
+}
+
+/** I mercati con ordini a RIPOSO al venue, per la condizione ③ dello spodestamento.
+ *  ⚠ FAIL-CLOSED: qualunque lettura fallita ⇒ `leggibile:false` ⇒ nessuno viene spodestato. Cancellare
+ *  ordini vivi sulla base di una lista che non si e' potuta leggere e' il modo di perdere capitale che
+ *  stava gia' maturando reward. */
+async function mercatiConOrdiniVivi(deps = {}) {
+  try {
+    const leggi = deps.listOrders || (() => listManualOrders({}));
+    const o = await leggi();
+    if (!o || o.ok === false || !Array.isArray(o.orders)) return { leggibile: false, ids: [] };
+    return { leggibile: true, ids: Object.keys(TRIG.notionalePerMercato(o.orders)) };
+  } catch { return { leggibile: false, ids: [] }; }
+}
+
+// ══ IL RICONCILIATORE: NIENTE DOPPIONI, E NESSUNO SLOT VUOTO — 16 agosto 2026 ═══════════════════════
+//
+// Gira a ogni ciclo, PRIMA della selezione, e fa due cose che nessuno faceva:
+//   ① toglie i doppioni gia' a libro (`doppioni.trovaDoppioni`), tenendone uno;
+//   ② dichiara la copertura di ogni mercato attivo (`copertura-gambe.valutaCopertura`) e, quando un
+//      mercato resta non quotabile oltre la soglia, lo marca come DA SOSTITUIRE.
+//
+// ⚠ NON PIAZZA. Il ripiazzamento delle gambe mancanti resta al percorso che gia' piazza — il piano e
+// `piazzaCoppia` — e qui ci si limita a CHIEDERLO forzando il mini-ciclo. Una seconda strada verso il
+// venue sarebbe una seconda verita' sui prezzi e sui gate, e il duplicato di stamattina e' nato proprio
+// da due percorsi che credevano cose diverse sullo stesso ordine.
+//
+// ⚠ CANCELLARE SI', ED E' ASIMMETRICO DI PROPOSITO: togliere un doppione riduce esposizione e non ne
+// crea, quindi puo' avvenire qui senza passare dal piano. E' la stessa asimmetria per cui il guardiano
+// delle perdite puo' cancellare da solo e non puo' piazzare.
+const _nonQuotabileDal = new Map();   // conditionId → epoch ms della prima osservazione consecutiva
+
+async function riconciliaCopertura(deps = {}) {
+  const esito = { doppioniRimossi: [], copertura: [], daSostituire: [], ordiniLetti: null, motivo: null };
+  let ordini;
+  try {
+    const leggi = deps.listOrders || (() => listManualOrders({}));
+    const o = await leggi();
+    ordini = (o && o.ok !== false && Array.isArray(o.orders)) ? o.orders : null;
+  } catch (e) { ordini = null; esito.motivo = e && e.message ? e.message : String(e); }
+  // ⚠ FAIL-CLOSED: senza la lista non si cancella e non si giudica. Cancellare al buio significherebbe
+  // togliere ordini che non si e' visti; giudicare al buio significherebbe ripiazzare sopra ordini vivi.
+  if (!ordini) {
+    esito.motivo = `ordini vivi non leggibili${esito.motivo ? `: ${esito.motivo}` : ''} — nessun doppione rimosso, nessuna copertura giudicata`;
+    annuncia('log', `riconciliazione: ${esito.motivo}`);
+    scrivi({ tipo: 'riconciliazione-copertura', esito: 'astenuta', motivo: esito.motivo });
+    return esito;
+  }
+  esito.ordiniLetti = ordini.length;
+
+  // ── ① I DOPPIONI ────────────────────────────────────────────────────────────────────────────────
+  const d = DOPP.trovaDoppioni(ordini);
+  for (const x of d.daCancellare) {
+    let r = null;
+    try { r = await (deps.cancella || cancelManualOrder)({ orderId: x.orderId }, 'riconciliatore-doppioni'); }
+    catch (e) { r = { ok: false, reason: e && e.message ? e.message : String(e) }; }
+    const rimosso = !!(r && r.ok);
+    esito.doppioniRimossi.push({ orderId: x.orderId, chiave: x.chiave, rimosso, motivo: x.motivo,
+      error: rimosso ? null : ((r && r.reason) || 'motivo ignoto') });
+    scrivi({ tipo: 'riconciliazione-copertura', esito: rimosso ? 'doppione-rimosso' : 'doppione-non-rimosso',
+      orderId: x.orderId, chiave: x.chiave, motivo: x.motivo, error: rimosso ? null : ((r && r.reason) || null) });
+    annuncia('log', `doppione-rimosso: ${x.orderId.slice(0, 14)}… — ${x.motivo}${rimosso ? '' : ' ⚠ CANCELLAZIONE FALLITA'}`);
+  }
+  if (d.illeggibili) annuncia('log', `riconciliazione: ${d.illeggibili} ordine/i senza token o lato leggibili — non giudicati, non cancellati`);
+
+  // ── ② LA COPERTURA DEI MERCATI ATTIVI ───────────────────────────────────────────────────────────
+  const sel = selezioneAttiva();
+  const board = deps.leggiBoard ? deps.leggiBoard() : leggiBoardReward();
+  const ora = Date.now();
+  let scoperti = 0;
+  for (const id of (sel.idsAttivi || [])) {
+    const riga = (board || []).find((r) => String(r.conditionId || '').trim().toLowerCase() === id) || null;
+    // La quotabilita' viene dal MOTORE, non da un secondo giudizio: se il mercato non e' sul board non
+    // si puo' nemmeno provare, ed e' gia' una risposta.
+    const quotabile = riga ? { ok: true } : { ok: false, motivo: 'mercato non piu\' sul board' };
+    const v = COP.valutaCopertura({
+      conditionId: id, tokenIdYes: riga && riga.tokenId, tokenIdNo: riga && riga.tokenIdNo,
+      ordini, quotabile, ora, nonQuotabileDal: _nonQuotabileDal.get(id) ?? null,
+    });
+    if (v.nonQuotabileDal == null) _nonQuotabileDal.delete(id); else _nonQuotabileDal.set(id, v.nonQuotabileDal);
+    esito.copertura.push({ id, stato: v.stato, gambeVive: v.gambeVive, mancanti: v.mancanti.length, motivo: v.motivo });
+    if (v.stato === 'da-coprire' || v.stato === 'non-quotabile') scoperti += 1;
+    if (v.stato === 'da-sostituire') esito.daSostituire.push({ id, motivo: v.motivo });
+    if (v.stato !== 'coperto') {
+      scrivi({ tipo: 'riconciliazione-copertura', esito: v.stato, marketId: id,
+        gambeVive: v.gambeVive, mancanti: v.mancanti, motivo: v.motivo });
+      annuncia('log', `copertura ${id.slice(0, 12)}…: ${v.stato} (${v.gambeVive}/2 gambe) — ${v.motivo}`);
+    }
+  }
+  // Uno slot scoperto e' capitale che non lavora: si CHIEDE il ripiazzamento al percorso che piazza,
+  // invece di piazzare qui. `controlloCapitaleFermo` ricostruisce il piano e apre le gambe mancanti.
+  if (scoperti > 0) {
+    try { await controlloCapitaleFermo({ forzatoDa: 'copertura-incompleta' }); }
+    catch (e) { annuncia('log', `ripiazzamento delle gambe mancanti non riuscito: ${e.message}`); }
+  }
+  return esito;
+}
+
 async function selezionaMercati(deps = {}) {
   const stato = deps.leggiStatoSelezione ? deps.leggiStatoSelezione() : SELS.leggiStato();
   if (!stato.leggibile) {
@@ -1208,11 +1369,30 @@ async function selezionaMercati(deps = {}) {
   // valore glielo passa il cablaggio. Senza, la selezione potrebbe occupare uno slot con un mercato
   // che l'allocatore rifiuta per orizzonte: uno slot vivo che non ricevera' mai un ordine.
   const orizzonteMassimoOre = (() => {
-    try { const H = require('../lib/rewards/horizon'); return Number(H.MAX_HORIZON_DAYS) * 24 || null; }
-    catch { return null; }   // non leggibile ⇒ nessun tetto, cioe' il comportamento di prima
+    // ⚠ IL NOME ERA SBAGLIATO, E FALLIVA IN SILENZIO — corretto il 16 agosto 2026. Qui c'era
+    // `H.MAX_HORIZON_DAYS`, che in `horizon.js` NON ESISTE: gli export sono `MAX_HORIZON_DAYS_DEFAULT`
+    // e `maxHorizonDays()`. `Number(undefined) * 24` fa NaN, `NaN || null` fa `null`, e `null` qui
+    // significa «nessun tetto d'orizzonte»: la selezione poteva occupare uno slot con un mercato che
+    // l'allocatore non finanziera' mai. Quinta occorrenza della classe «dep non cablata ⇒ valore di
+    // difetto che nessuno ha chiesto» (§5.3), e come le altre non si vedeva da fuori.
+    try {
+      const H = require('../lib/rewards/horizon');
+      const g = typeof H.maxHorizonDays === 'function' ? Number(H.maxHorizonDays()) : Number(H.MAX_HORIZON_DAYS_DEFAULT);
+      return Number.isFinite(g) && g > 0 ? g * 24 : null;
+    } catch { return null; }   // non leggibile ⇒ nessun tetto, cioe' il comportamento di prima
   })();
+  // I due ingressi della riclassificazione. Entrambi possono mancare, e mancando disattivano SOLO lo
+  // spodestamento: la selezione continua a riempire gli slot liberi come ha sempre fatto.
+  const nettoPerMercato = deps.nettoPerMercato !== undefined
+    ? deps.nettoPerMercato
+    : await nettiDeiCandidati(board, orizzonteMassimoOre);
+  const conOrdiniVivi = deps.conOrdiniVivi !== undefined
+    ? deps.conOrdiniVivi
+    : await mercatiConOrdiniVivi(deps);
+
   const d = SELM.decidiSelezione({
     board, stato: stato.stato, posizioni, ora: Date.now(), escludi: quarantena, orizzonteMassimoOre,
+    nettoPerMercato, conOrdiniVivi,
   });
   if (!d.ok) {
     annuncia('log', `selezione automatica: nessuna decisione — ${d.motivo}`);
@@ -1227,6 +1407,20 @@ async function selezionaMercati(deps = {}) {
   for (const u of d.uscenti) {
     const r = await rilasciaDallaSelezione({ marketId: u.id, motivo: u.motivo });
     usciti.push({ ...u, scritto: !!(r && r.ok), error: (r && r.error) || null });
+  }
+
+  // ── GLI SPODESTATI VANNO RILASCIATI ANCHE LORO, E NON PASSANO DA `uscenti` ─────────────────────
+  // Uno spodestato non e' «uscito per un vincolo violato»: e' stato sostituito da un candidato
+  // migliore, quindi vive in `d.spodestati` e in `d.liberati`, non in `d.uscenti`. Senza questo ciclo
+  // sparirebbe dallo STATO della selezione restando ABILITATO al riprezzo — un mercato che nessuno
+  // considera piu' suo e su cui il bot continua a lavorare. E' la stessa forma di §5-bis p.44.
+  // ⚠ `rilasciaDallaSelezione` tocca solo `setAutoReprice`: spegne l'INGRESSO, non l'uscita. Un
+  // mercato spodestato non ha ordini vivi (condizione ③) ne' gambe in attesa (condizione ④), ma se ne
+  // acquisisse fra questo istante e il prossimo giro, la regola di copertura di §4.8 lo gestisce lo stesso.
+  const spodestati = [];
+  for (const s of (d.spodestati || [])) {
+    const r = await rilasciaDallaSelezione({ marketId: s.id, motivo: 'spodestato' });
+    spodestati.push({ ...s, scritto: !!(r && r.ok), error: (r && r.error) || null });
   }
 
   const entrati = [];
@@ -1257,6 +1451,7 @@ async function selezionaMercati(deps = {}) {
   const riassunto = `selezione automatica: ${d.occupati}/${SELM.MAX_MERCATI_CONTEMPORANEI} slot attivi`
     + (d.inGestione.length ? ` (+${d.inGestione.length} in gestione, fuori dal conteggio)` : '')
     + ` · ${d.ammissibili} mercati ammissibili su ${d.valutati} valutati`
+    + (spodestati.length ? ` · SPODESTATI ${spodestati.map((x) => `${x.id.slice(0, 10)}… (netto ${x.netto.toFixed(3)}/g → ${x.nettoNuovo.toFixed(3)}/g)`).join(', ')}` : '')
     + (entrati.length ? ` · ENTRATI ${entrati.map((x) => `${x.id.slice(0, 10)}…${x.aperto ? '' : ' (RIFIUTATO: ' + x.motivo + ')'}`).join(', ')}` : '')
     // ROTAZIONE: il fill che libera lo slot va detto, o «3 slot e 5 mercati» sembra un errore.
     + (d.entratiInGestione.length ? ` · IN GESTIONE per un fill ${d.entratiInGestione.map((x) => x.id.slice(0, 10) + '…').join(', ')}` : '')
@@ -1269,6 +1464,11 @@ async function selezionaMercati(deps = {}) {
     occupati: d.occupati, ammissibili: d.ammissibili, valutati: d.valutati,
     tenuti: d.tenuti.map((x) => x.id), entrati, usciti, liberati: d.liberati,
     entratiInGestione: d.entratiInGestione, inGestione: d.inGestione,
+    // Lo spodestamento e' l'azione nuova del 16 agosto 2026: va nel giornale con i due netti a
+    // confronto, o fra un mese non si potra' dire se la riclassificazione ha migliorato o solo agitato.
+    spodestati,
+    nettiIniettati: nettoPerMercato ? Object.keys(nettoPerMercato).length : null,
+    ordiniViviLeggibili: conOrdiniVivi ? conOrdiniVivi.leggibile === true : null,
     statoSalvato: salvato.ok, statoErrore: salvato.ok ? null : salvato.error,
   };
   scrivi(rec);
@@ -2255,6 +2455,10 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   // anche in una giornata in cui il capitale e' tutto al lavoro e nessun trigger scatta mai. Costa due
   // letture di file locali, non una chiamata di rete, e i due cancelli gratuiti (bot avviato, kill
   // spento) sono gia' stati passati qui sopra.
+  // ⚠ PRIMA della selezione: un doppione tolto e uno slot dichiarato vuoto cambiano cio' che la
+  // selezione vede. Farlo dopo significherebbe decidere sulla fotografia sbagliata.
+  try { await riconciliaCopertura(); }
+  catch (e) { annuncia('log', `riconciliazione della copertura non eseguita: ${e.message}`); }
   try { await selezionaMercati(); }
   catch (e) { annuncia('log', `selezione automatica non eseguita: ${e.message} — si prosegue con la lista di prima`); }
   let saldo = null;
