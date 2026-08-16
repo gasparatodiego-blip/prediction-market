@@ -84,7 +84,7 @@ const { runReallocCycle, INTERVAL_MS } = require('../lib/maker/realloc-cycle');
 const { runAllocationReset } = require('../lib/maker/allocation-reset');
 const { runBulkAllocation } = require('../lib/maker/bulk-allocate');
 const { diagnoseExposure } = require('../lib/maker/manual-reset');
-const { listManualOrders, cancelManualOrder, resolveCaps, OPERATOR_USER } = require('../lib/maker/manual-order');
+const { listManualOrders, cancelManualOrder, placeManualOrder, resolveCaps, OPERATOR_USER } = require('../lib/maker/manual-order');
 const { readUsage } = require('../lib/safety/usage');
 const { readAutoRepriceConfig, setAutoReprice } = require('../lib/maker/auto-reprice-config');
 const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
@@ -286,6 +286,10 @@ const { leggiSaldoUsd } = require('../lib/maker/saldo-cache');
 // Il riconciliatore della copertura: niente doppioni, nessuno slot vuoto. Vedi `riconciliaCopertura`.
 const DOPP = require('../lib/maker/doppioni');
 const COP = require('../lib/maker/copertura-gambe');
+// Il presidio che impedisce un'altra FL-27 da cinque ore. Indipendente dalla scala d'uscita: vedi
+// `presidio-posizioni-vecchie` per perche' e' deliberatamente stupido e quando andra' tolto.
+const PRESIDIO = require('../lib/maker/presidio-posizioni-vecchie');
+const PRESIDIO_FILE = require('path').join(require('../lib/safety/store').DATA_DIR, 'presidio-posizioni.json');
 const CLOB_BASE = process.env.POLY_CLOB_BASE || 'https://clob.polymarket.com';
 // Un ciclo non parte mai nel primo minuto di vita del processo: un riavvio in serie di pm2 non deve
 // tradursi in una raffica di reset. E se l'ultimo ciclo è più recente dell'intervallo, si aspetta il
@@ -1424,6 +1428,74 @@ async function riconciliaAllowlist(deps = {}) {
   return { ok: true, motivo: null, spenti, dentro: dentro.size };
 }
 
+// ══ IL PRESIDIO: NESSUNA POSIZIONE DIREZIONALE OLTRE UN'ORA — 16 agosto 2026 ═══════════════════════
+// Decisione dell'operatore dopo che un fill delle 15:19 e' rimasto aperto CINQUE ORE: le regole per
+// chiuderlo c'erano tutte e nessuna e' scattata, perche' l'orologio della scala si azzera a ogni
+// ripiazzamento del completamento (§5-bis p.138). La correzione della scala e' rimandata; questo e' il
+// limite superiore al danno nel frattempo.
+// ⚠ SOLO CHIUDE. Non apre, non riprezza, non tocca la scala. E attraversa lo spread dichiarandolo
+// (`attraversaApposta`), perche' un'uscita che resta appesa sopra il book non e' un'uscita — e' il
+// modo in cui oggi la posizione e' sopravvissuta al proprio gradino.
+async function presidioPosizioniVecchie(deps = {}) {
+  const esito = { chiuse: [], tenute: 0, motivo: null };
+  let ancore = {};
+  try { ancore = JSON.parse(require('fs').readFileSync(PRESIDIO_FILE, 'utf8')).ancore || {}; } catch { ancore = {}; }
+  let pos = null;
+  try {
+    const snap = (deps.leggiPosizioni || readVenuePositions)();
+    if (snap && snap.readable === true) pos = (snap.positions || []).map((x) => ({
+      asset: String(x.tokenId || x.asset || ''), conditionId: String(x.conditionId || ''),
+      size: Number(x.size), avgPrice: Number(x.avgPrice), curPrice: Number(x.curPrice) }));
+  } catch { pos = null; }
+
+  const minPerMercato = (() => {
+    try {
+      const board = leggiBoardReward() || [];
+      const m = {};
+      for (const r of board) { const c = String(r.conditionId || '').toLowerCase(); if (c) m[c] = Number(r.rewardsMinSize); }
+      return m;
+    } catch { return {}; }
+  })();
+
+  const v = PRESIDIO.valuta({ posizioni: pos, ancore, ora: Date.now(), minSizePerMercato: minPerMercato });
+  esito.tenute = v.tenute.length;
+  esito.motivo = v.motivo;
+  // Le ancore si salvano SEMPRE (tranne quando la lettura e' fallita: li' `valuta` le restituisce
+  // invariate), o una posizione vecchia si ringiovanirebbe a ogni giro.
+  try {
+    const fs_ = require('fs'); const tmp = `${PRESIDIO_FILE}.tmp`;
+    fs_.writeFileSync(tmp, JSON.stringify({ aggiornatoAl: new Date().toISOString(), ancore: v.ancore }, null, 1));
+    fs_.renameSync(tmp, PRESIDIO_FILE);
+  } catch { /* un'ancora non salvata concede un giro in piu', non ne toglie */ }
+
+  for (const c of v.daChiudere) {
+    const riga = (leggiBoardReward() || []).find((r) => String(r.conditionId || '').toLowerCase() === c.conditionId);
+    const book = riga && String(riga.tokenId) === c.asset ? 'yes' : 'no';
+    const bid = riga ? Number(riga.bestBid) : null;
+    // Si vende ATTRAVERSANDO: il prezzo e' un tick sotto il miglior bid, cosi' si esegue davvero.
+    const tick = riga ? Number(riga.tickSize) : 0.01;
+    const prezzo = Number.isFinite(bid) && bid > tick ? +(bid - tick).toFixed(6) : null;
+    if (prezzo === null) {
+      esito.chiuse.push({ ...c, chiusa: false, motivo: 'miglior bid non leggibile: non si vende al buio' });
+      continue;
+    }
+    let r = null;
+    try {
+      r = await (deps.piazza || placeManualOrder)({
+        marketId: c.conditionId, book, side: 'SELL', price: prezzo, size: c.size,
+        chiudePosizione: true, attraversaApposta: true, allowOutOfBand: true,
+      }, 'presidio-posizioni-vecchie');
+    } catch (e) { r = { ok: false, reason: e && e.message ? e.message : String(e) }; }
+    esito.chiuse.push({ ...c, prezzo, chiusa: !!(r && r.ok), error: (r && r.ok) ? null : String((r && r.reason) || 'ignoto').slice(0, 160) });
+    annuncia('log', `⚠ PRESIDIO: chiusura forzata ${c.conditionId.slice(0, 12)}… ${c.size} share a ${(prezzo * 100).toFixed(1)}c`
+      + ` — ${c.motivo}${r && r.ok ? '' : ' ⚠ FALLITA: ' + String((r && r.reason) || '').slice(0, 90)}`);
+    scrivi({ tipo: 'presidio-posizioni-vecchie', esito: (r && r.ok) ? 'chiusa' : 'chiusura-fallita',
+      marketId: c.conditionId, asset: c.asset, size: c.size, etaMin: c.etaMin, prezzo,
+      motivo: c.motivo, error: (r && r.ok) ? null : String((r && r.reason) || '').slice(0, 200) });
+  }
+  return esito;
+}
+
 async function selezionaMercati(deps = {}) {
   const stato = deps.leggiStatoSelezione ? deps.leggiStatoSelezione() : SELS.leggiStato();
   if (!stato.leggibile) {
@@ -2529,6 +2601,9 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   // spento) sono gia' stati passati qui sopra.
   // ⚠ PRIMA della selezione: un doppione tolto e uno slot dichiarato vuoto cambiano cio' che la
   // selezione vede. Farlo dopo significherebbe decidere sulla fotografia sbagliata.
+  // ⚠ PRIMA di tutto: una posizione oltre l'ora si chiude, e non dipende da niente altro.
+  try { await presidioPosizioniVecchie(); }
+  catch (e) { annuncia('log', `presidio posizioni vecchie non eseguito: ${e.message}`); }
   try { await riconciliaCopertura(); }
   catch (e) { annuncia('log', `riconciliazione della copertura non eseguita: ${e.message}`); }
   try { await selezionaMercati(); }
@@ -2838,7 +2913,7 @@ if (require.main === module) main();
 module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
   selezionaMercati, rilasciaDallaSelezione, selezioneAttiva, restringiAllaSelezione, leggiBoardReward, posizioniPerSelezione,
-  riconciliaAllowlist, riconciliaCopertura,
+  riconciliaAllowlist, riconciliaCopertura, presidioPosizioniVecchie,
   autodiagnosiPeriodica, eseguiGradino, messaggioFeedRiseminato, nozionalePiazzato,
   LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,
