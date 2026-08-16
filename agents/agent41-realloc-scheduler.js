@@ -2450,12 +2450,35 @@ function main() {
       // IL TETTO IN VIGORE E DA QUALE CAPITALE NASCE. Dal 12 agosto 2026 non e' piu' una costante:
       // e' derivato da `f_min`, e il numero di mercati e' la conseguenza. Chi legge il log deve
       // vedere il numero VERO di adesso, non quello di riferimento.
+      //
+      // ⚠ ZERO E «NON LO SO» NON SONO LA STESSA COSA (16 agosto 2026).
+      // Qui c'era `Number(a && a.capital)`, e `readAllocatedCapitalAll()` restituisce `capital: null`
+      // finche' nessun ciclo ha scritto `data/maker-allocated-capital.json` — cioe' a ogni primo avvio.
+      // **`Number(null) === 0`**, quindi `Number.isFinite(0)` era vero e il ramo «non letto», che
+      // esisteva gia' due righe piu' sotto, non veniva MAI raggiunto: il banner dichiarava
+      // «tetto per mercato $24.50 DERIVATO da capitale $0.00 · 0 mercati sostenibili», tre numeri
+      // presentati come misure e ottenuti interrogando le funzioni su un'incognita.
+      // E' l'ennesima occorrenza della classe elencata in §5.3, di nuovo trovata da una prova.
+      //
+      // ⚠ LA CURA STA QUI, NON IN `capPerMarketUsd`. Quella funzione NON deve tornare `null` (§4.2):
+      // a valle un tetto assente varrebbe «nessun tetto», cioe' il fail-OPEN della vecchia versione a
+      // percentuale. Il difetto non e' che deriva un tetto da zero, e' che il CHIAMANTE le passa
+      // un'incognita e ne stampa il risultato come un fatto. Quando il capitale non si legge non si
+      // deriva niente: si dichiara di non saperlo, e il piano — che gia' rifiuta per conto suo
+      // (`decidiTrigger` con `saldo.readable === false`) — resta fermo.
       try {
         const CO = require('../lib/rewards/concentration');
-        const cap = (() => { try { const a = readAllocatedCapitalAll(); return Number(a && a.capital); } catch { return null; } })();
+        const cap = (() => {
+          try { const a = readAllocatedCapitalAll(); return (a && Number.isFinite(a.capital)) ? a.capital : null; }
+          catch { return null; }
+        })();
+        if (cap == null) {
+          return ', capitale NON LETTO (data/maker-allocated-capital.json senza `capital`)'
+            + ' ⇒ NESSUN tetto derivato, NESSUN piano — zero e «non lo so» non sono la stessa cosa';
+        }
         const t = CO.capPerMarketUsd(cap);
         const f = CO.finestraMid(cap);
-        return `, tetto per mercato $${t} DERIVATO da capitale $${Number.isFinite(cap) ? cap.toFixed(2) : 'non letto'}`
+        return `, tetto per mercato $${t} DERIVATO da capitale $${cap.toFixed(2)}`
           + ` (f_min obiettivo ${(CO.F_MIN_OBIETTIVO * 100).toFixed(0)}%) · $${(t / 2).toFixed(2)} per lato`
           + ` · ${CO.mercatiSostenibili(cap)} mercati sostenibili (tetto di carico ${CO.MAX_MERCATI})`
           + ` · tetto per ordine $${CO.liveMinOrderCapUsd(cap)} · finestra mid [${f.lo} · ${f.hi}]`;
@@ -2465,6 +2488,24 @@ function main() {
     + ` · l'interruttore e' ${FILE_INTERRUTTORE}, si commuta dalla tab «Mercati ottimizzati»`);
   scrivi({ at: new Date().toISOString(), tipo: 'avvio', stato: 'acceso', botEnabled: bot0.enabled,
     botMotivo: bot0.motivo, intervalloOre: INTERVAL_MS / 3_600_000 });
+  // ── L'ALLARME SUL CAPITALE NON LETTO ──────────────────────────────────────────────────────────────
+  // Una riga di log si perde fra le venti dell'avvio; una riga di giornale si CONTA. Senza questa,
+  // «il capitale non si legge» resterebbe un'assenza, e un'assenza non fa scattare niente e non si
+  // ritrova fra un mese. Si scrive solo quando manca davvero: un allarme che compare a ogni avvio
+  // smetterebbe di essere letto.
+  {
+    const a0 = (() => { try { return readAllocatedCapitalAll(); } catch (e) { return { readable: false, error: e && e.message, capital: null }; } })();
+    if (!a0 || a0.readable !== true || !fin(a0.capital)) {
+      annuncia('log', "⚠ CAPITALE NON LETTO all'avvio: nessun tetto e' derivabile e nessun piano puo'"
+        + " partire finche' un ciclo non scrive `capital`."
+        + ' Non e\' un capitale ZERO: e\' un capitale IGNOTO, e le due cose portano a decisioni opposte.');
+      scrivi({ at: new Date().toISOString(), tipo: 'capitale-non-letto', stato: 'avvio',
+        leggibile: a0 ? a0.readable === true : false,
+        motivo: (a0 && a0.error) || 'il file non porta il campo `capital`',
+        file: require('../lib/maker/allocated-capital').STORE_FILE,
+        conseguenza: 'nessun tetto derivato, nessun piano: zero e non-letto non sono la stessa cosa' });
+    }
+  }
   pianificaProssimo('avvio');
 
   // ── IL POLLER DEL CAPITALE FERMO ────────────────────────────────────────────────────────────────
