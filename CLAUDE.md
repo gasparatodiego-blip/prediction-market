@@ -1218,27 +1218,31 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
    `data/ricerca/fine-scala-1090.json`. **Non applicata**, anche perché l'orizzonte si è appena mosso
    e due leve insieme rendono illeggibili le 24 ore di dati che l'operatore ha chiesto.
 
-21. **🔴 IL PAVIMENTO DI PROFONDITÀ TRATTA UN RINNOVO COME UN'APERTURA — difetto annotato, NON
-   corretto (13 agosto 2026, sera).** Stessa forma dei due chiusi stamattina (§5-bis p.133 tetto per
-   mercato, p.147 tetto per ordine): una regola nata per limitare l'**apertura** di esposizione nuova,
-   applicata a un'azione che non apre niente. `pavimentoDepth`
-   (`lib/maker/motore-unico.js:105-146`) non riceve nessun flag di chiusura; `motore-unico.js:208`
-   scarta il livello; `motore-unico.js:218` è il messaggio; `auto-reprice.js:1576` passa al rinnovo lo
-   **stesso** `pavimentoUsd` di un'apertura; e `tetto-chiusura.test.js:114-117` **asserisce l'assenza**
-   — quando §5-bis p.133 esentò le chiusure dal tetto, il pavimento fu lasciato fuori di proposito.
-   **Il caso vero**: Austin `cid_8951311347`, gamba **YES BUY 0,44 × 32,6 = $14,34** (una delle due di
-   una coppia delle 12:30:06), **13:13:13 `SCADUTO SENZA RINNOVO` — «il rinnovo era DOVUTO e l'ha
-   fermato "motore-non-conforme: profondita-insufficiente: la banda finisce prima del pavimento:
-   $43,12 su 1 livelli contro $186,44"»**. Da lì il mercato è rimasto **a gamba singola per oltre 5
-   ore**: esposizione direzionale **prodotta da un filtro anti-rischio**.
-   **⚠ L'analogia non è perfetta e non va forzata**: l'esenzione sul tetto poggiava su una prova
-   aritmetica (un BUY limitato da `manca` può solo appaiare). Qui no: rinnovare su un book sottile
-   lascia davvero capitale a riposo su un book sottile. Ma il termine di paragone non è «nessuna
-   esposizione», è **«la sorella muore e restiamo direzionali»**. Serve una decisione dell'operatore su
-   quale prova renda l'esenzione sicura *per costruzione*, non un `if` aggiunto a occhio.
-   **⚠ Strumentazione mancante**: dei 1.160 `profondita-insufficiente` in 2 ore non è possibile sapere
-   quanti fossero rinnovi e quanti aperture — il record di rifiuto del motore **non porta un campo che
-   distingua i due casi**. Andrebbe scritto lì.
+21. **🟢 IL PAVIMENTO DI PROFONDITÀ NON SI APPLICA PIÙ AI RINNOVI — decisione dell'operatore, 16
+   agosto 2026. CHIUSA.** Era aperta dal 13 agosto come difetto annotato e non corretto.
+   **LA MISURA CHE HA DECISO**: **34 `anomalia-rinnovo-fermato` in 22 minuti** su `0xf2b0c93903a1…`,
+   tutte della forma «RINNOVO DOVUTO E FERMATO (179s alla scadenza): profondita-insufficiente»;
+   **6 ordini morti per GTD** nella stessa finestra, e quel mercato rimasto **a gamba singola** — cioè
+   esattamente l'esposizione direzionale che il pavimento esiste per evitare, **prodotta dal pavimento
+   stesso**. La lacuna strumentale di allora («il record non distingue rinnovo da apertura») è chiusa:
+   `anomalia-rinnovo-fermato` porta i secondi alla scadenza.
+   **LA RAGIONE DELL'OPERATORE**: il termine di paragone non è «nessuna esposizione» — non è
+   un'opzione, l'ordine è già a libro — ma **«la gamba muore e restiamo direzionali»**, che è il
+   rischio peggiore dei due. Il pavimento **resta pieno sulle aperture**.
+   **SICURA PER COSTRUZIONE, NON CON UN `if`** (`lib/maker/esenzione-rinnovo.provaRinnovo`, puro,
+   stessa forma di `esenzione-chiusura`): ① esiste un ordine **vivo** su stesso mercato/token/lato,
+   letto dal venue; ② la **size non aumenta** (riduzioni ammesse); ③ il **nozionale non aumenta** —
+   stessa size a prezzo più alto è più capitale a riposo; ④ **fail-closed** su tutto il resto (lista
+   non leggibile, prezzo o size illeggibili, token o lato ignoti ⇒ **apertura**).
+   **⚠ E UNA QUINTA CONDIZIONE CHE NON ERA NELLA RICHIESTA E SERVE**: nel ciclo di riprezzo la size è
+   nota ma **il prezzo no** — lo sceglie il motore dopo. Senza un vincolo, l'esenzione varrebbe anche
+   per un livello più caro, cioè per più nozionale: la regola ③ violata proprio nel percorso che
+   l'esenzione serve. `provaRinnovo` restituisce `prezzoMassimo` e `motore-unico.trovaLivello` **scarta
+   i livelli che lo superano**.
+   **NON È STATO TOCCATO NIENT'ALTRO**: «mai primo sul libro» resta (la ricerca parte dal secondo
+   livello), e con **un solo livello in banda** non si quota comunque — esenzione o no. Due asserzioni
+   lo verificano. Test: `lib/maker/pavimento-esenta-rinnovi.test.js` (12, al livello del **motore**,
+   dove il pavimento morde davvero) + `esenzione-rinnovo` selfcheck (20).
 22. **🟡 IL PIANO SI SVUOTA, E LA CAUSA MISURATA NON È IL FILTRO DI PROFONDITÀ** (13 agosto 2026;
    `data/ricerca/sintesi-profondita.md`, script `scripts/ricerca/taratura-profondita.js`).
    **Il cancello che decide è `pavimentoPremiante(minSize) > tetto per mercato`**, non la profondità:
