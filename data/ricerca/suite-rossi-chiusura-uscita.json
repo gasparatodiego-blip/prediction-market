@@ -1,0 +1,108 @@
+{
+  "at": "2026-08-16T19:37:34.934Z",
+  "istantanea": "chiusura-uscita",
+  "totali": {
+    "eseguiti": 197,
+    "verdi": 178,
+    "rossi": 18,
+    "nonParte": 1
+  },
+  "rossi": [
+    "lib/maker/cecita-distinta.test.js",
+    "lib/maker/dipendenze-collegate.test.js",
+    "lib/maker/end-of-scale-cycle.test.js",
+    "lib/maker/gestione-manuale-nel-flusso.test.js",
+    "lib/maker/mid-stantio.test.js",
+    "lib/maker/riprezzo-atomico.test.js",
+    "lib/maker/scaduto-senza-rinnovo.test.js",
+    "lib/maker/selezione-cablata.test.js",
+    "lib/maker/sette-punti.test.js",
+    "lib/maker/tetti-per-giro-e-scope.test.js",
+    "lib/maker/tetto-per-ordine.test.js",
+    "lib/rewards/categoria-mercato.test.js",
+    "lib/rewards/coerenza-tetto-derivato.test.js",
+    "lib/rewards/scadenza-ereditata.test.js",
+    "lib/rewards/tetto-derivato-dallo-scaglione.test.js",
+    "lib/rewards/tetto-e-scoperta.test.js",
+    "lib/safety/hook-piazzamento.test.js",
+    "lib/safety/policy-permessi.test.js"
+  ],
+  "rossiDettaglio": [
+    {
+      "file": "lib/maker/cecita-distinta.test.js",
+      "coda": "isso\n  ✓   tenendo il nome vecchio come PREFISSO, così la serie storica non si spezza\n  ✓ l'ordine orfano ha il suo motivo, diverso dalla cecità\n  ✓   e non passa dai gate ciechi\n  ✓   ed è dichiarato fra i motivi visibili\n  ✓ le tre etichette di timeout sono distinte\n\n❌ ROSSI: 23 passati, 4 falliti"
+    },
+    {
+      "file": "lib/maker/dipendenze-collegate.test.js",
+      "coda": "-difetto\n  ✓ «const x = (deps && typeof deps.tizio === 'function')» → con-difetto — con-difetto\n  ✓ «if (typeof deps.tizio === 'function') { deps.tizio()» → facoltativa — facoltativa\n  ✓ «const r = await deps.tizio({ a: 1 });» → obbligatoria — obbligatoria\n\ndipendenze collegate: 9 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/end-of-scale-cycle.test.js",
+      "coda": "azza senza intervento — 2 nuovi ordini\n\n── la soglia non e duplicata: i due motori leggono lo stesso numero\n  ✓ nessuno dei due motori scrive 3.0 o 97.0 per conto suo\n  ✓ entrambi importano end-of-scale\n  ✓   e il modulo esporta un solo confine per lato\n\nend-of-scale nei cicli: 25 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/gestione-manuale-nel-flusso.test.js",
+      "coda": "e il vecchio interruttore d'ambiente non viene più LETTO da nessuna parte — agent41 è tornato a leggere REALLOC_SCHEDULER_DRY_RUN\n  ✗   né è tornato in ecosystem.config.js come default — la riga REALLOC_SCHEDULER_DRY_RUN è ricomparsa nell'ecosystem\n\ngestione manuale nel flusso: 54 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/mid-stantio.test.js",
+      "coda": "SOLO la cancellazione\n  ✓ mid-stantio non nomina «placeOrder»\n  ✓ mid-stantio non nomina «replaceOrder»\n  ✓ mid-stantio non nomina «placeManualOrder»\n  ✓ mid-stantio non nomina «runBulkAllocation»\n  ✓ mid-stantio non nomina «require(»\n  ✓ il ramo nel ciclo cancella e basta\n\n❌  35 passati, 11 falliti"
+    },
+    {
+      "file": "lib/maker/riprezzo-atomico.test.js",
+      "coda": "o» risponde ancora cancel senza rimpiazzo — cancel/sarebbe-primo-sul-libro\n  ✓   e non propone nessun prezzo di rimpiazzo\n\n── 5 · IL GIORNALE VERO NON È STATO TOCCATO DA QUESTO TEST\n  ✓ il registro di idempotenza è stato solo eventualmente letto, mai scritto da qui — 767 righe\n\n32 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/scaduto-senza-rinnovo.test.js",
+      "coda": "numeri strutturati\n  ✓ il pannello ha il tipo\n  ✓   la casella riassuntiva nella sezione «Stato wallet e piazzamento»\n  ✓   che compare solo quando ce n è almeno uno\n  ✓   col capitale tornato libero\n  ✓   e una spiegazione in italiano di cosa è successo\n\nscaduto senza rinnovo: 46 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/selezione-cablata.test.js",
+      "coda": "nternal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '=='\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/maker/sette-punti.test.js",
+      "coda": "cito — poter isolare un meccanismo senza usare il KILL vale piu della garanzia che nessuno lo spenga\n  ✓   e riaccenderlo funziona\n  ✓ generale acceso ma mercato non scelto ⇒ NON agisce\n  ✓   entrambi accesi ⇒ agisce\n  ✓   generale spento ⇒ il mercato torna inerte\n\nsette punti: 44 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/tetti-per-giro-e-scope.test.js",
+      "coda": "nternal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '=='\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/maker/tetto-per-ordine.test.js",
+      "coda": "ernal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: 1,\n  expected: 0,\n  operator: 'strictEqual'\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/rewards/categoria-mercato.test.js",
+      "coda": "Gamma: 127/130 — 97.7% (soglia 90%)\n\n4 · il modulo è uno strumento di misura, non una regola del motore\n  ✗ nessun modulo di lib/, agents/ o app/ lo importa — lib/safety/riavvio-condizionato.js\n  ✓   e non legge file né rete\n  ✓   le categorie dichiarate sono le otto attese\n\n❌  40 passati, 1 falliti"
+    },
+    {
+      "file": "lib/rewards/coerenza-tetto-derivato.test.js",
+      "coda": " due domande diverse\n\n5 · i due percorsi che calcolano un piano leggono il tetto DAL CAPITALE\n  ✓ il ciclo da 6h deriva il tetto dal capitale letto\n  ✓ il mini-ciclo pure\n  ✗   e nessuno dei due usa la costante di compatibilità per DECIDERE\n\n===== coerenza-tetto-derivato: 22 passati, 1 falliti ====="
+    },
+    {
+      "file": "lib/rewards/scadenza-ereditata.test.js",
+      "coda": "nternal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '=='\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/rewards/tetto-derivato-dallo-scaglione.test.js",
+      "coda": "ernal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: 1,\n  expected: 0,\n  operator: 'strictEqual'\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/rewards/tetto-e-scoperta.test.js",
+      "coda": " più largo» ≠ «filtro spento»\n  ✓   e fallisce chiuso se la config non si legge\n  ✓ sottile e NON gestito ⇒ soppresso\n  ✓ sottile e GESTITO ⇒ resta sul board\n  ✓   e uno sano resta comunque, gestito o no\n  ✓ il cancello di profondità pre-knapsack non conosce l'esenzione\n\nROSSI: 59 passati, 3 falliti"
+    },
+    {
+      "file": "lib/safety/hook-piazzamento.test.js",
+      "coda": "ude/settings.json sotto PreToolUse\n  ✓   con matcher Bash — Bash\n  ✓   di tipo command\n  ✓   e con un timeout dichiarato — un hook che pende è un hook che blocca tutto\n  ✓ un tool che non è Bash non viene giudicato — il matcher è Bash, e l hook lo ricontrolla\n\nhook piazzamento: 69 passati, 1 falliti"
+    },
+    {
+      "file": "lib/safety/policy-permessi.test.js",
+      "coda": "js/loader:1623:10)\n    at Module.load (node:internal/modules/cjs/loader:1266:32)\n    at Module._load (node:internal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49\n\nNode.js v20.20.2"
+    }
+  ],
+  "nonParte": [
+    "lib/leg-order.test.js"
+  ],
+  "statoToccato": []
+}
