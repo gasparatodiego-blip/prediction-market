@@ -150,6 +150,12 @@ const { registraScadenzeSenzaRinnovo } = require('../lib/maker/scadenze-senza-ri
 // AUTOMATIC POSITION CLOSING. Runs on the same throttle as the reconciliation and for the same reason:
 // a fill is only observable after the venue is asked. Default OFF everywhere; see lib/maker/auto-close.js.
 const { runAutoCloseCycle } = require('../lib/maker/auto-close');
+// ══ LA SORVEGLIANZA SULLA VALUTAZIONE — 17 agosto 2026, requisito dell'operatore ═════════════════════
+// Vive FUORI da `closeTask`, ed e' il punto: se stesse dentro, condividerebbe le sue cause di silenzio
+// (il gate su `riconciliato`, un'eccezione, un mercato fuori da `visitare`) e non potrebbe vederle.
+// Gira sul giro principale, che non e' condizionato a niente.
+const SORV = require('../lib/maker/sorveglianza-valutazione');
+let statoSorveglianza = {};
 const { readAutoCloseConfig } = require('../lib/maker/auto-close-config');
 const { placeManualOrder } = require('../lib/maker/manual-order');
 const { resolveFunder, venueAccountAddress } = require('../lib/venues/polymarket-clob-maker/funder');
@@ -1028,6 +1034,47 @@ function scadenzaMercato(marketId) {
   return null;
 }
 
+/**
+ * LE POSIZIONI APERTE CHE NESSUNO STA VALUTANDO.
+ *
+ * Non agisce: scrive a verbale e lo dice nei log. E' la stessa scelta della sentinella sul collasso
+ * (§5 p.142) — un presidio nuovo entra in servizio come osservatore, e la promozione ad azione e' una
+ * decisione dell'operatore.
+ */
+async function sorveglianzaTask() {
+  let posizioni = null;
+  try {
+    const snap = readVenuePositions();
+    // ⚠ `readable !== true` ⇒ si passa `null`, NON un array vuoto: «non ho letto» non e' «non ce ne
+    // sono», e un array vuoto spegnerebbe il presidio proprio quando lo snapshot e' rotto.
+    if (snap && snap.readable === true) {
+      posizioni = (snap.positions || []).map((x) => ({
+        marketId: String(x.conditionId || ''), tokenId: String(x.tokenId || x.asset || ''),
+        size: Number(x.size) }));
+    }
+  } catch { posizioni = null; }
+
+  const r = SORV.anomalie({ stato: statoSorveglianza, posizioni, ora: Date.now(),
+    // La cadenza VERA del ciclo di chiusura, importata dalla costante che la governa: scriverne una
+    // copia qui renderebbe la soglia sorda a un cambio di `MAKER_MANUAL_RECONCILE_MS` (reperto D1).
+    cicloMs: RECONCILE_EVERY_MS, cicli: SORV.CICLI_DI_TOLLERANZA });
+  statoSorveglianza = r.stato;
+
+  for (const a of r.anomalie) {
+    log(`⚠ ANOMALIA · ${a.motivo}`);
+    try {
+      appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'auto-close-on-fill',
+        op: 'sorveglianza-valutazione', outcome: a.maiValutata ? 'posizione-mai-valutata' : 'posizione-non-valutata',
+        marketRef: a.marketId ? `cid_${a.marketId.replace(/^0x/, '')}` : null,
+        reason: a.motivo,
+        observed: { size: a.size, silenzioMs: a.silenzioMs, silenzioMin: a.silenzioMin,
+          sogliaMs: r.sogliaMs, cicloMs: RECONCILE_EVERY_MS, maiValutata: a.maiValutata,
+          soloOsservazione: true } });
+    } catch { /* il giornale non deve poter fermare il giro */ }
+  }
+  return r;
+}
+
 async function closeTask() {
   try {
     const cfg = readAutoCloseConfig();
@@ -1124,6 +1171,11 @@ async function closeTask() {
       // sempre null e il Livello 1 non era nemmeno valutabile — si cadeva al Livello 2 a prescindere dal
       // prezzo vero del secondo lato. Vedi CLAUDE.md §5 punto 27.
       readDepth: (marketId) => resolveMarketDepth(marketId),
+      // Il timbro della valutazione: lo consuma `sorveglianzaTask`, che gira fuori di qui.
+      segnaValutazione: ({ marketId, tokenId }) => {
+        statoSorveglianza = SORV.registraValutazione(statoSorveglianza,
+          { chiave: SORV.chiaveDi(marketId, tokenId), ora: Date.now() });
+      },
       // ── IL REGISTRO DELLE ATTESE DEL LIVELLO 2 ──────────────────────────────────────────────────
       // Su file e non in memoria: un'attesa di 60 minuti che si azzera a ogni riavvio del processo non
       // e' un timeout, e agent40 riavvia. auto-close resta puro — qui c'e' l'unica scrittura.
@@ -2041,6 +2093,17 @@ async function main() {
     try { if (riconciliato) await closeTask(); }
     catch (e) { log('close task failed:', e && e.message ? e.message : String(e)); }
 
+    // ── LA SORVEGLIANZA SULLA VALUTAZIONE, FUORI DAL GATE ────────────────────────────────────────
+    // ⚠ STA QUI, NON DENTRO `closeTask`, e la posizione e' la sostanza della difesa. `closeTask` gira
+    // solo `if (riconciliato)`, puo' lanciare (e allora lascia UNA riga di log e nessun record), e
+    // itera solo i mercati in `visitare`. Tutte e tre le vie portano allo stesso fatto — «questa
+    // posizione non e' stata valutata» — e nessuna delle tre lascia una traccia cercabile. Un
+    // presidio dentro il percorso che sorveglia morirebbe insieme a lui.
+    // Il suo try/catch e' suo: una sorveglianza che fallisce non deve poter fermare il ciclo che
+    // sorveglia, o diventerebbe essa stessa la causa del guasto che cerca.
+    try { await sorveglianzaTask(); }
+    catch (e) { log('sorveglianza valutazione fallita:', e && e.message ? e.message : String(e)); }
+
     // IL BATTITO PER ULTIMO, E SEMPRE. `finally` perché la morte è il SILENZIO, non l'errore: se un
     // fallimento saltasse il battito, ogni eccezione transitoria diventerebbe una cancellazione del
     // libro — cioè il difetto del 6 agosto, riprodotto sull'altro motore.
@@ -2124,4 +2187,4 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.stack ? e.stack : String(e)); process.exit(1); });
 }
 
-module.exports = { cycle, reconcileTask, closeTask, snapshotPosizioniTask, trackingTask, breaches, trackingState };
+module.exports = { cycle, reconcileTask, closeTask, sorveglianzaTask, snapshotPosizioniTask, trackingTask, breaches, trackingState };
