@@ -1,0 +1,673 @@
+{
+ "generatoIl": "2026-08-17T13:51:01.555Z",
+ "inventarioStatico": 91,
+ "scattate": 10,
+ "dinamicheConcretizzate": 3,
+ "rosseEsaminate": 81,
+ "A_ilGiroNonCiEArrivato": 77,
+ "B_nonPuoScattare": 4,
+ "dettaglio": {
+  "A1_passi_8_17": 48,
+  "A2_eventiCheIlVenueSimulatoNonFa": 29,
+  "B1_nessunChiamante": 0,
+  "B2_rilevatoriDiDifettiNostri": 2,
+  "B3_modalitaNonEseguita": 2
+ },
+ "A1": [
+  {
+   "regola": "anomalia-rinnovo-fermato",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1995,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 17
+  },
+  {
+   "regola": "attraversamento-consentito",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2480,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": 10
+  },
+  {
+   "regola": "carico-di-ripiego",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2112,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": 15
+  },
+  {
+   "regola": "chiusura-forzata-pre-scadenza",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1347,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "chiusura-forzata-pre-scadenza-non-riuscita",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1365,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 10
+  },
+  {
+   "regola": "coppia-oltre-il-tetto",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1117,
+   "funzione": "placeManualOrder",
+   "chiamate": 4,
+   "passo": 17
+  },
+  {
+   "regola": "deroga-sotto-minimo-per-chiusura",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1226,
+   "funzione": "placeManualOrder",
+   "chiamate": 4,
+   "passo": 9
+  },
+  {
+   "regola": "end-of-life-cancel",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1379,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "end-of-life-cancel-failed",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1392,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "end-of-life-cancelled",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1392,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "end-of-scale-cancel",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1459,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "end-of-scale-cancel-failed",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1470,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "end-of-scale-cancelled",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1470,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "esenzione-tetto-chiusura",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1296,
+   "funzione": "placeManualOrder",
+   "chiamate": 4,
+   "passo": 16
+  },
+  {
+   "regola": "esenzione-tetto-chiusura-non-provata",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1296,
+   "funzione": "placeManualOrder",
+   "chiamate": 4,
+   "passo": 16
+  },
+  {
+   "regola": "lock-scaduto-stato-incoerente",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1194,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "merge-in-attesa",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2353,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": 12
+  },
+  {
+   "regola": "merge-onchain-fallito",
+   "file": "lib/maker/auto-close.js",
+   "riga": 687,
+   "funzione": "fondiCoppia",
+   "chiamate": 1,
+   "passo": 12
+  },
+  {
+   "regola": "merge-onchain-non-eseguito",
+   "file": "lib/maker/auto-close.js",
+   "riga": 694,
+   "funzione": "fondiCoppia",
+   "chiamate": 1,
+   "passo": 12
+  },
+  {
+   "regola": "merge-saltato-senza-ingressi",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2564,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": 12
+  },
+  {
+   "regola": "merge-timeout-cancel-fallita",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2609,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": 12
+  },
+  {
+   "regola": "merge-timeout-livello-3",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2615,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": 12
+  },
+  {
+   "regola": "mid-stantio-risolto",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 2136,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 15
+  },
+  {
+   "regola": "modalita-chiusura-ingresso",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1016,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "modalita-chiusura-lato-posseduto-piazzato",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1685,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "modalita-chiusura-regole-attive",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1575,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "modalita-chiusura-residuo-non-fillato-cancellato",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1136,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 9
+  },
+  {
+   "regola": "modalita-chiusura-residuo-non-fillato-cancellazione-fallita",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1136,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 9
+  },
+  {
+   "regola": "modalita-chiusura-sorella-aumentata",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1213,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "modalita-chiusura-sorella-ridotta-dal-capitale",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1547,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "modalita-chiusura-sorella-rimandata-dal-capitale",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1547,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "modalita-chiusura-sorella-sotto-bersaglio",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1227,
+   "funzione": "completaCoppia",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "posizione-mai-valutata",
+   "file": "agents/agent40-manual-reprice.js",
+   "riga": 1161,
+   "funzione": "sorveglianzaTask",
+   "chiamate": 1,
+   "passo": 14
+  },
+  {
+   "regola": "posizione-non-valutata",
+   "file": "agents/agent40-manual-reprice.js",
+   "riga": 1161,
+   "funzione": "sorveglianzaTask",
+   "chiamate": 1,
+   "passo": 14
+  },
+  {
+   "regola": "posizione-uscita-senza-nostro-ordine",
+   "file": "agents/agent40-manual-reprice.js",
+   "riga": 1120,
+   "funzione": "sparizioneTask",
+   "chiamate": 1,
+   "passo": 10
+  },
+  {
+   "regola": "registri-mercato-chiuso-errore",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2284,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "registri-ripuliti-mercato-chiuso",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2276,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "reject-cap-preflight",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1859,
+   "funzione": "replaceManualOrder",
+   "chiamate": 1,
+   "passo": 17
+  },
+  {
+   "regola": "residuo-ancora-bloccato",
+   "file": "agents/agent40-manual-reprice.js",
+   "riga": 1446,
+   "funzione": "closeTask",
+   "chiamate": 1,
+   "passo": 9
+  },
+  {
+   "regola": "residuo-pronto-rivisitato",
+   "file": "agents/agent40-manual-reprice.js",
+   "riga": 1228,
+   "funzione": "closeTask",
+   "chiamate": 1,
+   "passo": 9
+  },
+  {
+   "regola": "residuo-ripiazzato",
+   "file": "agents/agent40-manual-reprice.js",
+   "riga": 1446,
+   "funzione": "closeTask",
+   "chiamate": 1,
+   "passo": 9
+  },
+  {
+   "regola": "residuo-sotto-soglia",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1922,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 9
+  },
+  {
+   "regola": "rimandato-per-quota",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 313,
+   "funzione": "runBulkAllocation",
+   "chiamate": 2,
+   "passo": 17
+  },
+  {
+   "regola": "rimpiazzata",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2707,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": 8
+  },
+  {
+   "regola": "rinnovo-esente-dal-tetto",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 2018,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 17
+  },
+  {
+   "regola": "scaduto-senza-rinnovo",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 2318,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": 16
+  },
+  {
+   "regola": "scoperto-oltre-soglia-grave",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2233,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": 10
+  },
+  {
+   "regola": "stopped-cap",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 293,
+   "funzione": "runBulkAllocation",
+   "chiamate": 2,
+   "passo": 17
+  }
+ ],
+ "A2": [
+  {
+   "regola": "allowlist-auto-off",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1428,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "allowlist-auto-off-failed",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1428,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "cancelled-lato-singolo-zero",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 2213,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "cancelled-top-of-book",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1845,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "collasso-oltre-soglia",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 2690,
+   "funzione": "sorvegliaVuoto",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "coppia-scartata-preflight",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 277,
+   "funzione": "runBulkAllocation",
+   "chiamate": 2,
+   "passo": null
+  },
+  {
+   "regola": "error",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2670,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "exit-cancel-failed",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2459,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "exit-market-sent",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2518,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "gemella-cancellata-prima-del-nuovo",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1377,
+   "funzione": "placeManualOrder",
+   "chiamate": 4,
+   "passo": null
+  },
+  {
+   "regola": "inseguimento-ripreso",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1785,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "inseguimento-soppresso",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1768,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "leg-orphan",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 391,
+   "funzione": "runBulkAllocation",
+   "chiamate": 2,
+   "passo": null
+  },
+  {
+   "regola": "leg-rolled-back",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 391,
+   "funzione": "runBulkAllocation",
+   "chiamate": 2,
+   "passo": null
+  },
+  {
+   "regola": "nessuna-azione-regola-di-rischio",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 2418,
+   "funzione": "miniCiclo",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "noop",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1660,
+   "funzione": "cancelManualOrder",
+   "chiamate": 8,
+   "passo": null
+  },
+  {
+   "regola": "obiettivo-raggiunto",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 230,
+   "funzione": "raccontaCapitaleAlLavoro",
+   "chiamate": 2,
+   "passo": null
+  },
+  {
+   "regola": "partial",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 408,
+   "funzione": "runBulkAllocation",
+   "chiamate": 2,
+   "passo": null
+  },
+  {
+   "regola": "reconnect-cancel",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1346,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "reconnect-cancel-failed",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1354,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "reconnect-cancelled",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1354,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "reject-cancel-failed",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1845,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "reject-idempotency-preflight",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1873,
+   "funzione": "replaceManualOrder",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "reject-venue",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1660,
+   "funzione": "cancelManualOrder",
+   "chiamate": 8,
+   "passo": null
+  },
+  {
+   "regola": "reject-venue-rules-preflight",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1835,
+   "funzione": "replaceManualOrder",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "riposizionamento-mercato-non-valido",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2784,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "riprezzo-in-corso",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1184,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "via-alternativa",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 2418,
+   "funzione": "miniCiclo",
+   "chiamate": 1,
+   "passo": null
+  },
+  {
+   "regola": "vuoto-oltre-soglia",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 2725,
+   "funzione": "sorvegliaVuoto",
+   "chiamate": 1,
+   "passo": null
+  }
+ ],
+ "B1": [],
+ "B2": [
+  {
+   "regola": "merge-esito-mancante",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1999,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "perche": "rilevatore di un difetto NOSTRO: scatta solo se il cablaggio e' rotto o un obbligo di esito resta aperto"
+  },
+  {
+   "regola": "skip-cancel-non-collegato",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1830,
+   "funzione": "runAutoRepriceCycle",
+   "chiamate": 1,
+   "perche": "rilevatore di un difetto NOSTRO: scatta solo se il cablaggio e' rotto o un obbligo di esito resta aperto"
+  }
+ ],
+ "B3": [
+  {
+   "regola": "dry-run-validated",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2718,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "perche": "ramo di una modalita' che questo bot non esegue (dry-run)"
+  },
+  {
+   "regola": "exit-market-dry-run",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2518,
+   "funzione": "runAutoCloseCycle",
+   "chiamate": 1,
+   "perche": "ramo di una modalita' che questo bot non esegue (dry-run)"
+  }
+ ]
+}
