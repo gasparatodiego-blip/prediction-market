@@ -51,6 +51,13 @@ const MM = require(path.join(ROOT, 'lib/maker/manual-mode'));
 const ACC = require(path.join(ROOT, 'lib/maker/auto-close-config'));
 const SEL = require(path.join(ROOT, 'lib/maker/selezione-stato'));
 const SELM = require(path.join(ROOT, 'lib/maker/selezione-mercati'));
+// ⚠ `manual-order` VA RICHIESTO IN CIMA, e la sua assenza qui ha prodotto il difetto piu' insidioso di
+// questa stesura: `MO` era dichiarato con un `const` DENTRO il blocco del passo 4, quindi i passi da 9 in
+// giu' morivano con `ReferenceError: MO is not defined` — e morivano PRIMA che il referto venisse scritto.
+// Il banco non stampava niente di rosso: io leggevo il referto della corsa PRECEDENTE e vedevo il passo 8
+// fallire a corse alterne. Tre diagnosi sono andate a vuoto su una lettura stantia. Un banco che muore
+// senza scrivere il verbale e' peggio di un banco che si ferma.
+const MO = require(path.join(ROOT, 'lib/maker/manual-order'));
 const ADAPTER = require(path.join(ROOT, 'lib/venues/polymarket-clob-maker/adapter'));
 const AUDIT = require(path.join(ROOT, 'lib/venues/polymarket-clob-maker/audit'));
 
@@ -246,7 +253,6 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
     // ⚠ COSA VEDE LA CORSIA MANUALE: `auto-reprice.selectOwnedOrders` accetta solo `source === 'manual-ui'`
     // (`auto-reprice.js:911`), e alla prima corsa il ciclo dichiarava `considered: 0` con 4 ordini a
     // libro. Prima di accusare `decideReprice` bisogna sapere se gli ordini arrivano fin la'.
-    const MO = require(path.join(ROOT, 'lib/maker/manual-order'));
     const attribuiti = await MO.listManualOrders({ marketId: MKT }).catch((e) => ({ ok: false, error: e.message }));
     // Sonda: l'adapter di sola lettura vede gli ordini? Due forme di chiamata, perche' il chiamante vero
     // passa una STRINGA (`manual-order.js` → `adapter.listOpenOrders(marketId || undefined)`).
@@ -304,17 +310,36 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
   // ══ PASSO 6 · GAMBA OPPOSTA A LIBRO ENTRO IL CICLO ════════════════════════════════════════════
   if (!bloccato) {
     const primaOrdini = VENUE.ordiniVivi(MKT).length;
+    const primaDettaglio = VENUE.ordiniVivi(MKT).map((o) => `${o.orderId} ${o.side} ${o.tokenId.slice(0, 8)} @${o.price} ×${o.size}`);
     VENUE.avanza(60_000);
-    await A40.closeTask().catch((e) => passo('6 · errore in closeTask', { ok: false, errore: e.message }));
+    const res6 = await A40.closeTask().catch((e) => ({ errore: e.message }));
     const m = VENUE.mercato(MKT);
     const opposte = VENUE.ordiniVivi(MKT).filter((o) => o.tokenId === m.tokenIdNo);
-    passo('6 · gamba opposta a libro entro il ciclo (A40.closeTask)', {
-      ok: opposte.length > 0,
-      ordiniPrima: primaOrdini, ordiniDopo: VENUE.ordiniVivi(MKT).length,
+    // ⚠ IL CRITERIO ERA TROPPO STRETTO, e l'ha mostrato il referto di `closeTask`: chiedeva un ordine a
+    // RIPOSO sul lato opposto, e il ciclo ha fatto una cosa MIGLIORE — `merge-livello-1`, il taker
+    // immediato: ha comprato il NO a 0,67 attraversando lo spread invece di aspettare che il proprio bid
+    // a 0,63 venisse riempito. La coppia si completa nello stesso ciclo e il libro resta vuoto, quindi
+    // «nessuna gamba opposta a libro» era vero E il passo era riuscito. Il passo chiede «la gamba opposta
+    // ENTRO IL CICLO»: si accettano entrambe le forme, e si DICHIARA quale delle due e' avvenuta.
+    const posOpposta = Number((VENUE.posizioni.get(m.tokenIdNo) || {}).size || 0);
+    passo('6 · gamba opposta entro il ciclo (A40.closeTask)', {
+      ok: opposte.length > 0 || posOpposta > 0,
+      comeEStataPresa: posOpposta > 0 ? 'ESEGUITA al mercato (Livello 1, taker)' : (opposte.length ? 'a RIPOSO sul libro' : 'non presa'),
+      posizioneOppostaShare: posOpposta,
+      ordiniPrima: primaOrdini, dettaglioPrima: primaDettaglio,
+      ordiniDopo: VENUE.ordiniVivi(MKT).length,
+      dettaglioDopo: VENUE.ordiniVivi(MKT).map((o) => `${o.orderId} ${o.side} ${o.tokenId.slice(0, 8)} @${o.price} ×${o.size}`),
       gambeOpposte: opposte.map((o) => `${o.side} @${o.price} ×${o.size}`),
+      // ⚠ IL REFERTO DI `closeTask` SERVE QUI: senza, «la gamba opposta non c'e'» non dice se il ciclo
+      // non l'ha proposta, l'ha proposta e il venue l'ha rifiutata, o l'ha CANCELLATA e non ripiazzata.
+      refertoCloseTask: res6 && (res6.errore || JSON.stringify({
+        nostro: (res6.markets || []).find((m) => String(m.marketId).toLowerCase() === MKT) || null,
+        azioni: (res6.actions || []).map((a) => ({ a: a.action, ok: a.ok, gate: a.gate, book: a.book,
+          size: a.size, price: a.price, reason: String(a.reason || '').slice(0, 120) })),
+      })).slice(0, 1200),
     });
-    if (!opposte.length) {
-      blocca('passo 6', 'closeTask non ha messo a libro la gamba opposta', 'lib/maker/auto-close.js (completaCoppia / decidiLivello)');
+    if (!opposte.length && !(posOpposta > 0)) {
+      blocca('passo 6', 'closeTask non ha preso la gamba opposta: ne\' a riposo ne\' al mercato', 'lib/maker/auto-close.js (completaCoppia / decidiLivello)');
     }
   }
 
@@ -353,6 +378,423 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
     });
     if (!(VENUE.eventi.some((e) => e.tipo === 'merge-eseguito') && VENUE.saldo > saldoPrima)) {
       blocca('passo 7', 'la coppia completa non e\' stata fusa: saldo e posizioni non sono cambiati', 'lib/maker/auto-close.js:676 (fondiCoppia)');
+    }
+  }
+
+
+  // ══ PASSO 8 · LO SLOT CHE SI LIBERA → RIMPIAZZO ═════════════════════════════════════════════════
+  // La rotazione di §4.13: un mercato che riceve un fill ESCE dal conteggio dei tre attivi e resta in
+  // gestione; contemporaneamente ne entra uno nuovo. Il passo arriva all'ESECUZIONE quando il mercato
+  // nuovo e' ABILITATO — cioe' quando `preparaMercatoNuovo` ha scritto le sue quattro cose — non quando
+  // la selezione dichiara di volerlo.
+  if (!bloccato) {
+    const M2 = `0x${'b2'.repeat(32)}`;
+    // ⚠ `minSize 50`, cioe' scaglione «ALTO», e non e' un dettaglio: la composizione di §4.13 vuole
+    // 1 basso (minSize ≤ 20) + 2 alti (≤ 50), e UNO SCAGLIONE VUOTO NON SI RIEMPIE COL VICINO. Il mercato
+    // del giro ha minSize 20 e occupa il solo posto «basso»: un secondo candidato a 20 viene scartato per
+    // composizione — misurato alla prima stesura, «1 mercati ammissibili, ENTRATI nessuno».
+    VENUE.creaMercato({ conditionId: M2, mid: 0.45, tick: 0.01, minSize: 50, bandaCents: 4.5,
+      oreAllaScadenza: 60, question: 'banco · candidato di rimpiazzo' });
+    const primaAbilitati = (ARC.readAutoRepriceConfig({}).enabledMarketIds || []).map((x) => x.toLowerCase());
+    const selPrima = Object.keys(((SEL.leggiStato().stato || {}).selezionati) || {}).map((x) => x.slice(0, 12));
+    let sel = null;
+    try { sel = await A41.selezionaMercati(); } catch (e) { sel = { errore: e.message }; }
+    const dopoAbilitati = (ARC.readAutoRepriceConfig({}).enabledMarketIds || []).map((x) => x.toLowerCase());
+    const nuoviAbilitati = dopoAbilitati.filter((x) => !primaAbilitati.includes(x));
+    passo('8 · lo slot si libera → il mercato nuovo viene ABILITATO', {
+      ok: nuoviAbilitati.includes(M2.toLowerCase()),
+      esitoSelezione: sel && (sel.errore || sel.esito || 'senza esito'),
+      abilitatiPrima: primaAbilitati.length, abilitatiDopo: dopoAbilitati.length,
+      nuovi: nuoviAbilitati.map((x) => x.slice(0, 12)),
+      entrati: sel && sel.entrati ? sel.entrati.map((e) => String(e.id || e).slice(0, 12)) : null,
+      inGestione: sel && sel.inGestione ? sel.inGestione.length : null,
+      selezionatiPrima: selPrima,
+      selezionatiDopo: Object.keys(((SEL.leggiStato().stato || {}).selezionati) || {}).map((x) => x.slice(0, 12)),
+      fileAllowlist: Object.entries(((() => { try { return JSON.parse(require('fs').readFileSync(path.join(ROOT, 'data', 'maker-auto-reprice.json'), 'utf8')).markets || {}; } catch { return {}; } })())).filter(([, v]) => v && v.enabled === true).map(([k]) => k.slice(0, 12)),
+      scartatiPerComposizione: sel && sel.scartatiPerComposizione ? sel.scartatiPerComposizione.length : null,
+      postiNonAssegnati: sel && sel.postiNonAssegnati ? sel.postiNonAssegnati : null,
+    });
+    if (!nuoviAbilitati.includes(M2.toLowerCase())) {
+      blocca('passo 8', `la selezione non ha abilitato il mercato nuovo (esito='${sel && (sel.esito || sel.errore)}')`,
+        'agents/agent41-realloc-scheduler.js:1632 (selezionaMercati) → preparaMercatoNuovo');
+    }
+  }
+
+  // ══ PASSO 9 · FILL PARZIALE: OPPOSTA PER LA QUANTITA' RIEMPITA, RESIDUO CANCELLATO ══════════════
+  // ⚠ IL FILL E' DI 1,82 SHARE SU `minSize 20`: e' il caso del 16 agosto, quello in cui il completamento
+  // non e' un ordine valido e tutte le vie si chiudono insieme. Il passo arriva all'esecuzione quando il
+  // residuo E' USCITO DAL LIBRO (non quando qualcuno lo dichiara).
+  if (!bloccato) {
+    const M3 = `0x${'c3'.repeat(32)}`;
+    const m3 = VENUE.creaMercato({ conditionId: M3, mid: 0.40, tick: 0.01, minSize: 20, bandaCents: 4.5,
+      oreAllaScadenza: 60, question: 'banco · fill parziale' });
+    MM.setManualMode({ marketId: M3, manual: true, by: 'banco', reason: 'passo 9' });
+    ARC.setAutoReprice({ scope: 'market', marketId: M3, enabled: true, by: 'banco', reason: 'passo 9' });
+    ACC.setAutoClose({ scope: 'market', marketId: M3, enabled: true, by: 'banco', reason: 'passo 9' });
+    const r9 = await MO.placeManualOrder({ marketId: M3, book: 'yes', side: 'BUY', price: 0.38, size: 40,
+      userId: 'operator', inCoda: true }, {});
+    const ordine = VENUE.ordiniVivi(M3).find((o) => o.side === 'BUY');
+    if (ordine) VENUE.riempi(ordine.orderId, 1.82);
+    const daQui9 = codaGiornale().length;
+    VENUE.avanza(60_000);
+    await A40.closeTask().catch(() => {});
+    const dopo9 = codaGiornale().slice(daQui9);
+    const residuoVia = !VENUE.ordiniVivi(M3).some((o) => o.orderId === (ordine || {}).orderId);
+    const oppostaM3 = VENUE.ordiniVivi(M3).filter((o) => o.tokenId === m3.tokenIdNo);
+    passo('9 · fill parziale: residuo CANCELLATO e opposta per la quantita\' riempita', {
+      ok: residuoVia,
+      piazzato: r9.ok, gate: r9.gate || null,
+      fillato: 1.82, minSizeDelVenue: 20,
+      residuoUscitoDalLibro: residuoVia,
+      esitiResiduo: dopo9.filter((x) => /residuo/.test(String(x.outcome))).map((x) => x.outcome),
+      oppostaALibro: oppostaM3.map((o) => `${o.side} @${o.price} ×${o.size}`),
+      posizioneRestante: Number((VENUE.posizioni.get(m3.tokenId) || {}).size || 0),
+    });
+    if (!residuoVia) {
+      blocca('passo 9', 'il residuo dell\'ordine parzialmente riempito e\' ancora a libro dopo un ciclo di chiusura',
+        'lib/maker/auto-close.js (residuiDellaGambaRiempita) → modalita-chiusura.residuiDaCancellare');
+    }
+  }
+
+  // ══ PASSO 10 · LA SCALA D'URGENZA FINO ALL'USCITA COLPITA CONTRO IL BID ════════════════════════
+  // ⚠ IL PASSO CHIEDE L'ESECUZIONE, non il permesso: non basta che il pavimento scenda gradino per
+  // gradino — l'uscita deve essere PRESA dal bid. Serve quindi che la coppia NON sia disponibile (ask
+  // caro), o il Livello 1 completa e la posizione non resta scoperta.
+  if (!bloccato) {
+    const M4 = `0x${'d4'.repeat(32)}`;
+    const m4 = VENUE.creaMercato({ conditionId: M4, mid: 0.50, tick: 0.01, minSize: 20, bandaCents: 4.5,
+      oreAllaScadenza: 60, question: 'banco · scala d urgenza' });
+    MM.setManualMode({ marketId: M4, manual: true, by: 'banco', reason: 'passo 10' });
+    ARC.setAutoReprice({ scope: 'market', marketId: M4, enabled: true, by: 'banco', reason: 'passo 10' });
+    ACC.setAutoClose({ scope: 'market', marketId: M4, enabled: true, by: 'banco', reason: 'passo 10' });
+    const caro = () => { m4.book.no.asks = [{ price: 0.60, size: 500 }]; m4.book.no.bestAsk = 0.60; VENUE.pubblicaFeed(); };
+    caro();
+    const r10 = await MO.placeManualOrder({ marketId: M4, book: 'yes', side: 'BUY', price: 0.48, size: 40,
+      userId: 'operator', inCoda: true }, {});
+    const g10 = VENUE.ordiniVivi(M4).find((o) => o.side === 'BUY');
+    if (g10) VENUE.riempi(g10.orderId, g10.size);
+    const daQui10 = codaGiornale().length;
+    const prezzi = [];
+    for (let k = 0; k < 30; k += 1) {
+      VENUE.avanza(10 * 60_000);           // 10 minuti per giro: la scala ha gradini a 30, 60 e 240 min
+      caro();                              // `muoviMid` ricostruisce il book: l'ask caro va rimesso
+      await A40.closeTask().catch(() => {});
+      const u = VENUE.ordiniVivi(M4).find((o) => o.side === 'SELL');
+      if (u) prezzi.push(u.price);
+      if (!VENUE.posizioni.get(m4.tokenId)) break;   // l'uscita e' stata eseguita: la posizione e' via
+    }
+    const dopo10 = codaGiornale().slice(daQui10);
+    const eseguita = !VENUE.posizioni.get(m4.tokenId);
+    const fillSell = VENUE.eventi.filter((e) => e.tipo === 'fill' && e.side === 'SELL');
+    passo('10 · la scala d\'urgenza arriva all\'uscita ESEGUITA', {
+      ok: eseguita && fillSell.length > 0,
+      piazzato: r10.ok, gate: r10.gate || null,
+      prezziDellUscita: [...new Set(prezzi)],
+      gradiniVisti: [...new Set(dopo10.map((x) => x.observed && x.observed.urgenzaLivello).filter((x) => x != null))],
+      esitiUscita: [...new Set(dopo10.map((x) => x.outcome).filter((o) => /uscita|urgenz|attraversa|close/.test(String(o))))].slice(0, 8),
+      fillInVendita: fillSell.map((f) => `${f.quanto}@${f.price}`),
+      posizioneRestante: Number((VENUE.posizioni.get(m4.tokenId) || {}).size || 0),
+    });
+    if (!(eseguita && fillSell.length > 0)) {
+      blocca('passo 10', 'la scala e\' salita ma l\'uscita non e\' stata ESEGUITA contro il bid',
+        'lib/maker/urgenza-scoperto.js (pavimento) + lib/maker/auto-close.js (already-covered → uscita-da-abbassare)');
+    }
+  }
+
+  // ══ PASSO 11 · IL TAKE-PROFIT CHE ESEGUE ══════════════════════════════════════════════════════
+  // `presa-di-profitto` decide sul BID CAMMINATO: si scatta quando `bid + ask > 1 + margine` (la coppia
+  // e' disponibile) oppure quando la coppia sfonda il tetto e `bid > carico + margine`. Qui si costruisce
+  // il secondo caso, che e' quello che non ha alternative: ask caro, e il bid sopra il carico.
+  if (!bloccato) {
+    const M5 = `0x${'e5'.repeat(32)}`;
+    const m5 = VENUE.creaMercato({ conditionId: M5, mid: 0.30, tick: 0.01, minSize: 20, bandaCents: 4.5,
+      oreAllaScadenza: 60, question: 'banco · take profit' });
+    MM.setManualMode({ marketId: M5, manual: true, by: 'banco', reason: 'passo 11' });
+    ARC.setAutoReprice({ scope: 'market', marketId: M5, enabled: true, by: 'banco', reason: 'passo 11' });
+    ACC.setAutoClose({ scope: 'market', marketId: M5, enabled: true, by: 'banco', reason: 'passo 11' });
+    const r11 = await MO.placeManualOrder({ marketId: M5, book: 'yes', side: 'BUY', price: 0.28, size: 40,
+      userId: 'operator', inCoda: true }, {});
+    const g11 = VENUE.ordiniVivi(M5).find((o) => o.side === 'BUY');
+    if (g11) VENUE.riempi(g11.orderId, g11.size);
+    // Il mercato va A FAVORE: il mid sale da 0,30 a 0,45, quindi il bid (0,44) e' molto sopra il carico
+    // (0,28). E la coppia resta inaccessibile: l'ask del NO e' fuori dal tetto di 101c.
+    VENUE.muoviMid(M5, 0.15);
+    m5.book.no.asks = [{ price: 0.90, size: 500 }]; m5.book.no.bestAsk = 0.90; VENUE.pubblicaFeed();
+    const daQui11 = codaGiornale().length;
+    VENUE.avanza(60_000);
+    await A40.closeTask().catch(() => {});
+    const dopo11 = codaGiornale().slice(daQui11);
+    const fill11 = VENUE.eventi.filter((e) => e.tipo === 'fill' && e.side === 'SELL' && e.tokenId === m5.tokenId);
+    passo('11 · il take-profit ESEGUE contro il bid', {
+      ok: fill11.length > 0,
+      piazzato: r11.ok, carico: 0.28, midOra: VENUE.mercato(M5).mid,
+      bid: VENUE.mercato(M5).book.yes.bestBid, askDelNo: VENUE.mercato(M5).book.no.bestAsk,
+      esiti: [...new Set(dopo11.map((x) => x.outcome))].slice(0, 10),
+      fillInVendita: fill11.map((f) => `${f.quanto}@${f.price}`),
+      posizioneRestante: Number((VENUE.posizioni.get(m5.tokenId) || {}).size || 0),
+    });
+    if (!fill11.length) {
+      blocca('passo 11', 'la presa di profitto non ha eseguito: nessun fill in vendita sul lato posseduto',
+        'lib/maker/presa-di-profitto.js → lib/maker/auto-close.js (decideClose, prima di already-covered)');
+    }
+  }
+
+
+  // ══ PASSO 12 · IL MERGE CHE FALLISCE: ANOMALIA DICHIARATA, NON RIPROVATO IN SILENZIO ════════════
+  // Il passo arriva all'esecuzione quando l'esito `merge-onchain-fallito` E' NEL GIORNALE e il capitale
+  // NON e' tornato — cioe' quando il fallimento e' un fatto registrato e non un silenzio.
+  if (!bloccato) {
+    const M6 = `0x${'f6'.repeat(32)}`;
+    const m6 = VENUE.creaMercato({ conditionId: M6, mid: 0.50, tick: 0.01, minSize: 20, bandaCents: 4.5,
+      oreAllaScadenza: 60, question: 'banco · merge che fallisce' });
+    MM.setManualMode({ marketId: M6, manual: true, by: 'banco', reason: 'passo 12' });
+    ARC.setAutoReprice({ scope: 'market', marketId: M6, enabled: true, by: 'banco', reason: 'passo 12' });
+    ACC.setAutoClose({ scope: 'market', marketId: M6, enabled: true, by: 'banco', reason: 'passo 12' });
+    // La coppia si costruisce direttamente al venue: qui si prova il MERGE, non il modo di arrivarci.
+    VENUE.posizioni.set(m6.tokenId, { size: 40, costoTotale: 40 * 0.48, nascondiPerCicli: 0 });
+    VENUE.posizioni.set(m6.tokenIdNo, { size: 40, costoTotale: 40 * 0.50, nascondiPerCicli: 0 });
+    VENUE.scenari.mergeFallisce = true;
+    const daQui12 = codaGiornale().length;
+    const saldo12 = VENUE.saldo;
+    VENUE.avanza(60_000);
+    await A40.closeTask().catch(() => {});
+    const dopo12 = codaGiornale().slice(daQui12);
+    // Il secondo giro: un fallimento non deve diventare un martellamento muto.
+    VENUE.avanza(60_000);
+    await A40.closeTask().catch(() => {});
+    const dopo12b = codaGiornale().slice(daQui12);
+    VENUE.scenari.mergeFallisce = false;
+    const falliti = dopo12b.filter((x) => x.outcome === 'merge-onchain-fallito');
+    passo('12 · il merge che FALLISCE lascia un\'anomalia dichiarata', {
+      ok: falliti.length > 0 && VENUE.saldo === saldo12,
+      esitiPrimoGiro: [...new Set(dopo12.map((x) => x.outcome))].slice(0, 8),
+      mergeOnchainFallito: falliti.length,
+      tentativiAlVenue: VENUE.eventi.filter((e) => e.tipo === 'merge-fallito').length,
+      capitaleTornato: VENUE.saldo !== saldo12,
+      motivoRegistrato: falliti[0] ? String(falliti[0].reason || '').slice(0, 90) : null,
+    });
+    if (!(falliti.length > 0 && VENUE.saldo === saldo12)) {
+      blocca('passo 12', falliti.length ? 'il merge e\' fallito ma il capitale risulta tornato' : 'il merge fallito non ha lasciato `merge-onchain-fallito` nel giornale',
+        'lib/maker/auto-close.js:676-700 (fondiCoppia, il ramo del catch)');
+    }
+    // Si sgombra: la coppia di questo passo non deve restare a decidere i passi dopo.
+    VENUE.posizioni.delete(m6.tokenId); VENUE.posizioni.delete(m6.tokenIdNo);
+  }
+
+  // ══ PASSO 13 · GAMBA MORTA: RIPRISTINO ENTRO UN CICLO ═══════════════════════════════════════════
+  // `riconciliaCopertura` → `ripristinaGamba`, in servizio da stamattina e mai esercitato su un mercato
+  // vero. Il passo arriva all'esecuzione quando la gamba mancante E' TORNATA A LIBRO.
+  //
+  // ⚠ SI UCCIDE UNA GAMBA SU UN MERCATO CHE STA NEL PIANO SALVATO, e non su uno nuovo: la prima stesura
+  // creava un mercato apposta e il ripristino rispondeva — correttamente — «nessuna riga nel piano salvato
+  // per questo mercato: si dichiara e NON si ricalcola» (§5-bis p.171, e' una delle tre cose che quel
+  // presidio NON fa di proposito). Lo scenario misurava un rifiuto giusto e lo chiamava fallimento.
+  if (!bloccato) {
+    // Il mercato con piu' gambe vive: e' uno che il percorso di produzione ha aperto, quindi ha una riga
+    // nel piano. Si sceglie dai FATTI del venue, non da un id deciso a priori.
+    const perMercato = new Map();
+    for (const o of VENUE.ordiniVivi()) perMercato.set(o.marketId, (perMercato.get(o.marketId) || []).concat([o]));
+    // ⚠ SI SCEGLIE UN MERCATO COPERTO SUI DUE LATI e si uccide TUTTO UN LATO. La prima stesura uccideva
+    // un ordine solo e misurava «gambe dopo > gambe prima»: il mercato scelto aveva un DOPPIONE, la
+    // riconciliazione l'ha rimosso — cosa giusta — e il conteggio e' SCESO da 3 a 2 mentre la copertura
+    // era perfetta. Il criterio non e' quante gambe ci sono: e' se i DUE LATI sono coperti.
+    const lati = (id) => {
+      const o = VENUE.ordiniVivi(id); const m = VENUE.mercato(id);
+      return { yes: o.filter((x) => x.tokenId === m.tokenId).length, no: o.filter((x) => x.tokenId === m.tokenIdNo).length };
+    };
+    const candidati13 = [...perMercato.keys()].filter((id) => { const l = lati(id); return l.yes > 0 && l.no > 0; });
+    const idScelto = candidati13[0] || null;
+    const gambePrima = idScelto ? VENUE.ordiniVivi(idScelto) : [];
+    const latiPrima = idScelto ? lati(idScelto) : null;
+    if (idScelto) {
+      const m = VENUE.mercato(idScelto);
+      for (const o of VENUE.ordiniVivi(idScelto)) if (o.tokenId === m.tokenIdNo) VENUE.cancelOrder(o.orderId);
+    }
+    const latiDopoMorte = idScelto ? lati(idScelto) : null;
+    const gambeDopoMorte = idScelto ? VENUE.ordiniVivi(idScelto).length : 0;
+    VENUE.avanza(120_000);
+    let ric = null;
+    try { ric = await A41.riconciliaCopertura(); } catch (e) { ric = { errore: e.message }; }
+    const gambeDopoRipristino = idScelto ? VENUE.ordiniVivi(idScelto).length : 0;
+    const giornale13 = fs.existsSync(path.join(ROOT, 'data', 'realloc-scheduler.jsonl'))
+      ? fs.readFileSync(path.join(ROOT, 'data', 'realloc-scheduler.jsonl'), 'utf8').trim().split('\n').slice(-30)
+        .map((l) => { try { return JSON.parse(l); } catch { return {}; } }).filter((x) => x.tipo === 'ripristino-gamba')
+      : [];
+    passo('13 · gamba morta → ripristino entro un ciclo', {
+      ok: idScelto != null && latiDopoMorte && latiDopoMorte.no === 0 && lati(idScelto).no > 0,
+      mercato: idScelto ? idScelto.slice(0, 12) : '(nessun mercato coperto sui due lati)',
+      latiPrima, latiDopoLaMorte: latiDopoMorte, latiDopoIlRipristino: idScelto ? lati(idScelto) : null,
+      gambePrima: gambePrima.length, dopoLaMorte: gambeDopoMorte, dopoIlRipristino: gambeDopoRipristino,
+      esitiRipristino: giornale13.slice(-3).map((x) => `${x.esito}${x.mancanti ? ` (${x.mancanti.length} mancanti)` : ''}`),
+      erroreCopertura: ric && ric.errore ? ric.errore : null,
+    });
+    if (!(idScelto != null && latiDopoMorte && latiDopoMorte.no === 0 && lati(idScelto).no > 0)) {
+      blocca('passo 13', idScelto == null ? 'nessun mercato coperto sui due lati da cui uccidere un lato'
+        : `il lato NO ucciso non e' tornato a libro (lati dopo il ripristino: ${JSON.stringify(lati(idScelto))})`,
+      'agents/agent41-realloc-scheduler.js (riconciliaCopertura → ripristinaGamba) + lib/maker/ripristino-gambe.js');
+    }
+  }
+
+  // ══ PASSO 14 · POSIZIONE SPARITA SENZA UN NOSTRO ORDINE: ALLARME ════════════════════════════════
+  // ⚠ SU SLATE PULITO E CON agent40 RICARICATO: i due presidi vivono su memoria di modulo
+  // (`posizioniPrecedenti`, `nostriInvii`), e un avanzo di una fase precedente SPEGNE l'allarme.
+  if (!bloccato) {
+    const daQui14 = codaGiornale().length;
+    const buttato14 = VENUE.azzera('prima del presidio sulle sparizioni');
+    const via40 = require.resolve(path.join(ROOT, 'agents/agent40-manual-reprice'));
+    delete require.cache[via40];
+    const A40F = require(via40);
+    const M8 = `0x${'b8'.repeat(32)}`;
+    const m8 = VENUE.creaMercato({ conditionId: M8, mid: 0.40, tick: 0.01, minSize: 20, bandaCents: 4.5,
+      oreAllaScadenza: 60, question: 'banco · sparizione' });
+    VENUE.posizioni.set(m8.tokenId, { size: 60, costoTotale: 60 * 0.38, nascondiPerCicli: 0 });
+    await A40F.sparizioneTask({ now: () => OROLOGIO.ora }).catch(() => {});   // fotografa
+    await A40F.sorveglianzaTask({ now: () => OROLOGIO.ora }).catch(() => {});
+    VENUE.avanza(3 * 60_000);
+    const rs = await A40F.sorveglianzaTask({ now: () => OROLOGIO.ora }).catch((e) => ({ errore: e.message }));
+    VENUE.sparizioneEsterna(m8.tokenId, 60);
+    VENUE.avanza(60_000);
+    await A40F.sparizioneTask({ now: () => OROLOGIO.ora }).catch(() => {});
+    const dopo14 = codaGiornale().slice(daQui14).map((x) => x.outcome);
+    passo('14 · posizione sparita senza un nostro ordine → ALLARME', {
+      ok: dopo14.includes('posizione-uscita-senza-nostro-ordine'),
+      resetPrima: buttato14,
+      anomalieSorveglianza: rs && rs.anomalie ? rs.anomalie.length : null,
+      esitiPresidi: dopo14.filter((o) => /posizione-/.test(String(o))),
+    });
+    if (!dopo14.includes('posizione-uscita-senza-nostro-ordine')) {
+      blocca('passo 14', 'la sparizione non nostra non ha prodotto l\'allarme',
+        'agents/agent40-manual-reprice.js:1091 (sparizioneTask) + lib/maker/sparizioni-non-spiegate.js');
+    }
+  }
+
+  // ══ PASSO 15 · FEED CHE TACE · avgPrice NON PUBBLICATO · RIFIUTO POST-ONLY ══════════════════════
+  // Tre fatti del venue in un passo solo, perche' sono tre modi in cui il bot deve NON fidarsi. Ognuno
+  // arriva all'esecuzione: la cancellazione per mid stantio, il carico di ripiego, il rifiuto del venue.
+  if (!bloccato) {
+    const M9 = `0x${'c9'.repeat(32)}`;
+    const m9 = VENUE.creaMercato({ conditionId: M9, mid: 0.40, tick: 0.01, minSize: 20, bandaCents: 4.5,
+      oreAllaScadenza: 60, question: 'banco · feed e post-only' });
+    MM.setManualMode({ marketId: M9, manual: true, by: 'banco', reason: 'passo 15' });
+    ARC.setAutoReprice({ scope: 'market', marketId: M9, enabled: true, by: 'banco', reason: 'passo 15' });
+    ACC.setAutoClose({ scope: 'market', marketId: M9, enabled: true, by: 'banco', reason: 'passo 15' });
+    const daQui15 = codaGiornale().length;
+
+    // ① RIFIUTO POST-ONLY: un BUY che incrocia l'ask viene RIFIUTATO dal venue, non eseguito.
+    const primaRifiuti = VENUE.eventi.filter((e) => e.tipo === 'rifiuto-post-only').length;
+    await MO.placeManualOrder({ marketId: M9, book: 'yes', side: 'BUY', price: 0.44, size: 40,
+      userId: 'operator', inCoda: false, allowOutOfBand: true }, {}).catch(() => ({}));
+    const rifiutiPostOnly = VENUE.eventi.filter((e) => e.tipo === 'rifiuto-post-only').length - primaRifiuti;
+
+    // ② avgPrice NON PUBBLICATO: si riempie una gamba con il venue che nasconde il carico per un ciclo.
+    VENUE.scenari.avgPriceNascostoPerCicli = 2;
+    await MO.placeManualOrder({ marketId: M9, book: 'yes', side: 'BUY', price: 0.38, size: 40,
+      userId: 'operator', inCoda: true }, {}).catch(() => ({}));
+    const g15 = VENUE.ordiniVivi(M9).find((o) => o.side === 'BUY' && o.tokenId === m9.tokenId);
+    if (g15) VENUE.riempi(g15.orderId, g15.size);
+    VENUE.avanza(60_000);
+    await A40.closeTask().catch(() => {});
+    VENUE.scenari.avgPriceNascostoPerCicli = 0;
+
+    // ③ FEED CHE TACE: il file del book non si aggiorna piu', il mid invecchia, gli ordini si cancellano.
+    VENUE.scenari.feedTace = true;
+    for (let k = 0; k < 4; k += 1) { VENUE.avanza(45 * 1000); await A40.cycle().catch(() => {}); }
+    VENUE.scenari.feedTace = false;
+    VENUE.pubblicaFeed();
+
+    const dopo15 = codaGiornale().slice(daQui15).map((x) => String(x.outcome));
+    const cancellatiPerCecita = VENUE.eventi.filter((e) => e.tipo === 'ordine-cancellato').length;
+    passo('15 · feed muto · avgPrice assente · rifiuto post-only', {
+      ok: rifiutiPostOnly > 0 && dopo15.some((o) => /carico-di-ripiego/.test(o)) && dopo15.some((o) => /stantio|cecita/.test(o)),
+      rifiutiPostOnly,
+      caricoDiRipiego: dopo15.filter((o) => /carico-di-ripiego/.test(o)).length,
+      esitiCecita: [...new Set(dopo15.filter((o) => /stantio|cecita|mid-age/.test(o)))],
+      cancellazioniTotaliAlVenue: cancellatiPerCecita,
+    });
+    if (!(rifiutiPostOnly > 0 && dopo15.some((o) => /carico-di-ripiego/.test(o)) && dopo15.some((o) => /stantio|cecita/.test(o)))) {
+      blocca('passo 15', `manca uno dei tre: post-only ${rifiutiPostOnly}, carico-di-ripiego ${dopo15.filter((o) => /carico-di-ripiego/.test(o)).length}, cecita ${[...new Set(dopo15.filter((o) => /stantio|cecita/.test(o)))].join('/') || 0}`,
+        'lib/maker/mid-stantio.js · lib/maker/carico-di-ripiego (auto-close) · il rifiuto post-only e\' del venue');
+    }
+  }
+
+  // ══ PASSO 16 · SCADENZA DEL MERCATO: IL PERIMETRO SI RESTRINGE DA SOLO ══════════════════════════
+  // La regola nuova di oggi: la scadenza toglie il mercato dal perimetro senza aspettare il ciclo da 6 h.
+  // Il passo arriva all'esecuzione quando il mercato E' USCITO dalla allowlist.
+  if (!bloccato) {
+    const M10 = `0x${'d0'.repeat(32)}`;
+    VENUE.creaMercato({ conditionId: M10, mid: 0.40, tick: 0.01, minSize: 20, bandaCents: 4.5,
+      oreAllaScadenza: 2, question: 'banco · scade fra due ore' });
+    ARC.setAutoReprice({ scope: 'market', marketId: M10, enabled: true, by: 'banco', reason: 'passo 16' });
+    const primaPerimetro = (ARC.readAutoRepriceConfig({}).liveMinMarketIds || []).length;
+    const eraDentro = (ARC.readAutoRepriceConfig({}).enabledMarketIds || []).map((x) => x.toLowerCase()).includes(M10.toLowerCase());
+    let sc = null;
+    try { sc = await A41.scadenzeFuoriPerimetro(); } catch (e) { sc = { errore: e.message }; }
+    const restaDentro = (ARC.readAutoRepriceConfig({}).enabledMarketIds || []).map((x) => x.toLowerCase()).includes(M10.toLowerCase());
+    // E il mercato CHIUSO al venue: `closeTask` deve ripulire i registri invece di riprovare per sempre.
+    VENUE.chiudiMercato(M10);
+    const daQui16 = codaGiornale().length;
+    VENUE.avanza(60_000);
+    await A40.closeTask().catch(() => {});
+    const dopo16 = codaGiornale().slice(daQui16).map((x) => String(x.outcome));
+    passo('16 · la scadenza toglie il mercato dal perimetro', {
+      ok: eraDentro && !restaDentro,
+      eraDentro, restaDentro,
+      perimetroPrima: primaPerimetro,
+      perimetroDopo: (ARC.readAutoRepriceConfig({}).liveMinMarketIds || []).length,
+      rilasciati: sc && sc.rilasciati ? sc.rilasciati.map((x) => `${x.id.slice(0, 12)} (${x.oreResidue} h)`) : (sc && sc.errore) || null,
+      motivoAstensione: sc && !((sc.rilasciati || []).length) ? sc.motivo : null,
+      esitiMercatoChiuso: [...new Set(dopo16.filter((o) => /chius|closed|market/.test(o)))].slice(0, 6),
+    });
+    if (!(eraDentro && !restaDentro)) {
+      blocca('passo 16', `il mercato a 2 h dalla scadenza non e' uscito dal perimetro (${(sc && sc.motivo) || 'senza motivo'})`,
+        'lib/maker/scadenza-fuori-perimetro.js + agents/agent41-realloc-scheduler.js (scadenzeFuoriPerimetro)');
+    }
+  }
+
+  // ══ PASSO 17 · IL KILL A −$100 CANCELLA ═════════════════════════════════════════════════════════
+  // ⚠ LA MISURA E' INIETTATA, L'AZIONE NO, e la distinzione e' tutto il valore del passo: `readUsage`
+  // legge la perdita realizzata dal registro dei fill, e i fill del banco non arrivano in quel registro
+  // (ci arrivano dalla riconciliazione della corsia manuale, che qui non gira). Quindi si INIETTA il
+  // NUMERO — la perdita — e si lascia di produzione tutto il resto: la soglia dal file dei limiti, la
+  // decisione, la spazzata (`cancelAllOrders` vero, che passa dall'adapter di cancellazione sostituito) e
+  // il FERMA. Il passo arriva all'esecuzione quando gli ordini a libro sono ZERO e il bot e' FERMO.
+  if (!bloccato) {
+    const M11 = `0x${'e1'.repeat(32)}`;
+    VENUE.creaMercato({ conditionId: M11, mid: 0.40, tick: 0.01, minSize: 20, bandaCents: 4.5,
+      oreAllaScadenza: 60, question: 'banco · kill a -100' });
+    MM.setManualMode({ marketId: M11, manual: true, by: 'banco', reason: 'passo 17' });
+    ARC.setAutoReprice({ scope: 'market', marketId: M11, enabled: true, by: 'banco', reason: 'passo 17' });
+    await MO.placeManualOrder({ marketId: M11, book: 'yes', side: 'BUY', price: 0.38, size: 40,
+      userId: 'operator', inCoda: true }, {}).catch(() => ({}));
+    await MO.placeManualOrder({ marketId: M11, book: 'no', side: 'BUY', price: 0.58, size: 40,
+      userId: 'operator', inCoda: true }, {}).catch(() => ({}));
+    const ordiniPrimaDelKill = VENUE.ordiniVivi().length;
+    const A43 = require(path.join(ROOT, 'agents/agent43-guardian'));
+    const LIM = require(path.join(ROOT, 'lib/safety/risk-limits'));
+    const tetto = LIM.resolveLimits({ userId: 'operator' });
+    let esito17 = null;
+    try {
+      esito17 = await A43.poll({
+        now: () => OROLOGIO.ora,
+        stato: null,                                   // nessun latch
+        // ⚠ L'UNICA INIEZIONE: il NUMERO. La soglia arriva dal file vero, l'azione e' quella vera.
+        readUsage: () => ({ realisedDailyPnlUsd: -(Number(tetto.maxDailyLossUsd) + 20) }),
+        buildCancelCredsProviders: async () => ({ polymarket: async () => ({ creds: { key: 'banco' }, address: '0xbanco' }) }),
+      });
+    } catch (e) { esito17 = { errore: e.message }; }
+    const ordiniDopoIlKill = VENUE.ordiniVivi().length;
+    const botDopo = BOT.statoBot();
+    passo('17 · kill a −$100: CANCELLA gli ordini e mette FERMA', {
+      ok: esito17 && esito17.azione === 'scattato-perdita-giornaliera' && ordiniDopoIlKill === 0 && botDopo.enabled === false,
+      tettoDalFile: tetto.maxDailyLossUsd, perditaIniettata: -(Number(tetto.maxDailyLossUsd) + 20),
+      azione: esito17 && (esito17.azione || esito17.errore),
+      ordiniPrima: ordiniPrimaDelKill, ordiniDopo: ordiniDopoIlKill,
+      ordiniCancellatiDalReferto: esito17 && esito17.ordiniCancellati,
+      botFermo: botDopo.enabled === false, motivoFerma: botDopo.reason || null,
+    });
+    if (!(esito17 && esito17.azione === 'scattato-perdita-giornaliera' && ordiniDopoIlKill === 0 && botDopo.enabled === false)) {
+      blocca('passo 17', `il kill non ha cancellato e fermato: azione='${esito17 && (esito17.azione || esito17.errore)}', ordini ${ordiniPrimaDelKill}→${ordiniDopoIlKill}, bot ${botDopo.enabled ? 'AVVIATO' : 'fermo'}`,
+        'agents/agent43-guardian.js (poll → spazzaEFerma) + lib/maker/kill-perdita-giornaliera.js');
     }
   }
 

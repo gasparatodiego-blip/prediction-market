@@ -1,9 +1,9 @@
 {
- "generatoIl": "2026-08-17T14:01:30.689Z",
- "durataMs": 5631,
+ "generatoIl": "2026-08-17T14:19:57.701Z",
+ "durataMs": 7606,
  "identita": {
   "commitWorktree": "a640950a65d65c154e01d310e7643261ecf3323d",
-  "commitVivo": "69e7ea51f44ca546abf56e21f3e1905b492d5ba0",
+  "commitVivo": "aeaa1839f2da71afd9439797af4b009f68210e49",
   "alberiConfrontati": [
    "lib",
    "agents",
@@ -15,7 +15,7 @@
  "passi": [
   {
    "n": 1,
-   "ora": "14:01:00",
+   "ora": "14:19:00",
    "titolo": "1 · accensione da zero",
    "ok": true,
    "buttatoDalReset": {
@@ -32,7 +32,7 @@
   },
   {
    "n": 2,
-   "ora": "14:01:00",
+   "ora": "14:19:00",
    "titolo": "2 · perimetro e capitale letti",
    "ok": true,
    "perimetro": 0,
@@ -42,7 +42,7 @@
   },
   {
    "n": 3,
-   "ora": "14:01:00",
+   "ora": "14:19:00",
    "titolo": "3a · il ciclo da 6 ore (A41.giro): MANTIENE, non apre",
    "ok": true,
    "azione": "nessuna",
@@ -54,7 +54,7 @@
   },
   {
    "n": 4,
-   "ora": "14:01:00",
+   "ora": "14:19:00",
    "titolo": "3 · due gambe a libro (A41.controlloCapitaleFermo → miniCiclo)",
    "ok": true,
    "motivoTrigger": "",
@@ -67,7 +67,7 @@
   },
   {
    "n": 5,
-   "ora": "14:01:00",
+   "ora": "14:19:00",
    "titolo": "4-sonda · l'adapter di sola lettura",
    "conStringa": 2,
    "conOggetto": 2,
@@ -75,7 +75,7 @@
   },
   {
    "n": 6,
-   "ora": "14:01:00",
+   "ora": "14:19:00",
    "titolo": "4-pre · cosa vede la corsia manuale (listManualOrders)",
    "ok": true,
    "ok_lettura": true,
@@ -99,7 +99,7 @@
   },
   {
    "n": 7,
-   "ora": "14:07:00",
+   "ora": "14:25:00",
    "titolo": "4 · il book si muove: riprezzamento (A40.cycle)",
    "ok": true,
    "midOra": "0.340",
@@ -112,17 +112,17 @@
     "sim-9@0.32"
    ],
    "rispostaDelCiclo": [
-    "{\"at\":\"2026-08-17T14:02:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.61,\"distanceC\":3,\"bandRadiusC\":4.5,\"marginC\":1.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-1\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.38,\"toPrice\":0.37,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,",
-    "{\"at\":\"2026-08-17T14:03:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.62,\"distanceC\":4,\"bandRadiusC\":4.5,\"marginC\":0.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-3\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.37,\"toPrice\":0.36,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,",
-    "{\"at\":\"2026-08-17T14:04:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.63,\"distanceC\":5,\"bandRadiusC\":4.5,\"marginC\":-0.5,\"midAgeSec\":0,\"gate\":\"hysteresis\",\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-4\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.36,\"toPrice\":0.35,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHo",
-    "{\"at\":\"2026-08-17T14:05:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":0,\"skipped\":1,\"repriced\":1,\"holds\":[],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-2\",\"action\":\"skip\",\"gate\":\"awaiting-confirmation\",\"reason\":\"out of band by 6.00¢ (band ±4.50¢), observation 1/2 — waiting for confirmation before moving a real order\",\"price\":0.58,\"targetPrice\":null,\"distanceC\":6,\"bandRadiusC\":4.5},{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-5\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.35,\"toPrice\":0.34,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":fal",
-    "{\"at\":\"2026-08-17T14:06:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":0,\"skipped\":0,\"repriced\":2,\"holds\":[],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-2\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.58,\"toPrice\":0.62,\"size\":61.2,\"book\":\"no\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":0,\"maxPerHour\":20,\"sent\":true,\"oldCancelled\":true,\"gate\":null,\"reason\":null,\"newOrderId\":\"sim-7\",\"newExpiry\":{\"ttlSeconds\":1380,\"orderType\":\"GTD\",\"autoReprice\":true,\"refreshMarginSeconds\":180,\"source\":\"auto-reprice\",\"reason\":\"auto-reprice is ACTIVE on this market — the order carries a 23-minute GTD expiry ",
-    "{\"at\":\"2026-08-17T14:07:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-7\",\"book\":\"no\",\"price\":0.63,\"scoringMid\":0.66,\"distanceC\":3,\"bandRadiusC\":4.5,\"marginC\":1.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-8\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.33,\"toPrice\":0.32,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,"
+    "{\"at\":\"2026-08-17T14:20:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.61,\"distanceC\":3,\"bandRadiusC\":4.5,\"marginC\":1.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-1\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.38,\"toPrice\":0.37,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,",
+    "{\"at\":\"2026-08-17T14:21:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.62,\"distanceC\":4,\"bandRadiusC\":4.5,\"marginC\":0.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-3\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.37,\"toPrice\":0.36,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,",
+    "{\"at\":\"2026-08-17T14:22:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.63,\"distanceC\":5,\"bandRadiusC\":4.5,\"marginC\":-0.5,\"midAgeSec\":0,\"gate\":\"hysteresis\",\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-4\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.36,\"toPrice\":0.35,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHo",
+    "{\"at\":\"2026-08-17T14:23:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":0,\"skipped\":1,\"repriced\":1,\"holds\":[],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-2\",\"action\":\"skip\",\"gate\":\"awaiting-confirmation\",\"reason\":\"out of band by 6.00¢ (band ±4.50¢), observation 1/2 — waiting for confirmation before moving a real order\",\"price\":0.58,\"targetPrice\":null,\"distanceC\":6,\"bandRadiusC\":4.5},{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-5\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.35,\"toPrice\":0.34,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":fal",
+    "{\"at\":\"2026-08-17T14:24:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":0,\"skipped\":0,\"repriced\":2,\"holds\":[],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-2\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.58,\"toPrice\":0.62,\"size\":61.2,\"book\":\"no\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":0,\"maxPerHour\":20,\"sent\":true,\"oldCancelled\":true,\"gate\":null,\"reason\":null,\"newOrderId\":\"sim-7\",\"newExpiry\":{\"ttlSeconds\":1380,\"orderType\":\"GTD\",\"autoReprice\":true,\"refreshMarginSeconds\":180,\"source\":\"auto-reprice\",\"reason\":\"auto-reprice is ACTIVE on this market — the order carries a 23-minute GTD expiry ",
+    "{\"at\":\"2026-08-17T14:25:00.000Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-7\",\"book\":\"no\",\"price\":0.63,\"scoringMid\":0.66,\"distanceC\":3,\"bandRadiusC\":4.5,\"marginC\":1.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-8\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.33,\"toPrice\":0.32,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,"
    ]
   },
   {
    "n": 8,
-   "ora": "14:07:00",
+   "ora": "14:25:00",
    "titolo": "5 · fill totale su una gamba",
    "ok": true,
    "share": 61.2,
@@ -132,31 +132,242 @@
   },
   {
    "n": 9,
-   "ora": "14:08:00",
-   "titolo": "6 · gamba opposta a libro entro il ciclo (A40.closeTask)",
-   "ok": false,
+   "ora": "14:26:00",
+   "titolo": "6 · gamba opposta entro il ciclo (A40.closeTask)",
+   "ok": true,
+   "comeEStataPresa": "ESEGUITA al mercato (Livello 1, taker)",
+   "posizioneOppostaShare": 61.2,
    "ordiniPrima": 1,
+   "dettaglioPrima": [
+    "sim-7 BUY tok-no-a @0.63 ×61.2"
+   ],
    "ordiniDopo": 0,
-   "gambeOpposte": []
+   "dettaglioDopo": [],
+   "gambeOpposte": [],
+   "refertoCloseTask": "{\"nostro\":{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"positions\":1,\"covered\":0,\"placed\":0,\"skipped\":0,\"mergePiazzati\":1},\"azioni\":[{\"a\":\"merge-livello-1\",\"ok\":true,\"book\":\"yes\",\"size\":61.2,\"price\":0.67,\"reason\":\"\"}]}"
+  },
+  {
+   "n": 10,
+   "ora": "14:26:00",
+   "titolo": "7-pre · chi visita closeTask",
+   "uscitaAutomatica": [
+    "0x71a296ae16844c65e3e65f89958177b74965386e2e46f5519b6c3e64e69ba0b2",
+    "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+    "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+    "0xde0b0b24bf0ec24b0b2ddde8363ea06a70a4037644f089c195989f18610999f7",
+    "0x33ec826f37e05a1b981d8f4c8129042030ea5dbdf8e32861727649f1f2695239",
+    "0x776841ce97b44b91d4da6cf9e0c6ffa43d79c17ad037732abc2191960897d1f6",
+    "0xf2b0c93903a116cc841c2be960d4f5309153d4b93d6901f69a82f34259365770",
+    "0x2aaff186cc93dfdd33ff340ec9a871113bfe2195cdbfe5304ddb81afb5409bb2",
+    "0xc16fade4bbc06895f8e456e1e49c6aa51c1b2dc7f734b3ad8fe8a5900d6a4174",
+    "0xafb455a59296be3ef1ddae2c0d35a62ddda88198811ead667cad0e68c45d98a1",
+    "0xc9abc0f43d239d351badb0436fe6a0c9e1fc96cbb581420a5c301785acac6de2",
+    "0x1c5113c1b129827c7dcddcdd2fd86ba49cd714617892d5bbbae486605644329f",
+    "0xbbf84b087712b034fc20b72ea2f410031b09dbedad7db1e13b1aa88a2d76c3e6",
+    "0x4d5a3e6b6b517cc88182a42d4a5887790f3c0bdb050c3ada0f03d47616f64bd9",
+    "0xe9e713e3d02d67100e35716868238b3824a060ae6c716f310cacc8c39c6a30d0",
+    "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "0xc3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+    "0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+    "0xe5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+    "0xf6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6"
+   ],
+   "unioneLiveMin": [
+    "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+   ],
+   "gestioneManuale": {
+    "manual": true,
+    "readable": true,
+    "error": null,
+    "record": {
+     "manual": true,
+     "at": 1786976340000,
+     "atIso": "2026-08-17T14:19:00.000Z",
+     "by": "riallocatore · selezione automatica",
+     "reason": "mercato scelto dalla selezione automatica"
+    },
+    "reason": "manual mode is ACTIVE on 0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1 — mercato scelto dalla selezione automatica"
+   },
+   "posizioniAlVenue": [
+    "tok-yes-a1a1a1a1 ×61.2 @0.32",
+    "tok-no-a1a1a1a1 ×61.2 @0.67"
+   ]
+  },
+  {
+   "n": 11,
+   "ora": "14:27:00",
+   "titolo": "7 · coppia completa → merge → incasso",
+   "ok": true,
+   "saldoPrima": 439.41,
+   "saldoDopo": 500.61,
+   "posizioniPrima": 2,
+   "posizioniDopo": 0,
+   "mergeEseguiti": 1,
+   "refertoCloseTask": "{\"mercati\":21,\"nostro\":{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"positions\":2,\"covered\":0,\"placed\":0,\"skipped\":1,\"fusi\":1},\"azioni\":4}"
+  },
+  {
+   "n": 12,
+   "ora": "14:27:00",
+   "titolo": "8 · lo slot si libera → il mercato nuovo viene ABILITATO",
+   "ok": true,
+   "esitoSelezione": "applicata",
+   "abilitatiPrima": 1,
+   "abilitatiDopo": 2,
+   "nuovi": [
+    "0xb2b2b2b2b2"
+   ],
+   "entrati": [
+    "0xb2b2b2b2b2"
+   ],
+   "inGestione": 0,
+   "selezionatiPrima": [
+    "0xa1a1a1a1a1"
+   ],
+   "selezionatiDopo": [
+    "0xa1a1a1a1a1",
+    "0xb2b2b2b2b2"
+   ],
+   "fileAllowlist": [
+    "0xa1a1a1a1a1",
+    "0xb2b2b2b2b2"
+   ],
+   "scartatiPerComposizione": null,
+   "postiNonAssegnati": null
+  },
+  {
+   "n": 13,
+   "ora": "14:28:00",
+   "titolo": "9 · fill parziale: residuo CANCELLATO e opposta per la quantita' riempita",
+   "ok": true,
+   "piazzato": true,
+   "gate": null,
+   "fillato": 1.82,
+   "minSizeDelVenue": 20,
+   "residuoUscitoDalLibro": true,
+   "esitiResiduo": [
+    "modalita-chiusura-residuo-non-fillato-cancellato"
+   ],
+   "oppostaALibro": [],
+   "posizioneRestante": 1.82
+  },
+  {
+   "n": 14,
+   "ora": "14:38:00",
+   "titolo": "10 · la scala d'urgenza arriva all'uscita ESEGUITA",
+   "ok": true,
+   "piazzato": true,
+   "gate": null,
+   "prezziDellUscita": [],
+   "gradiniVisti": [],
+   "esitiUscita": [
+    "attraversamento-consentito"
+   ],
+   "fillInVendita": [
+    "40@0.49"
+   ],
+   "posizioneRestante": 0
+  },
+  {
+   "n": 15,
+   "ora": "14:39:00",
+   "titolo": "11 · il take-profit ESEGUE contro il bid",
+   "ok": true,
+   "piazzato": true,
+   "carico": 0.28,
+   "midOra": 0.44999999999999996,
+   "bid": 0.44,
+   "askDelNo": 0.9,
+   "esiti": [
+    "ok",
+    "merge-livello-1",
+    "modalita-chiusura-sorella-rimandata-dal-capitale",
+    "reject-venue-rules",
+    "rimasuglio-rimanenza-reject-venue-rules",
+    "rimasuglio-controparte-aggressiva-reject-venue-rules",
+    "merge-saltato-rinuncia",
+    "trigger",
+    "merge-livello-2",
+    "exit-trigger-presa-di-profitto"
+   ],
+   "fillInVendita": [
+    "40@0.44"
+   ],
+   "posizioneRestante": 0
+  },
+  {
+   "n": 16,
+   "ora": "14:41:00",
+   "titolo": "12 · il merge che FALLISCE lascia un'anomalia dichiarata",
+   "ok": true,
+   "esitiPrimoGiro": [
+    "ok",
+    "merge-livello-1",
+    "modalita-chiusura-sorella-rimandata-dal-capitale",
+    "reject-venue-rules",
+    "rimasuglio-rimanenza-reject-venue-rules",
+    "rimasuglio-controparte-aggressiva-reject-venue-rules",
+    "merge-saltato-rinuncia",
+    "trigger"
+   ],
+   "mergeOnchainFallito": 4,
+   "tentativiAlVenue": 4,
+   "capitaleTornato": false,
+   "motivoRegistrato": "submit rifiutato dal relayer (HTTP 400)"
+  },
+  {
+   "n": 17,
+   "ora": "14:43:00",
+   "titolo": "13 · gamba morta → ripristino entro un ciclo",
+   "ok": false,
+   "mercato": "0xa1a1a1a1a1",
+   "latiPrima": {
+    "yes": 1,
+    "no": 1
+   },
+   "latiDopoLaMorte": {
+    "yes": 1,
+    "no": 0
+   },
+   "latiDopoIlRipristino": {
+    "yes": 1,
+    "no": 0
+   },
+   "gambePrima": 2,
+   "dopoLaMorte": 1,
+   "dopoIlRipristino": 1,
+   "esitiRipristino": [
+    "rimessa (2 mancanti)",
+    "rifiutata (1 mancanti)",
+    "non-tentato (2 mancanti)"
+   ],
+   "erroreCopertura": null
   }
  ],
  "bloccato": {
-  "dove": "passo 6",
-  "perche": "closeTask non ha messo a libro la gamba opposta",
-  "riferimento": "lib/maker/auto-close.js (completaCoppia / decidiLivello)"
+  "dove": "passo 13",
+  "perche": "il lato NO ucciso non e' tornato a libro (lati dopo il ripristino: {\"yes\":1,\"no\":0})",
+  "riferimento": "agents/agent41-realloc-scheduler.js (riconciliaCopertura → ripristinaGamba) + lib/maker/ripristino-gambe.js"
  },
- "righeGiornale": 99,
- "eventiVenue": 27,
+ "righeGiornale": 387,
+ "eventiVenue": 57,
  "regoleInventariate": 91,
- "regoleScattate": 9,
- "regoleMaiScattate": 82,
+ "regoleScattate": 19,
+ "regoleMaiScattate": 72,
  "formeDinamiche": 13,
- "dinamicheConcretizzate": 4,
+ "dinamicheConcretizzate": 13,
  "scattate": [
   {
    "regola": "applicata",
    "file": [
     "agents/agent41-realloc-scheduler.js"
+   ],
+   "volte": 3
+  },
+  {
+   "regola": "attraversamento-consentito",
+   "file": [
+    "lib/maker/auto-close.js"
    ],
    "volte": 2
   },
@@ -172,14 +383,56 @@
    "file": [
     "lib/maker/manual-order.js"
    ],
+   "volte": 3
+  },
+  {
+   "regola": "deroga-sotto-minimo-per-chiusura",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 2
+  },
+  {
+   "regola": "exit-market-sent",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 2
+  },
+  {
+   "regola": "merge-onchain-eseguito",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
    "volte": 1
+  },
+  {
+   "regola": "merge-onchain-fallito",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 5
   },
   {
    "regola": "modalita-chiusura-ingresso",
    "file": [
     "lib/maker/auto-close.js"
    ],
+   "volte": 2
+  },
+  {
+   "regola": "modalita-chiusura-residuo-non-fillato-cancellato",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
    "volte": 1
+  },
+  {
+   "regola": "modalita-chiusura-sorella-rimandata-dal-capitale",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 10
   },
   {
    "regola": "non-misurabile",
@@ -189,13 +442,34 @@
    "volte": 1
   },
   {
+   "regola": "partial",
+   "file": [
+    "lib/maker/bulk-allocate.js"
+   ],
+   "volte": 1
+  },
+  {
+   "regola": "reject-venue",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 3
+  },
+  {
+   "regola": "riposizionamento-piazzato",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 2
+  },
+  {
    "regola": "sent",
    "file": [
     "lib/maker/auto-close.js",
     "lib/maker/auto-reprice.js",
     "lib/maker/manual-order.js"
    ],
-   "volte": 24
+   "volte": 43
   },
   {
    "regola": "sotto-obiettivo",
@@ -209,7 +483,7 @@
    "file": [
     "lib/maker/bulk-allocate.js"
    ],
-   "volte": 1
+   "volte": 2
   },
   {
    "regola": "trigger",
@@ -217,7 +491,7 @@
     "lib/maker/auto-close.js",
     "lib/maker/auto-reprice.js"
    ],
-   "volte": 7
+   "volte": 17
   }
  ],
  "mai": [
@@ -239,13 +513,6 @@
    "regola": "anomalia-rinnovo-fermato",
    "file": [
     "lib/maker/auto-reprice.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "attraversamento-consentito",
-   "file": [
-    "lib/maker/auto-close.js"
    ],
    "volte": 0
   },
@@ -302,13 +569,6 @@
    "regola": "coppia-scartata-preflight",
    "file": [
     "lib/maker/bulk-allocate.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "deroga-sotto-minimo-per-chiusura",
-   "file": [
-    "lib/maker/manual-order.js"
    ],
    "volte": 0
   },
@@ -401,13 +661,6 @@
    "volte": 0
   },
   {
-   "regola": "exit-market-sent",
-   "file": [
-    "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "gemella-cancellata-prima-del-nuovo",
    "file": [
     "lib/maker/manual-order.js"
@@ -464,20 +717,6 @@
    "volte": 0
   },
   {
-   "regola": "merge-onchain-eseguito",
-   "file": [
-    "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "merge-onchain-fallito",
-   "file": [
-    "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "merge-onchain-non-eseguito",
    "file": [
     "lib/maker/auto-close.js"
@@ -527,13 +766,6 @@
    "volte": 0
   },
   {
-   "regola": "modalita-chiusura-residuo-non-fillato-cancellato",
-   "file": [
-    "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "modalita-chiusura-residuo-non-fillato-cancellazione-fallita",
    "file": [
     "lib/maker/auto-close.js"
@@ -549,13 +781,6 @@
   },
   {
    "regola": "modalita-chiusura-sorella-ridotta-dal-capitale",
-   "file": [
-    "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "modalita-chiusura-sorella-rimandata-dal-capitale",
    "file": [
     "lib/maker/auto-close.js"
    ],
@@ -586,13 +811,6 @@
    "regola": "obiettivo-raggiunto",
    "file": [
     "agents/agent41-realloc-scheduler.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "partial",
-   "file": [
-    "lib/maker/bulk-allocate.js"
    ],
    "volte": 0
   },
@@ -675,13 +893,6 @@
    "volte": 0
   },
   {
-   "regola": "reject-venue",
-   "file": [
-    "lib/maker/manual-order.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "reject-venue-rules-preflight",
    "file": [
     "lib/maker/manual-order.js"
@@ -745,13 +956,6 @@
    "volte": 0
   },
   {
-   "regola": "riposizionamento-piazzato",
-   "file": [
-    "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "riprezzo-in-corso",
    "file": [
     "lib/maker/auto-reprice.js"
@@ -805,7 +1009,16 @@
   "ok",
   "merge-livello-1",
   "modalita-chiusura-sorella-da-ridimensionare-cancellato",
-  "merge-livello-1-piazzato"
+  "merge-livello-1-piazzato",
+  "merge-saltato-rinuncia",
+  "reject-venue-rules",
+  "rimasuglio-rimanenza-reject-venue-rules",
+  "rimasuglio-controparte-aggressiva-reject-venue-rules",
+  "saltato-prezzo-non-piazzabile",
+  "merge-livello-2",
+  "exit-trigger-presa-di-profitto",
+  "saltato-tetto-saturo",
+  "reject-nozionale-mercato-oltre-tetto"
  ],
  "eventiVenueRiassunti": [
   {
@@ -814,19 +1027,31 @@
   },
   {
    "tipo": "ordine-nato",
-   "n": 10
+   "n": 23
   },
   {
    "tipo": "mid-mosso",
-   "n": 6
+   "n": 7
   },
   {
    "tipo": "ordine-cancellato",
-   "n": 8
+   "n": 13
   },
   {
    "tipo": "fill",
-   "n": 2
+   "n": 7
+  },
+  {
+   "tipo": "merge-eseguito",
+   "n": 1
+  },
+  {
+   "tipo": "rifiuto-saldo",
+   "n": 1
+  },
+  {
+   "tipo": "merge-fallito",
+   "n": 4
   }
  ]
 }

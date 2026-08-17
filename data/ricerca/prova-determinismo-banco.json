@@ -1,11 +1,11 @@
 {
- "generatoIl": "2026-08-17T14:01:34.656Z",
+ "generatoIl": "2026-08-17T14:20:01.517Z",
  "corse": 10,
  "firmeDistinte": 1,
  "deterministico": true,
  "dettaglio": [
   {
-   "sha": "0cec52e318476145",
+   "sha": "24f5d7d6e5ac0284",
    "volte": 10
   }
  ],
@@ -19,25 +19,52 @@
    "4-pre · cosa vede la corsia manuale (listManualOrders)|true",
    "4 · il book si muove: riprezzamento (A40.cycle)|true",
    "5 · fill totale su una gamba|true",
-   "6 · gamba opposta a libro entro il ciclo (A40.closeTask)|false"
+   "6 · gamba opposta entro il ciclo (A40.closeTask)|true",
+   "7-pre · chi visita closeTask|-",
+   "7 · coppia completa → merge → incasso|true",
+   "8 · lo slot si libera → il mercato nuovo viene ABILITATO|true",
+   "9 · fill parziale: residuo CANCELLATO e opposta per la quantita' riempita|true",
+   "10 · la scala d'urgenza arriva all'uscita ESEGUITA|true",
+   "11 · il take-profit ESEGUE contro il bid|true",
+   "12 · il merge che FALLISCE lascia un'anomalia dichiarata|true",
+   "13 · gamba morta → ripristino entro un ciclo|false"
   ],
   "scattate": [
    "applicata",
+   "attraversamento-consentito",
    "complete",
    "cross-dichiarato",
+   "deroga-sotto-minimo-per-chiusura",
+   "exit-market-sent",
+   "merge-onchain-eseguito",
+   "merge-onchain-fallito",
    "modalita-chiusura-ingresso",
+   "modalita-chiusura-residuo-non-fillato-cancellato",
+   "modalita-chiusura-sorella-rimandata-dal-capitale",
    "non-misurabile",
+   "partial",
+   "reject-venue",
+   "riposizionamento-piazzato",
    "sent",
    "sotto-obiettivo",
    "start",
    "trigger"
   ],
   "dinamiche": [
+   "exit-trigger-presa-di-profitto",
    "merge-livello-1",
    "merge-livello-1-piazzato",
+   "merge-livello-2",
+   "merge-saltato-rinuncia",
    "modalita-chiusura-sorella-da-ridimensionare-cancellato",
-   "ok"
+   "ok",
+   "reject-nozionale-mercato-oltre-tetto",
+   "reject-venue-rules",
+   "rimasuglio-controparte-aggressiva-reject-venue-rules",
+   "rimasuglio-rimanenza-reject-venue-rules",
+   "saltato-prezzo-non-piazzabile",
+   "saltato-tetto-saturo"
   ],
-  "bloccato": "passo 6"
+  "bloccato": "passo 13"
  }
 }

@@ -1,14 +1,14 @@
 {
- "generatoIl": "2026-08-17T13:51:01.555Z",
+ "generatoIl": "2026-08-17T14:20:11.174Z",
  "inventarioStatico": 91,
- "scattate": 10,
- "dinamicheConcretizzate": 3,
- "rosseEsaminate": 81,
- "A_ilGiroNonCiEArrivato": 77,
+ "scattate": 19,
+ "dinamicheConcretizzate": 13,
+ "rosseEsaminate": 72,
+ "A_ilGiroNonCiEArrivato": 68,
  "B_nonPuoScattare": 4,
  "dettaglio": {
-  "A1_passi_8_17": 48,
-  "A2_eventiCheIlVenueSimulatoNonFa": 29,
+  "A1_passi_8_17": 42,
+  "A2_eventiCheIlVenueSimulatoNonFa": 26,
   "B1_nessunChiamante": 0,
   "B2_rilevatoriDiDifettiNostri": 2,
   "B3_modalitaNonEseguita": 2
@@ -21,14 +21,6 @@
    "funzione": "runAutoRepriceCycle",
    "chiamate": 1,
    "passo": 17
-  },
-  {
-   "regola": "attraversamento-consentito",
-   "file": "lib/maker/auto-close.js",
-   "riga": 2480,
-   "funzione": "runAutoCloseCycle",
-   "chiamate": 1,
-   "passo": 10
   },
   {
    "regola": "carico-di-ripiego",
@@ -61,14 +53,6 @@
    "funzione": "placeManualOrder",
    "chiamate": 4,
    "passo": 17
-  },
-  {
-   "regola": "deroga-sotto-minimo-per-chiusura",
-   "file": "lib/maker/manual-order.js",
-   "riga": 1226,
-   "funzione": "placeManualOrder",
-   "chiamate": 4,
-   "passo": 9
   },
   {
    "regola": "end-of-life-cancel",
@@ -151,14 +135,6 @@
    "passo": 12
   },
   {
-   "regola": "merge-onchain-fallito",
-   "file": "lib/maker/auto-close.js",
-   "riga": 687,
-   "funzione": "fondiCoppia",
-   "chiamate": 1,
-   "passo": 12
-  },
-  {
    "regola": "merge-onchain-non-eseguito",
    "file": "lib/maker/auto-close.js",
    "riga": 694,
@@ -199,14 +175,6 @@
    "passo": 15
   },
   {
-   "regola": "modalita-chiusura-ingresso",
-   "file": "lib/maker/auto-close.js",
-   "riga": 1016,
-   "funzione": "completaCoppia",
-   "chiamate": 1,
-   "passo": 16
-  },
-  {
    "regola": "modalita-chiusura-lato-posseduto-piazzato",
    "file": "lib/maker/auto-close.js",
    "riga": 1685,
@@ -221,14 +189,6 @@
    "funzione": "completaCoppia",
    "chiamate": 1,
    "passo": 16
-  },
-  {
-   "regola": "modalita-chiusura-residuo-non-fillato-cancellato",
-   "file": "lib/maker/auto-close.js",
-   "riga": 1136,
-   "funzione": "completaCoppia",
-   "chiamate": 1,
-   "passo": 9
   },
   {
    "regola": "modalita-chiusura-residuo-non-fillato-cancellazione-fallita",
@@ -248,14 +208,6 @@
   },
   {
    "regola": "modalita-chiusura-sorella-ridotta-dal-capitale",
-   "file": "lib/maker/auto-close.js",
-   "riga": 1547,
-   "funzione": "completaCoppia",
-   "chiamate": 1,
-   "passo": 16
-  },
-  {
-   "regola": "modalita-chiusura-sorella-rimandata-dal-capitale",
    "file": "lib/maker/auto-close.js",
    "riga": 1547,
    "funzione": "completaCoppia",
@@ -465,14 +417,6 @@
    "passo": null
   },
   {
-   "regola": "exit-market-sent",
-   "file": "lib/maker/auto-close.js",
-   "riga": 2518,
-   "funzione": "runAutoCloseCycle",
-   "chiamate": 1,
-   "passo": null
-  },
-  {
    "regola": "gemella-cancellata-prima-del-nuovo",
    "file": "lib/maker/manual-order.js",
    "riga": 1377,
@@ -537,14 +481,6 @@
    "passo": null
   },
   {
-   "regola": "partial",
-   "file": "lib/maker/bulk-allocate.js",
-   "riga": 408,
-   "funzione": "runBulkAllocation",
-   "chiamate": 2,
-   "passo": null
-  },
-  {
    "regola": "reconnect-cancel",
    "file": "lib/maker/auto-reprice.js",
    "riga": 1346,
@@ -582,14 +518,6 @@
    "riga": 1873,
    "funzione": "replaceManualOrder",
    "chiamate": 1,
-   "passo": null
-  },
-  {
-   "regola": "reject-venue",
-   "file": "lib/maker/manual-order.js",
-   "riga": 1660,
-   "funzione": "cancelManualOrder",
-   "chiamate": 8,
    "passo": null
   },
   {
