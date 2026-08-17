@@ -155,6 +155,10 @@ function mercatiConPosizione() {
   } catch { return []; }
 }
 const { gambeDiUnaRiga } = require('../lib/rewards/plan-to-orders');
+// Il ripristino della gamba mancante (17 agosto 2026): decisione PURA nel modulo, esecuzione qui
+// attraverso `piazzaCoppia`. Il lucchetto e' lo STESSO di `auto-reprice`, non una seconda serratura.
+const RIP = require('../lib/maker/ripristino-gambe');
+const LOCK = require('../lib/maker/lock-mercato');
 const { capPerMarketUsd, mercatiNecessari, MARKET_CAP_FIXED_USD } = require('../lib/rewards/concentration');
 const TRIG = require('../lib/maker/trigger-capitale-fermo');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
@@ -1295,9 +1299,80 @@ async function mercatiConOrdiniVivi(deps = {}) {
 // crea, quindi puo' avvenire qui senza passare dal piano. E' la stessa asimmetria per cui il guardiano
 // delle perdite puo' cancellare da solo e non puo' piazzare.
 const _nonQuotabileDal = new Map();   // conditionId → epoch ms della prima osservazione consecutiva
+const _ripristino = new Map();        // conditionId → {ultimoTentativo, fallimenti} (§ RIP.memoriaDopo)
+
+// ══ IL RIPRISTINO DI UNA GAMBA MANCANTE — 17 agosto 2026 ═══════════════════════════════════════════
+//
+// LA MISURA CHE LO GIUSTIFICA (`data/ricerca/gambe-16-agosto.md`): il 16 agosto il bot ha avuto due
+// gambe vive solo il **50,0%** del tempo, e **17 delle 22 cadute lunghe non sono mai tornate**.
+// Nessun percorso rimetteva la gamba: il trigger a capitale fermo apre MERCATI, agent40 riprezza cio'
+// che esiste, e su zero ordini non ha niente su cui iterare.
+//
+// ⚠ NON E' UNA SECONDA STRADA VERSO IL VENUE, ed e' la condizione che rende questa riga accettabile.
+// Fin qui il commento sopra diceva «NON PIAZZA … una seconda strada sarebbe una seconda verita' sui
+// prezzi e sui gate». Resta vero, e per questo il ripristino non costruisce niente di suo: prende la
+// riga dal piano GIA' SALVATO, la converte con `gambeDiUnaRiga` — la stessa funzione del mini-ciclo —
+// e la manda a `piazzaCoppia`, cioe' allo stesso `runBulkAllocation` di sempre, con lo stesso freno,
+// gli stessi tetti e gli stessi gate. Non c'e' un prezzo nuovo e non c'e' un cancello nuovo.
+//
+// ⚠ E NON RICOSTRUISCE IL PIANO. E' la differenza esatta con `controlloCapitaleFermo`, la chiamata che
+// il 16 agosto ha prodotto 799 ricostruzioni consecutive: se il piano salvato non contiene questo
+// mercato, NON si ricalcola — si dichiara e si passa oltre. Ricalcolare qui rimetterebbe il ciclo
+// dentro l'anello che sta osservando.
+//
+// ⚠ E NON ABILITA NIENTE. `controlloCapitaleFermo` chiama `preparaMercatoNuovo` su cio' che il piano
+// sceglie, e il piano non conosce i tre slot: e' cosi' che nacque il quarto mercato in allowlist. Qui
+// si itera `sel.idsAttivi`, cioe' mercati che la selezione ha GIA' scelto e che qualcuno ha GIA'
+// preparato. Nessuna scrittura su allowlist, gestione manuale, uscita automatica o catalogo.
+async function ripristinaGamba({ id, v, riga, ora, deps }) {
+  // ⚠ IL CAMPO E' `id`, NON `conditionId` — e questa riga l'ha sbagliato alla prima stesura, cioe' la
+  // quinta occorrenza della classe «nome sbagliato ⇒ valore di difetto che nessuno ha chiesto»
+  // (§5.3). `some` su un campo inesistente e' sempre `false`, quindi il precontrollo non vedeva mai
+  // il lucchetto: a salvare la situazione era solo `LOCK.prendi` piu' sotto, che rifiuta davvero.
+  // L'ha preso il test dello scatto, non la rilettura. E si esclude chi e' SCADUTO: un lucchetto
+  // scaduto non tiene piu' niente, e trattarlo come preso murerebbe il mercato per sempre.
+  const lockPreso = LOCK.stato(ora).some((x) => x.id === id && x.scaduto !== true);
+  const d = RIP.valutaRipristino({ stato: v.stato, mancanti: v.mancanti, ora, lockPreso,
+    memoria: _ripristino.get(id) || null });
+  if (!d.tenta) return { tentato: false, motivo: d.motivo };
+
+  if (!riga) return { tentato: false, motivo: 'nessuna riga nel piano salvato per questo mercato: si dichiara e NON si ricalcola' };
+  const g = gambeDiUnaRiga(riga, riga.computedDefaultOffsetTicks);
+  if (g.scarto || !g.rows) {
+    return { tentato: false, motivo: `gambe non costruibili: ${(g.scarto && g.scarto.motivo) || 'nessuna riga costruita'}` };
+  }
+  // I due token del mercato sono la tabella di traduzione token → book: `valutaCopertura` risponde in
+  // token (sono gli ordini a portarlo), `gambeDiUnaRiga` produce righe con `book`. Vengono dalla
+  // STESSA riga di board che ha alimentato il giudizio, non da una seconda lettura.
+  const sel = RIP.gambeDaMandare({ gambe: g.rows, mancanti: v.mancanti,
+    tokenIdYes: v.tokenIdYes, tokenIdNo: v.tokenIdNo });
+  if (!sel.righe.length) return { tentato: false, motivo: sel.motivo };
+
+  // ⚠ IL LUCCHETTO SI PRENDE PER TUTTA LA SEQUENZA e si rilascia in un `finally`: e' la stessa
+  // disciplina del riprezzo (§ lock-mercato), e serve perche' fra il giudizio di copertura e l'invio
+  // passa una chiamata di rete, cioe' la finestra in cui agent40 potrebbe riprezzare la gamba viva.
+  if (!LOCK.prendi(id, { da: 'ripristino-gambe', ora }).preso) {
+    return { tentato: false, motivo: 'lucchetto non ottenuto fra il giudizio e l\'invio' };
+  }
+  let ref = null;
+  try {
+    const piazza = deps.piazza || piazzaCoppia;
+    let diag = { readable: false };
+    try { diag = readUsage({ userId: OPERATOR_USER }); } catch { diag = { readable: false }; }
+    ref = await piazza(sel.righe, diag);
+  } catch (e) {
+    ref = { ok: false, reason: e && e.message ? e.message : String(e), placed: 0 };
+  } finally {
+    LOCK.rilascia(id);
+  }
+  const messe = Number(ref && ref.placed) || 0;
+  return { tentato: true, riuscito: messe > 0, messe, righe: sel.righe.length,
+    motivo: messe > 0 ? `${messe} gamba/e rimessa/e a libro` : `nessuna gamba piazzata (${(ref && ref.reason) || 'rifiutata'})`,
+    referto: ref };
+}
 
 async function riconciliaCopertura(deps = {}) {
-  const esito = { doppioniRimossi: [], copertura: [], daSostituire: [], ordiniLetti: null, motivo: null };
+  const esito = { doppioniRimossi: [], copertura: [], daSostituire: [], ripristini: [], ordiniLetti: null, motivo: null };
   let ordini;
   try {
     const leggi = deps.listOrders || (() => listManualOrders({}));
@@ -1330,9 +1405,16 @@ async function riconciliaCopertura(deps = {}) {
   if (d.illeggibili) annuncia('log', `riconciliazione: ${d.illeggibili} ordine/i senza token o lato leggibili — non giudicati, non cancellati`);
 
   // ── ② LA COPERTURA DEI MERCATI ATTIVI ───────────────────────────────────────────────────────────
-  const sel = selezioneAttiva();
+  // La selezione e' iniettabile come il board e gli ordini: senza, questo percorso — che adesso
+  // PIAZZA — non sarebbe esercitabile da un test se non riscrivendo lo stato vero della macchina.
+  const sel = (deps.selezione || selezioneAttiva)();
   const board = deps.leggiBoard ? deps.leggiBoard() : leggiBoardReward();
   const ora = Date.now();
+  // Il piano SALVATO, letto una volta sola per tutto il giro. Non si ricalcola mai da qui — vedi la
+  // nota su `ripristinaGamba`: ricalcolare rimetterebbe il ciclo dentro l'anello che osserva.
+  const pianoSalvato = (deps.leggiPiano || leggiUltimoPiano)();
+  const rigaDi = (id) => ((pianoSalvato && pianoSalvato.righe) || [])
+    .find((r) => String(r.marketId || '').trim().toLowerCase() === id) || null;
   let scoperti = 0;
   for (const id of (sel.idsAttivi || [])) {
     const riga = (board || []).find((r) => String(r.conditionId || '').trim().toLowerCase() === id) || null;
@@ -1352,6 +1434,40 @@ async function riconciliaCopertura(deps = {}) {
         gambeVive: v.gambeVive, mancanti: v.mancanti, motivo: v.motivo });
       annuncia('log', `copertura ${id.slice(0, 12)}…: ${v.stato} (${v.gambeVive}/2 gambe) — ${v.motivo}`);
     }
+
+    // ── ②-bis · LA GAMBA MANCANTE TORNA A LIBRO ───────────────────────────────────────────────────
+    // ⚠ SI SCRIVE SEMPRE A VERBALE, ANCHE QUANDO NON SI TENTA. Fino a ieri questo riconciliatore
+    // parlava solo con `annuncia`, cioe' con i log di pm2: il giornale del 16 agosto porta ZERO
+    // record di copertura, e per questo la ricostruzione del 17 non ha potuto dire QUALI gambe
+    // avesse visto mancanti — solo che la funzione era stata chiamata (§5.2, lacuna di p.10).
+    // Un presidio che non lascia traccia non e' verificabile, e uno non verificabile non e' un
+    // presidio: e' una speranza.
+    let r = { tentato: false, motivo: 'stato coperto' };
+    if (v.stato === 'da-coprire') {
+      // `riga` qui e' la riga di BOARD (quella che ha alimentato il giudizio di copertura), e porta i
+      // due token. `rigaDi(id)` e' la riga di PIANO, che porta prezzo e size. Sono due cose diverse e
+      // vengono da due file diversi: confonderle e' il modo di piazzare sul mercato sbagliato.
+      r = await ripristinaGamba({
+        id,
+        v: { ...v, tokenIdYes: riga && riga.tokenId, tokenIdNo: riga && riga.tokenIdNo },
+        riga: rigaDi(id), ora, deps,
+      });
+      esito.ripristini.push({ id, ...r, referto: undefined });
+      scrivi({ tipo: 'ripristino-gamba', esito: r.tentato ? (r.riuscito ? 'rimessa' : 'rifiutata') : 'non-tentato',
+        marketId: id, mancanti: v.mancanti, messe: r.messe || 0, motivo: r.motivo,
+        fallimentiConsecutivi: (_ripristino.get(id) || {}).fallimenti || 0 });
+      annuncia('log', `ripristino ${id.slice(0, 12)}…: ${r.motivo}`);
+    }
+    const memoria = RIP.memoriaDopo({ stato: v.stato, memoria: _ripristino.get(id) || null,
+      tentato: r.tentato, riuscito: r.riuscito, ora });
+    if (memoria == null) _ripristino.delete(id); else _ripristino.set(id, memoria);
+  }
+  // ⚠ LA MEMORIA DEI MERCATI CHE NON SONO PIU' ATTIVI SI BUTTA, o un mercato che rientra fra sei ore
+  // si troverebbe addosso il raffreddamento di stamattina — cioe' aspetterebbe mezz'ora prima di
+  // ricevere la sua prima gamba. Lo stesso ragionamento di `_nonQuotabileDal`, sullo stesso insieme.
+  {
+    const attivi = new Set(sel.idsAttivi || []);
+    for (const k of [..._ripristino.keys()]) if (!attivi.has(k)) _ripristino.delete(k);
   }
   // ⚠ QUI C'ERA UNA CHIAMATA A `controlloCapitaleFermo`, ED E' STATA TOLTA IL 16 AGOSTO 2026 DOPO
   // AVERLA VISTA FARE DANNO. L'idea era «uno slot scoperto e' capitale che non lavora: si chiede il
