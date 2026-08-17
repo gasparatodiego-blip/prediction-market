@@ -120,11 +120,13 @@ dichiara la divergenza col `.env`. **`stato.js` resta da fare**, stesso schema, 
 
 ---
 
-## 5 · `git push` bloccato — 72 commit solo locali
+## 5 · `git push` bloccato — 70 commit solo locali
 
 Il remote è HTTPS e in `~/.ssh` c'è solo `authorized_keys`. Serve **una** delle due, e nessuna la può fare
 un agente: una chiave SSH (`ssh-keygen -t ed25519`, pubblica su GitHub, `git remote set-url origin git@…`)
-oppure un PAT con scope `repo` in `~/.git-credentials`.
+oppure un PAT con scope `repo` in `~/.git-credentials`. **Riprovato il 17 agosto sera**:
+`fatal: could not read Username for 'https://github.com'`. **69 commit** davanti a `origin/main` al momento
+della verifica, il settantesimo è quello del quadro.
 
 ---
 
