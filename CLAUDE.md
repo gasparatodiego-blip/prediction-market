@@ -715,16 +715,20 @@ share non fillate **spariscono in ogni caso**, poi **PIANO A** — il taker imme
 e non un secondo meccanismo — e **solo se fallisce** le regole di chiusura. Parziale e totale sono lo
 **stesso percorso**: la ramificazione è nei dati (`residuiDaCancellare` guarda il libro), non in un `if`.
 
-**⚠ FILL PARZIALE: IL RESIDUO DELL'ORDINE ORIGINALE SOPRAVVIVE ALL'INGRESSO E MUORE ALLA COPPIA**
-(16 agosto 2026, §5-bis p.166). Le cancellazioni d'ingresso di `runAutoCloseCycle` ora **escludono**
-`residuo-non-fillato`, cioè la parte non riempita dell'ordine che ha prodotto il fill: cancellarla
-subito rinuncerebbe alla parte di coppia che il mercato stava già completando da solo. Un **PASSO
-2-bis** la cancella quando `manca <= 0`, cioè quando la gamba opposta è arrivata e il residuo
-diventerebbe una **gamba scoperta nuova**. Il passo **non è condizionato a `statoChiusura.nuova`** — un
-fill parziale arriva a ciclo già aperto — ed è idempotente per costruzione: se il residuo non c'è più,
-`residuiDaCancellare` non lo elenca. Esiti in audit: `coppia-completa-residuo-cancellato` /
-`…-cancellazione-fallita`. **Nessuna delle due liste è ricopiata**: entrambe filtrano l'unica lista di
-`modalita-chiusura.residuiDaCancellare`, che resta la sola fonte.
+**⚠ FILL PARZIALE: IL RESIDUO SI CANCELLA SEMPRE E SUBITO** (17 agosto 2026, decisione dell'operatore —
+sostituisce la regola opposta del 16 agosto). Il residuo dell'ordine che ha prodotto il fill esce dal
+libro **a ogni giro** finché è là, non solo al primo e non solo quando la coppia si completa. **Tre cose
+che la correzione ha scoperto**: ① la condizione precedente (`resid.fillOrdine === PARZIALE`) era una
+**tautologia** — `fillOrdine` è *derivato* dalla presenza del residuo, quindi i due rami erano lo stesso
+ramo; ② la guardia vera era `statoChiusura.nuova`, cioè **solo il primo giro**: un secondo fill parziale a
+ciclo già aperto lasciava il residuo a libro; ③ la guardia non può essere `statoChiusura.attiva` — a coppia
+già completa la modalità chiusura non viene nemmeno aperta, ed è il caso per cui esisteva il PASSO 2-bis.
+La guardia è **«il registro della modalità chiusura è cablato»**: senza `deps.chiusura` il comportamento
+resta quello di prima. **Il PASSO 2-bis è stato rimosso** (era diventato irraggiungibile) e con lui gli
+esiti `coppia-completa-residuo-*`: da oggi c'è `modalita-chiusura-residuo-non-fillato-cancellato`, con
+`alPrimoGiro` a dire quando. **⚠ Si perde** che il residuo si riempia da solo completando la coppia senza
+pagare lo spread; si evita una posizione direzionale che cresce mentre la scala d'uscita la riduce.
+**Le liste non sono ricopiate**: filtrano l'unica di `modalita-chiusura.residuiDaCancellare`.
 
 **La gerarchia del merge, senza scorciatoie.** `completaCoppia` è chiamata da **tutti** i rami di
 `runAutoCloseCycle` — `already-covered`, `close-at-market`, uscita ordinaria e **`skip`** (§5 p.110) —
@@ -1208,6 +1212,8 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
 > **p.21 «cancellazioni continue» = ciclo di riprezzo** → NO, misurato: vita mediana di un ordine
 > **18,2 min**, `band-exit` è una VALUTAZIONE (3.622 giudizi «fuori banda», **zero** cancellazioni) e
 > 3.898 dei 4.874 eventi sono macchina di CHIUSURA ·
+> **p.39 il residuo su fill parziale** → CHIUSO il 17/08: si cancella SEMPRE e subito (§4.6), la
+> condizione precedente era una tautologia e la guardia vera era «solo il primo giro» ·
 > **p.28 i due commenti a 110¢ in `auto-close.js`** → corretti il 16/08 nello stesso commit che porta
 > il tetto unico a 101¢ (§5-bis p.165), il reperto D7 non esiste più.
 
@@ -1239,15 +1245,6 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
    **La cura, e le due condizioni che il difetto insegna**: ① la **stessa funzione**, non una copia
    (`:1782` lo dice già, ed è il reperto D1); ② il nozionale a riposo deve **escludere l'ordine che si
    sta sostituendo**. **Non corretta**: tocca il percorso che piazza, e va fatta con la sua misura.
-39. **🟡 IL RESIDUO SU FILL PARZIALE MUORE NELLO STATO MENO ESPOSTO — 17 agosto 2026, per decisione.**
-   In `classificaFill` «parziale» e «completo» descrivono la **COPERTURA**, non l'ordine: 40 possedute
-   / 0 coperte è `fill-completo`. Il ramo d'ingresso di `auto-close` cancella il residuo **solo** su
-   `fill-parziale`, quindi oggi il residuo **sopravvive** nello stato totalmente scoperto e **muore**
-   in quello parzialmente coperto — l'opposto dell'argomento scritto in `43523d9`. ⚠ E l'evidenza che
-   motivò quel commit (i due `BUY 14¢` che ingrossavano la gamba posseduta) la misura del 17 agosto
-   la attribuisce a `rimpiazzo-gamba` / `auto-close-on-fill`, **non** a un residuo sopravvissuto.
-   `modalita-chiusura.test.js` asserisce ora il comportamento vero e lo dichiara. **Non toccato**: è
-   una decisione di rischio dell'operatore.
 31. **🟡 LA MANOPOLA DELLA DISTANZA RESTA A 0,95 — ORA È UNA SCELTA, NON UNA DERIVA (16 agosto 2026).**
    `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95'` su **entrambi** i processi che decidono un prezzo. Da
    sola costerebbe il 99,6% del punteggio (4,27¢ su banda 4,5¢ ⇒ S 0,0025 contro 0,605 a 1,0¢), ma **non
