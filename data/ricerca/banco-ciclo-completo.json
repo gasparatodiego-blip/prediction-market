@@ -1,0 +1,497 @@
+{
+ "generatoIl": "2026-08-17T08:46:59.667Z",
+ "durataMs": 5569,
+ "eventiVenue": 36,
+ "righeGiornale": 115,
+ "passi": [
+  {
+   "ora": "09:00:00",
+   "n": "mercato creato: mid 0.40, banda ±4.5c, minSize 50"
+  },
+  {
+   "ora": "09:00:00",
+   "n": "gamba yes @ 0.38",
+   "ok": true,
+   "gate": null,
+   "reason": ""
+  },
+  {
+   "ora": "09:00:00",
+   "n": "gamba no @ 0.58",
+   "ok": true,
+   "gate": null,
+   "reason": ""
+  },
+  {
+   "ora": "09:01:00",
+   "n": "riprezzo #1 · mid 0.39"
+  },
+  {
+   "ora": "09:02:00",
+   "n": "riprezzo #2 · mid 0.38"
+  },
+  {
+   "ora": "09:03:00",
+   "n": "riprezzo #3 · mid 0.37"
+  },
+  {
+   "ora": "09:03:00",
+   "n": "FILL PARZIALE 1.82 share (sotto minSize 50)"
+  },
+  {
+   "ora": "09:04:00",
+   "n": "ciclo di chiusura #1 (avgPrice NON pubblicato)"
+  },
+  {
+   "ora": "09:04:00",
+   "n": "FILL del resto (58 share)"
+  },
+  {
+   "ora": "09:05:00",
+   "n": "ciclo di chiusura #2 (avgPrice pubblicato)"
+  },
+  {
+   "ora": "09:40:00",
+   "n": "ciclo di chiusura a +35 min di scopertura"
+  },
+  {
+   "ora": "10:50:00",
+   "n": "ciclo di chiusura a +70 min di scopertura"
+  },
+  {
+   "ora": "13:00:00",
+   "n": "ciclo di chiusura a +130 min di scopertura"
+  },
+  {
+   "ora": "17:10:00",
+   "n": "ciclo di chiusura a +250 min di scopertura"
+  },
+  {
+   "ora": "17:10:00",
+   "n": "la gamba NO si riempie: coppia COMPLETA"
+  },
+  {
+   "ora": "17:11:00",
+   "n": "ciclo con coppia completa (merge che fallisce)"
+  },
+  {
+   "ora": "17:12:00",
+   "n": "ciclo con il FEED CHE TACE"
+  },
+  {
+   "ora": "17:37:00",
+   "n": "avanzato oltre la GTD: gli ordini scadono"
+  },
+  {
+   "ora": "17:37:00",
+   "n": "SPARIZIONE NON NOSTRA"
+  },
+  {
+   "ora": "17:38:00",
+   "n": "ciclo dopo la sparizione"
+  }
+ ],
+ "regoleInventariate": 50,
+ "regoleScattate": 7,
+ "regoleMaiScattate": 43,
+ "formeDinamiche": 13,
+ "dinamicheConcretizzate": 17,
+ "scattate": [
+  {
+   "regola": "carico-di-ripiego",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 1
+  },
+  {
+   "regola": "merge-onchain-fallito",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 3
+  },
+  {
+   "regola": "merge-saltato-senza-ingressi",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 1
+  },
+  {
+   "regola": "merge-timeout-livello-3",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 2
+  },
+  {
+   "regola": "modalita-chiusura-ingresso",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 2
+  },
+  {
+   "regola": "scoperto-oltre-soglia-grave",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 3
+  },
+  {
+   "regola": "trigger",
+   "file": [
+    "lib/maker/auto-close.js",
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 5
+  }
+ ],
+ "mai": [
+  {
+   "regola": "anomalia-rinnovo-fermato",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "applicata",
+   "file": [
+    "agents/agent41-realloc-scheduler.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "attraversamento-consentito",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "chiusura-forzata-pre-scadenza-non-riuscita",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "collasso-oltre-soglia",
+   "file": [
+    "agents/agent41-realloc-scheduler.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "coppia-oltre-il-tetto",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "coppia-scartata-preflight",
+   "file": [
+    "lib/maker/bulk-allocate.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "cross-dichiarato",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "deroga-sotto-minimo-per-chiusura",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "end-of-life-cancel",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "end-of-scale-cancel",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "error",
+   "file": [
+    "lib/maker/auto-close.js",
+    "lib/maker/auto-reprice.js",
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "exit-cancel-failed",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "gemella-cancellata-prima-del-nuovo",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "inseguimento-ripreso",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "inseguimento-soppresso",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "lock-scaduto-stato-incoerente",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "merge-esito-mancante",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "merge-in-attesa",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "merge-onchain-eseguito",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "merge-onchain-non-eseguito",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "merge-timeout-cancel-fallita",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "mid-stantio-risolto",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "modalita-chiusura-regole-attive",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "modalita-chiusura-sorella-sotto-bersaglio",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "posizione-uscita-senza-nostro-ordine",
+   "file": [
+    "agents/agent40-manual-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "reconnect-cancel",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "registri-mercato-chiuso-errore",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "reject-cancel-failed",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "reject-cap-preflight",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "reject-idempotency-preflight",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "reject-venue-rules-preflight",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "residuo-pronto-rivisitato",
+   "file": [
+    "agents/agent40-manual-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "residuo-sotto-soglia",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "rimandato-per-quota",
+   "file": [
+    "lib/maker/bulk-allocate.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "rinnovo-esente-dal-tetto",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "riposizionamento-mercato-non-valido",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "riprezzo-in-corso",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "scaduto-senza-rinnovo",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "skip-cancel-non-collegato",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "start",
+   "file": [
+    "lib/maker/bulk-allocate.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "stopped-cap",
+   "file": [
+    "lib/maker/bulk-allocate.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "vuoto-oltre-soglia",
+   "file": [
+    "agents/agent41-realloc-scheduler.js"
+   ],
+   "volte": 0
+  }
+ ],
+ "dinamicheScattate": [
+  "ok",
+  "sent",
+  "merge-livello-2",
+  "modalita-chiusura-residuo-non-fillato-cancellato",
+  "modalita-chiusura-sorella-da-ridimensionare-cancellato",
+  "reject-venue-rules",
+  "rimasuglio-rimanenza-reject-venue-rules",
+  "rimasuglio-controparte-aggressiva-reject-venue-rules",
+  "merge-saltato-rinuncia",
+  "skip-remainder-below-min-size",
+  "merge-livello-2-piazzato",
+  "modalita-chiusura-lato-posseduto-piazzato",
+  "merge-livello-3",
+  "merge-saltato-non-applicabile",
+  "merge-livello-1",
+  "skip-no-entry-price",
+  "merge-livello-1-piazzato"
+ ],
+ "eventiVenueRiassunti": [
+  {
+   "tipo": "ordine-nato",
+   "n": 14
+  },
+  {
+   "tipo": "mid-mosso",
+   "n": 7
+  },
+  {
+   "tipo": "fill",
+   "n": 4
+  },
+  {
+   "tipo": "ordine-scaduto-gtd",
+   "n": 10
+  },
+  {
+   "tipo": "sparizione-esterna",
+   "n": 1
+  }
+ ]
+}
