@@ -1,0 +1,223 @@
+{
+ "generatoIl": "2026-08-17T13:02:30.225Z",
+ "capitaleUsd": 147,
+ "boardGeneratoIl": "2026-08-17T12:47:37.039Z",
+ "tettoPerMercatoDerivato": 61.25,
+ "capitaleDelMercatoUnico": 61.25,
+ "tettoPerOrdine": 65.63,
+ "imbuto": [
+  {
+   "nome": "righe del board",
+   "sopravvissuti": 147,
+   "causa": null
+  },
+  {
+   "nome": "① `rewardsMinSize` leggibile",
+   "sopravvissuti": 147,
+   "causa": "`Number(null) === 0` renderebbe il mercato «il piu' finanziabile di tutti»"
+  },
+  {
+   "nome": "② pavimento premiante ≤ capitale del mercato ($61.25)",
+   "sopravvissuti": 126,
+   "causa": "sotto il pavimento il reward e' ZERO: meglio nessun mercato che un mercato che non paga"
+  },
+  {
+   "nome": "③ ammissibile per la selezione (orizzonte ≥ 24 h, non meteo, categoria leggibile)",
+   "sopravvissuti": 40,
+   "causa": "gli stessi vincoli di §4.13, dalla funzione che li applica in produzione"
+  },
+  {
+   "nome": "④ la gamba cara sta sotto il tetto per ordine ($65.63)",
+   "sopravvissuti": 40,
+   "causa": "e' la causa a monte di `coppia-non-atomica` (§5-bis p.164): una gamba oltre il tetto abbandona la coppia INTERA"
+  },
+  {
+   "nome": "⑤ entrambe le gambe sotto la quota credibile del 60%",
+   "sopravvissuti": 40,
+   "causa": "`ignota` non esclude: e' la regola di §4.4, non una svista"
+  }
+ ],
+ "candidabili": 40,
+ "elenco": [
+  {
+   "conditionId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+   "question": "Will Harry Kane win the 2026 Ballon d'Or?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.5834999999999999,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 2.45
+  },
+  {
+   "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+   "question": "Will 1 Fed rate cut happen in 2026?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.10500000000000001,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 2.59
+  },
+  {
+   "conditionId": "0x0ae519a9f7a518f9c19bdcd6f077c2fbe8c32e03b39642343f27d77ba649414e",
+   "question": "Will Scott Singer be the FL-25 Republican nominee?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.815,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 2.23
+  },
+  {
+   "conditionId": "0xf88334704e9781b78f3e4da3724d5db06083ad76ab32f66f16d92310e8f3c62a",
+   "question": "Will Jared Moskowitz be the FL-25 Democratic nominee?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.9,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 6
+  },
+  {
+   "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "question": "Will no Fed rate cuts happen in 2026?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.8514999999999999,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 0.27
+  },
+  {
+   "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+   "question": "Will J.D. Vance win the 2028 Republican presidential nomination?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.4725,
+   "bandaCents": 5.5,
+   "nettoGiornoA500": 0.99
+  },
+  {
+   "conditionId": "0x1c49279846b1226fadc7c8d4299eb0a350dd997bc6d5a8164e2975ec47a616ef",
+   "question": "Will Charlie Crist win the St. Petersburg mayoral election?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.83,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 27.07
+  },
+  {
+   "conditionId": "0xa4ada0a23e4ae5e86df25562be322a21dbeb5f563820f55ad3f2e086c4ee08bb",
+   "question": "Will Byron Donalds win the Florida Republican Governor primary b",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.445,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 27.85
+  },
+  {
+   "conditionId": "0x303658c00317867d8206adeed79933fa70ed41854f6ec30de104c8c6babfcf2c",
+   "question": "Will Chuck Gray be the WY-AL Republican nominee?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.685,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 24.21
+  },
+  {
+   "conditionId": "0xe9e713e3d02d67100e35716868238b3824a060ae6c716f310cacc8c39c6a30d0",
+   "question": "Will James Fishback win less than 10% of votes in the Florida Re",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.515,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 40
+  },
+  {
+   "conditionId": "0x81245d187bed92754cd5e695df5d7598fa2cf4e0d6d904e8a326df315632d75b",
+   "question": "Will Mary Peltola win the Alaska Senate primary by 3–6%?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.425,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 48.3
+  },
+  {
+   "conditionId": "0x9cdc7f505b444443b4aa0a015814c79ba574c26c57e53e7cbcbb052f6c55bd1e",
+   "question": "Will NYC Mayor post 20-39 posts from August 11 to August 18, 202",
+   "minSize": 20,
+   "pavimentoUsd": 24.5,
+   "mid": 0.8,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 72.79
+  },
+  {
+   "conditionId": "0x1c5113c1b129827c7dcddcdd2fd86ba49cd714617892d5bbbae486605644329f",
+   "question": "Will Ted Cruz post 160-179 posts from August 11 to August 18, 20",
+   "minSize": 20,
+   "pavimentoUsd": 24.5,
+   "mid": 0.635,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 102.89
+  },
+  {
+   "conditionId": "0x9d1b9c496cb263b56e3cc6b7b7c54f433a3bedb23e61ddcc52f7f9c77ef003c5",
+   "question": "Will Cory Mills be the FL-07 Republican nominee?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.14,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 63.84
+  },
+  {
+   "conditionId": "0xbbf84b087712b034fc20b72ea2f410031b09dbedad7db1e13b1aa88a2d76c3e6",
+   "question": "Will James Fishback finish second in the Florida Republican Gove",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.185,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 72.86
+  },
+  {
+   "conditionId": "0xf45ea40c1c1dafa07037523ffce5f0c998bca21b3cfc36a28bfb01acb1451b12",
+   "question": "Will Austin Rogers be the FL-02 Republican nominee?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.805,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 12.12
+  },
+  {
+   "conditionId": "0x4b86df564913dac60c3f633dc25fc80394615f79b44a9ad4c7b36bb5963aebb9",
+   "question": "Will Joe Strada be the FL-11 Republican nominee?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.75,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 11.7
+  },
+  {
+   "conditionId": "0xd5b21e4d9914de45f51a5e32246572d2059d52702670c4a6a32e354ac4c61f7b",
+   "question": "Will Eric Yonce be the FL-06 Democratic nominee?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.755,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 69.25
+  },
+  {
+   "conditionId": "0x5762b07c34cd8b8615e4f406d9e69874c26e03d0d30aed29766e278b2b80b914",
+   "question": "Will Mike Beltran be the FL-14 Republican nominee?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.605,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 87.72
+  },
+  {
+   "conditionId": "0x283d526b2eec1663627b607aea649c1eea2440cc532c683fc119857764665cf2",
+   "question": "Will Oliver Larkin be the FL-25 Democratic nominee?",
+   "minSize": 50,
+   "pavimentoUsd": 61.25,
+   "mid": 0.1,
+   "bandaCents": 4.5,
+   "nettoGiornoA500": 40.43
+  }
+ ]
+}
