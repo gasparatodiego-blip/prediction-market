@@ -1,8 +1,8 @@
 {
-  "generatoIl": "2026-08-17T20:36:35.963Z",
+  "generatoIl": "2026-08-17T20:50:53.542Z",
   "capitaleUsd": 147,
   "board": {
-    "righe": 140,
+    "righe": 142,
     "file": "/home/bot/bot/data/liquidity-rewards.json"
   },
   "tettoOggiUsd": 61.25,
@@ -35,17 +35,17 @@
           "capitaleImpiegatoUsd": 144,
           "capitaleFermoUsd": 3,
           "frazioneFerma": 0.0204,
-          "nettoScoredGiornoUsd": 20.792,
-          "lordoGiornoUsd": 32.72,
-          "realisticoGiornoUsd": 17.787,
-          "candidabiliAlPavimento": 39,
+          "nettoScoredGiornoUsd": 41.838,
+          "lordoGiornoUsd": 64.538,
+          "realisticoGiornoUsd": 38.642,
+          "candidabiliAlPavimento": 37,
           "tettoPerOrdineUsd": 29.25
         },
         "residuoPeggioreSuUnMercato": {
-          "usd": 17.09,
+          "usd": 19.07,
           "minSize": 20,
-          "mid": 0.855,
-          "question": "Will Elaine Pelino win the 2026 Rhode Island G",
+          "mid": 0.954,
+          "question": "Will Sydney Gruters be the FL-16 Republican no",
           "limitatoDa": "minSize×prezzo"
         }
       },
@@ -61,10 +61,10 @@
           "capitaleImpiegatoUsd": 147,
           "capitaleFermoUsd": 0,
           "frazioneFerma": 0,
-          "nettoScoredGiornoUsd": 29.168,
-          "lordoGiornoUsd": 42.507,
-          "realisticoGiornoUsd": 24.845,
-          "candidabiliAlPavimento": 89,
+          "nettoScoredGiornoUsd": 60.995,
+          "lordoGiornoUsd": 86.991,
+          "realisticoGiornoUsd": 57.136,
+          "candidabiliAlPavimento": 93,
           "tettoPerOrdineUsd": 65.63
         },
         "residuoPeggioreSuUnMercato": {
@@ -83,14 +83,14 @@
         "superaIlCapitale": false,
         "tettoEffettivoUsd": 122.5,
         "piano": {
-          "mercati": 2,
+          "mercati": 3,
           "capitaleImpiegatoUsd": 147,
           "capitaleFermoUsd": 0,
           "frazioneFerma": 0,
-          "nettoScoredGiornoUsd": 66.771,
-          "lordoGiornoUsd": 89.632,
-          "realisticoGiornoUsd": 60.831,
-          "candidabiliAlPavimento": 129,
+          "nettoScoredGiornoUsd": 114.428,
+          "lordoGiornoUsd": 169.986,
+          "realisticoGiornoUsd": 111.207,
+          "candidabiliAlPavimento": 131,
           "tettoPerOrdineUsd": 65.63
         },
         "residuoPeggioreSuUnMercato": {
@@ -109,14 +109,14 @@
         "superaIlCapitale": true,
         "tettoEffettivoUsd": 147,
         "piano": {
-          "mercati": 2,
+          "mercati": 3,
           "capitaleImpiegatoUsd": 147,
           "capitaleFermoUsd": 0,
           "frazioneFerma": 0,
-          "nettoScoredGiornoUsd": 66.406,
-          "lordoGiornoUsd": 89.181,
-          "realisticoGiornoUsd": 63.408,
-          "candidabiliAlPavimento": 140,
+          "nettoScoredGiornoUsd": 114.015,
+          "lordoGiornoUsd": 169.352,
+          "realisticoGiornoUsd": 110.749,
+          "candidabiliAlPavimento": 142,
           "tettoPerOrdineUsd": 65.63
         },
         "residuoPeggioreSuUnMercato": {
@@ -135,14 +135,14 @@
         "superaIlCapitale": true,
         "tettoEffettivoUsd": 147,
         "piano": {
-          "mercati": 2,
+          "mercati": 3,
           "capitaleImpiegatoUsd": 147,
           "capitaleFermoUsd": 0,
           "frazioneFerma": 0,
-          "nettoScoredGiornoUsd": 66.242,
-          "lordoGiornoUsd": 89.013,
-          "realisticoGiornoUsd": 63.238,
-          "candidabiliAlPavimento": 140,
+          "nettoScoredGiornoUsd": 112.776,
+          "lordoGiornoUsd": 167.197,
+          "realisticoGiornoUsd": 109.63,
+          "candidabiliAlPavimento": 142,
           "tettoPerOrdineUsd": 65.63
         },
         "residuoPeggioreSuUnMercato": {
@@ -159,6 +159,34 @@
       "minSizeCheLoProdurrebbe": 120,
       "esprimibile": false,
       "perche": "il tetto e' pavimentoPremiante(minSize) e i minSize del venue sono 20 · 50 · 100 · 200 · 1000: nessuno di questi produce esattamente il capitale, e la scala e' discreta"
+    },
+    "baselinePrima": {
+      "mercati": 3,
+      "capitaleImpiegatoUsd": 147,
+      "capitaleFermoUsd": 0,
+      "frazioneFerma": 0,
+      "nettoScoredGiornoUsd": 61.031,
+      "lordoGiornoUsd": 87.035,
+      "realisticoGiornoUsd": 57.17,
+      "candidabiliAlPavimento": 93,
+      "tettoPerOrdineUsd": 65.63
+    },
+    "baselineDopo": {
+      "mercati": 3,
+      "capitaleImpiegatoUsd": 147,
+      "capitaleFermoUsd": 0,
+      "frazioneFerma": 0,
+      "nettoScoredGiornoUsd": 106.205,
+      "lordoGiornoUsd": 170.328,
+      "realisticoGiornoUsd": 102.837,
+      "candidabiliAlPavimento": 93,
+      "tettoPerOrdineUsd": 65.63
+    },
+    "deriva": {
+      "primaUsd": 57.17,
+      "dopoUsd": 102.837,
+      "fattore": 1.8,
+      "scartoUsd": 45.67
     }
   },
   "viaC": {
@@ -175,10 +203,10 @@
     "capitaleImpiegatoUsd": 147,
     "capitaleFermoUsd": 0,
     "frazioneFerma": 0,
-    "nettoScoredGiornoUsd": 62.029,
-    "lordoGiornoUsd": 88.213,
-    "realisticoGiornoUsd": 58.107,
-    "candidabiliAlPavimento": 89,
+    "nettoScoredGiornoUsd": 106.205,
+    "lordoGiornoUsd": 170.328,
+    "realisticoGiornoUsd": 102.837,
+    "candidabiliAlPavimento": 93,
     "tettoPerOrdineUsd": 65.63
   }
 }

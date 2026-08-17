@@ -157,16 +157,25 @@ $122,50 · $245 · $1.225 e nient'altro**: «alzarlo a $147» **non è esprimibi
 
 | scaglione | tetto | Δ vs oggi | mercati | impiegato | fermo | candidabili | residuo peggiore |
 |---|---|---|---|---|---|---|---|
-| 20 | $24,50 | −$36,75 | 6 | $144,00 | $3,00 | 39 | $17,09 |
-| **50 (oggi)** | **$61,25** | — | 3 | $147,00 | $0,00 | 89 | $45,24 |
-| 100 | $122,50 | +$61,25 | 2 | $147,00 | $0,00 | 129 | $45,24 |
-| 200 | $245,00 | +$183,75 | 2 | $147,00 | $0,00 | 140 | $45,24 |
-| 1000 | $1.225 | +$1.163,75 | 2 | $147,00 | $0,00 | 140 | $45,24 |
+| 20 | $24,50 | −$36,75 | 6 | $144,00 | $3,00 | 37 | $19,07 |
+| **50 (oggi)** | **$61,25** | — | 3 | $147,00 | $0,00 | 93 | $45,24 |
+| 100 | $122,50 | +$61,25 | 3 | $147,00 | $0,00 | 131 | $45,24 |
+| 200 | $245,00 | +$183,75 | 3 | $147,00 | $0,00 | 142 | $45,24 |
+| 1000 | $1.225 | +$1.163,75 | 3 | $147,00 | $0,00 | 142 | $45,24 |
 
-⚠ **Il capitale impiegato non è la leva**: da $61,25 in su è già tutto. Quello che cambia è **su quanti
-mercati** (3 → 2) e **quanti mercati diventano candidabili** (89 → 140).
-⚠ **Alzare il tetto alza anche il tetto per ordine** (`liveMinOrderCapUsd`) e con esso l'esposizione per
-singolo invio.
+⚠ **Il capitale impiegato NON è la leva**: da $61,25 in su è già tutto, e restano tre mercati. Quello che
+cambia davvero è **quanti mercati diventano candidabili** (37 → 93 → 131 → 142) e il **residuo peggiore**,
+che salta da **$19,07 a $45,24** fra lo scaglione 20 e il 50 e poi non cresce più (lo limitano i due tetti).
+⚠ **Alzare il tetto per mercato alza anche il tetto per ordine** (`liveMinOrderCapUsd`), e con esso
+l'esposizione di un singolo invio.
+
+> **⚠ LA COLONNA «realistico $/g» NON È CONFRONTABILE FRA LE RIGHE, E LA MISURA LO DICHIARA DA SOLA.**
+> Le cinque righe sono cinque corse del pianificatore, ~2 minuti ciascuna. Il tetto di oggi girato
+> **prima** della scala dà **$57,17/g**, girato **dopo** **$102,84/g**: **fattore 1,8× in dieci minuti**.
+> **Non è rumore fra corse** — tre corse consecutive stanno entro l'**1%** ($57,63 · $57,17 · $57,63) — è
+> **DERIVA**: il board si riscrive ogni 15 minuti e lo storico di agent34 si sta ancora riempiendo dopo il
+> riavvio della flotta. Le colonne **strutturali** (mercati, impiegato, fermo, candidabili, residuo) sono
+> solide; il $/giorno si legge come ordine di grandezza, e **solo confrontando corse ravvicinate**.
 
 **(c) DUE mercati** — impiegato **$122,50**, fermo **$24,50 = 16,7%**. Residuo irraggiungibile peggiore
 **TOTALE $90,48**: è per-mercato per costruzione, quindi due mercati aperti sono **due** residui
