@@ -1,10 +1,10 @@
 {
- "at": 1786995879281,
- "atIso": "2026-08-17T19:44:39.281Z",
+ "at": 1786999479941,
+ "atIso": "2026-08-17T20:44:39.941Z",
  "riscatti": {
   "0xe9b3e28d9cec225de730d73474af946f9115af100e5abd0d9213e77381badd9f": {
    "esito": "fallito",
-   "at": 1786995879280,
+   "at": 1786999479940,
    "motivo": "negRisk non leggibile"
   }
  }

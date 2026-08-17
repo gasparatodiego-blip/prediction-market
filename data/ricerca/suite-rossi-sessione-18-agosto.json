@@ -1,0 +1,83 @@
+{
+  "at": "2026-08-17T20:11:51.995Z",
+  "istantanea": "sessione-18-agosto",
+  "totali": {
+    "eseguiti": 209,
+    "verdi": 195,
+    "rossi": 13,
+    "nonParte": 1
+  },
+  "rossi": [
+    "lib/maker/cablaggio-di-produzione.test.js",
+    "lib/maker/cancellazione-riconosciuta.test.js",
+    "lib/maker/dipendenze-collegate.test.js",
+    "lib/maker/end-of-scale-cycle.test.js",
+    "lib/maker/miniciclo-prende-il-mercato.test.js",
+    "lib/maker/scaduto-senza-rinnovo.test.js",
+    "lib/maker/sette-punti.test.js",
+    "lib/maker/tetti-per-giro-e-scope.test.js",
+    "lib/maker/tre-fix-sicurezza.test.js",
+    "lib/rewards/categoria-mercato.test.js",
+    "lib/rewards/scadenza-ereditata.test.js",
+    "lib/rewards/tetto-derivato-dallo-scaglione.test.js",
+    "lib/rewards/tetto-e-scoperta.test.js"
+  ],
+  "rossiDettaglio": [
+    {
+      "file": "lib/maker/cablaggio-di-produzione.test.js",
+      "coda": "ernal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: 1,\n  expected: 0,\n  operator: 'strictEqual'\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/maker/cancellazione-riconosciuta.test.js",
+      "coda": "o ci sono cancellazioni con elenco valorizzato — 0 su 457 chiamate\n  ✓   i record post-correzione hanno l id leggibile — 0 leggibili · 0 redatti (scritti prima della correzione)\n  ✓   con il redattore corretto lo stesso record si legge come RIUSCITO\n\ncancellazione riconosciuta: 15 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/dipendenze-collegate.test.js",
+      "coda": "-difetto\n  ✓ «const x = (deps && typeof deps.tizio === 'function')» → con-difetto — con-difetto\n  ✓ «if (typeof deps.tizio === 'function') { deps.tizio()» → facoltativa — facoltativa\n  ✓ «const r = await deps.tizio({ a: 1 });» → obbligatoria — obbligatoria\n\ndipendenze collegate: 9 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/end-of-scale-cycle.test.js",
+      "coda": "azza senza intervento — 2 nuovi ordini\n\n── la soglia non e duplicata: i due motori leggono lo stesso numero\n  ✓ nessuno dei due motori scrive 3.0 o 97.0 per conto suo\n  ✓ entrambi importano end-of-scale\n  ✓   e il modulo esporta un solo confine per lato\n\nend-of-scale nei cicli: 25 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/miniciclo-prende-il-mercato.test.js",
+      "coda": "una lista illeggibile vale ancora lista VUOTA, non lista aperta\n  ✗ la corsia manuale chiede live-min a prescindere da MAKER_MODE del processo — è il fatto che smentiva «agent41 gira in MAKER_MODE=off, quindi quel gate non lo tocca»\n\nil mini-ciclo prende il mercato in gestione: 35 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/scaduto-senza-rinnovo.test.js",
+      "coda": "numeri strutturati\n  ✓ il pannello ha il tipo\n  ✓   la casella riassuntiva nella sezione «Stato wallet e piazzamento»\n  ✓   che compare solo quando ce n è almeno uno\n  ✓   col capitale tornato libero\n  ✓   e una spiegazione in italiano di cosa è successo\n\nscaduto senza rinnovo: 46 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/sette-punti.test.js",
+      "coda": "cito — poter isolare un meccanismo senza usare il KILL vale piu della garanzia che nessuno lo spenga\n  ✓   e riaccenderlo funziona\n  ✓ generale acceso ma mercato non scelto ⇒ NON agisce\n  ✓   entrambi accesi ⇒ agisce\n  ✓   generale spento ⇒ il mercato torna inerte\n\nsette punti: 44 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/tetti-per-giro-e-scope.test.js",
+      "coda": "nternal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '=='\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/maker/tre-fix-sicurezza.test.js",
+      "coda": "a cade, i 687MB sono tornati dentro il processo\n  ✓   e lo calcola con un processo figlio\n  ✓   le opzioni passano da STDIN, non da argv — onlyMarketIds/excludeMarketIds su argv avrebbero limiti di lunghezza ed escaping\n  ✓   con un timeout dichiarato\n  ✓   e un buffer sufficiente al corpo del piano"
+    },
+    {
+      "file": "lib/rewards/categoria-mercato.test.js",
+      "coda": "Gamma: 138/142 — 97.2% (soglia 90%)\n\n4 · il modulo è uno strumento di misura, non una regola del motore\n  ✗ nessun modulo di lib/, agents/ o app/ lo importa — lib/safety/riavvio-condizionato.js\n  ✓   e non legge file né rete\n  ✓   le categorie dichiarate sono le otto attese\n\n❌  39 passati, 2 falliti"
+    },
+    {
+      "file": "lib/rewards/scadenza-ereditata.test.js",
+      "coda": "nternal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: false,\n  expected: true,\n  operator: '=='\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/rewards/tetto-derivato-dallo-scaglione.test.js",
+      "coda": "ernal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: 2,\n  expected: 0,\n  operator: 'strictEqual'\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/rewards/tetto-e-scoperta.test.js",
+      "coda": " più largo» ≠ «filtro spento»\n  ✓   e fallisce chiuso se la config non si legge\n  ✓ sottile e NON gestito ⇒ soppresso\n  ✓ sottile e GESTITO ⇒ resta sul board\n  ✓   e uno sano resta comunque, gestito o no\n  ✓ il cancello di profondità pre-knapsack non conosce l'esenzione\n\nROSSI: 60 passati, 2 falliti"
+    }
+  ],
+  "nonParte": [
+    "lib/leg-order.test.js"
+  ],
+  "statoToccato": []
+}

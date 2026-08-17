@@ -1,0 +1,184 @@
+{
+  "generatoIl": "2026-08-17T20:36:35.963Z",
+  "capitaleUsd": 147,
+  "board": {
+    "righe": 140,
+    "file": "/home/bot/bot/data/liquidity-rewards.json"
+  },
+  "tettoOggiUsd": 61.25,
+  "tettoPerOrdineOggiUsd": 65.63,
+  "scaglioneFinanziabileOggi": 50,
+  "viaA": {
+    "tettoPerMercatoUsd": 61.25,
+    "capitaleImpiegatoUsd": 61.25,
+    "capitaleFermoUsd": 85.75,
+    "frazioneFerma": 0.5833,
+    "residuoPeggioreSuUnMercato": {
+      "usd": 45.24,
+      "minSize": 50,
+      "mid": 0.095,
+      "question": "Will Oliver Larkin be the FL-25 Democratic nom",
+      "limitatoDa": "minSize×prezzo"
+    }
+  },
+  "viaB": {
+    "scale": [
+      {
+        "scaglioneMinSize": 20,
+        "tettoPerMercatoUsd": 24.5,
+        "variazioneVsOggiUsd": -36.75,
+        "esprimibile": true,
+        "superaIlCapitale": false,
+        "tettoEffettivoUsd": 24.5,
+        "piano": {
+          "mercati": 6,
+          "capitaleImpiegatoUsd": 144,
+          "capitaleFermoUsd": 3,
+          "frazioneFerma": 0.0204,
+          "nettoScoredGiornoUsd": 20.792,
+          "lordoGiornoUsd": 32.72,
+          "realisticoGiornoUsd": 17.787,
+          "candidabiliAlPavimento": 39,
+          "tettoPerOrdineUsd": 29.25
+        },
+        "residuoPeggioreSuUnMercato": {
+          "usd": 17.09,
+          "minSize": 20,
+          "mid": 0.855,
+          "question": "Will Elaine Pelino win the 2026 Rhode Island G",
+          "limitatoDa": "minSize×prezzo"
+        }
+      },
+      {
+        "scaglioneMinSize": 50,
+        "tettoPerMercatoUsd": 61.25,
+        "variazioneVsOggiUsd": 0,
+        "esprimibile": true,
+        "superaIlCapitale": false,
+        "tettoEffettivoUsd": 61.25,
+        "piano": {
+          "mercati": 3,
+          "capitaleImpiegatoUsd": 147,
+          "capitaleFermoUsd": 0,
+          "frazioneFerma": 0,
+          "nettoScoredGiornoUsd": 29.168,
+          "lordoGiornoUsd": 42.507,
+          "realisticoGiornoUsd": 24.845,
+          "candidabiliAlPavimento": 89,
+          "tettoPerOrdineUsd": 65.63
+        },
+        "residuoPeggioreSuUnMercato": {
+          "usd": 45.24,
+          "minSize": 50,
+          "mid": 0.095,
+          "question": "Will Oliver Larkin be the FL-25 Democratic nom",
+          "limitatoDa": "minSize×prezzo"
+        }
+      },
+      {
+        "scaglioneMinSize": 100,
+        "tettoPerMercatoUsd": 122.5,
+        "variazioneVsOggiUsd": 61.25,
+        "esprimibile": true,
+        "superaIlCapitale": false,
+        "tettoEffettivoUsd": 122.5,
+        "piano": {
+          "mercati": 2,
+          "capitaleImpiegatoUsd": 147,
+          "capitaleFermoUsd": 0,
+          "frazioneFerma": 0,
+          "nettoScoredGiornoUsd": 66.771,
+          "lordoGiornoUsd": 89.632,
+          "realisticoGiornoUsd": 60.831,
+          "candidabiliAlPavimento": 129,
+          "tettoPerOrdineUsd": 65.63
+        },
+        "residuoPeggioreSuUnMercato": {
+          "usd": 45.24,
+          "minSize": 50,
+          "mid": 0.095,
+          "question": "Will Oliver Larkin be the FL-25 Democratic nom",
+          "limitatoDa": "minSize×prezzo"
+        }
+      },
+      {
+        "scaglioneMinSize": 200,
+        "tettoPerMercatoUsd": 245,
+        "variazioneVsOggiUsd": 183.75,
+        "esprimibile": true,
+        "superaIlCapitale": true,
+        "tettoEffettivoUsd": 147,
+        "piano": {
+          "mercati": 2,
+          "capitaleImpiegatoUsd": 147,
+          "capitaleFermoUsd": 0,
+          "frazioneFerma": 0,
+          "nettoScoredGiornoUsd": 66.406,
+          "lordoGiornoUsd": 89.181,
+          "realisticoGiornoUsd": 63.408,
+          "candidabiliAlPavimento": 140,
+          "tettoPerOrdineUsd": 65.63
+        },
+        "residuoPeggioreSuUnMercato": {
+          "usd": 45.24,
+          "minSize": 50,
+          "mid": 0.095,
+          "question": "Will Oliver Larkin be the FL-25 Democratic nom",
+          "limitatoDa": "minSize×prezzo"
+        }
+      },
+      {
+        "scaglioneMinSize": 1000,
+        "tettoPerMercatoUsd": 1225,
+        "variazioneVsOggiUsd": 1163.75,
+        "esprimibile": true,
+        "superaIlCapitale": true,
+        "tettoEffettivoUsd": 147,
+        "piano": {
+          "mercati": 2,
+          "capitaleImpiegatoUsd": 147,
+          "capitaleFermoUsd": 0,
+          "frazioneFerma": 0,
+          "nettoScoredGiornoUsd": 66.242,
+          "lordoGiornoUsd": 89.013,
+          "realisticoGiornoUsd": 63.238,
+          "candidabiliAlPavimento": 140,
+          "tettoPerOrdineUsd": 65.63
+        },
+        "residuoPeggioreSuUnMercato": {
+          "usd": 45.24,
+          "minSize": 50,
+          "mid": 0.095,
+          "question": "Will Oliver Larkin be the FL-25 Democratic nom",
+          "limitatoDa": "minSize×prezzo"
+        }
+      }
+    ],
+    "tettoCheServirebbe": {
+      "perUnMercatoUsd": 147,
+      "minSizeCheLoProdurrebbe": 120,
+      "esprimibile": false,
+      "perche": "il tetto e' pavimentoPremiante(minSize) e i minSize del venue sono 20 · 50 · 100 · 200 · 1000: nessuno di questi produce esattamente il capitale, e la scala e' discreta"
+    }
+  },
+  "viaC": {
+    "mercati": 2,
+    "tettoPerMercatoUsd": 61.25,
+    "capitaleImpiegatoUsd": 122.5,
+    "capitaleFermoUsd": 24.5,
+    "frazioneFerma": 0.1667,
+    "residuoPeggioreTotaleUsd": 90.48,
+    "tettoEsposizioneApertaUsd": 150
+  },
+  "pianoLiberoAlTettoDiOggi": {
+    "mercati": 3,
+    "capitaleImpiegatoUsd": 147,
+    "capitaleFermoUsd": 0,
+    "frazioneFerma": 0,
+    "nettoScoredGiornoUsd": 62.029,
+    "lordoGiornoUsd": 88.213,
+    "realisticoGiornoUsd": 58.107,
+    "candidabiliAlPavimento": 89,
+    "tettoPerOrdineUsd": 65.63
+  }
+}
