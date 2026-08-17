@@ -53,8 +53,13 @@ const { raggioBandaCents } = require('../lib/banda-premiante');
 
 // ── config ──
 const WATCHLIST_FILE = '/root/prediction-market/data/liquidity-rewards.json'; // agent24 output
-const NORMALIZED_FILE = '/tmp/liquidity-rewards.json';                        // normalized (carries rewardScore)
-const OUT_FILE       = '/tmp/clob-live-books.json';
+// Lo stesso percorso che leggono manual-order/market-clock/operator-board: una definizione sola
+// (`lib/maker/percorsi-feed`), o lettore e scrittore possono divergere in silenzio.
+const PERCORSI_FEED = require('../lib/maker/percorsi-feed');
+// ⚠ LO SCRITTORE PASSA DALLA STESSA DEFINIZIONE DEI LETTORI (`lib/maker/percorsi-feed`): tenere qui
+// un letterale mentre i quattro lettori lo importano e' il reperto D1 — due nomi per lo stesso file,
+// che un giorno divergono e nessuno lo dice. Il valore di difetto e' identico a prima.
+const OUT_FILE       = PERCORSI_FEED.fileBookVivi();
 const HB_FILE        = '/tmp/agent-heartbeats.json';
 // Self-describing COVERAGE manifest for the mid-history journal. The journal only covers the markets
 // agent34 subscribes to (a subset of the rewards universe), so a backtest must state that. This records
@@ -886,7 +891,7 @@ async function loadDriftInputs() {
   ngConfig = loadNewsGuardConfig(process.env);
   // rewardScore per market from the normalized snapshot.
   rewardScoreByMarket = new Map();
-  const snap = readJsonSafe(NORMALIZED_FILE);
+  const snap = readJsonSafe(PERCORSI_FEED.fileBoardNormalizzato());
   for (const m of (snap && snap.markets) || []) {
     if (m.marketId && m.rewardScore) rewardScoreByMarket.set(m.marketId, m.rewardScore);
   }
@@ -951,7 +956,7 @@ function runDrift(snapshot, now) {
 // Polymarket-only count; the full poly+kalshi total is kept alongside for transparency. A missing
 // universe file ⇒ universeMarketCount null (the coverage header then fails honest → partial + below-half).
 function writeCoverageManifest() {
-  const norm = readJsonSafe(NORMALIZED_FILE);
+  const norm = readJsonSafe(PERCORSI_FEED.fileBoardNormalizzato());
   const all = (norm && Array.isArray(norm.markets)) ? norm.markets : null;
   const collectable = all ? all.filter((m) => m && m.venue === 'polymarket').length : null;
   const full = all ? all.length : null;

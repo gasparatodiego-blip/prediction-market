@@ -3043,7 +3043,17 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
+// ⚠ `giro` E' ESPORTATO DAL 17 AGOSTO 2026, e la ragione e' una richiesta dell'operatore con un numero
+// dietro: finche' il ciclo da 6 ore era raggiungibile solo da `main()` (che accende i timer) o da
+// `--once` (che e' un processo separato, quindi con il venue VERO), un banco non poteva provarlo — e
+// l'unica alternativa era riscriverne il cablaggio, cioe' provare una COPIA. La copia dell'auto-close
+// era piu' piccola dell'originale (17 dep contro 20) e ha prodotto un conteggio di regole che
+// descriveva un bot che non esiste.
+// LA FIRMA NON CAMBIA: `giro(motivoAvvio)`, le stesse 21 dep cablate dentro. Chi lo prova sostituisce
+// lo STATO che il bot legge (`require.cache`), non il cablaggio — cosi' il percorso provato e' quello
+// di produzione, riga per riga. Esportare non arma niente: dentro `giro` restano `statoBot()` e il
+// freno, riletti a ogni chiamata, e a bot FERMO il giro calcola e non tocca il venue.
+module.exports = { giro, leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
   selezionaMercati, rilasciaDallaSelezione, selezioneAttiva, restringiAllaSelezione, leggiBoardReward, posizioniPerSelezione,
   riconciliaAllowlist, riconciliaCopertura, presidioPosizioniVecchie,
