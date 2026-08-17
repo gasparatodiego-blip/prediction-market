@@ -30,12 +30,10 @@ const BASE = require('./banco-ciclo-completo');
 const { VENUE, GIORNALE, ROOT, VERBOSO, MERCATI_SIMULATI, depsRegole } = BASE;
 
 // Da qui in giu' e' tutto codice di PRODUZIONE.
-// ⚠ agent40 SI CARICA COME MODULO, non si avvia: `require` di un agent esegue il suo corpo di
-// modulo (caricatore .env, costanti) ma NON il suo `main()`, che sta dietro `require.main === module`.
-// Serve perche' due presidi — la sorveglianza sulla valutazione e l'allarme sulle sparizioni non
-// nostre — vivono LI' e non in `lib/`: il banco che non li chiama non li puo' vedere scattare, ed e'
-// esattamente perche' nella prima corsa risultavano rossi.
-const A40 = require(path.join(ROOT, 'agents/agent40-manual-reprice'));
+// ⚠ agent40 NON si carica QUI, e non e' una dimenticanza: si carica alla FASE 7, dopo il reset, cosi'
+// che la sua memoria di modulo sia vuota quando i due presidi che ospita vengono messi alla prova.
+// (Che si possa caricare senza avviarlo resta vero: `require` di un agent esegue il suo corpo di modulo
+// — caricatore .env, costanti — ma NON il suo `main()`, che sta dietro `require.main === module`.)
 const AC = require(path.join(ROOT, 'lib/maker/auto-close'));
 const AR = require(path.join(ROOT, 'lib/maker/auto-reprice'));
 const MO = require(path.join(ROOT, 'lib/maker/manual-order'));
@@ -260,31 +258,86 @@ const registroChiusura = () => { const m = new Map();
   // Un presidio che il banco non chiama risulta rosso per colpa del banco, non del bot — che e'
   // esattamente il tipo di bugia che questo banco esiste per non raccontare.
   //
-  // ⚠ SCENARIO CON MERCATO PROPRIO, e la ragione e' una regressione vera che il banco ha preso:
-  // finche' questi due presidi si appoggiavano alle posizioni lasciate dalle fasi precedenti,
-  // funzionavano per caso. Quando il merge ha smesso di fallire — cioe' quando ho reso il banco piu'
-  // fedele — le posizioni sparivano prima e i due presidi tornavano rossi senza che nulla nel bot
-  // fosse cambiato. Uno scenario che dipende dagli avanzi di quello prima non e' uno scenario.
+  // ⚠ SCENARIO SU UN SLATE PULITO, DICHIARATO E VERIFICATO — e la ragione e' una regressione vera che
+  // il banco ha preso: finche' questi due presidi si appoggiavano alle posizioni lasciate dalle fasi
+  // precedenti, funzionavano per caso. Quando il merge ha smesso di fallire — cioe' quando ho reso il
+  // banco piu' FEDELE — le posizioni sparivano prima e i due presidi tornavano rossi senza che nulla
+  // nel bot fosse cambiato. Uno scenario che dipende dagli avanzi di quello prima non e' uno scenario.
+  //
+  // Un mercato proprio non basta: gli avanzi da cui questi due presidi dipendono sono TRE, e vivono in
+  // tre posti diversi.
+  //   ① le POSIZIONI del venue — un'altra posizione aperta produce l'anomalia al posto della nostra,
+  //      e lo scenario passa senza aver provato niente;
+  //   ② la MEMORIA DEI MODULI di agent40 — `posizioniPrecedenti` (la fotografia da cui si giudica una
+  //      sparizione), `statoSorveglianza` (da quanto una posizione e' muta) e `nostriInvii` (gli invii
+  //      che SPIEGANO una sparizione). Un invio di una fase precedente ancora in finestra spiegherebbe
+  //      la sparizione e SPEGNEREBBE l'allarme: qui l'avanzo produce un falso rosso, non un falso verde;
+  //   ③ gli ORDINI VIVI, che possono riempirsi da soli e cambiare le posizioni sotto i piedi.
+  // Quindi si azzerano tutti e tre — il venue con `azzera()`, la memoria dei moduli RICARICANDO agent40
+  // da `require.cache`, che e' l'unico modo di ottenere uno stato virgine senza aggiungere al codice di
+  // produzione una funzione di reset che in produzione non serve a nessuno.
+  const daQui = GIORNALE.length;   // ⚠ il verbale si guarda DA QUI IN GIU', o si conterebbero le fasi prima
+  const buttato = VENUE.azzera('prima dei due presidi di agent40');
+  const via40 = require.resolve(path.join(ROOT, 'agents/agent40-manual-reprice'));
+  delete require.cache[via40];
+  const A40F = require(via40);   // stesso modulo, memoria vuota
+  // Lo stato del slate si FOTOGRAFA qui, non si rilegge in fondo: fra qui e la verifica passano i cicli
+  // dei due presidi, e un controllo fatto dopo misurerebbe il loro effetto invece del punto di partenza.
+  const slate = { posizioni: VENUE.posizioni.size, ordini: VENUE.ordiniVivi().length };
+  passo('RESET prima dei due presidi: venue svuotato e agent40 ricaricato', { ...buttato, ...slate });
+
   const M5 = '0x' + 'e5'.repeat(32);
   const m5 = VENUE.creaMercato({ conditionId: M5, mid: 0.40, tick: 0.01, minSize: 50, bandaCents: 4.5 });
   MERCATI_SIMULATI.add(M5.toLowerCase());
   VENUE.posizioni.set(m5.tokenId, { size: 60, costoTotale: 60 * 0.38, nascondiPerCicli: 0 });
 
   // ① LA SORVEGLIANZA: si fa passare una posizione aperta senza mai valutarla per due cicli.
-  await A40.sparizioneTask({ now: () => VENUE.ora }).catch(() => {});   // primo giro: fotografa lo stato di partenza
-  await A40.sorveglianzaTask({ now: () => VENUE.ora }).catch(() => {});
+  await A40F.sparizioneTask({ now: () => VENUE.ora }).catch(() => {});   // primo giro: fotografa lo stato di partenza
+  await A40F.sorveglianzaTask({ now: () => VENUE.ora }).catch(() => {});
   VENUE.avanza(3 * 60_000);                      // oltre i 2 cicli da 60 s di tolleranza
-  const rs = await A40.sorveglianzaTask({ now: () => VENUE.ora }).catch((e) => ({ errore: e.message }));
+  const rs = await A40F.sorveglianzaTask({ now: () => VENUE.ora }).catch((e) => ({ errore: e.message }));
   passo('sorveglianza: posizione aperta e non valutata per oltre due cicli',
     { posizioni: VENUE.posizioni.size, anomalie: rs && rs.anomalie ? rs.anomalie.length : null,
       motivo: rs && rs.motivo });
 
   // ② LA SPARIZIONE NON NOSTRA: la posizione se ne va senza un nostro ordine.
+  // ⚠ SI LEGGE LA POSIZIONE PRIMA DI USARLA. Provando il reset con un `sed` che toglieva la posizione
+  // seminata, questa riga moriva di `TypeError` invece di lasciare cadere la verifica: un banco che
+  // esplode punta al posto sbagliato, mentre una verifica rossa dice quale scenario si e' svuotato.
   const tokPos = m5.tokenId;
-  if (tokPos) { VENUE.sparizioneEsterna(tokPos, VENUE.posizioni.get(tokPos).size); passo('SPARIZIONE NON NOSTRA'); }
+  const posM5 = tokPos ? VENUE.posizioni.get(tokPos) : null;
+  if (posM5) { VENUE.sparizioneEsterna(tokPos, posM5.size); passo('SPARIZIONE NON NOSTRA'); }
+  else passo('SPARIZIONE NON NOSTRA saltata: nessuna posizione da far sparire');
   VENUE.avanza(60_000);
-  await A40.sparizioneTask({ now: () => VENUE.ora }).catch((e) => passo('sparizioneTask errore', { e: e.message }));
+  await A40F.sparizioneTask({ now: () => VENUE.ora }).catch((e) => passo('sparizioneTask errore', { e: e.message }));
   passo('ciclo dopo la sparizione');
+
+  // ⚠ LA PROVA DEL RESET, e non e' una formalita': i due esiti si cercano SOLO nelle righe scritte
+  // DOPO l'azzeramento. Cercarli nel giornale intero li troverebbe comunque — le fasi precedenti ne
+  // producono — e il banco direbbe «verde» misurando avanzi, cioe' ripeterebbe esattamente l'errore
+  // che questo reset esiste per non fare mai piu'.
+  const dopoIlReset = new Set(GIORNALE.slice(daQui).map((r) => String(r.outcome || '')));
+  // ⚠ QUESTE TRE VERIFICHE SANNO CADERE, ed e' stato provato invece che promesso — un'asserzione che
+  // non sa diventare rossa non prova niente. Due controprove, riproducibili copiando i due file del
+  // banco in una cartella a parte (con `ROOT` a un livello in piu' di `..`) e patchando la copia:
+  //   · NEG A — si toglie la riga che semina la posizione su M5: cadono la 2 e la 3, exit 1;
+  //   · NEG B — si chiama `registraNostroInvio` sul token di M5 prima della sparizione, cioe' si
+  //     ricrea l'AVANZO che il reset esiste per cancellare (un invio di una fase precedente ancora in
+  //     finestra SPIEGA la sparizione): cade la 3 e resta verde la 2, exit 1.
+  // La seconda e' quella che conta: e' la forma esatta della regressione del 17 agosto, e la verifica
+  // la vede.
+  const verifiche = [
+    { nome: 'il reset lascia il venue davvero vuoto',
+      atteso: '0 posizioni e 0 ordini vivi al momento del reset',
+      visto: slate, ok: slate.posizioni === 0 && slate.ordini === 0 },
+    { nome: 'posizione-mai-valutata scatta DOPO il reset, su stato virgine',
+      atteso: "outcome 'posizione-mai-valutata' fra le righe successive all'azzeramento",
+      ok: dopoIlReset.has('posizione-mai-valutata') },
+    { nome: 'posizione-uscita-senza-nostro-ordine scatta DOPO il reset, su stato virgine',
+      atteso: "outcome 'posizione-uscita-senza-nostro-ordine' fra le righe successive all'azzeramento",
+      ok: dopoIlReset.has('posizione-uscita-senza-nostro-ordine') },
+  ];
+
   await AC.runAutoCloseCycle(depsChiusura(registri)).catch(() => {});
 
   // ── FASE 8 · GLI SCENARI MIRATI ─────────────────────────────────────────────────────────────────
@@ -609,6 +662,7 @@ const registroChiusura = () => { const m = new Map();
     regoleMaiScattate: mai.length,
     formeDinamiche: inv.dinamiche.length,
     dinamicheConcretizzate: dinamicheScattate.length,
+    verifiche,
     scattate, mai, dinamicheScattate,
     eventiVenueRiassunti: [...VENUE.eventi.reduce((m, e) => m.set(e.tipo, (m.get(e.tipo) || 0) + 1), new Map())]
       .map(([tipo, n]) => ({ tipo, n })),
@@ -630,5 +684,18 @@ const registroChiusura = () => { const m = new Map();
   console.log(`  SCATTATE nella simulazione: ${scattate.length}`);
   console.log(`  MAI SCATTATE (rosse)      : ${mai.length}`);
   console.log(`  forme dinamiche concrete  : ${dinamicheScattate.length}`);
+
+  // ── LE VERIFICHE DEL RESET ─────────────────────────────────────────────────────────────────────
+  // ⚠ IL BANCO ESCE CON CODICE 1 SE UNA VERIFICA CADE, e non e' pedanteria: un banco che stampa un
+  // numero e torna 0 mentre uno scenario si e' svuotato e' precisamente il modo in cui i due presidi di
+  // agent40 hanno smesso di scattare senza che nessuno lo notasse. Il conteggio delle regole non lo
+  // rileva — 20 su 91 resta 20 su 91 se una regola cade e un'altra nasce.
+  const cadute = verifiche.filter((v) => !v.ok);
+  console.log(`\n── le verifiche del reset ──`);
+  for (const v of verifiche) console.log(`  ${v.ok ? '✅' : '🔴'}  ${v.nome}${v.ok ? '' : `\n        atteso: ${v.atteso}${v.visto ? `\n        visto:  ${JSON.stringify(v.visto)}` : ''}`}`);
   console.log(`\nreferto → ${path.relative(ROOT, BASE.OUT)}`);
+  if (cadute.length) {
+    console.log(`\n🔴 ${cadute.length} VERIFICA/E CADUTA/E: lo scenario dei due presidi non e' piu' autosufficiente.`);
+    process.exitCode = 1;
+  }
 })();

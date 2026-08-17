@@ -238,6 +238,32 @@ class VenueSimulato {
     return { ok: true, transactionID: `sim-tx-${++this.seq}`, quanteShare: q };
   }
 
+  /**
+   * IL RESET FRA UNO SCENARIO E IL SUCCESSIVO — e perche' un banco ne ha bisogno.
+   *
+   * ⚠ NON E' UNA COMODITA': e' la cintura contro la regressione piu' insidiosa che questo banco abbia
+   * prodotto. I due presidi di agent40 hanno smesso di scattare SENZA CHE NULLA NEL BOT FOSSE
+   * CAMBIATO, perche' si appoggiavano alle posizioni lasciate dalle fasi precedenti: quando il merge ha
+   * smesso di fallire — cioe' quando il banco e' diventato piu' FEDELE — le posizioni sparivano prima e
+   * lo scenario perdeva il proprio ingrediente. Uno scenario che dipende dagli avanzi di quello prima
+   * non e' uno scenario: e' una coincidenza che passa finche' nessuno migliora niente.
+   *
+   * Restituisce COSA ha buttato, e serve leggerlo: se un giorno un reset butta via molto, quello e' il
+   * peso su cui lo scenario successivo stava per appoggiarsi senza dirlo.
+   *
+   * ⚠ Gli ordini si marcano MORTI, non si cancellano dalla mappa: il giornale del venue e' il verbale
+   * della corsa, e un verbale da cui si tolgono le righe non e' un verbale.
+   */
+  azzera(motivo = 'reset fra scenari') {
+    let ordini = 0;
+    for (const o of this.ordini.values()) if (o.vivo) { o.vivo = false; o.morteMotivo = 'azzerato-dal-banco'; ordini += 1; }
+    const posizioni = this.posizioni.size;
+    const share = [...this.posizioni.values()].reduce((a, p) => a + Number(p.size || 0), 0);
+    this.posizioni.clear();
+    this.log('banco-azzerato', { motivo, ordiniUccisi: ordini, posizioniButtate: posizioni, shareButtate: +share.toFixed(4) });
+    return { ordiniUccisi: ordini, posizioniButtate: posizioni, shareButtate: +share.toFixed(4) };
+  }
+
   /** Una posizione che se ne va senza un nostro ordine: il fatto del 16 agosto alle 19:27. */
   sparizioneEsterna(tokenId, quanto) {
     const p = this.posizioni.get(tokenId);

@@ -1,7 +1,7 @@
 {
- "generatoIl": "2026-08-17T10:43:32.185Z",
- "durataMs": 9812,
- "eventiVenue": 72,
+ "generatoIl": "2026-08-17T10:49:23.896Z",
+ "durataMs": 9319,
+ "eventiVenue": 73,
  "righeGiornale": 232,
  "passi": [
   {
@@ -92,6 +92,15 @@
    "n": "avanzato oltre la GTD: gli ordini scadono"
   },
   {
+   "ora": "17:38:00",
+   "n": "RESET prima dei due presidi: venue svuotato e agent40 ricaricato",
+   "ordiniUccisi": 0,
+   "posizioniButtate": 0,
+   "shareButtate": 0,
+   "posizioni": 0,
+   "ordini": 0
+  },
+  {
    "ora": "17:41:00",
    "n": "sorveglianza: posizione aperta e non valutata per oltre due cicli",
    "posizioni": 1,
@@ -178,6 +187,27 @@
  "regoleMaiScattate": 71,
  "formeDinamiche": 13,
  "dinamicheConcretizzate": 17,
+ "verifiche": [
+  {
+   "nome": "il reset lascia il venue davvero vuoto",
+   "atteso": "0 posizioni e 0 ordini vivi al momento del reset",
+   "visto": {
+    "posizioni": 0,
+    "ordini": 0
+   },
+   "ok": true
+  },
+  {
+   "nome": "posizione-mai-valutata scatta DOPO il reset, su stato virgine",
+   "atteso": "outcome 'posizione-mai-valutata' fra le righe successive all'azzeramento",
+   "ok": true
+  },
+  {
+   "nome": "posizione-uscita-senza-nostro-ordine scatta DOPO il reset, su stato virgine",
+   "atteso": "outcome 'posizione-uscita-senza-nostro-ordine' fra le righe successive all'azzeramento",
+   "ok": true
+  }
+ ],
  "scattate": [
   {
    "regola": "attraversamento-consentito",
@@ -873,6 +903,10 @@
   },
   {
    "tipo": "rifiuto-saldo",
+   "n": 1
+  },
+  {
+   "tipo": "banco-azzerato",
    "n": 1
   },
   {
