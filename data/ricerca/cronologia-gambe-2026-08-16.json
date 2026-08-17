@@ -1,0 +1,7004 @@
+{
+ "generatoIl": "2026-08-17T05:02:54.251Z",
+ "giorno": "2026-08-16",
+ "fonti": [
+  "data/polymarket-maker-audit.jsonl (nascite/morti, marketRef in chiaro)",
+  "data/safety-fills.jsonl (fill)",
+  "data/polymarket-clob-audit.jsonl (riscontro aggregato: marketId REDATTO)"
+ ],
+ "ordiniNati": 377,
+ "mercatiConOrdini": 8,
+ "totale": {
+  "oreDueGambe": 14.7,
+  "oreUnaGamba": 7.15,
+  "oreZero": 7.54,
+  "percentualeCoperturaPiena": 50
+ },
+ "cause": [
+  {
+   "causa": "riprezzo-cancella-e-non-ripiazza",
+   "episodi": 12,
+   "minuti": 197.6,
+   "mercati": 5,
+   "esempi": [
+    "de0b0b24bf… 12:14:42 no nozionale-mercato-oltre-tetto",
+    "de0b0b24bf… 16:58:28 yes nozionale-mercato-oltre-tetto",
+    "de0b0b24bf… 17:30:26 yes nozionale-mercato-oltre-tetto"
+   ]
+  },
+  {
+   "causa": "expired",
+   "episodi": 9,
+   "minuti": 65,
+   "mercati": 5,
+   "esempi": [
+    "de0b0b24bf… 12:03:23 no l'ordine ha 1425s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+    "de0b0b24bf… 14:46:31 no l'ordine ha 1382s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+    "de0b0b24bf… 16:08:06 yes l'ordine ha 1397s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo"
+   ]
+  },
+  {
+   "causa": "cancellato-da-noi",
+   "episodi": 38,
+   "minuti": 18.1,
+   "mercati": 4,
+   "esempi": [
+    "de0b0b24bf… 13:26:51 no auto-reprice-band-exit",
+    "de0b0b24bf… 13:26:51 yes auto-reprice-band-exit",
+    "de0b0b24bf… 13:35:27 yes auto-reprice-band-exit"
+   ]
+  },
+  {
+   "causa": "cancellato-da-noi (con successore)",
+   "episodi": 95,
+   "minuti": 5.6,
+   "mercati": 8,
+   "esempi": [
+    "de0b0b24bf… 10:59:20 no auto-reprice-band-exit",
+    "de0b0b24bf… 11:08:28 yes auto-reprice-band-exit",
+    "de0b0b24bf… 11:28:30 yes auto-reprice-band-exit"
+   ]
+  },
+  {
+   "causa": "cancelled-externally",
+   "episodi": 1,
+   "minuti": 2,
+   "mercati": 1,
+   "esempi": [
+    "f2b0c93903… 14:37:22 yes sparito dopo 1379s, ben prima della scadenza di 1380s, e senza che questo sistema l'abbia cancellato: cancellazione fatta FUORI dal pannello (tipicamente dall'app Polymarket)"
+   ]
+  },
+  {
+   "causa": "riempito",
+   "episodi": 1,
+   "minuti": 1,
+   "mercati": 1,
+   "esempi": [
+    "de0b0b24bf… 15:19:40 no 1.82@0.2"
+   ]
+  }
+ ],
+ "gate": [
+  {
+   "gate": "live-min-market-unset",
+   "n": 120,
+   "mercati": 4,
+   "esempio": ""
+  },
+  {
+   "gate": "end-of-scale",
+   "n": 36,
+   "mercati": 2,
+   "esempio": "prezzo vicino a risoluzione — fine scala, cancellazione di sicurezza: il mid è a 2.00¢, sotto la soglia di 3.0¢"
+  },
+  {
+   "gate": "live-min-market-mismatch",
+   "n": 24,
+   "mercati": 4,
+   "esempio": ""
+  },
+  {
+   "gate": "stale-book",
+   "n": 18,
+   "mercati": 1,
+   "esempio": "il prezzo non viene dal book live ma da «board-row»: la sottoscrizione live per questo mercato non e' attiva in questo momento. Rifiuto invece di piazzare su un prezzo che potrebbe essere vecchio di minuti. Riapri il pannello e attendi che indichi «book live»."
+  },
+  {
+   "gate": "nozionale-mercato-oltre-tetto",
+   "n": 17,
+   "mercati": 3,
+   "esempio": "questo mercato ha gia' $53.67 di ordini a riposo (2) e questo ordine ne aggiungerebbe $11.42: il totale $65.09 supera il tetto per mercato di $61.25. Il tetto per ordine e quello di esposizione non lo vedevano: sommano un ordine per volta o i soli fill riconci"
+  },
+  {
+   "gate": "reject-idempotent",
+   "n": 12,
+   "mercati": 0,
+   "esempio": ""
+  },
+  {
+   "gate": "idempotent-duplicate",
+   "n": 12,
+   "mercati": 2,
+   "esempio": "an order for idempotency key idem_rep_80d8467d91517a626fba was already attempted — refusing to place it twice (l ordine 0x8aff87ad44… e ancora VIVO sul venue: questo sarebbe un doppio invio)"
+  },
+  {
+   "gate": "reject-venue",
+   "n": 12,
+   "mercati": 2,
+   "esempio": ""
+  },
+  {
+   "gate": "venue-rules",
+   "n": 9,
+   "mercati": 2,
+   "esempio": "OUT_OF_BAND: |price − scoring mid| 4.50¢ exceeds the reward band ±4.50¢ — earns no reward"
+  },
+  {
+   "gate": "doppione-identico",
+   "n": 7,
+   "mercati": 3,
+   "esempio": "esiste gia' un ordine IDENTICO su questo token e lato (0x35fb97ee0a…, 0.118×56.1): inviarne un altro creerebbe un doppione senza cambiare niente"
+  },
+  {
+   "gate": "market-unknown",
+   "n": 6,
+   "mercati": 0,
+   "esempio": "nessun mercato indicato e il pin del motore non è leggibile (il motore non ha ancora pubblicato uno stato (/tmp/maker-state.json assente)) — rifiuto piuttosto che indovinare un mercato"
+  },
+  {
+   "gate": "manual-mode-inactive",
+   "n": 6,
+   "mercati": 1,
+   "esempio": "manual mode is NOT active on 0x[redacted-64hex] — agent35 is still allowed to place and cancel here. Take the market manual first; two writers on one market is exactly what that flag prevents."
+  },
+  {
+   "gate": "funding-approval",
+   "n": 4,
+   "mercati": 1,
+   "esempio": ""
+  },
+  {
+   "gate": "mai-primo-sul-libro",
+   "n": 1,
+   "mercati": 1,
+   "esempio": "un tick dietro il miglior bid altrui (57¢) darebbe 56¢, fuori dalla banda premiante [58¢–67¢]. Restare in banda vorrebbe dire risalire in CIMA al libro, e questo lato non si quota: meglio non impegnare capitale che impegnarlo nella posizione peggiore del libro"
+  },
+  {
+   "gate": "would-cross",
+   "n": 1,
+   "mercati": 1,
+   "esempio": "a 17.00¢ quest'ordine di SELL incrocerebbe il miglior bid (17.00¢) e si eseguirebbe SUBITO come taker. Nessuna distanza dal mid e' stata dichiarata, quindi il prezzo non e' stato ricalcolato. Rifiuto invece di eseguirlo come taker o di cambiarlo di nascosto: a"
+  }
+ ],
+ "mercati": [
+  {
+   "cid": "de0b0b24bf0ec24b0b2ddde8363ea06a70a4037644f089c195989f18610999f7",
+   "cidBreve": "de0b0b24bf…",
+   "ordiniTotali": 74,
+   "primoOrdine": "2026-08-16T10:46:42.086Z",
+   "ultimoEvento": "2026-08-16T18:33:13.336Z",
+   "finestraOre": 7.78,
+   "minutiDueGambe": 253.32,
+   "minutiUnaGamba": 169.43,
+   "minutiZero": 43.77,
+   "percentualeCoperturaPiena": 54.3,
+   "cadute": [
+    {
+     "quando": "2026-08-16T10:59:20.581Z",
+     "ora": "10:59:20",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.08,
+     "tornata": "2026-08-16T10:59:25.180Z",
+     "morte": [
+      {
+       "orderId": "0x4ddf72f3a0…",
+       "book": "no",
+       "price": 0.22,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x83a2d1293c…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T11:08:28.377Z",
+     "ora": "11:08:28",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T11:08:31.389Z",
+     "morte": [
+      {
+       "orderId": "0x8aff87ad44…",
+       "book": "yes",
+       "price": 0.73,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x4b7869f4c2…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T11:28:30.199Z",
+     "ora": "11:28:30",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.02,
+     "tornata": "2026-08-16T11:28:31.307Z",
+     "morte": [
+      {
+       "orderId": "0x4b7869f4c2…",
+       "book": "yes",
+       "price": 0.72,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x16cbce7b60…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:03:23.039Z",
+     "ora": "12:03:23",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 9.1,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x4759d7c081…",
+       "book": "no",
+       "price": 0.2,
+       "size": 57.1,
+       "causa": "expired",
+       "dettaglio": "l'ordine ha 1425s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:14:42.653Z",
+     "ora": "12:14:42",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 17.93,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x2ec08c0bec…",
+       "book": "no",
+       "price": 0.21,
+       "size": 57.1,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "nozionale-mercato-oltre-tetto",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:04:26.150Z",
+     "ora": "13:04:26",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.14,
+     "tornata": "2026-08-16T13:04:34.481Z",
+     "morte": [
+      {
+       "orderId": "0x3886154ff7…",
+       "book": "no",
+       "price": 0.2,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x71dc106d78…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:04:35.690Z",
+     "ora": "13:04:35",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.13,
+     "tornata": "2026-08-16T13:04:43.687Z",
+     "morte": [
+      {
+       "orderId": "0x05512a10d7…",
+       "book": "yes",
+       "price": 0.73,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x8d5c5eae80…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:24:30.713Z",
+     "ora": "13:24:30",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T13:24:34.001Z",
+     "morte": [
+      {
+       "orderId": "0x71dc106d78…",
+       "book": "no",
+       "price": 0.2,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x3593413055…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:25:13.062Z",
+     "ora": "13:25:13",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.03,
+     "tornata": "2026-08-16T13:25:15.044Z",
+     "morte": [
+      {
+       "orderId": "0x8d5c5eae80…",
+       "book": "yes",
+       "price": 0.73,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x4dad0c4a2c…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:26:51.255Z",
+     "ora": "13:26:51",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x3593413055…",
+       "book": "no",
+       "price": 0.2,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x4dad0c4a2c…",
+       "book": "yes",
+       "price": 0.73,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:35:27.399Z",
+     "ora": "13:35:27",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x39a222c65d…",
+       "book": "yes",
+       "price": 0.73,
+       "size": 48.9,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x37880edbd0…",
+       "book": "no",
+       "price": 0.2,
+       "size": 48.9,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:43:50.853Z",
+     "ora": "13:43:50",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xd254f42377…",
+       "book": "yes",
+       "price": 0.73,
+       "size": 48.9,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x55725288d2…",
+       "book": "no",
+       "price": 0.2,
+       "size": 48.9,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:56:12.029Z",
+     "ora": "13:56:12",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x47caa2852a…",
+       "book": "yes",
+       "price": 0.73,
+       "size": 48.9,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x66f587e386…",
+       "book": "no",
+       "price": 0.2,
+       "size": 48.9,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:23:20.626Z",
+     "ora": "14:23:20",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.16,
+     "tornata": "2026-08-16T14:23:30.342Z",
+     "morte": [
+      {
+       "orderId": "0x168d6bc9e6…",
+       "book": "no",
+       "price": 0.2,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x6bbf1bc1a6…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:23:31.443Z",
+     "ora": "14:23:31",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.18,
+     "tornata": "2026-08-16T14:23:42.149Z",
+     "morte": [
+      {
+       "orderId": "0x820d64a621…",
+       "book": "yes",
+       "price": 0.73,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x7d1089fb53…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:46:31.869Z",
+     "ora": "14:46:31",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 1.02,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x6bbf1bc1a6…",
+       "book": "no",
+       "price": 0.2,
+       "size": 57.1,
+       "causa": "expired",
+       "dettaglio": "l'ordine ha 1382s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:19:40.904Z",
+     "ora": "15:19:40",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 1.02,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x3eb3d7f955…",
+       "book": "no",
+       "price": 0.2,
+       "size": 57.1,
+       "causa": "riempito",
+       "dettaglio": "1.82@0.2",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:24:43.646Z",
+     "ora": "15:24:43",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T15:24:44.058Z",
+     "morte": [
+      {
+       "orderId": "0x4c796488bf…",
+       "book": "yes",
+       "price": 0.79,
+       "size": 56.82,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xb19d6c5d4b…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:41:57.678Z",
+     "ora": "15:41:57",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.03,
+     "tornata": "2026-08-16T15:41:59.465Z",
+     "morte": [
+      {
+       "orderId": "0xa7eeb70275…",
+       "book": "no",
+       "price": 0.21,
+       "size": 56.82,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x661927d0ed…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:44:47.737Z",
+     "ora": "15:44:47",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.04,
+     "tornata": "2026-08-16T15:44:50.257Z",
+     "morte": [
+      {
+       "orderId": "0xb19d6c5d4b…",
+       "book": "yes",
+       "price": 0.78,
+       "size": 56.82,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x118b3a3959…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:02:04.629Z",
+     "ora": "16:02:04",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.13,
+     "tornata": "2026-08-16T16:02:12.193Z",
+     "morte": [
+      {
+       "orderId": "0x661927d0ed…",
+       "book": "no",
+       "price": 0.21,
+       "size": 56.82,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x82571c2d8d…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:08:06.674Z",
+     "ora": "16:08:06",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 18.27,
+     "tornata": "2026-08-16T16:26:22.946Z",
+     "morte": [
+      {
+       "orderId": "0x118b3a3959…",
+       "book": "yes",
+       "price": 0.78,
+       "size": 56.82,
+       "causa": "expired",
+       "dettaglio": "l'ordine ha 1397s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:26:32.853Z",
+     "ora": "16:26:32",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T16:26:33.240Z",
+     "morte": [
+      {
+       "orderId": "0x13f1b1d2d5…",
+       "book": "yes",
+       "price": 0.81,
+       "size": 56.82,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x372b096ffb…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:40:09.581Z",
+     "ora": "16:40:09",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 18.02,
+     "tornata": "2026-08-16T16:58:10.769Z",
+     "morte": [
+      {
+       "orderId": "0x372b096ffb…",
+       "book": "yes",
+       "price": 0.79,
+       "size": 56.82,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-close-on-fill",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:58:28.437Z",
+     "ora": "16:58:28",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 31.75,
+     "tornata": "2026-08-16T17:30:13.709Z",
+     "morte": [
+      {
+       "orderId": "0x94cd29223a…",
+       "book": "yes",
+       "price": 0.81,
+       "size": 56.82,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "nozionale-mercato-oltre-tetto",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T17:30:26.462Z",
+     "ora": "17:30:26",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 31.86,
+     "tornata": "2026-08-16T18:02:18.054Z",
+     "morte": [
+      {
+       "orderId": "0x20abb3241c…",
+       "book": "yes",
+       "price": 0.81,
+       "size": 56.82,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "nozionale-mercato-oltre-tetto",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:02:23.904Z",
+     "ora": "18:02:23",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 30.82,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xcb38a9ca3b…",
+       "book": "yes",
+       "price": 0.81,
+       "size": 56.82,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "nozionale-mercato-oltre-tetto",
+       "successore": null
+      }
+     ]
+    }
+   ],
+   "fasi": [
+    {
+     "da": "10:46:42",
+     "a": "10:46:45",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "10:46:45",
+     "a": "10:59:20",
+     "min": 12.58,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "10:59:20",
+     "a": "10:59:25",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "10:59:25",
+     "a": "11:08:28",
+     "min": 9.05,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:08:28",
+     "a": "11:08:31",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "11:08:31",
+     "a": "11:28:30",
+     "min": 19.98,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:28:30",
+     "a": "11:28:31",
+     "min": 0.02,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "11:28:31",
+     "a": "12:03:23",
+     "min": 34.86,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:03:23",
+     "a": "12:12:29",
+     "min": 9.1,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:12:29",
+     "a": "12:12:38",
+     "min": 0.16,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "12:12:38",
+     "a": "12:12:39",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:12:39",
+     "a": "12:14:42",
+     "min": 2.06,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:14:42",
+     "a": "12:32:38",
+     "min": 17.93,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:32:38",
+     "a": "12:32:39",
+     "min": 0.01,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "12:32:39",
+     "a": "12:40:35",
+     "min": 7.93,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:40:35",
+     "a": "12:44:20",
+     "min": 3.76,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "12:44:20",
+     "a": "12:44:23",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:44:23",
+     "a": "13:04:26",
+     "min": 20.04,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:04:26",
+     "a": "13:04:34",
+     "min": 0.14,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:04:34",
+     "a": "13:04:35",
+     "min": 0.02,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:04:35",
+     "a": "13:04:43",
+     "min": 0.13,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "13:04:43",
+     "a": "13:24:30",
+     "min": 19.78,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:24:30",
+     "a": "13:24:34",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:24:34",
+     "a": "13:25:13",
+     "min": 0.65,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:25:13",
+     "a": "13:25:15",
+     "min": 0.03,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "13:25:15",
+     "a": "13:26:51",
+     "min": 1.6,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:26:51",
+     "a": "13:26:51",
+     "min": 0,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "13:26:51",
+     "a": "13:30:19",
+     "min": 3.47,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "13:30:19",
+     "a": "13:30:22",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:30:22",
+     "a": "13:35:27",
+     "min": 5.08,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:35:27",
+     "a": "13:35:27",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:35:27",
+     "a": "13:42:16",
+     "min": 6.82,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "13:42:16",
+     "a": "13:42:22",
+     "min": 0.1,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:42:22",
+     "a": "13:43:50",
+     "min": 1.47,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:43:50",
+     "a": "13:43:50",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:43:50",
+     "a": "13:54:11",
+     "min": 10.35,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "13:54:11",
+     "a": "13:54:12",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:54:12",
+     "a": "13:56:12",
+     "min": 1.99,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:56:12",
+     "a": "13:56:12",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:56:12",
+     "a": "14:03:18",
+     "min": 7.1,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "14:03:18",
+     "a": "14:03:22",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:03:22",
+     "a": "14:23:20",
+     "min": 19.97,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:23:20",
+     "a": "14:23:30",
+     "min": 0.16,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:23:30",
+     "a": "14:23:31",
+     "min": 0.02,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:23:31",
+     "a": "14:23:42",
+     "min": 0.18,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "14:23:42",
+     "a": "14:46:31",
+     "min": 22.83,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:46:31",
+     "a": "14:47:32",
+     "min": 1.02,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:47:32",
+     "a": "14:58:29",
+     "min": 10.94,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "14:58:29",
+     "a": "14:58:36",
+     "min": 0.12,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:58:36",
+     "a": "15:19:40",
+     "min": 21.07,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:19:40",
+     "a": "15:20:42",
+     "min": 1.02,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:20:42",
+     "a": "15:21:51",
+     "min": 1.16,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "15:21:51",
+     "a": "15:21:57",
+     "min": 0.09,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:21:57",
+     "a": "15:21:57",
+     "min": 0,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "15:21:57",
+     "a": "15:22:01",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "15:22:01",
+     "a": "15:24:43",
+     "min": 2.71,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:24:43",
+     "a": "15:24:44",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "15:24:44",
+     "a": "15:41:57",
+     "min": 17.23,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:41:57",
+     "a": "15:41:59",
+     "min": 0.03,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:41:59",
+     "a": "15:44:47",
+     "min": 2.8,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:44:47",
+     "a": "15:44:50",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "15:44:50",
+     "a": "16:02:04",
+     "min": 17.24,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:02:04",
+     "a": "16:02:12",
+     "min": 0.13,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "16:02:12",
+     "a": "16:08:06",
+     "min": 5.91,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:08:06",
+     "a": "16:26:22",
+     "min": 18.27,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "16:26:22",
+     "a": "16:26:32",
+     "min": 0.17,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 3
+    },
+    {
+     "da": "16:26:32",
+     "a": "16:26:33",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 3
+    },
+    {
+     "da": "16:26:33",
+     "a": "16:40:09",
+     "min": 13.61,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 4
+    },
+    {
+     "da": "16:40:09",
+     "a": "16:58:10",
+     "min": 18.02,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 2
+    },
+    {
+     "da": "16:58:10",
+     "a": "16:58:28",
+     "min": 0.29,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 3
+    },
+    {
+     "da": "16:58:28",
+     "a": "17:30:13",
+     "min": 31.75,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 2
+    },
+    {
+     "da": "17:30:13",
+     "a": "17:30:26",
+     "min": 0.21,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 3
+    },
+    {
+     "da": "17:30:26",
+     "a": "18:02:18",
+     "min": 31.86,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 2
+    },
+    {
+     "da": "18:02:18",
+     "a": "18:02:23",
+     "min": 0.1,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 3
+    },
+    {
+     "da": "18:02:23",
+     "a": "18:33:13",
+     "min": 30.82,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 2
+    }
+   ]
+  },
+  {
+   "cid": "f2b0c93903a116cc841c2be960d4f5309153d4b93d6901f69a82f34259365770",
+   "cidBreve": "f2b0c93903…",
+   "ordiniTotali": 31,
+   "primoOrdine": "2026-08-16T12:34:14.182Z",
+   "ultimoEvento": "2026-08-16T16:21:01.015Z",
+   "finestraOre": 3.78,
+   "minutiDueGambe": 54.05,
+   "minutiUnaGamba": 88.68,
+   "minutiZero": 84.05,
+   "percentualeCoperturaPiena": 23.8,
+   "cadute": [
+    {
+     "quando": "2026-08-16T12:35:40.454Z",
+     "ora": "12:35:40",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.02,
+     "tornata": "2026-08-16T12:35:41.679Z",
+     "morte": [
+      {
+       "orderId": "0x7ebcb1695e…",
+       "book": "no",
+       "price": 0.646,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x7cac639cdb…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:36:13.579Z",
+     "ora": "12:36:13",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.04,
+     "tornata": "2026-08-16T12:36:16.213Z",
+     "morte": [
+      {
+       "orderId": "0x7cac639cdb…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x40dc518a38…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:37:47.322Z",
+     "ora": "12:37:47",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T12:37:50.735Z",
+     "morte": [
+      {
+       "orderId": "0x40dc518a38…",
+       "book": "no",
+       "price": 0.646,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xb6b06a8929…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:38:22.742Z",
+     "ora": "12:38:22",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.09,
+     "tornata": "2026-08-16T12:38:28.202Z",
+     "morte": [
+      {
+       "orderId": "0xb6b06a8929…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x55363d3d89…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:39:48.870Z",
+     "ora": "12:39:48",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T12:39:52.625Z",
+     "morte": [
+      {
+       "orderId": "0x55363d3d89…",
+       "book": "no",
+       "price": 0.646,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x7a4930c2f8…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:43:13.022Z",
+     "ora": "12:43:13",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 14.63,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x7a4930c2f8…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56.1,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "nozionale-mercato-oltre-tetto",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:58:31.065Z",
+     "ora": "12:58:31",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.11,
+     "tornata": "2026-08-16T12:58:37.857Z",
+     "morte": [
+      {
+       "orderId": "0x3c68d9a0a7…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xd788de41bf…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:58:39.345Z",
+     "ora": "12:58:39",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T12:58:42.223Z",
+     "morte": [
+      {
+       "orderId": "0xd788de41bf…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x4d3d117b21…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:58:46.624Z",
+     "ora": "12:58:46",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 23.28,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x4d3d117b21…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "nozionale-mercato-oltre-tetto",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:15:23.190Z",
+     "ora": "14:15:23",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T14:15:26.129Z",
+     "morte": [
+      {
+       "orderId": "0x1c9235398c…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x716b65e746…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:37:22.812Z",
+     "ora": "14:37:22",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 2.01,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xebf12693d4…",
+       "book": "yes",
+       "price": 0.277,
+       "size": 56,
+       "causa": "cancelled-externally",
+       "dettaglio": "sparito dopo 1379s, ben prima della scadenza di 1380s, e senza che questo sistema l'abbia cancellato: cancellazione fatta FUORI dal pannello (tipicamente dall'app Polymarket)",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:11:36.865Z",
+     "ora": "15:11:36",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.07,
+     "tornata": "2026-08-16T15:11:40.801Z",
+     "morte": [
+      {
+       "orderId": "0x7ad93f0721…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xf7d64bb73d…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:12:37.402Z",
+     "ora": "15:12:37",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.04,
+     "tornata": "2026-08-16T15:12:39.634Z",
+     "morte": [
+      {
+       "orderId": "0xf7d64bb73d…",
+       "book": "no",
+       "price": 0.65,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x3d6c1539c8…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:13:06.960Z",
+     "ora": "15:13:06",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.02,
+     "tornata": "2026-08-16T15:13:07.897Z",
+     "morte": [
+      {
+       "orderId": "0x3d6c1539c8…",
+       "book": "no",
+       "price": 0.656,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xdf9ab611e7…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:13:31.886Z",
+     "ora": "15:13:31",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T15:13:35.699Z",
+     "morte": [
+      {
+       "orderId": "0xdf9ab611e7…",
+       "book": "no",
+       "price": 0.655,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x32bcc9aa92…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:15:36.981Z",
+     "ora": "15:15:36",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T15:15:40.655Z",
+     "morte": [
+      {
+       "orderId": "0x32bcc9aa92…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x2702947ebb…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:16:31.936Z",
+     "ora": "15:16:31",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.08,
+     "tornata": "2026-08-16T15:16:36.483Z",
+     "morte": [
+      {
+       "orderId": "0x2702947ebb…",
+       "book": "no",
+       "price": 0.649,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x73e8349568…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:17:31.850Z",
+     "ora": "15:17:31",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T15:17:32.403Z",
+     "morte": [
+      {
+       "orderId": "0x73e8349568…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x77f3bfa278…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:18:31.871Z",
+     "ora": "15:18:31",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.14,
+     "tornata": "2026-08-16T15:18:40.263Z",
+     "morte": [
+      {
+       "orderId": "0x77f3bfa278…",
+       "book": "no",
+       "price": 0.646,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xa07a2c028a…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:20:37.117Z",
+     "ora": "15:20:37",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T15:20:40.503Z",
+     "morte": [
+      {
+       "orderId": "0xa07a2c028a…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xdad2d623d2…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:21:31.975Z",
+     "ora": "15:21:31",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.1,
+     "tornata": "2026-08-16T15:21:37.752Z",
+     "morte": [
+      {
+       "orderId": "0xdad2d623d2…",
+       "book": "no",
+       "price": 0.649,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xc8d2e4b3a6…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:23:31.919Z",
+     "ora": "15:23:31",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T15:23:35.801Z",
+     "morte": [
+      {
+       "orderId": "0xc8d2e4b3a6…",
+       "book": "no",
+       "price": 0.654,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x3457030df6…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:24:12.113Z",
+     "ora": "15:24:12",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T15:24:12.646Z",
+     "morte": [
+      {
+       "orderId": "0x3457030df6…",
+       "book": "no",
+       "price": 0.65,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x2ac8527b08…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:33:26.129Z",
+     "ora": "15:33:26",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 10.9,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x01cb36e6ad…",
+       "book": "yes",
+       "price": 0.281,
+       "size": 56,
+       "causa": "expired",
+       "dettaglio": "l'ordine ha 1391s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+       "successore": null
+      }
+     ]
+    }
+   ],
+   "fasi": [
+    {
+     "da": "12:34:14",
+     "a": "12:34:20",
+     "min": 0.1,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:34:20",
+     "a": "12:35:40",
+     "min": 1.34,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:35:40",
+     "a": "12:35:41",
+     "min": 0.02,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:35:41",
+     "a": "12:36:13",
+     "min": 0.53,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:36:13",
+     "a": "12:36:16",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:36:16",
+     "a": "12:37:47",
+     "min": 1.52,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:37:47",
+     "a": "12:37:50",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:37:50",
+     "a": "12:38:22",
+     "min": 0.53,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:38:22",
+     "a": "12:38:28",
+     "min": 0.09,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:38:28",
+     "a": "12:39:48",
+     "min": 1.34,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:39:48",
+     "a": "12:39:52",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:39:52",
+     "a": "12:43:13",
+     "min": 3.34,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:43:13",
+     "a": "12:57:50",
+     "min": 14.63,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:57:50",
+     "a": "12:58:23",
+     "min": 0.55,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "12:58:23",
+     "a": "12:58:29",
+     "min": 0.1,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:58:29",
+     "a": "12:58:31",
+     "min": 0.02,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:58:31",
+     "a": "12:58:37",
+     "min": 0.11,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:58:37",
+     "a": "12:58:39",
+     "min": 0.02,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:58:39",
+     "a": "12:58:42",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:58:42",
+     "a": "12:58:46",
+     "min": 0.07,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:58:46",
+     "a": "13:22:03",
+     "min": 23.28,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:22:03",
+     "a": "14:14:23",
+     "min": 52.34,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "14:14:23",
+     "a": "14:14:26",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:14:26",
+     "a": "14:15:23",
+     "min": 0.95,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:15:23",
+     "a": "14:15:26",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:15:26",
+     "a": "14:37:22",
+     "min": 21.94,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:37:22",
+     "a": "14:39:23",
+     "min": 2.01,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "14:39:23",
+     "a": "15:10:15",
+     "min": 30.86,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "15:10:15",
+     "a": "15:10:18",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:10:18",
+     "a": "15:11:36",
+     "min": 1.31,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:11:36",
+     "a": "15:11:40",
+     "min": 0.07,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:11:40",
+     "a": "15:12:37",
+     "min": 0.94,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:12:37",
+     "a": "15:12:39",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:12:39",
+     "a": "15:13:06",
+     "min": 0.46,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:13:06",
+     "a": "15:13:07",
+     "min": 0.02,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:13:07",
+     "a": "15:13:31",
+     "min": 0.4,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:13:31",
+     "a": "15:13:35",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:13:35",
+     "a": "15:15:36",
+     "min": 2.02,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:15:36",
+     "a": "15:15:40",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:15:40",
+     "a": "15:16:31",
+     "min": 0.85,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:16:31",
+     "a": "15:16:36",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:16:36",
+     "a": "15:17:31",
+     "min": 0.92,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:17:31",
+     "a": "15:17:32",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:17:32",
+     "a": "15:18:31",
+     "min": 0.99,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:18:31",
+     "a": "15:18:40",
+     "min": 0.14,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:18:40",
+     "a": "15:20:37",
+     "min": 1.95,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:20:37",
+     "a": "15:20:40",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:20:40",
+     "a": "15:21:31",
+     "min": 0.86,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:21:31",
+     "a": "15:21:37",
+     "min": 0.1,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:21:37",
+     "a": "15:23:31",
+     "min": 1.9,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:23:31",
+     "a": "15:23:35",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:23:35",
+     "a": "15:24:12",
+     "min": 0.61,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:24:12",
+     "a": "15:24:12",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:24:12",
+     "a": "15:33:26",
+     "min": 9.22,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:33:26",
+     "a": "15:44:20",
+     "min": 10.9,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "15:44:20",
+     "a": "15:44:24",
+     "min": 0.08,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "15:44:24",
+     "a": "15:45:12",
+     "min": 0.79,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "15:45:12",
+     "a": "15:45:19",
+     "min": 0.11,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "15:45:19",
+     "a": "15:57:49",
+     "min": 12.5,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "15:57:49",
+     "a": "15:57:55",
+     "min": 0.11,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "15:57:55",
+     "a": "16:21:01",
+     "min": 23.09,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    }
+   ]
+  },
+  {
+   "cid": "c16fade4bbc06895f8e456e1e49c6aa51c1b2dc7f734b3ad8fe8a5900d6a4174",
+   "cidBreve": "c16fade4bb…",
+   "ordiniTotali": 17,
+   "primoOrdine": "2026-08-16T16:32:11.401Z",
+   "ultimoEvento": "2026-08-16T18:35:23.881Z",
+   "finestraOre": 2.05,
+   "minutiDueGambe": 42.84,
+   "minutiUnaGamba": 68.21,
+   "minutiZero": 12.16,
+   "percentualeCoperturaPiena": 34.8,
+   "cadute": [
+    {
+     "quando": "2026-08-16T16:33:52.390Z",
+     "ora": "16:33:52",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T16:33:55.951Z",
+     "morte": [
+      {
+       "orderId": "0x8ba327102f…",
+       "book": "no",
+       "price": 0.814,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xfb1ed12777…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:33:56.084Z",
+     "ora": "16:33:56",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.07,
+     "tornata": "2026-08-16T16:34:00.026Z",
+     "morte": [
+      {
+       "orderId": "0x35f94f0fc5…",
+       "book": "yes",
+       "price": 0.117,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x684337cccd…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:34:32.353Z",
+     "ora": "16:34:32",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.08,
+     "tornata": "2026-08-16T16:34:37.113Z",
+     "morte": [
+      {
+       "orderId": "0x684337cccd…",
+       "book": "yes",
+       "price": 0.12,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x35fb97ee0a…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:34:37.223Z",
+     "ora": "16:34:37",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T16:34:40.345Z",
+     "morte": [
+      {
+       "orderId": "0xfb1ed12777…",
+       "book": "no",
+       "price": 0.811,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xbba724d7a6…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:35:12.554Z",
+     "ora": "16:35:12",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.07,
+     "tornata": "2026-08-16T16:35:16.770Z",
+     "morte": [
+      {
+       "orderId": "0xbba724d7a6…",
+       "book": "no",
+       "price": 0.812,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x7c0e170a86…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:35:16.964Z",
+     "ora": "16:35:16",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.59,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x35fb97ee0a…",
+       "book": "yes",
+       "price": 0.118,
+       "size": 56.1,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "doppione-identico",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T17:56:04.141Z",
+     "ora": "17:56:04",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.08,
+     "tornata": "2026-08-16T17:56:09.081Z",
+     "morte": [
+      {
+       "orderId": "0x4029a97f5c…",
+       "book": "no",
+       "price": 0.814,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x0d8943bec3…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T17:56:09.185Z",
+     "ora": "17:56:09",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.03,
+     "tornata": "2026-08-16T17:56:11.091Z",
+     "morte": [
+      {
+       "orderId": "0xcb2919dc2a…",
+       "book": "yes",
+       "price": 0.117,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xb32377c17c…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:16:10.752Z",
+     "ora": "18:16:10",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x0d8943bec3…",
+       "book": "no",
+       "price": 0.814,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x6d00d3631f…"
+      },
+      {
+       "orderId": "0xb32377c17c…",
+       "book": "yes",
+       "price": 0.117,
+       "size": 56,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "doppione-identico",
+       "successore": null
+      }
+     ]
+    }
+   ],
+   "fasi": [
+    {
+     "da": "16:32:11",
+     "a": "16:32:13",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "16:32:13",
+     "a": "16:33:52",
+     "min": 1.64,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:33:52",
+     "a": "16:33:55",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "16:33:55",
+     "a": "16:33:56",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:33:56",
+     "a": "16:34:00",
+     "min": 0.07,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "16:34:00",
+     "a": "16:34:32",
+     "min": 0.54,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:34:32",
+     "a": "16:34:37",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "16:34:37",
+     "a": "16:34:37",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:34:37",
+     "a": "16:34:40",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "16:34:40",
+     "a": "16:35:12",
+     "min": 0.54,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:35:12",
+     "a": "16:35:16",
+     "min": 0.07,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "16:35:16",
+     "a": "16:35:16",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:35:16",
+     "a": "16:35:52",
+     "min": 0.59,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "16:35:52",
+     "a": "16:35:57",
+     "min": 0.08,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "16:35:57",
+     "a": "16:37:52",
+     "min": 1.92,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "16:37:52",
+     "a": "16:37:57",
+     "min": 0.09,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "16:37:57",
+     "a": "16:42:57",
+     "min": 5,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "16:42:57",
+     "a": "16:43:01",
+     "min": 0.07,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "16:43:01",
+     "a": "16:44:02",
+     "min": 1.02,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "16:44:02",
+     "a": "16:44:07",
+     "min": 0.09,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "16:44:07",
+     "a": "17:04:11",
+     "min": 20.07,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "17:04:11",
+     "a": "17:04:19",
+     "min": 0.12,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "17:04:19",
+     "a": "17:24:14",
+     "min": 19.91,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "17:24:14",
+     "a": "17:35:56",
+     "min": 11.71,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "17:35:56",
+     "a": "17:35:57",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "17:35:57",
+     "a": "17:56:04",
+     "min": 20.12,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "17:56:04",
+     "a": "17:56:09",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "17:56:09",
+     "a": "17:56:09",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "17:56:09",
+     "a": "17:56:11",
+     "min": 0.03,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "17:56:11",
+     "a": "18:16:10",
+     "min": 19.99,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:16:10",
+     "a": "18:16:10",
+     "min": 0,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:16:10",
+     "a": "18:16:11",
+     "min": 0.01,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "18:16:11",
+     "a": "18:35:23",
+     "min": 19.21,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    }
+   ]
+  },
+  {
+   "cid": "afb455a59296be3ef1ddae2c0d35a62ddda88198811ead667cad0e68c45d98a1",
+   "cidBreve": "afb455a592…",
+   "ordiniTotali": 8,
+   "primoOrdine": "2026-08-16T16:47:54.157Z",
+   "ultimoEvento": "2026-08-16T18:35:23.783Z",
+   "finestraOre": 1.79,
+   "minutiDueGambe": 41.2,
+   "minutiUnaGamba": 56.3,
+   "minutiZero": 10,
+   "percentualeCoperturaPiena": 38.3,
+   "cadute": [
+    {
+     "quando": "2026-08-16T17:07:54.900Z",
+     "ora": "17:07:54",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T17:07:55.413Z",
+     "morte": [
+      {
+       "orderId": "0xa018233569…",
+       "book": "yes",
+       "price": 0.34,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x725bc5c154…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T17:08:28.578Z",
+     "ora": "17:08:28",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 19.51,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xf14794d659…",
+       "book": "no",
+       "price": 0.59,
+       "size": 56.5,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "doppione-identico",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T17:58:44.089Z",
+     "ora": "17:58:44",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.04,
+     "tornata": "2026-08-16T17:58:46.643Z",
+     "morte": [
+      {
+       "orderId": "0x2719a6fa5f…",
+       "book": "yes",
+       "price": 0.35,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x31cf3a2de6…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:18:05.094Z",
+     "ora": "18:18:05",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T18:18:05.741Z",
+     "morte": [
+      {
+       "orderId": "0x83f2ebe150…",
+       "book": "no",
+       "price": 0.59,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x917106170e…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:18:44.849Z",
+     "ora": "18:18:44",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 16.65,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x31cf3a2de6…",
+       "book": "yes",
+       "price": 0.34,
+       "size": 57.1,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "doppione-identico",
+       "successore": null
+      }
+     ]
+    }
+   ],
+   "fasi": [
+    {
+     "da": "16:47:54",
+     "a": "16:47:57",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "16:47:57",
+     "a": "17:07:54",
+     "min": 19.96,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "17:07:54",
+     "a": "17:07:55",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "17:07:55",
+     "a": "17:08:28",
+     "min": 0.55,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "17:08:28",
+     "a": "17:27:59",
+     "min": 19.51,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "17:27:59",
+     "a": "17:28:03",
+     "min": 0.07,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "17:28:03",
+     "a": "17:48:04",
+     "min": 20.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "17:48:04",
+     "a": "17:57:59",
+     "min": 9.93,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "17:57:59",
+     "a": "17:58:00",
+     "min": 0.02,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "17:58:00",
+     "a": "17:58:44",
+     "min": 0.72,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "17:58:44",
+     "a": "17:58:46",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "17:58:46",
+     "a": "18:18:05",
+     "min": 19.31,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:18:05",
+     "a": "18:18:05",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "18:18:05",
+     "a": "18:18:44",
+     "min": 0.65,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:18:44",
+     "a": "18:35:23",
+     "min": 16.65,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    }
+   ]
+  },
+  {
+   "cid": "33ec826f37e05a1b981d8f4c8129042030ea5dbdf8e32861727649f1f2695239",
+   "cidBreve": "33ec826f37…",
+   "ordiniTotali": 187,
+   "primoOrdine": "2026-08-16T11:14:35.556Z",
+   "ultimoEvento": "2026-08-16T19:28:08.473Z",
+   "finestraOre": 8.23,
+   "minutiDueGambe": 325.71,
+   "minutiUnaGamba": 35.99,
+   "minutiZero": 131.84,
+   "percentualeCoperturaPiena": 66,
+   "cadute": [
+    {
+     "quando": "2026-08-16T11:15:24.510Z",
+     "ora": "11:15:24",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.1,
+     "tornata": "2026-08-16T11:15:30.248Z",
+     "morte": [
+      {
+       "orderId": "0xb7e80435ee…",
+       "book": "yes",
+       "price": 0.66,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xc52431b79f…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T11:27:42.746Z",
+     "ora": "11:27:42",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T11:27:46.101Z",
+     "morte": [
+      {
+       "orderId": "0x41f9272b3d…",
+       "book": "no",
+       "price": 0.28,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x83dd26a9bd…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T11:28:33.223Z",
+     "ora": "11:28:33",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T11:28:36.054Z",
+     "morte": [
+      {
+       "orderId": "0x83dd26a9bd…",
+       "book": "no",
+       "price": 0.27,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xe4a956555a…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T11:48:36.087Z",
+     "ora": "11:48:36",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T11:48:39.549Z",
+     "morte": [
+      {
+       "orderId": "0xe4a956555a…",
+       "book": "no",
+       "price": 0.28,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x68dd4842a6…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T11:59:20.027Z",
+     "ora": "11:59:20",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 13.15,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xbe78a2297e…",
+       "book": "yes",
+       "price": 0.65,
+       "size": 56.5,
+       "causa": "expired",
+       "dettaglio": "l'ordine ha 1431s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:25:26.095Z",
+     "ora": "13:25:26",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T13:25:26.612Z",
+     "morte": [
+      {
+       "orderId": "0x3488bfc328…",
+       "book": "yes",
+       "price": 0.57,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x9ed3c5f891…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:26:56.259Z",
+     "ora": "13:26:56",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T13:26:59.828Z",
+     "morte": [
+      {
+       "orderId": "0x9ed3c5f891…",
+       "book": "yes",
+       "price": 0.56,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x414843c21b…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:26:59.946Z",
+     "ora": "13:26:59",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.09,
+     "tornata": "2026-08-16T13:27:05.297Z",
+     "morte": [
+      {
+       "orderId": "0x0acc2ae08d…",
+       "book": "no",
+       "price": 0.37,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x26bc8eeed9…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:27:07.361Z",
+     "ora": "13:27:07",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T13:27:10.695Z",
+     "morte": [
+      {
+       "orderId": "0x26bc8eeed9…",
+       "book": "no",
+       "price": 0.37,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xf359085320…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:28:43.540Z",
+     "ora": "13:28:43",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.09,
+     "tornata": "2026-08-16T13:28:49.089Z",
+     "morte": [
+      {
+       "orderId": "0xf359085320…",
+       "book": "no",
+       "price": 0.36,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x1d3317a9fd…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:46:56.688Z",
+     "ora": "13:46:56",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.07,
+     "tornata": "2026-08-16T13:47:01.032Z",
+     "morte": [
+      {
+       "orderId": "0x414843c21b…",
+       "book": "yes",
+       "price": 0.57,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xe3ff1e658a…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:48:44.141Z",
+     "ora": "13:48:44",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.08,
+     "tornata": "2026-08-16T13:48:48.685Z",
+     "morte": [
+      {
+       "orderId": "0x1d3317a9fd…",
+       "book": "no",
+       "price": 0.35,
+       "size": 56.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x4d8107fda3…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:49:06.097Z",
+     "ora": "13:49:06",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 5.51,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x4d8107fda3…",
+       "book": "no",
+       "price": 0.36,
+       "size": 56.5,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "nozionale-mercato-oltre-tetto",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:04:27.053Z",
+     "ora": "14:04:27",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 5.05,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x9e4d36985e…",
+       "book": "yes",
+       "price": 0.57,
+       "size": 57.1,
+       "causa": "riprezzo-cancella-e-non-ripiazza",
+       "dettaglio": "nozionale-mercato-oltre-tetto",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:21:03.594Z",
+     "ora": "14:21:03",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T14:21:06.501Z",
+     "morte": [
+      {
+       "orderId": "0x53b28b7ebd…",
+       "book": "no",
+       "price": 0.37,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x295c04e2e6…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:21:06.635Z",
+     "ora": "14:21:06",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.11,
+     "tornata": "2026-08-16T14:21:13.218Z",
+     "morte": [
+      {
+       "orderId": "0xaaa3afaf7e…",
+       "book": "yes",
+       "price": 0.56,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x73e14d8a85…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:21:44.725Z",
+     "ora": "14:21:44",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T14:21:45.158Z",
+     "morte": [
+      {
+       "orderId": "0x295c04e2e6…",
+       "book": "no",
+       "price": 0.38,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x1005423c2b…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:26:23.102Z",
+     "ora": "14:26:23",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.06,
+     "tornata": "2026-08-16T14:26:26.832Z",
+     "morte": [
+      {
+       "orderId": "0x73e14d8a85…",
+       "book": "yes",
+       "price": 0.55,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xf324e2623c…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:26:59.395Z",
+     "ora": "14:26:59",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.04,
+     "tornata": "2026-08-16T14:27:01.652Z",
+     "morte": [
+      {
+       "orderId": "0x1005423c2b…",
+       "book": "no",
+       "price": 0.39,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xd422b2e1b4…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:28:59.543Z",
+     "ora": "14:28:59",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.08,
+     "tornata": "2026-08-16T14:29:04.520Z",
+     "morte": [
+      {
+       "orderId": "0xd422b2e1b4…",
+       "book": "no",
+       "price": 0.4,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xc03a16e793…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:29:53.500Z",
+     "ora": "14:29:53",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T14:29:56.655Z",
+     "morte": [
+      {
+       "orderId": "0xc03a16e793…",
+       "book": "no",
+       "price": 0.4,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x82a8cdc974…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:31:58.291Z",
+     "ora": "14:31:58",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xf324e2623c…",
+       "book": "yes",
+       "price": 0.54,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x82a8cdc974…",
+       "book": "no",
+       "price": 0.39,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T14:58:59.477Z",
+     "ora": "14:58:59",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.14,
+     "tornata": "2026-08-16T14:59:07.751Z",
+     "morte": [
+      {
+       "orderId": "0x62c100d0a0…",
+       "book": "yes",
+       "price": 0.54,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x0df5044ad1…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:21:46.040Z",
+     "ora": "15:21:46",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 1.08,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x819143c2dc…",
+       "book": "no",
+       "price": 0.38,
+       "size": 57.1,
+       "causa": "expired",
+       "dettaglio": "l'ordine ha 1401s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:52:17.104Z",
+     "ora": "15:52:17",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.08,
+     "tornata": "2026-08-16T15:52:21.982Z",
+     "morte": [
+      {
+       "orderId": "0x50fd35374d…",
+       "book": "no",
+       "price": 0.41,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xe27647c61e…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:53:14.643Z",
+     "ora": "15:53:14",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.04,
+     "tornata": "2026-08-16T15:53:17.138Z",
+     "morte": [
+      {
+       "orderId": "0xe27647c61e…",
+       "book": "no",
+       "price": 0.4,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x2273728796…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:54:07.613Z",
+     "ora": "15:54:07",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.07,
+     "tornata": "2026-08-16T15:54:11.574Z",
+     "morte": [
+      {
+       "orderId": "0x2273728796…",
+       "book": "no",
+       "price": 0.39,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xb30d833b16…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:01:49.497Z",
+     "ora": "16:01:49",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T16:01:49.922Z",
+     "morte": [
+      {
+       "orderId": "0x55389499ae…",
+       "book": "yes",
+       "price": 0.53,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xffe340baae…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:17:46.223Z",
+     "ora": "16:17:46",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 7.58,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xb30d833b16…",
+       "book": "no",
+       "price": 0.4,
+       "size": 57.1,
+       "causa": "expired",
+       "dettaglio": "l'ordine ha 1415s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:38:39.528Z",
+     "ora": "16:38:39",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.18,
+     "tornata": "2026-08-16T16:38:50.176Z",
+     "morte": [
+      {
+       "orderId": "0x1701d67b86…",
+       "book": "no",
+       "price": 0.4,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x2c984a4477…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T16:44:28.614Z",
+     "ora": "16:44:28",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.03,
+     "tornata": "2026-08-16T16:44:30.217Z",
+     "morte": [
+      {
+       "orderId": "0x2c984a4477…",
+       "book": "no",
+       "price": 0.39,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-close-on-fill",
+       "successore": null
+      }
+     ]
+    }
+   ],
+   "fasi": [
+    {
+     "da": "11:14:35",
+     "a": "11:14:40",
+     "min": 0.07,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "11:14:40",
+     "a": "11:15:24",
+     "min": 0.74,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:15:24",
+     "a": "11:15:30",
+     "min": 0.1,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "11:15:30",
+     "a": "11:27:42",
+     "min": 12.21,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:27:42",
+     "a": "11:27:46",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "11:27:46",
+     "a": "11:28:33",
+     "min": 0.79,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:28:33",
+     "a": "11:28:36",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "11:28:36",
+     "a": "11:48:36",
+     "min": 20,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:48:36",
+     "a": "11:48:39",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "11:48:39",
+     "a": "11:59:20",
+     "min": 10.67,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:59:20",
+     "a": "12:12:29",
+     "min": 13.15,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "12:12:29",
+     "a": "13:20:24",
+     "min": 67.93,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "13:20:24",
+     "a": "13:20:25",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:20:25",
+     "a": "13:25:26",
+     "min": 5.01,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:25:26",
+     "a": "13:25:26",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "13:25:26",
+     "a": "13:26:56",
+     "min": 1.49,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:26:56",
+     "a": "13:26:59",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "13:26:59",
+     "a": "13:26:59",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:26:59",
+     "a": "13:27:05",
+     "min": 0.09,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:27:05",
+     "a": "13:27:07",
+     "min": 0.03,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:27:07",
+     "a": "13:27:10",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:27:10",
+     "a": "13:28:43",
+     "min": 1.55,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:28:43",
+     "a": "13:28:49",
+     "min": 0.09,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:28:49",
+     "a": "13:46:56",
+     "min": 18.13,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:46:56",
+     "a": "13:47:01",
+     "min": 0.07,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "13:47:01",
+     "a": "13:48:44",
+     "min": 1.72,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:48:44",
+     "a": "13:48:48",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:48:48",
+     "a": "13:49:06",
+     "min": 0.29,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:49:06",
+     "a": "13:54:36",
+     "min": 5.51,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:54:36",
+     "a": "14:03:16",
+     "min": 8.66,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "14:03:16",
+     "a": "14:03:17",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:03:17",
+     "a": "14:04:27",
+     "min": 1.17,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:04:27",
+     "a": "14:09:30",
+     "min": 5.05,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "14:09:30",
+     "a": "14:09:35",
+     "min": 0.09,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "14:09:35",
+     "a": "14:11:09",
+     "min": 1.56,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "14:11:09",
+     "a": "14:14:13",
+     "min": 3.07,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "14:14:13",
+     "a": "14:14:19",
+     "min": 0.11,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:14:19",
+     "a": "14:21:03",
+     "min": 6.73,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:21:03",
+     "a": "14:21:06",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:21:06",
+     "a": "14:21:06",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:21:06",
+     "a": "14:21:13",
+     "min": 0.11,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "14:21:13",
+     "a": "14:21:44",
+     "min": 0.53,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:21:44",
+     "a": "14:21:45",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:21:45",
+     "a": "14:26:23",
+     "min": 4.63,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:26:23",
+     "a": "14:26:26",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "14:26:26",
+     "a": "14:26:59",
+     "min": 0.54,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:26:59",
+     "a": "14:27:01",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:27:01",
+     "a": "14:28:59",
+     "min": 1.96,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:28:59",
+     "a": "14:29:04",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:29:04",
+     "a": "14:29:53",
+     "min": 0.82,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:29:53",
+     "a": "14:29:56",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:29:56",
+     "a": "14:31:58",
+     "min": 2.03,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:31:58",
+     "a": "14:31:58",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:31:58",
+     "a": "14:58:21",
+     "min": 26.39,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "14:58:21",
+     "a": "14:58:25",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "14:58:25",
+     "a": "14:58:59",
+     "min": 0.57,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "14:58:59",
+     "a": "14:59:07",
+     "min": 0.14,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "14:59:07",
+     "a": "15:21:46",
+     "min": 22.64,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:21:46",
+     "a": "15:22:51",
+     "min": 1.08,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:22:51",
+     "a": "15:41:52",
+     "min": 19.03,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "15:41:52",
+     "a": "15:41:58",
+     "min": 0.09,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:41:58",
+     "a": "15:52:17",
+     "min": 10.32,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:52:17",
+     "a": "15:52:21",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:52:21",
+     "a": "15:53:14",
+     "min": 0.88,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:53:14",
+     "a": "15:53:17",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:53:17",
+     "a": "15:54:07",
+     "min": 0.84,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:54:07",
+     "a": "15:54:11",
+     "min": 0.07,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:54:11",
+     "a": "16:01:49",
+     "min": 7.63,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:01:49",
+     "a": "16:01:49",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "16:01:49",
+     "a": "16:17:46",
+     "min": 15.94,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:17:46",
+     "a": "16:25:21",
+     "min": 7.58,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "16:25:21",
+     "a": "16:32:01",
+     "min": 6.68,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "16:32:01",
+     "a": "16:32:04",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "16:32:04",
+     "a": "16:38:39",
+     "min": 6.58,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:38:39",
+     "a": "16:38:50",
+     "min": 0.18,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "16:38:50",
+     "a": "16:44:28",
+     "min": 5.64,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:44:28",
+     "a": "16:44:30",
+     "min": 0.03,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "16:44:30",
+     "a": "19:28:08",
+     "min": 163.64,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    }
+   ]
+  },
+  {
+   "cid": "776841ce97b44b91d4da6cf9e0c6ffa43d79c17ad037732abc2191960897d1f6",
+   "cidBreve": "776841ce97…",
+   "ordiniTotali": 26,
+   "primoOrdine": "2026-08-16T11:14:46.435Z",
+   "ultimoEvento": "2026-08-16T13:56:40.152Z",
+   "finestraOre": 2.7,
+   "minutiDueGambe": 61.05,
+   "minutiUnaGamba": 8.19,
+   "minutiZero": 92.66,
+   "percentualeCoperturaPiena": 37.7,
+   "cadute": [
+    {
+     "quando": "2026-08-16T11:34:52.499Z",
+     "ora": "11:34:52",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.07,
+     "tornata": "2026-08-16T11:34:56.977Z",
+     "morte": [
+      {
+       "orderId": "0x7dd17698bd…",
+       "book": "no",
+       "price": 0.78,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xd0e50716c9…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T11:37:58.865Z",
+     "ora": "11:37:58",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 2.89,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x1b081f2107…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 57.1,
+       "causa": "expired",
+       "dettaglio": "l'ordine ha 1393s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T11:51:09.949Z",
+     "ora": "11:51:09",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.02,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xf13576bb7d…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x87da81a925…",
+       "book": "no",
+       "price": 0.78,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T11:59:59.065Z",
+     "ora": "11:59:59",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xd323d88074…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x20bc816435…",
+       "book": "no",
+       "price": 0.78,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:15:23.836Z",
+     "ora": "12:15:23",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x6241382796…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x0e2ea732b7…",
+       "book": "no",
+       "price": 0.78,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:27:39.635Z",
+     "ora": "12:27:39",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xdb25a7781d…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0xc8aaf5310a…",
+       "book": "no",
+       "price": 0.78,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:37:35.345Z",
+     "ora": "12:37:35",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x95183b0373…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x1a5f720c14…",
+       "book": "no",
+       "price": 0.78,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T12:46:10.147Z",
+     "ora": "12:46:10",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x485000247a…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0xff3498797b…",
+       "book": "no",
+       "price": 0.78,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:02:00.444Z",
+     "ora": "13:02:00",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x5421c15ef4…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x6a16fc53e5…",
+       "book": "no",
+       "price": 0.78,
+       "size": 57.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:32:21.371Z",
+     "ora": "13:32:21",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x91bb155112…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 52,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x0f9c65ba6e…",
+       "book": "no",
+       "price": 0.78,
+       "size": 52,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:45:32.689Z",
+     "ora": "13:45:32",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xb87f7bc5d4…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 52,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x11bdef9223…",
+       "book": "no",
+       "price": 0.78,
+       "size": 52,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T13:56:40.058Z",
+     "ora": "13:56:40",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x11c359ae25…",
+       "book": "yes",
+       "price": 0.15,
+       "size": 52,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0xc181fc9b68…",
+       "book": "no",
+       "price": 0.78,
+       "size": 52,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    }
+   ],
+   "fasi": [
+    {
+     "da": "11:14:46",
+     "a": "11:14:49",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "11:14:49",
+     "a": "11:34:52",
+     "min": 20.06,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:34:52",
+     "a": "11:34:56",
+     "min": 0.07,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "11:34:56",
+     "a": "11:37:58",
+     "min": 3.03,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:37:58",
+     "a": "11:40:52",
+     "min": 2.89,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 2
+    },
+    {
+     "da": "11:40:52",
+     "a": "11:44:02",
+     "min": 3.17,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "11:44:02",
+     "a": "11:44:06",
+     "min": 0.07,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "11:44:06",
+     "a": "11:51:09",
+     "min": 7.06,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:51:09",
+     "a": "11:51:10",
+     "min": 0.02,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "11:51:10",
+     "a": "11:56:33",
+     "min": 5.37,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "11:56:33",
+     "a": "11:56:36",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "11:56:36",
+     "a": "11:59:59",
+     "min": 3.38,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "11:59:59",
+     "a": "11:59:59",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "11:59:59",
+     "a": "12:06:32",
+     "min": 6.55,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "12:06:32",
+     "a": "12:06:34",
+     "min": 0.03,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:06:34",
+     "a": "12:15:23",
+     "min": 8.83,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:15:23",
+     "a": "12:15:23",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:15:23",
+     "a": "12:24:12",
+     "min": 8.81,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "12:24:12",
+     "a": "12:24:19",
+     "min": 0.11,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:24:19",
+     "a": "12:27:39",
+     "min": 3.34,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:27:39",
+     "a": "12:27:39",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:27:39",
+     "a": "12:34:22",
+     "min": 6.71,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "12:34:22",
+     "a": "12:34:24",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:34:24",
+     "a": "12:37:35",
+     "min": 3.17,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:37:35",
+     "a": "12:37:35",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:37:35",
+     "a": "12:44:27",
+     "min": 6.87,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "12:44:27",
+     "a": "12:44:29",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:44:29",
+     "a": "12:46:10",
+     "min": 1.68,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "12:46:10",
+     "a": "12:46:10",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:46:10",
+     "a": "12:58:36",
+     "min": 12.45,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "12:58:36",
+     "a": "12:58:40",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "12:58:40",
+     "a": "13:02:00",
+     "min": 3.34,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:02:00",
+     "a": "13:02:00",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:02:00",
+     "a": "13:08:33",
+     "min": 6.55,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "13:08:33",
+     "a": "13:08:36",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:08:36",
+     "a": "13:08:39",
+     "min": 0.05,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "13:08:39",
+     "a": "13:13:11",
+     "min": 4.54,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "13:13:11",
+     "a": "13:30:30",
+     "min": 17.31,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "13:30:30",
+     "a": "13:30:32",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:30:32",
+     "a": "13:32:21",
+     "min": 1.81,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:32:21",
+     "a": "13:32:21",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:32:21",
+     "a": "13:42:26",
+     "min": 10.09,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "13:42:26",
+     "a": "13:42:31",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:42:31",
+     "a": "13:45:32",
+     "min": 3.02,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:45:32",
+     "a": "13:45:32",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:45:32",
+     "a": "13:54:16",
+     "min": 8.73,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "13:54:16",
+     "a": "13:54:20",
+     "min": 0.06,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "13:54:20",
+     "a": "13:56:40",
+     "min": 2.32,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "13:56:40",
+     "a": "13:56:40",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    }
+   ]
+  },
+  {
+   "cid": "c9abc0f43d239d351badb0436fe6a0c9e1fc96cbb581420a5c301785acac6de2",
+   "cidBreve": "c9abc0f43d…",
+   "ordiniTotali": 25,
+   "primoOrdine": "2026-08-16T17:47:50.960Z",
+   "ultimoEvento": "2026-08-16T18:48:17.396Z",
+   "finestraOre": 1.01,
+   "minutiDueGambe": 57.23,
+   "minutiUnaGamba": 2.11,
+   "minutiZero": 1.11,
+   "percentualeCoperturaPiena": 94.7,
+   "cadute": [
+    {
+     "quando": "2026-08-16T17:55:19.182Z",
+     "ora": "17:55:19",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.08,
+     "tornata": "2026-08-16T17:55:23.811Z",
+     "morte": [
+      {
+       "orderId": "0xca1ce9988a…",
+       "book": "yes",
+       "price": 0.34,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x0403b76a96…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T17:55:23.919Z",
+     "ora": "17:55:23",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T17:55:26.838Z",
+     "morte": [
+      {
+       "orderId": "0x00ebd220d7…",
+       "book": "no",
+       "price": 0.589,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x8442f413e9…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T17:55:45.785Z",
+     "ora": "17:55:45",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.11,
+     "tornata": "2026-08-16T17:55:52.467Z",
+     "morte": [
+      {
+       "orderId": "0x0403b76a96…",
+       "book": "yes",
+       "price": 0.337,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xfe5853a8ab…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:01:29.252Z",
+     "ora": "18:01:29",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.13,
+     "tornata": "2026-08-16T18:01:36.917Z",
+     "morte": [
+      {
+       "orderId": "0xfe5853a8ab…",
+       "book": "yes",
+       "price": 0.336,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xf60c539b27…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:02:14.344Z",
+     "ora": "18:02:14",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.04,
+     "tornata": "2026-08-16T18:02:16.998Z",
+     "morte": [
+      {
+       "orderId": "0xf60c539b27…",
+       "book": "yes",
+       "price": 0.335,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x72aa34460c…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:02:17.115Z",
+     "ora": "18:02:17",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T18:02:17.661Z",
+     "morte": [
+      {
+       "orderId": "0x8442f413e9…",
+       "book": "no",
+       "price": 0.593,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x23deda0bef…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:02:59.240Z",
+     "ora": "18:02:59",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.02,
+     "tornata": "2026-08-16T18:03:00.414Z",
+     "morte": [
+      {
+       "orderId": "0x72aa34460c…",
+       "book": "yes",
+       "price": 0.334,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x08e967b63c…"
+      },
+      {
+       "orderId": "0x23deda0bef…",
+       "book": "no",
+       "price": 0.596,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x78472d000e…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:03:00.563Z",
+     "ora": "18:03:00",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.04,
+     "tornata": "2026-08-16T18:03:03.123Z",
+     "morte": [
+      {
+       "orderId": "0x72aa34460c…",
+       "book": "yes",
+       "price": 0.334,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x08e967b63c…"
+      },
+      {
+       "orderId": "0x23deda0bef…",
+       "book": "no",
+       "price": 0.596,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x78472d000e…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:03:38.994Z",
+     "ora": "18:03:38",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.08,
+     "tornata": "2026-08-16T18:03:43.833Z",
+     "morte": [
+      {
+       "orderId": "0x08e967b63c…",
+       "book": "yes",
+       "price": 0.329,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xb696b4ebe5…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:04:19.307Z",
+     "ora": "18:04:19",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T18:04:20.142Z",
+     "morte": [
+      {
+       "orderId": "0xb696b4ebe5…",
+       "book": "yes",
+       "price": 0.335,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xa59dd142d6…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:04:55.530Z",
+     "ora": "18:04:55",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.02,
+     "tornata": "2026-08-16T18:04:56.621Z",
+     "morte": [
+      {
+       "orderId": "0xa59dd142d6…",
+       "book": "yes",
+       "price": 0.329,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x65fd4f291b…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:05:54.118Z",
+     "ora": "18:05:54",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T18:05:54.871Z",
+     "morte": [
+      {
+       "orderId": "0x78472d000e…",
+       "book": "no",
+       "price": 0.601,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x90a8291ea1…"
+      },
+      {
+       "orderId": "0x65fd4f291b…",
+       "book": "yes",
+       "price": 0.327,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x3f6ce39417…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:05:54.959Z",
+     "ora": "18:05:54",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.02,
+     "tornata": "2026-08-16T18:05:56.065Z",
+     "morte": [
+      {
+       "orderId": "0x78472d000e…",
+       "book": "no",
+       "price": 0.601,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x90a8291ea1…"
+      },
+      {
+       "orderId": "0x65fd4f291b…",
+       "book": "yes",
+       "price": 0.327,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x3f6ce39417…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:06:29.291Z",
+     "ora": "18:06:29",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T18:06:32.066Z",
+     "morte": [
+      {
+       "orderId": "0x90a8291ea1…",
+       "book": "no",
+       "price": 0.611,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x721015e2dc…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:06:32.173Z",
+     "ora": "18:06:32",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.02,
+     "tornata": "2026-08-16T18:06:33.312Z",
+     "morte": [
+      {
+       "orderId": "0x3f6ce39417…",
+       "book": "yes",
+       "price": 0.32,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xae934fd20f…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:07:09.998Z",
+     "ora": "18:07:09",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.07,
+     "tornata": "2026-08-16T18:07:14.200Z",
+     "morte": [
+      {
+       "orderId": "0xae934fd20f…",
+       "book": "yes",
+       "price": 0.316,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x00ab378bbf…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:07:29.218Z",
+     "ora": "18:07:29",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.01,
+     "tornata": "2026-08-16T18:07:29.598Z",
+     "morte": [
+      {
+       "orderId": "0x00ab378bbf…",
+       "book": "yes",
+       "price": 0.314,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xb57b8e1c03…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:19:35.048Z",
+     "ora": "18:19:35",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.13,
+     "tornata": "2026-08-16T18:19:42.861Z",
+     "morte": [
+      {
+       "orderId": "0xb57b8e1c03…",
+       "book": "yes",
+       "price": 0.313,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x73e7ea4f43…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:19:42.956Z",
+     "ora": "18:19:42",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0.05,
+     "tornata": "2026-08-16T18:19:45.701Z",
+     "morte": [
+      {
+       "orderId": "0x721015e2dc…",
+       "book": "no",
+       "price": 0.615,
+       "size": 56.1,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x3fb86a11d6…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:42:43.343Z",
+     "ora": "18:42:43",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 1,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x73e7ea4f43…",
+       "book": "yes",
+       "price": 0.312,
+       "size": 56.1,
+       "causa": "expired",
+       "dettaglio": "l'ordine ha 1381s, oltre la finestra di 1380s con cui era stato piazzato: quasi certamente scaduto da solo",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T18:45:34.792Z",
+     "ora": "18:45:34",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.04,
+     "tornata": "2026-08-16T18:45:36.951Z",
+     "morte": [
+      {
+       "orderId": "0x020343011c…",
+       "book": "yes",
+       "price": 0.305,
+       "size": 56,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0x52fdd9265a…"
+      }
+     ]
+    }
+   ],
+   "fasi": [
+    {
+     "da": "17:47:50",
+     "a": "17:47:53",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "17:47:53",
+     "a": "17:47:54",
+     "min": 0.01,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "17:47:54",
+     "a": "17:47:58",
+     "min": 0.07,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "17:47:58",
+     "a": "17:55:19",
+     "min": 7.34,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "17:55:19",
+     "a": "17:55:23",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "17:55:23",
+     "a": "17:55:23",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "17:55:23",
+     "a": "17:55:26",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "17:55:26",
+     "a": "17:55:45",
+     "min": 0.32,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "17:55:45",
+     "a": "17:55:52",
+     "min": 0.11,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "17:55:52",
+     "a": "18:01:29",
+     "min": 5.61,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:01:29",
+     "a": "18:01:36",
+     "min": 0.13,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:01:36",
+     "a": "18:02:14",
+     "min": 0.62,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:02:14",
+     "a": "18:02:16",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:02:16",
+     "a": "18:02:17",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:02:17",
+     "a": "18:02:17",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "18:02:17",
+     "a": "18:02:59",
+     "min": 0.69,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:02:59",
+     "a": "18:03:00",
+     "min": 0.02,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "18:03:00",
+     "a": "18:03:00",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:03:00",
+     "a": "18:03:03",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:03:03",
+     "a": "18:03:38",
+     "min": 0.6,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:03:38",
+     "a": "18:03:43",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:03:43",
+     "a": "18:04:19",
+     "min": 0.59,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:04:19",
+     "a": "18:04:20",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:04:20",
+     "a": "18:04:55",
+     "min": 0.59,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:04:55",
+     "a": "18:04:56",
+     "min": 0.02,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:04:56",
+     "a": "18:05:54",
+     "min": 0.96,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:05:54",
+     "a": "18:05:54",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:05:54",
+     "a": "18:05:54",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:05:54",
+     "a": "18:05:56",
+     "min": 0.02,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "18:05:56",
+     "a": "18:06:29",
+     "min": 0.55,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:06:29",
+     "a": "18:06:32",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "18:06:32",
+     "a": "18:06:32",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:06:32",
+     "a": "18:06:33",
+     "min": 0.02,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:06:33",
+     "a": "18:07:09",
+     "min": 0.61,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:07:09",
+     "a": "18:07:14",
+     "min": 0.07,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:07:14",
+     "a": "18:07:29",
+     "min": 0.25,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:07:29",
+     "a": "18:07:29",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:07:29",
+     "a": "18:19:35",
+     "min": 12.09,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:19:35",
+     "a": "18:19:42",
+     "min": 0.13,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:19:42",
+     "a": "18:19:42",
+     "min": 0,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:19:42",
+     "a": "18:19:45",
+     "min": 0.05,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "18:19:45",
+     "a": "18:42:43",
+     "min": 22.96,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:42:43",
+     "a": "18:43:43",
+     "min": 1,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:43:43",
+     "a": "18:44:48",
+     "min": 1.09,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "18:44:48",
+     "a": "18:44:49",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "18:44:49",
+     "a": "18:45:34",
+     "min": 0.75,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "18:45:34",
+     "a": "18:45:36",
+     "min": 0.04,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "18:45:36",
+     "a": "18:48:17",
+     "min": 2.67,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    }
+   ]
+  },
+  {
+   "cid": "2aaff186cc93dfdd33ff340ec9a871113bfe2195cdbfe5304ddb81afb5409bb2",
+   "cidBreve": "2aaff186cc…",
+   "ordiniTotali": 9,
+   "primoOrdine": "2026-08-16T15:26:03.671Z",
+   "ultimoEvento": "2026-08-16T17:29:37.547Z",
+   "finestraOre": 2.06,
+   "minutiDueGambe": 46.52,
+   "minutiUnaGamba": 0.37,
+   "minutiZero": 76.67,
+   "percentualeCoperturaPiena": 37.7,
+   "cadute": [
+    {
+     "quando": "2026-08-16T15:33:16.279Z",
+     "ora": "15:33:16",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0x6098e66f0a…",
+       "book": "yes",
+       "price": 0.45,
+       "size": 28.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x2ab0914ecd…",
+       "book": "no",
+       "price": 0.48,
+       "size": 28.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:46:12.547Z",
+     "ora": "15:46:12",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0.1,
+     "tornata": "2026-08-16T15:46:18.827Z",
+     "morte": [
+      {
+       "orderId": "0xe595bfba24…",
+       "book": "yes",
+       "price": 0.45,
+       "size": 28.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": "0xcb93ab3a15…"
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T15:52:28.622Z",
+     "ora": "15:52:28",
+     "restaIlBook": "no",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xed41a8a03a…",
+       "book": "no",
+       "price": 0.49,
+       "size": 28.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0xcb93ab3a15…",
+       "book": "yes",
+       "price": 0.44,
+       "size": 28.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    },
+    {
+     "quando": "2026-08-16T17:29:37.460Z",
+     "ora": "17:29:37",
+     "restaIlBook": "yes",
+     "durataGambaSingolaMin": 0,
+     "tornata": null,
+     "morte": [
+      {
+       "orderId": "0xe21f27788a…",
+       "book": "yes",
+       "price": 0.44,
+       "size": 28.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      },
+      {
+       "orderId": "0x8e16f40736…",
+       "book": "no",
+       "price": 0.5,
+       "size": 28.5,
+       "causa": "cancellato-da-noi",
+       "dettaglio": "auto-reprice-band-exit",
+       "successore": null
+      }
+     ]
+    }
+   ],
+   "fasi": [
+    {
+     "da": "15:26:03",
+     "a": "15:26:05",
+     "min": 0.03,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:26:05",
+     "a": "15:33:16",
+     "min": 7.18,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:33:16",
+     "a": "15:33:16",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:33:16",
+     "a": "15:42:00",
+     "min": 8.73,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "15:42:00",
+     "a": "15:42:04",
+     "min": 0.08,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:42:04",
+     "a": "15:46:12",
+     "min": 4.13,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:46:12",
+     "a": "15:46:18",
+     "min": 0.1,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "15:46:18",
+     "a": "15:52:28",
+     "min": 6.16,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "15:52:28",
+     "a": "15:52:28",
+     "min": 0,
+     "gambe": 1,
+     "books": "no",
+     "ordini": 1
+    },
+    {
+     "da": "15:52:28",
+     "a": "15:57:34",
+     "min": 5.09,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "15:57:34",
+     "a": "15:57:35",
+     "min": 0.01,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "15:57:35",
+     "a": "16:21:01",
+     "min": 23.43,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "16:21:01",
+     "a": "17:23:51",
+     "min": 62.85,
+     "gambe": 0,
+     "books": "—",
+     "ordini": 0
+    },
+    {
+     "da": "17:23:51",
+     "a": "17:24:00",
+     "min": 0.14,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    },
+    {
+     "da": "17:24:00",
+     "a": "17:29:37",
+     "min": 5.62,
+     "gambe": 2,
+     "books": "no+yes",
+     "ordini": 2
+    },
+    {
+     "da": "17:29:37",
+     "a": "17:29:37",
+     "min": 0,
+     "gambe": 1,
+     "books": "yes",
+     "ordini": 1
+    }
+   ]
+  }
+ ],
+ "rinnoviFermati": {
+  "n": 422,
+  "perMercato": [
+   {
+    "mercato": "f2b0c93903",
+    "n": 267
+   },
+   {
+    "mercato": "de0b0b24bf",
+    "n": 91
+   },
+   {
+    "mercato": "776841ce97",
+    "n": 58
+   },
+   {
+    "mercato": "afb455a592",
+    "n": 6
+   }
+  ],
+  "motivi": [
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (156s alla scadenza): expiry refres",
+    "n": 11
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (151s alla scadenza): expiry refres",
+    "n": 11
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (161s alla scadenza): expiry refres",
+    "n": 8
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (166s alla scadenza): expiry refres",
+    "n": 6
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (171s alla scadenza): expiry refres",
+    "n": 5
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (160s alla scadenza): expiry refres",
+    "n": 4
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (146s alla scadenza): expiry refres",
+    "n": 4
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (166s alla scadenza): profondita-in",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (165s alla scadenza): profondita-in",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (164s alla scadenza): profondita-in",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (168s alla scadenza): profondita-in",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (158s alla scadenza): expiry refres",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (155s alla scadenza): expiry refres",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (152s alla scadenza): expiry refres",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (150s alla scadenza): expiry refres",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (169s alla scadenza): profondita-in",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (159s alla scadenza): profondita-in",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (129s alla scadenza): profondita-in",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (124s alla scadenza): profondita-in",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (114s alla scadenza): profondita-in",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (98s alla scadenza): profondita-ins",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (74s alla scadenza): profondita-ins",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (69s alla scadenza): profondita-ins",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (59s alla scadenza): profondita-ins",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (54s alla scadenza): profondita-ins",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (39s alla scadenza): profondita-ins",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (34s alla scadenza): profondita-ins",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (24s alla scadenza): profondita-ins",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (11s alla scadenza): profondita-ins",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (168s alla scadenza): expiry refres",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (167s alla scadenza): expiry refres",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (170s alla scadenza): expiry refres",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (165s alla scadenza): expiry refres",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (176s alla scadenza): expiry refres",
+    "n": 3
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (167s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (170s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (126s alla scadenza): expiry refres",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (179s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (174s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (173s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (171s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (162s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (161s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (160s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (156s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (155s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (151s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (149s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (147s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (143s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (141s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (134s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (122s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (120s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (119s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (118s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (117s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (116s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (113s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (112s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (109s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (108s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (106s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (104s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (103s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (101s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (99s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (83s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (81s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (80s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (79s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (77s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (76s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (73s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (71s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (66s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (64s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (62s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (58s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (57s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (53s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (52s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (51s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (44s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (38s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (36s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (33s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (31s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (30s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (28s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (26s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (25s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (22s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (21s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (20s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (17s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (15s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (13s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (10s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (8s alla scadenza): profondita-insu",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (6s alla scadenza): profondita-insu",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (5s alla scadenza): profondita-insu",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (148s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (144s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (139s alla scadenza): profondita-in",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (96s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (94s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (61s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (49s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (29s alla scadenza): profondita-ins",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (9s alla scadenza): profondita-insu",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (4s alla scadenza): profondita-insu",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (178s alla scadenza): expiry refres",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (157s alla scadenza): expiry refres",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (172s alla scadenza): expiry refres",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (162s alla scadenza): expiry refres",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (175s alla scadenza): expiry refres",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (169s alla scadenza): expiry refres",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (164s alla scadenza): expiry refres",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (173s alla scadenza): expiry refres",
+    "n": 2
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (180s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (159s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (149s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (143s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (142s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (141s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (140s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (138s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (137s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (127s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (126s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (123s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (120s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (116s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (113s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (110s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (107s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (106s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (105s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (101s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (100s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (99s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (98s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (88s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (74s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (64s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (63s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (60s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (56s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (53s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (43s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (42s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (33s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (32s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (29s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (26s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (25s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (24s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (21s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (17s alla scadenza): tetto-mercato:",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (7s alla scadenza): tetto-mercato: ",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (3s alla scadenza): tetto-mercato: ",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (0s alla scadenza): tetto-mercato: ",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (178s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (177s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (175s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (172s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (163s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (158s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (154s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (132s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (127s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (123s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (111s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (107s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (102s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (97s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (87s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (86s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (85s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (82s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (75s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (70s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (67s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (65s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (63s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (60s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (55s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (43s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (42s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (40s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (37s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (32s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (27s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (19s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (16s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (12s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (7s alla scadenza): profondita-insu",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (157s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (153s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (152s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (145s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (140s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (137s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (128s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (126s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (125s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (121s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (110s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (105s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (100s alla scadenza): profondita-in",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (95s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (92s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (91s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (78s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (56s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (48s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (47s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (45s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (35s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (18s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (14s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (2s alla scadenza): profondita-insu",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (1s alla scadenza): profondita-insu",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (0s alla scadenza): profondita-insu",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (180s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (179s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (163s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (154s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (89s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (84s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (-1s alla scadenza): profondita-ins",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (147s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (174s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (177s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (141s alla scadenza): tetto-mercato",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (136s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (131s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (110s alla scadenza): expiry refres",
+    "n": 1
+   },
+   {
+    "motivo": "RINNOVO DOVUTO E FERMATO (101s alla scadenza): expiry refres",
+    "n": 1
+   }
+  ],
+  "primo": "2026-08-16T11:34:39.862Z",
+  "ultimo": "2026-08-16T18:27:43.751Z"
+ },
+ "copertura": {
+  "chiamate": 157,
+  "esiti": [
+   {
+    "esito": "rimpiazzo-gamba | saltato-tetto-saturo",
+    "n": 133
+   },
+   {
+    "esito": "rimpiazzo-gamba | saltato-sotto-size-minima",
+    "n": 21
+   },
+   {
+    "esito": "rimpiazzo-gamba | rimpiazzata",
+    "n": 3
+   }
+  ],
+  "esempi": [
+   {
+    "ora": "16:25:21",
+    "op": "rimpiazzo-gamba",
+    "outcome": "rimpiazzata",
+    "reason": "la gamba NO era stata eseguita: torna sul libro a 0.14 per 152.4 share, dentro lo spazio rimasto sotto il tetto ($21.342 di $56)"
+   },
+   {
+    "ora": "16:46:37",
+    "op": "rimpiazzo-gamba",
+    "outcome": "saltato-sotto-size-minima",
+    "reason": "$0.613 comprano 1.3 share, sotto il minimo premiante del venue (50): l ordine non scorerebbe, sarebbe capitale fermo"
+   },
+   {
+    "ora": "16:47:37",
+    "op": "rimpiazzo-gamba",
+    "outcome": "saltato-tetto-saturo",
+    "reason": "il tetto del mercato ($56) è già occupato da posizione ($30.83) e ordini a riposo ($63.95): il rimpiazzo aspetta che la chiusura liberi spazio, non forza il tetto"
+   },
+   {
+    "ora": "16:49:42",
+    "op": "rimpiazzo-gamba",
+    "outcome": "saltato-tetto-saturo",
+    "reason": "il tetto del mercato ($56) è già occupato da posizione ($30.83) e ordini a riposo ($31.41): il rimpiazzo aspetta che la chiusura liberi spazio, non forza il tetto"
+   },
+   {
+    "ora": "16:51:52",
+    "op": "rimpiazzo-gamba",
+    "outcome": "saltato-tetto-saturo",
+    "reason": "il tetto del mercato ($56) è già occupato da posizione ($30.83) e ordini a riposo ($31.41): il rimpiazzo aspetta che la chiusura liberi spazio, non forza il tetto"
+   },
+   {
+    "ora": "16:53:57",
+    "op": "rimpiazzo-gamba",
+    "outcome": "saltato-tetto-saturo",
+    "reason": "il tetto del mercato ($56) è già occupato da posizione ($26.84) e ordini a riposo ($57.67): il rimpiazzo aspetta che la chiusura liberi spazio, non forza il tetto"
+   }
+  ]
+ },
+ "riscontroVenue": {
+  "campioni": 75077,
+  "distribuzione": [
+   {
+    "ordiniVivi": 0,
+    "campioni": 45767,
+    "quota": 61
+   },
+   {
+    "ordiniVivi": 1,
+    "campioni": 8354,
+    "quota": 11.1
+   },
+   {
+    "ordiniVivi": 2,
+    "campioni": 18567,
+    "quota": 24.7
+   },
+   {
+    "ordiniVivi": 3,
+    "campioni": 1210,
+    "quota": 1.6
+   },
+   {
+    "ordiniVivi": 4,
+    "campioni": 427,
+    "quota": 0.6
+   },
+   {
+    "ordiniVivi": 5,
+    "campioni": 197,
+    "quota": 0.3
+   },
+   {
+    "ordiniVivi": 6,
+    "campioni": 356,
+    "quota": 0.5
+   },
+   {
+    "ordiniVivi": 7,
+    "campioni": 154,
+    "quota": 0.2
+   },
+   {
+    "ordiniVivi": 8,
+    "campioni": 7,
+    "quota": 0
+   },
+   {
+    "ordiniVivi": 9,
+    "campioni": 34,
+    "quota": 0
+   },
+   {
+    "ordiniVivi": 10,
+    "campioni": 4,
+    "quota": 0
+   }
+  ]
+ }
+}
