@@ -161,7 +161,16 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
     // di una corsa precedente — cioe' il banco stava riusando un avanzo, esattamente la classe di difetto
     // che il reset dei due presidi esiste per non ripetere. Con il piano azzerato il mini-ciclo e'
     // costretto a passare dal RICALCOLO, che e' il percorso vero di un bot appena accesso.
-    try { require('fs').unlinkSync(path.join(ROOT, 'data', 'realloc-ultimo-piano.json')); } catch { /* gia' assente */ }
+    // ⚠ E CON LUI OGNI ALTRO STATO CHE SOPRAVVIVE FRA LE CORSE. Lo stato del RIPREZZO era il terzo
+    // avanzo: `recordAutoRepriceState` scrive `recentAt` (gli istanti dei riprezzi recenti) e
+    // `lastRepriceAt` su `data/maker-auto-reprice-state.json`, e il giro dopo li rilegge per decidere
+    // anti-churn e tetto orario. Due corse di fila sullo stesso mercato non erano quindi la stessa corsa:
+    // e' una delle cause del banco che dava due risultati diversi sullo stesso codice.
+    for (const f of ['realloc-ultimo-piano.json', 'maker-auto-reprice-state.json', 'realloc-pools.json',
+      'modalita-chiusura.json', 'attesa-merge.json', 'residui-scoperti.json', 'da-ripianificare.json',
+      'quarantena-venue.json', 'presidio-posizioni.json', 'idempotenza-ordini.json']) {
+      try { require('fs').unlinkSync(path.join(ROOT, 'data', f)); } catch { /* gia' assente */ }
+    }
     const snap = await A40.snapshotPosizioniTask().catch((e) => ({ errore: e.message }));
     const cfg = ARC.readAutoRepriceConfig({});
     passo('1 · accensione da zero', {

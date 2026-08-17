@@ -150,9 +150,36 @@ function avviaClobSimulato(venue) {
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
 // Si parte dall'ora VERA: i file di stato copiati portano timestamp reali, e un orologio nel futuro li
 // farebbe sembrare tutti freschi mentre uno nel passato li farebbe sembrare tutti scaduti.
-const OROLOGIO = { ora: Date.now() };
+// ⚠ TRE FONTI DI CASO, NON UNA — e finche' ne restava una il banco dava due risultati diversi sullo
+// stesso codice. Misurato: su cinque corse, due si fermavano al passo 6 e tre arrivavano al 7.
+//   ① `Date.now` — gia' controllata dalla prima stesura;
+//   ② `new Date()` SENZA ARGOMENTI, che NON passa da `Date.now`: dodici occorrenze nel solo agent41,
+//      e ognuna leggeva l'ora vera dentro un giro che credeva di essere in un altro istante;
+//   ③ `Math.random`, che il jitter del backoff di `manual-reset` usa.
+// ISTANTE ZERO: l'ora vera arrotondata al MINUTO. Non un istante fisso nel 2026, e la ragione e' un
+// limite del seam che va dichiarato: il piano nasce in un PROCESSO FIGLIO (`RUNNER_PIANO`), che ha il
+// SUO `Date.now` e legge lo storico dei mid con l'orologio vero. Un istante zero lontano dall'ora vera
+// farebbe sembrare al figlio che lo storico seminato dal banco sia nel futuro, e il piano tornerebbe
+// vuoto. Arrotondare al minuto rende identiche tutte le corse dent*lo stesso minuto* e — cosa che conta
+// di piu' — rende identico l'ESITO anche fra minuti diversi, perche' tutte le durate sono relative.
+const ISTANTE_ZERO = Math.floor(Date.now() / 60_000) * 60_000;
+const OROLOGIO = { ora: ISTANTE_ZERO };
 const DateNowVero = Date.now;
+const DateVero = Date;
 Date.now = () => OROLOGIO.ora;
+// `new Date()` senza argomenti ⇒ l'istante virtuale. Con argomenti si comporta come sempre: e' la forma
+// che il codice usa per convertire un timestamp, e cambiarla sarebbe cambiare il significato.
+class DataDelBanco extends DateVero {
+  constructor(...a) { if (a.length === 0) super(OROLOGIO.ora); else super(...a); }
+  static now() { return OROLOGIO.ora; }
+}
+DataDelBanco.parse = DateVero.parse;
+DataDelBanco.UTC = DateVero.UTC;
+global.Date = DataDelBanco;
+// Il seme fisso: un LCG minuscolo. Non serve una buona distribuzione — serve la STESSA sequenza a ogni
+// corsa, perche' l'unico consumatore vivo e' il jitter di un backoff.
+let seme = 0x2f6e2b1;
+Math.random = () => { seme = (seme * 1103515245 + 12345) & 0x7fffffff; return seme / 0x7fffffff; };
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
 // IL VENUE SIMULATO
@@ -618,7 +645,7 @@ let ADAPTER_VERO = null;
 }
 
 
-module.exports = { VenueSimulato, VENUE, OROLOGIO, DateNowVero, sostituisci, ROOT, VIVO, OUT, VERBOSO, IDENTITA, DIR_FEED,
+module.exports = { VenueSimulato, VENUE, OROLOGIO, ISTANTE_ZERO, DateNowVero, sostituisci, ROOT, VIVO, OUT, VERBOSO, IDENTITA, DIR_FEED,
   CLOB_SIMULATO, chiudiClobSimulato: () => { try { SERVER_CLOB.close(); } catch { /* gia' chiuso */ } } };
 
 if (require.main === module) {

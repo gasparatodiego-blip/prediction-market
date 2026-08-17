@@ -1,0 +1,43 @@
+{
+ "generatoIl": "2026-08-17T14:01:34.656Z",
+ "corse": 10,
+ "firmeDistinte": 1,
+ "deterministico": true,
+ "dettaglio": [
+  {
+   "sha": "0cec52e318476145",
+   "volte": 10
+  }
+ ],
+ "firma": {
+  "passi": [
+   "1 · accensione da zero|true",
+   "2 · perimetro e capitale letti|true",
+   "3a · il ciclo da 6 ore (A41.giro): MANTIENE, non apre|true",
+   "3 · due gambe a libro (A41.controlloCapitaleFermo → miniCiclo)|true",
+   "4-sonda · l'adapter di sola lettura|-",
+   "4-pre · cosa vede la corsia manuale (listManualOrders)|true",
+   "4 · il book si muove: riprezzamento (A40.cycle)|true",
+   "5 · fill totale su una gamba|true",
+   "6 · gamba opposta a libro entro il ciclo (A40.closeTask)|false"
+  ],
+  "scattate": [
+   "applicata",
+   "complete",
+   "cross-dichiarato",
+   "modalita-chiusura-ingresso",
+   "non-misurabile",
+   "sent",
+   "sotto-obiettivo",
+   "start",
+   "trigger"
+  ],
+  "dinamiche": [
+   "merge-livello-1",
+   "merge-livello-1-piazzato",
+   "modalita-chiusura-sorella-da-ridimensionare-cancellato",
+   "ok"
+  ],
+  "bloccato": "passo 6"
+ }
+}
