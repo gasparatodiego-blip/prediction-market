@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **16 agosto 2026** (§4.1, §4.2, §4.6, §4.13, §5.1, §5.2).
+Ultima verifica contro codice/stato reali: **17 agosto 2026** (§4.6, §4.13, §5.1, §5.2, §5-bis p.169-171).
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -755,6 +755,32 @@ ricopiato; `MAKER_TETTO_COPPIA_CENTS` resta un env con clamp `[100 · 200]`. Il 
 **un punto solo**; gli altri test lo **derivano**. ⚠ Costo massimo dell'1¢ in più sulla posizione più
 grande del piano di prova (62,5 share): **$0,63**.
 
+> **💰 LA PRESA DI PROFITTO DECIDE SUL BID CAMMINATO, MAI SUL MID — §5-bis p.169, 17 agosto 2026.**
+> `lib/maker/presa-di-profitto.js` (puro), chiamata da `decideClose` **dopo** le guardie su mercato
+> chiuso e **prima** di `already-covered`. **La misura**: sui due fill del 16 agosto, **283 campioni
+> di book su 354 minuti, ZERO istanti offrivano un'uscita realizzabile in guadagno** — sotto
+> l'ipotesi più generosa (tutta la size al miglior prezzo). Il guadagno visto sul pannello era la
+> **differenza fra il mid e il bid**; il tape conferma che il prezzo è sceso *attraverso* il nostro
+> bid (0,23 → 0,22 → 0,21 prima del fill a 0,20, 0,17 dopo).
+> **⚠ UN TAKE-PROFIT ESISTEVA GIÀ E NON HA MAI INCASSATO NIENTE**: il ramo `marketAhead` di
+> `planExit` (3 agosto, con cricchetto) è ancorato a `scoringMid` e mette l'uscita a `mid × 1,01`,
+> cioè sopra un mid che la misura dichiara non consumabile. Il buco non era «manca la regola».
+> **Il criterio non ha costanti arbitrarie**: incassare al bid batte completare la coppia esattamente
+> quando `bid + ask > 1`. Due rami — **`coppia-battuta`** (la coppia è disponibile: si scatta se
+> `bid + ask > 1 + m`) e **`coppia-bloccata`** (la coppia sfonda il tetto di 101¢: si scatta se
+> `bid > carico + m`, perché l'unica alternativa è la scala d'urgenza, che sa solo scendere).
+> `MARGINE_CENTS = 1`, **centesimi per share e non tick** (§5-bis p.164), copre col doppio del
+> margine il caso peggiore modellato dei premi persi (~0,5¢/share sui 28,6 min mediani).
+> **SI ATTRAVERSA, NON SI INSEGUE**: il prezzo è il bid camminato — restare sopra il bid ricrea il
+> difetto. **TUTTA LA SIZE O NIENTE**: una copertura parziale non vende una parte, perché un residuo
+> sotto il minimo è capitale senza via d'uscita (§5.2 p.1). `TETTO_COPPIA_CENTS` **importato**.
+> **⚠ Fail-closed**: ask illeggibile, scala che non copre la size, carico illeggibile ⇒ non scatta.
+> **⚠ Il ramo `close-at-market` NON chiama più `provaCoppia` quando il trigger è la presa di
+> profitto** — sarebbe la strada appena misurata come peggiore, con un confronto più debole — e
+> l'obbligo di esito viene scaricato a mano, o `flushObblighi` segnalerebbe un difetto inesistente.
+> Test: `presa-di-profitto-scatta.test.js`, 33 asserzioni **sullo SCATTO**, attraverso il
+> `decideClose` vero, con la prova di **disgiunzione** dalla scala d'urgenza su 241 scatti.
+
 **La resa dopo 60 minuti** (`urgenza-scoperto.js`): gradino 1 a **30 min** (uscita fino al carico),
 gradino 2 a **60 min** (era 120) ⇒ chiusura **peggiorativa** entro il tetto, gradino 3 a 240 min ⇒
 anomalia grave. La concessione massima è **1 tick** (era 2) **e mai oltre il 5% del carico**, il più
@@ -1038,6 +1064,40 @@ test lo asserisce); il cablaggio sta in `agent41` e passa dalle **stesse** funzi
 > preso da un «alto» — sostituire porterebbe il capitale da $147 a $183,75, cioè cambierebbe in
 > silenzio la cifra che l'operatore ha deciso.
 
+> **🔁 LA COPERTURA CONTINUA RIMETTE LA GAMBA A LIBRO — §5-bis p.171, 17 agosto 2026.**
+> `copertura-gambe` decideva correttamente da giorni e `riconciliaCopertura` **dichiarava e basta**:
+> in tutto il 16 agosto non ha rimesso a libro nemmeno una gamba. **Costo misurato**
+> (`data/ricerca/gambe-16-agosto.md`): due gambe vive solo il **50,0 %** del tempo, **17 delle 22
+> cadute lunghe mai tornate**. Nessun percorso le rimetteva — il trigger a capitale fermo apre
+> MERCATI, agent40 riprezza ciò che esiste e su zero ordini non ha niente su cui iterare.
+> **⚠ IL NUMERO CHE GOVERNA IL DISEGNO È 720**: il ciclo che ospita la decisione gira ogni **120 s**.
+> Senza raffreddamento un mercato che rifiuta sempre verrebbe ritentato 720 volte al giorno — la
+> forma esatta delle 799 ricostruzioni. `lib/maker/ripristino-gambe.js` (puro) è una scala sui
+> fallimenti **consecutivi**: subito · 5 · 10 · 20 · **30 min di tetto**, azzerata quando il mercato
+> torna `coperto`. Il primo tentativo è immediato perché la GTD è 23 min; il tetto sta **sopra** la
+> GTD perché oltre quella soglia il problema non è più «manca la gamba» ma «questo mercato non si
+> riesce a quotare», e la risposta è `da-sostituire`. **Contenimento provato con i numeri: 50
+> tentativi su 720 cicli, fattore 14,4×** — è un'asserzione del test, non una frase in un commento.
+> **⚠ Si azzera su `coperto` OSSERVATO, non su un invio accettato**: un ordine può essere accettato e
+> cancellato subito dopo.
+> **LE TRE COSE CHE NON FA, e sono le tre che hanno fatto danno il 16 agosto**: ① non è una seconda
+> strada verso il venue — riga dal piano **già salvato** → `gambeDiUnaRiga` → `piazzaCoppia`, cioè lo
+> stesso `runBulkAllocation` con lo stesso freno e gli stessi gate; ② **non ricostruisce il piano**:
+> mercato assente dal piano ⇒ si dichiara e si passa oltre; ③ **non abilita niente** — itera
+> `idsAttivi`, nessuna scrittura su allowlist, gestione manuale, uscita o catalogo.
+> **E UNA CHE FA**: scrive **sempre** a verbale (`tipo: 'ripristino-gamba'`), anche quando non tenta.
+> Il giornale del 16 agosto porta **zero** record di copertura, ed è il motivo per cui non si è
+> potuto dire *quali* gambe fossero mancanti. Un presidio che non lascia traccia non è verificabile.
+> **⚠ SI PIAZZA UNA GAMBA SOLA DI PROPOSITO, e non contraddice §4.6**: il precontrollo atomico esiste
+> perché «meglio zero invii che una gamba orfana», ma qui l'altra gamba **è già a libro** — è la
+> definizione di `da-coprire`. `runBulkAllocation` applica il precontrollo dentro `if (accoppiato)`, e
+> un gruppo di una riga non è accoppiato: non lo si aggira, non lo si incontra.
+> **⚠ Trappola per chi ci lavora**: `gambeDiUnaRiga` produce righe con `book`, **senza `tokenId`** (lo
+> risolve `placeManualOrder` a valle), mentre `valutaCopertura` risponde in **token**. Le due metà
+> parlano lingue diverse e serve una traduzione esplicita, fail-closed se i due token non si leggono.
+> E `LOCK.stato()` restituisce **`id`**, non `conditionId`. Entrambi i difetti li ha presi il test
+> dello **scatto**, non la rilettura.
+
 **Il terzo meccanismo che può spegnere un mercato.** Gli altri due sono `setTracking` (ciclo 6 h) e
 `impostaBot` (fermo di sicurezza). `trigger-capitale-fermo.test.js` pretende che **ogni `enabled: false`
 del file appartenga a un meccanismo dichiarato**, ed è caduto sul terzo prima che girasse una volta:
@@ -1074,8 +1134,15 @@ resta una riga nel registro di §5-bis.
 > vivi-ma-non-definiti (`scripts/cli/_comune.flottaViva`). Nessuna riga di questo file va creduta su
 > uno stato che un comando può leggere.
 
-> **🔴 PENDENTI SU QUESTA COPIA (`/root/bot`), 16 agosto 2026: `agent40` E `agent41`, INSIEME E DAL
-> FILE.** Portano la configurazione del giro di prova: `MAKER_AUTO_REPRICE_POLL_MS: '1000'` (nuova su
+> **🟢 ESEGUITI IL 17 AGOSTO 2026 alle 04:59Z** (`pm2 restart agents/ecosystem.config.js --only
+> agent40-manual-reprice,agent41-realloc-scheduler`), su istruzione dell'operatore in chat. Verificato
+> **prima** che `ecosystem.config.js` non dichiarasse nessuna cintura per quei due processi, e **dopo**
+> su `/proc/174332` e `/proc/174326`: `MAKER_MODE=off`, `MAKER_PLACEMENT` vuota, dryrun `true`,
+> `MANUAL_ORDER_PLACEMENT` assente, freno **inserito**. Portano la presa di profitto (§5-bis p.169) e
+> l'esenzione di profondità sui rinnovi.
+> **🔴 PENDENTE DAL 17 AGOSTO: `agent41` di nuovo**, per il ripristino delle gambe (§4.13, §5-bis
+> p.171). Il bot è FERMO e `riconciliaCopertura` è comunque a valle del cancello `botAttivo()`, quindi
+> non è urgente. **Testo storico del riavvio precedente, per il comando:** Portano la configurazione del giro di prova: `MAKER_AUTO_REPRICE_POLL_MS: '1000'` (nuova su
 > agent40) e il commento riscritto della manopola su agent41. **Comando**:
 > `pm2 restart agents/ecosystem.config.js --only agent40-manual-reprice` e idem per
 > `agent41-realloc-scheduler` — **`--update-env` non basta**, non rilegge l'ecosystem (§5.2 p.2).
@@ -1119,6 +1186,33 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
 > **p.28 i due commenti a 110¢ in `auto-close.js`** → corretti il 16/08 nello stesso commit che porta
 > il tetto unico a 101¢ (§5-bis p.165), il reperto D7 non esiste più.
 
+38. **🔴 IL RIPREZZO CANCELLA E NON RIPIAZZA: 197 MINUTI DI GAMBA SINGOLA IL 16 AGOSTO — APERTO.**
+   È il **capofila misurato** (`data/ricerca/gambe-16-agosto.md`): **il 68,1 % dei minuti di gamba
+   singola** della giornata — 160,8 da `nozionale-mercato-oltre-tetto` e 36,2 da `doppione-identico`,
+   su 289,3 totali. `replaceManualOrder` ha **cinque precontrolli prima di cancellare**, tutti con
+   `oldCancelled:false`, esattamente perché una cancellazione senza ripiazzo lascia la gamba scoperta
+   (`manual-order.js:1716-1806`). **I due gate aggiunti il 16 agosto non sono in quell'elenco**:
+   vivono dentro `placeManualOrder` (`:1291` e `:1316`), cioè **dopo** la cancellazione. Il riprezzo
+   passa i cinque, cancella, il sesto rifiuta, la gamba è persa. Classe «protezione presente su un
+   percorso e assente sul suo gemello».
+   **⚠ E UN SECONDO DIFETTO DENTRO IL PRIMO, DI SEGNO**: il gate somma `ordini a riposo + questo
+   ordine`, l'aritmetica di chi **apre**. Su un riprezzo l'ordine da sostituire **è già dentro** gli
+   ordini a riposo ⇒ contato due volte. Evidenza, 12:14:42 su FL-27: «$53.67 di ordini a riposo (2) e
+   questo ne aggiungerebbe $11.42» — e $11,42 **era** quell'ordine. Il sottraendo esiste già
+   (`:1311`) ma vale solo per la gemella dentro `place`. **Terza occorrenza** di «regola nata per
+   limitare l'APERTURA applicata a un'azione che non apre» (§5-bis p.133, p.147, p.168).
+   **La cura, e le due condizioni che il difetto insegna**: ① la **stessa funzione**, non una copia
+   (`:1782` lo dice già, ed è il reperto D1); ② il nozionale a riposo deve **escludere l'ordine che si
+   sta sostituendo**. **Non corretta**: tocca il percorso che piazza, e va fatta con la sua misura.
+39. **🟡 IL RESIDUO SU FILL PARZIALE MUORE NELLO STATO MENO ESPOSTO — 17 agosto 2026, per decisione.**
+   In `classificaFill` «parziale» e «completo» descrivono la **COPERTURA**, non l'ordine: 40 possedute
+   / 0 coperte è `fill-completo`. Il ramo d'ingresso di `auto-close` cancella il residuo **solo** su
+   `fill-parziale`, quindi oggi il residuo **sopravvive** nello stato totalmente scoperto e **muore**
+   in quello parzialmente coperto — l'opposto dell'argomento scritto in `43523d9`. ⚠ E l'evidenza che
+   motivò quel commit (i due `BUY 14¢` che ingrossavano la gamba posseduta) la misura del 17 agosto
+   la attribuisce a `rimpiazzo-gamba` / `auto-close-on-fill`, **non** a un residuo sopravvissuto.
+   `modalita-chiusura.test.js` asserisce ora il comportamento vero e lo dichiara. **Non toccato**: è
+   una decisione di rischio dell'operatore.
 31. **🟡 LA MANOPOLA DELLA DISTANZA RESTA A 0,95 — ORA È UNA SCELTA, NON UNA DERIVA (16 agosto 2026).**
    `agents/ecosystem.config.js` porta `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95'` su **entrambi** i
    processi che decidono un prezzo (agent40, agent41). Era arrivata lì da una sessione non committata
@@ -1179,34 +1273,6 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
    la stessa forma di §5-bis p.153. **Falliva chiuso** (non scrive niente) e la scala è comunque
    **disarmata al gradino 6**, quindi non ha prodotto danno. **Non corretta**: sta dentro la scala di
    sblocco, che è fuori dal perimetro chiesto in questa sessione, e va corretta con la sua misura.
-27. **🟢 I 5 SELFCHECK DI `scripts/` SONO STATI RIMESSI IN SCALA — 15 agosto 2026, ora verdi.**
-   Fallivano **perché il codice è corretto**, sesta occorrenza di «test che fotografa il codice invece
-   della proprietà» (§5.3). Nessuna asserzione è stata ammorbidita: sono cambiati i numeri che
-   producono la stessa banda, e le due derive di contratto sono state riscritte con la ragione accanto.
-   **Deriva di BANDA** (`maxSpread` dimezzato, §5-bis p.155 — lo stesso raggio si scrive con metà del
-   numero): `maker-auto-reprice` (3 → 1,5) · `maker-mid-chase` (8 → 4 e 2 → 1) · `maker-unified`
-   (6 → 3) · e la fixture `VG` di `maker-selfcheck` (6 → 3).
-   **Deriva di CONTRATTO, e sono decisioni vere che i test non avevano seguito**: ① `closeTargetPrice`
-   non esiste più — il calcolo è in `exit-plan.planExit` e l'obiettivo è passato da **+1¢ assoluto a
-   +1% relativo** (su 48,5¢ vale metà del centesimo di prima; su un token da 5¢ un centesimo sarebbe
-   stato il 20%); ② l'interruttore generale della chiusura automatica ha il **default INVERTITO**
-   (assente ⇒ ACCESO): è una protezione, e un campo che manca non può disarmarla; ③ `computeExposure`
-   non conta più gli ordini non riconciliati (decisione dell'operatore del 2 agosto, `unknowns` vuoto
-   per costruzione) — l'altra metà della domanda vive in `ordiniNonRisolti`, e il test ora prova
-   entrambe; ④ un gate più recente (`venue-positions-unreadable`) precedeva quello sotto prova, che
-   quindi misurava la protezione sbagliata: aggiunta la fixture dello snapshot.
-   **⚠ RESTA INCHIODATO UN DIFETTO VERO, NON CORRETTO**, in `planReconcile`: il confronto per ordine
-   del venue (`recordedFilledByOrderId`) ripiega sul conteggio per chiave solo quando è illeggibile
-   l'id **del venue**. Se l'id c'è ma la riga di ledger non lo porta, la ricerca torna 0 e **l'intero
-   `size_matched` viene registrato di nuovo** — la forma dei fill fantasma di §5-bis p.72. **È
-   raggiungibile**: `mkFill` scrive `orderId: o.orderId || null`, cioè l'id dell'ordine INVIATO, e
-   `findVenueOrder` accoppia anche per token+lato+prezzo. **Non corretto qui per disciplina**: è la
-   via del rischio, e la regola è provare e QUANTIFICARE su giornali veri prima di toccare una difesa —
-   giornali che questa copia non ha. Candidato di una riga:
-   `const giaVO = (idVO && recordedVO.has(idVO)) ? recordedVO.get(idVO) : already;`.
-   `maker-selfcheck` §12g inchioda il comportamento sbagliato **e lo dichiara**: quando quella riga
-   diventerà rossa, il difetto sarà stato corretto e l'asserzione va riportata a 80.
-
 26. **🟡 `end-of-scale` NON è stata stretta a [0,10 · 0,90] — misurato, 13 agosto 2026.**
    La proposta era allineare la nostra soglia ([0,03 · 0,97]) al punto dove il venue rompe `Q_min`.
    **⚠ MA QUELLA PROTEZIONE ESISTE GIÀ ED È PIÙ PRECISA**: `motore-unico.latoSingolo` deriva la
@@ -1218,31 +1284,6 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
    `data/ricerca/fine-scala-1090.json`. **Non applicata**, anche perché l'orizzonte si è appena mosso
    e due leve insieme rendono illeggibili le 24 ore di dati che l'operatore ha chiesto.
 
-21. **🟢 IL PAVIMENTO DI PROFONDITÀ NON SI APPLICA PIÙ AI RINNOVI — decisione dell'operatore, 16
-   agosto 2026. CHIUSA.** Era aperta dal 13 agosto come difetto annotato e non corretto.
-   **LA MISURA CHE HA DECISO**: **34 `anomalia-rinnovo-fermato` in 22 minuti** su `0xf2b0c93903a1…`,
-   tutte della forma «RINNOVO DOVUTO E FERMATO (179s alla scadenza): profondita-insufficiente»;
-   **6 ordini morti per GTD** nella stessa finestra, e quel mercato rimasto **a gamba singola** — cioè
-   esattamente l'esposizione direzionale che il pavimento esiste per evitare, **prodotta dal pavimento
-   stesso**. La lacuna strumentale di allora («il record non distingue rinnovo da apertura») è chiusa:
-   `anomalia-rinnovo-fermato` porta i secondi alla scadenza.
-   **LA RAGIONE DELL'OPERATORE**: il termine di paragone non è «nessuna esposizione» — non è
-   un'opzione, l'ordine è già a libro — ma **«la gamba muore e restiamo direzionali»**, che è il
-   rischio peggiore dei due. Il pavimento **resta pieno sulle aperture**.
-   **SICURA PER COSTRUZIONE, NON CON UN `if`** (`lib/maker/esenzione-rinnovo.provaRinnovo`, puro,
-   stessa forma di `esenzione-chiusura`): ① esiste un ordine **vivo** su stesso mercato/token/lato,
-   letto dal venue; ② la **size non aumenta** (riduzioni ammesse); ③ il **nozionale non aumenta** —
-   stessa size a prezzo più alto è più capitale a riposo; ④ **fail-closed** su tutto il resto (lista
-   non leggibile, prezzo o size illeggibili, token o lato ignoti ⇒ **apertura**).
-   **⚠ E UNA QUINTA CONDIZIONE CHE NON ERA NELLA RICHIESTA E SERVE**: nel ciclo di riprezzo la size è
-   nota ma **il prezzo no** — lo sceglie il motore dopo. Senza un vincolo, l'esenzione varrebbe anche
-   per un livello più caro, cioè per più nozionale: la regola ③ violata proprio nel percorso che
-   l'esenzione serve. `provaRinnovo` restituisce `prezzoMassimo` e `motore-unico.trovaLivello` **scarta
-   i livelli che lo superano**.
-   **NON È STATO TOCCATO NIENT'ALTRO**: «mai primo sul libro» resta (la ricerca parte dal secondo
-   livello), e con **un solo livello in banda** non si quota comunque — esenzione o no. Due asserzioni
-   lo verificano. Test: `lib/maker/pavimento-esenta-rinnovi.test.js` (12, al livello del **motore**,
-   dove il pavimento morde davvero) + `esenzione-rinnovo` selfcheck (20).
 22. **🟡 IL PIANO SI SVUOTA, E LA CAUSA MISURATA NON È IL FILTRO DI PROFONDITÀ** (13 agosto 2026;
    `data/ricerca/sintesi-profondita.md`, script `scripts/ricerca/taratura-profondita.js`).
    **Il cancello che decide è `pavimentoPremiante(minSize) > tetto per mercato`**, non la profondità:
@@ -1280,36 +1321,11 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
 
 13. **La soglia sulla derivata per la sentinella È misurabile, ed è l'85%** (§5-bis p.140). Non
    implementata: questa era una sessione di sola diagnosi.
-24. **⚑ IL MERCATO È CALIBRATO AGLI ESTREMI — misura chiusa, 13 agosto 2026, nessuna azione.** 1.248
-   mercati con prezzo utilizzabile: 0,95–1,00 n=819 **+0,18 pt (±0,53)**, 0,97–1,00 +0,09, 0,90–1,00
-   −0,12 ⇒ **calibrato ovunque**. **Il costo è lo SPREAD, non la calibrazione**: EV netto di 1¢ ipotizzato
-   **−0,59%** a 0,97–0,99 e **−0,98%** a 0,99–1,00. ⚠ Gamma tronca a ~3.000 record: partizionare per `end_date`.
-23. **⚑ QUANTO RENDEREBBE PIÙ CAPITALE — misura chiusa, 13 agosto 2026. Due risposte inconciliabili, ed è
-   il risultato.** ① empiricamente il reward è **PIATTO** (604 wallet, mediana $45–112 in ogni decile,
-   log-log ^0,015 R² 0,03) **ma è la variabile sbagliata** — `valoreUsd` è capitale in POSIZIONE e i reward
-   li generano gli ordini a riposo, che l'API non espone (§5-bis p.144). ② strutturalmente il vincolo è il
-   **BOARD**: sotto ~$1.307 più capitale = più mercati, sopra cresce la size. ⚠ **Oltre ~$3.000 non è
-   difendibile**: il modello ancorato ai nostri $4,40/g sovrastima di ~2× contro i wallet da $10–25k.
-22. **⚑ I MERCATI SBILANCIATI RENDONO MENO — misura chiusa, 13 agosto 2026.** La formula del punteggio
-   contiene solo la distanza dal mid ⇒ share qualificanti per dollaro identiche a mid 0,50 e a 0,99;
-   **ma Q_min si ROMPE a 0,10 e 0,90** e a mid 0,90 il 90% del capitale sta sulla gamba cara, dove una
-   gamba nuda matura **ZERO**.
-   **⚠ DISALLINEAMENTO APERTO, decisione dell'operatore**: `end-of-scale` vieta sotto 0,03 e sopra 0,97,
-   la rottura del venue è a 0,10/0,90 ⇒ **fra 0,90 e 0,97 quotiamo dove una gamba nuda matura zero**.
-   Nostra esposizione: **96,5%** delle 15.055 osservazioni del mid dentro [0,10 · 0,90].
 21. **⚑ LE «CANCELLAZIONI CONTINUE» NON SONO UN CICLO DI RIPREZZO — chiusa il 13 agosto 2026.** Vita degli
    ordini n=995: mediana **18,2 min**, sotto i 60 s solo l'1,0% ⇒ un ordine mediano è campionato ~18 volte.
    Dei 4.874 eventi di cancellazione solo 979 portano un `orderId` (1,06 per ordine); gli altri 3.898 sono
    macchina di **chiusura**. `band-exit` è una VALUTAZIONE: su 3.622 giudizi «fuori banda» **ZERO**
    cancellazioni (§5-bis p.155).
-20. **⚑ I NOSTRI FILL ARRIVANO SUL MID FERMO, NON SULLE RAFFICHE — 13 agosto 2026. Chiude «il riprezzo è la
-   leva?»: NO.** Mid a 5 s, 47 mercati, 15.887 campioni. **Movimento A RAFFICHE**: mediana 0,000 tick/60 s,
-   q90 17, q99 72; mid fermo il **65%** del tempo, e il 10% di finestre più mosse contiene il **69,2%** del
-   movimento (⚠ corregge p.19: «0,25 tick/ora» era una mediana priva di significato). **Sui 607 fill** il mid
-   era fermo nell'**82,4%** dei 60 s precedenti, mosso >1 tick solo nel 13,3% contro un tempo-base del 30,5%
-   ⇒ **0,44×**. E nelle raffiche nessuna cadenza basterebbe (q90 8,5 tick in 30 s, più della banda): non si
-   insegue riprezzando, si insegue cancellando. ⇒ **`minIntervalMs`, `confirmSamples` e `hysteresisTicks`
-   NON sono la leva.**
 19. **🟡 LA CADENZA ADATTATIVA È SOTTO-RISOLTA — sola misura, costo piccolo.** agent40 classifica
    **99,6%** delle osservazioni come «lenta» con escursione 0,00 tick/ora ⇒ polling a 10.000 ms.
    `leggiFinestraTutti` su 15 min vede `rangeMid = 0` sul **48,8%** dei mercati (`mid-history` campiona
@@ -1391,6 +1407,40 @@ problema è già stato incontrato vale più del racconto di come. Il dettaglio i
 e nei commit citati nei sorgenti.
 
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
+
+
+**171** · LA COPERTURA CONTINUA RIMETTE LA GAMBA A LIBRO, CON UN RAFFREDDAMENTO — 17 agosto 2026
+
+
+**170** · I SETTE TEST ROSSI, PIÙ UNO, PIÙ TRE SELFCHECK — 17 agosto 2026 (da 19 rossi a 12)
+
+
+**169** · LA PRESA DI PROFITTO DECIDE SUL BID CAMMINATO, MAI SUL MID — 17 agosto 2026
+
+
+**172** · COSA È SUCCESSO ALLE GAMBE IL 16 AGOSTO — sola misura, 17 agosto 2026.
+Ricostruito dagli eventi di nascita e morte degli ordini (**non** dai referti del maker): 377 ordini,
+8 mercati, 133 cadute da due gambe a una. **Copertura piena 50,0 %** (14,70 h contro 7,15 h a gamba
+singola e 7,54 h a zero). ⚠ 111 delle 133 cadute durano **3,4 s in mediana** — la finestra fisiologica
+del riprezzo; le **22 lunghe valgono il 97,8 % dei minuti** e 17 non sono mai tornate. Riscontro
+indipendente sui 75.077 `listOpenOrders` del venue: **31,0 %** di tempo a gamba singola contro il
+32,7 % ricostruito. Referto `data/ricerca/gambe-16-agosto.md`, script
+`scripts/ricerca/cronologia-gambe-16-agosto.js` (rieseguibile con `GIORNO=`). Da qui vengono §5.2
+p.38 e p.39, e la conferma di §5-bis p.21.
+
+
+**24 · 23 · 22 · 20** · le quattro misure chiuse del 13 agosto (calibrazione agli estremi · quanto
+renderebbe più capitale · i mercati sbilanciati · i fill arrivano sul mid fermo) — diagnosi integrale
+in `git log` e in `data/ricerca/`.
+
+
+**27** · I 5 SELFCHECK DI `scripts/` RIMESSI IN SCALA — 15 agosto 2026 (rifatto il 17: vedi p.170)
+
+
+**21** · IL PAVIMENTO DI PROFONDITÀ NON SI APPLICA PIÙ AI RINNOVI — 16 agosto 2026, `63c10a0`,
+`esenzione-rinnovo.provaRinnovo`. ⚠ Confermato dalla misura del 17: **2.100 blocchi** in giornata
+(308 `anomalia-rinnovo-fermato` + 1.792 `skip-motore-non-conforme`), tutti fra le 11:00 e le 15:59 e
+**zero dopo le 16:00**, cioè dopo il commit. Costo: **65,0 minuti** di gamba singola.
 
 
 **168** · IL TETTO DI ESPOSIZIONE ESENTA LE CHIUSURE PROVATE, E SCENDE A $150 — 16 agosto 2026
@@ -1735,6 +1785,9 @@ Regole di manutenzione:
   mappa.** Una voce chiusa scende a una riga nel registro, mantenendo il suo numero originale — i
   commenti nei sorgenti citano «§5 punto N» e quel riferimento deve restare risolvibile. La storia
   integrale non va copiata qui: sta in `git log` e nei commit citati nei sorgenti.
+- **⚠ AL 17 AGOSTO 2026 IL FILE È A ~148k SU 150k: il margine è ~1,8k, cioè una voce.** Chi aggiunge
+  qualcosa comprima **prima** — i candidati sono le voci di §5.2 già marcate 🟢 o «⚑ misura chiusa»,
+  che per regola scendono a una riga in §5-bis.
 - **Il tetto è 150k caratteri.** Superarlo significa che il file non entra più nel contesto di una
   sessione, cioè che smette di fare il proprio mestiere. Se lo si supera, si compatta **nella stessa
   sessione** — non si rimanda.

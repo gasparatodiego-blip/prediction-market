@@ -36,14 +36,14 @@ aggiunge un dollaro.
 
 ---
 
-## 1 · La copertura continua dichiara ma non ripiazza
+## 1 · 🟢 La copertura continua RIPIAZZA — fatta il 17 agosto 2026, da osservare dal vivo
 
 **Costo**: uno slot con una gamba sola non matura niente e, se quella gamba si riempie, diventa
 esposizione direzionale — che è il modo in cui oggi si è persa la giornata.
 
-`lib/maker/copertura-gambe.js` decide correttamente (`coperto` / `da-coprire` / `non-quotabile` /
-`da-sostituire`, 13 asserzioni verdi) ed è cablato in `agent41.riconciliaCopertura`, ma quel
-cablaggio **dichiara e basta**.
+`lib/maker/copertura-gambe.js` decideva correttamente (`coperto` / `da-coprire` / `non-quotabile` /
+`da-sostituire`, 13 asserzioni verdi) ed era cablato in `agent41.riconciliaCopertura`, ma quel
+cablaggio **dichiarava e basta**.
 
 ⚠ **NON rimettere la chiamata a `controlloCapitaleFermo`**: l'ho fatto stamattina e ha prodotto
 **799 ricostruzioni del piano consecutive**, agent41 da 9 a 14 riavvii, e un **quarto mercato**
@@ -51,17 +51,28 @@ aggiunto alla allowlist (quel trigger abilita ciò che il PIANO sceglie, e il pi
 slot). La lezione, che vale oltre questo caso: *un riconciliatore che agisce sull'anello che osserva
 non chiude più l'anello, e la frequenza del ciclo diventa la frequenza dell'azione.*
 
-**La strada giusta**: aprire le gambe mancanti sui mercati **già in gestione**, senza ricostruire il
-piano — cioè un piazzamento mirato che riusa il prezzo del motore, non un ricalcolo della selezione.
+**La strada giusta**, ed è quella presa: aprire le gambe mancanti sui mercati **già in gestione**,
+senza ricostruire il piano — un piazzamento mirato che riusa il prezzo del motore.
 
-**Misurato il 17 agosto**, e conferma il quadro con tre fatti invece che con un'impressione:
-`riconciliaCopertura` **è stata chiamata** a ogni ciclo (agent41 riga 2607, prima di `decidiTrigger`)
-e **per progetto non piazza** — il suo commento lo dice (riga 1283): dichiara e forza il mini-ciclo,
-che su **82 esecuzioni** ha risposto **49 volte `nessuna-azione`**.
-**⚠ E scrive con `annuncia`, cioè nei log di pm2: ZERO record nel giornale del 16 agosto.** Non si
-può quindi dire *quali* gambe abbia visto mancanti né *quando* — solo che è stata chiamata. Stessa
-lacuna di §5.2 p.10: «non è che nessuno l'abbia guardato, è che nessuno lo scrive». **Chi ripara
-questo punto scriva prima il record**, o la riparazione non sarà verificabile.
+**FATTO** (`a6b31bb`, `lib/maker/ripristino-gambe.js` puro + cablaggio in `riconciliaCopertura`).
+Il numero che governa il disegno è **720**: il ciclo gira ogni 120 s, quindi senza raffreddamento un
+mercato che rifiuta sempre verrebbe ritentato 720 volte al giorno — la forma esatta delle 799.
+Il raffreddamento è una scala sui fallimenti **consecutivi** (subito · 5 · 10 · 20 · 30 min di tetto),
+azzerata su `coperto` **osservato**. **Contenimento provato: 50 tentativi su 720 cicli, 14,4×.**
+Le tre cose che non fa: non è una seconda strada verso il venue (piano salvato → `gambeDiUnaRiga` →
+`piazzaCoppia`), **non ricostruisce il piano**, **non abilita niente**. E una che fa: scrive sempre a
+verbale, anche quando non tenta.
+⚠ **NON È IN SERVIZIO**: agent41 gira col codice di prima e va riavviato. Il bot è FERMO e
+`riconciliaCopertura` è comunque a valle di `botAttivo()`.
+⚠ **Non è mai stata esercitata su un mercato vero.** 28 asserzioni sullo SCATTO, ma il primo giro vivo
+è la prova che conta.
+
+**Com'era il 16 agosto, misurato**: `riconciliaCopertura` **è stata chiamata** a ogni ciclo (riga
+2607, prima di `decidiTrigger`) e per progetto non piazzava — dichiarava e forzava il mini-ciclo, che
+su **82 esecuzioni** ha risposto **49 volte `nessuna-azione`**. E scriveva con `annuncia`, cioè nei
+log di pm2: **ZERO record nel giornale**, quindi non si può dire *quali* gambe avesse visto mancanti.
+Quella lacuna è chiusa — ora si scrive sempre a verbale — e la lezione resta: **un presidio che non
+lascia traccia non è verificabile**.
 **⚠ E l'unico percorso che ripiazza davvero è stato saturato**: `rimpiazzo-gamba`
 (`source: auto-close-on-fill`) ha fatto **133 `saltato-tetto-saturo`** e 21 `sotto-size-minima`
 contro **3 `rimpiazzata`**. Il comportamento è corretto — non forzare il tetto è la regola — ma la
@@ -69,7 +80,7 @@ via di ritorno esisteva e per 133 volte su 157 non poteva percorrerla.
 
 ---
 
-## 2 · Sette test rossi, tutti conseguenza delle modifiche di oggi
+## 2 · 🟢 Sette test rossi — CHIUSI il 17 agosto 2026 (`3bc7fad`), più uno e più tre selfcheck
 
 **Costo**: bassi in sé, ma sono la rete che protegge il resto. Ogni giorno che restano rossi, un
 rosso vero si nasconde fra loro.
@@ -86,6 +97,18 @@ rosso vero si nasconde fra loro.
 
 Ho toccato la riga di import aggiungendo `MARKET_CAP_FIXED_USD`: i tre test sull'import si sono rotti
 per quello. **Sono trappole, non test**: si romperanno a ogni refactor finché guardano la stringa.
+
+**CHIUSI TUTTI E SETTE, senza ammorbidire nessuna asserzione.** I tre sull'import ora **provano** che
+il valore arriva da `concentration`: si sostituisce quel modulo in `require.cache` con una sentinella
+e si ricaricano i consumatori. `selezione-cablata` era verde da solo. **E il quinto aveva ragione il
+TEST e torto il codice**: `agent41:1243` passava `MARKET_CAP_FIXED_USD` nudo invece di
+`capPerMarketUsd(capitale)` nel calcolo dei netti degli sfidanti — corretto, può solo stringere.
+**Più `modalita-chiusura`**, che non era in elenco (vedi CLAUDE.md §5.2 p.39), e **tre selfcheck**:
+`maker-selfcheck` (fixture posizioni mancante ⇒ misurava lo stato vero della macchina),
+`rewards-realistic-estimate` (banda vecchia `v = max_spread/2`), `maker-kill` (moriva di ENOENT su un
+file spostato in `_archivio` — un test che non parte non è un test rosso, è un presidio spento).
+**Suite: da 19 rossi a 12, zero nuovi.** Selfcheck: 11 su 12. Resta `maker-multimarket` (77 ok, 6
+falliti), con una fixture inchiodata alla data di chiusura reale di un mercato — dipende dai dati vivi.
 
 ---
 
