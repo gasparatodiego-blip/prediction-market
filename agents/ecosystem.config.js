@@ -238,6 +238,30 @@ module.exports = {
       // per costruzione — MAKER_MODE assente non e' in LIVE_MODES ⇒ rifiuto; MAKER_PLACEMENT assente ⇒
       // placement='dry-run'. Togliere e' piu' sicuro che scrivere, ed e' voluto.
       env:           { NODE_ENV: 'production', HOME: '/root', MAKER_FUNDING_APPROVED: 'true',
+        // ══ MANUAL_ORDER_PLACEMENT — DICHIARATA QUI DAL 17 AGOSTO 2026 ═════════════════════════════
+        //
+        // IL FATTO CHE HA PRODOTTO QUESTA RIGA. Il 16 agosto alle 19:22:53 agent40 e' stato riavviato
+        // DAL FILE ed e' tornato su in `dry-run`, disarmando il bot in silenzio. L'ultimo ordine vero
+        // e' delle 19:22:05 — quarantotto secondi prima. Per l'ora successiva il processo ha
+        // continuato a costruire uscite, a validarle e a buttarle via scrivendo `AUTO-CLOSE ok` a ogni
+        // giro; una sola riga di log lo diceva.
+        // La causa: la variabile viveva SOLO nell'ambiente della shell che aveva armato. I riavvii
+        // fino alle 18:49 ereditavano l'env salvato da pm2, quello delle 19:22:53 l'ha ricostruito da
+        // questo file — e qui la riga non c'era.
+        //
+        // ⚠ IL VALORE E' `dry-run`, CIOE' DISARMATO, ED E' UNA SCELTA DELIBERATA.
+        // La richiesta dell'operatore era «mettila nell'ecosystem come le altre cinture, cosi' lo
+        // stato e' leggibile e non dipende da quale shell ha fatto il riavvio». Scrivere `send` qui
+        // soddisferebbe la lettera e rovescerebbe la sostanza: **ogni riavvio dal file armerebbe il
+        // bot**, e la riga smetterebbe di essere una cintura per diventare un grilletto. Il valore
+        // disarmato da esattamente cio' che e' stato chiesto — uno stato leggibile e deterministico —
+        // senza spostare la decisione di armare dentro un file di configurazione.
+        //
+        // PER ARMARE si cambia questa riga in `'send'` e si riavvia DAL FILE. E' una modifica visibile,
+        // in git, che si legge con `pm2 env` e con `/proc/<pid>/environ`: le tre cose che il 16 agosto
+        // non c'erano.
+        MANUAL_ORDER_PLACEMENT: 'dry-run',
+
         // ⚠ 1000 → 5000 ms IL 16 AGOSTO 2026, DOPO AVER MISURATO IL DANNO. Il pavimento a 1 s era stato
         // chiesto per il riprezzo «event-driven»; con il lock per mercato in servizio ha prodotto
         // **789 `riprezzo-in-corso` e ZERO `manual-replace` in 22 minuti**, piu' 3 ordini morti di GTD

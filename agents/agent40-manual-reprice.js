@@ -156,6 +156,18 @@ const { runAutoCloseCycle } = require('../lib/maker/auto-close');
 // Gira sul giro principale, che non e' condizionato a niente.
 const SORV = require('../lib/maker/sorveglianza-valutazione');
 let statoSorveglianza = {};
+// ══ LA SPARIZIONE NON NOSTRA — 17 agosto 2026 ═══════════════════════════════════════════════════════
+// Il 16 agosto due gambe da 57,1 share sono uscite dal wallet mentre i nostri processi mandavano solo
+// letture, e lo si e' scoperto il GIORNO DOPO ricostruendo il tape. Questo confronto — posizioni che
+// spariscono contro ordini che ABBIAMO mandato — non lo faceva nessuno.
+const SPAR = require('../lib/maker/sparizione-non-nostra');
+let posizioniPrecedenti = null;   // la fotografia del giro prima
+const nostriInvii = [];           // gli invii recenti, in memoria: la finestra e' 10 minuti
+// ⚠ IN MEMORIA E NON SU DISCO, ED E' UNA SCELTA: un riavvio azzera la lista, e allora il primo
+// confronto dopo il riavvio non ha con cosa spiegare una sparizione. Ma azzera ANCHE
+// `posizioniPrecedenti`, quindi il primo giro non giudica affatto — e i due azzeramenti si annullano.
+// Su disco servirebbe uno scrittore, una rotazione e una regola di freschezza per un dato che vive
+// dieci minuti.
 const { readAutoCloseConfig } = require('../lib/maker/auto-close-config');
 const { placeManualOrder } = require('../lib/maker/manual-order');
 const { resolveFunder, venueAccountAddress } = require('../lib/venues/polymarket-clob-maker/funder');
@@ -1041,6 +1053,79 @@ function scadenzaMercato(marketId) {
  * (§5 p.142) — un presidio nuovo entra in servizio come osservatore, e la promozione ad azione e' una
  * decisione dell'operatore.
  */
+/**
+ * REGISTRA UN NOSTRO INVIO. Chiamata da ogni percorso che manda un ordine al venue da questo processo.
+ * ⚠ Si registra l'INTENZIONE di inviare, non il successo: se un SELL parte e la risposta si perde, la
+ * posizione puo' comunque essere uscita — e trattarlo come «non nostro» sarebbe un falso allarme sul
+ * caso peggiore. Meglio spiegare una sparizione in piu' che gridare su una nostra.
+ */
+function registraNostroInvio({ tokenId, marketId, book, side, size }) {
+  const ora = Date.now();
+  // ⚠ LE SPEC PORTANO `book`, NON `tokenId` — il token lo risolve `placeManualOrder` a valle dalle
+  // regole del mercato. E' la stessa trappola che ha reso muto il ripristino delle gambe: due meta'
+  // del sistema che parlano lingue diverse. Qui si traduce, e se non si riesce si registra comunque
+  // con il token vuoto — un invio non registrato produrrebbe un ALLARME FALSO, che e' il danno
+  // peggiore per un presidio nato per essere creduto.
+  let tok = String(tokenId || '');
+  if (!tok && marketId && book) {
+    try {
+      const r = resolveMarketRules(marketId);
+      if (r && r.readable === true) tok = String(book === 'no' ? r.tokenIdNo : r.tokenId);
+    } catch { /* si resta col token vuoto */ }
+  }
+  nostriInvii.push({ ts: ora, tokenId: tok, side: String(side || ''), size: Number(size) });
+  // Si pota su una finestra doppia di quella di giudizio: tenere di piu' non serve, e la lista non
+  // deve poter crescere senza fine in un processo che vive giorni.
+  const taglio = ora - 2 * SPAR.FINESTRA_MS;
+  while (nostriInvii.length && nostriInvii[0].ts < taglio) nostriInvii.shift();
+}
+
+/**
+ * UNA POSIZIONE CHE SPARISCE SENZA UN NOSTRO ORDINE.
+ *
+ * Gira insieme alla sorveglianza sulla valutazione, e per la stessa ragione: FUORI dal percorso che
+ * osserva. Non agisce — scrive a verbale e lo dice nei log.
+ */
+async function sparizioneTask() {
+  let posizioni = null;
+  try {
+    const snap = readVenuePositions();
+    if (snap && snap.readable === true) {
+      posizioni = (snap.positions || []).map((x) => ({
+        tokenId: String(x.tokenId || x.asset || ''), marketId: String(x.conditionId || ''),
+        size: Number(x.size), avgPrice: Number(x.avgPrice) }));
+    }
+  } catch { posizioni = null; }
+  // ⚠ SNAPSHOT NON LEGGIBILE ⇒ NON SI AGGIORNA LA FOTOGRAFIA PRECEDENTE. Sostituirla con `null`
+  // farebbe saltare il confronto del giro dopo, cioe' proprio quando lo snapshot torna.
+  if (!Array.isArray(posizioni)) return { girato: false, motivo: 'posizioni non leggibili' };
+
+  const r = SPAR.sparizioniNonSpiegate({
+    prima: posizioniPrecedenti, dopo: posizioni, nostriInvii, ora: Date.now(),
+    // ⚠ Le due spiegazioni legittime che questo processo NON sa ancora leggere: un mercato risolto e
+    // un merge riuscito. Si passano vuote, ed e' il verso PRUDENTE — al massimo si produce un allarme
+    // in piu' su una chiusura legittima, mai uno in meno su una che non lo e'. Il giorno in cui
+    // servisse, i due elenchi hanno gia' il loro posto qui.
+    mercatiChiusi: [], mergeRiusciti: [],
+  });
+  posizioniPrecedenti = posizioni;
+
+  for (const a of r.allarmi) {
+    log(`🚨 SPARIZIONE NON NOSTRA · ${a.motivo}`);
+    try {
+      appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'auto-close-on-fill',
+        op: 'sparizione-non-nostra', outcome: 'posizione-uscita-senza-nostro-ordine',
+        marketRef: a.marketId ? `cid_${a.marketId.replace(/^0x/, '')}` : null,
+        reason: a.motivo,
+        observed: { tokenId: a.tokenId, sizePrima: a.sizePrima, sizeDopo: a.sizeDopo,
+          uscita: a.uscita, spiegatoDaNostriInvii: a.spiegatoDaNostriInvii,
+          nonSpiegato: a.nonSpiegato, carico: a.carico, valoreAlCaricoUsd: a.valoreAlCaricoUsd,
+          soloOsservazione: true } });
+    } catch { /* il giornale non deve poter fermare il giro */ }
+  }
+  return r;
+}
+
 async function sorveglianzaTask() {
   let posizioni = null;
   try {
@@ -1237,7 +1322,16 @@ async function closeTask() {
         const p = await leggiPosizioniVenue();
         return { ok: p.ok, reason: p.reason, positions: (p.positions || []).map((x) => ({ tokenId: String(x.asset ?? x.tokenId ?? ''), size: Number(x.size), avgPrice: Number(x.avgPrice) })) };
       },
-      placeOrder: (spec) => placeManualOrder(spec),
+      // ⚠ OGNI INVIO SI REGISTRA, e si registra QUI perche' e' il punto da cui passano TUTTI gli
+      // ordini di questo ciclo. Registrarlo nei singoli rami vorrebbe dire ricordarsene ogni volta che
+      // se ne aggiunge uno — ed e' esattamente il modo in cui il quarto mercato di ieri e' entrato in
+      // allowlist. Serve a `sparizioneTask` per distinguere «e' uscita per mano nostra» da «e' uscita
+      // e non sappiamo per mano di chi».
+      placeOrder: (spec) => {
+        try { registraNostroInvio(spec || {}); }
+        catch { /* un registro non scritto non deve poter fermare un ordine */ }
+        return placeManualOrder(spec);
+      },
       // ── LA GAMBA ESEGUITA TORNA SUL LIBRO ────────────────────────────────────────────────────
       // Subito dopo che l'uscita e' stata piazzata. Senza questa iniezione la decisione esiste ma non
       // viene mai presa: `decideRimpiazzo` era scritto e testato e non lo chiamava nessuno, e la
@@ -1569,7 +1663,11 @@ async function cycle() {
     isManual: (marketId) => isManualMarket(marketId),
     listOrders: ({ marketId }) => listManualOrders({ marketId }),
     resolveRules: (marketId) => resolveMarketRules(marketId),
-    replaceOrder: (spec) => replaceManualOrder(spec),
+    replaceOrder: (spec) => {
+      try { registraNostroInvio(spec || {}); }
+      catch { /* idem */ }
+      return replaceManualOrder(spec);
+    },
     // ── LA PROFONDITÀ, PER SAPERE SE SIAMO DIVENTATI I PRIMI ────────────────────────────────────
     // Senza questa riga il trigger «top-of-book» non potrebbe mai scattare: `decideReprice` lo salta
     // in silenzio quando `resolveDepth` non è una funzione. È la classe di difetto che
@@ -1805,7 +1903,12 @@ async function trackingTask() {
     listOrders: ({ marketId }) => listManualOrders({ marketId }),
     // LO STESSO percorso di piazzamento del pannello a mano. Non una copia: la stessa funzione, quindi
     // ogni gate che governa un ordine a mano governa ogni ordine di questo motore.
-    placeOrder: (spec) => placeManualOrder(spec),
+    // ⚠ ANCHE QUI SI REGISTRA L'INVIO: questo e' il secondo dei due punti da cui questo processo manda
+    // ordini, e un presidio che ne guarda uno solo produce allarmi falsi sull'altro.
+    placeOrder: (spec) => {
+      try { registraNostroInvio(spec || {}); } catch { /* non blocca l'ordine */ }
+      return placeManualOrder(spec);
+    },
     // Cancella tramite l'adapter CANCEL-ONLY (signer di solo indirizzo, strutturalmente incapace di
     // piazzare): la mossa che toglie un ordine non puo' mai, per costruzione, crearne uno.
     cancelOrder: (spec) => cancelManualOrder(spec, 'mm-tracking'),
@@ -2103,6 +2206,10 @@ async function main() {
     // sorveglia, o diventerebbe essa stessa la causa del guasto che cerca.
     try { await sorveglianzaTask(); }
     catch (e) { log('sorveglianza valutazione fallita:', e && e.message ? e.message : String(e)); }
+    // Anche questa FUORI dal gate, e con il suo try/catch: due presidi indipendenti non devono poter
+    // spegnersi a vicenda.
+    try { await sparizioneTask(); }
+    catch (e) { log('sorveglianza sparizioni fallita:', e && e.message ? e.message : String(e)); }
 
     // IL BATTITO PER ULTIMO, E SEMPRE. `finally` perché la morte è il SILENZIO, non l'errore: se un
     // fallimento saltasse il battito, ogni eccezione transitoria diventerebbe una cancellazione del
@@ -2187,4 +2294,4 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.stack ? e.stack : String(e)); process.exit(1); });
 }
 
-module.exports = { cycle, reconcileTask, closeTask, sorveglianzaTask, snapshotPosizioniTask, trackingTask, breaches, trackingState };
+module.exports = { cycle, reconcileTask, closeTask, sorveglianzaTask, sparizioneTask, registraNostroInvio, snapshotPosizioniTask, trackingTask, breaches, trackingState };
