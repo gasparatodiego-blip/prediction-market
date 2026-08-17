@@ -29,6 +29,8 @@ const path = require('path');
 
 const RE = require('../lib/rewards/realistic-estimate');
 const PT = require('../lib/rewards/pool-trend');
+// La stessa funzione che `placementScore` usa dentro: il raggio non si ricopia (reperto D1).
+const { raggioBandaCents } = require('../lib/banda-premiante');
 
 let checks = 0;
 const ok = (c, m) => { assert(c, m); checks++; console.log(`  ✓ ${m}`); };
@@ -45,13 +47,21 @@ const MICH = {
 // ── 1 · THE PUBLISHED QUADRATIC, CHECKED BY HAND ────────────────────────────────────────────────────
 console.log('\n1. the placement score IS the published quadratic S(v,s) = ((v−s)/v)²');
 {
-  // Band 4.5¢ ⇒ v = 2.25¢.
-  ok(near(RE.placementScore(0, 4.5), 1), 'at the mid (s=0) the score is 1 — the ceiling the gross figure assumes');
-  ok(near(RE.placementScore(2.25, 4.5), 0), 'at the band edge (s=v) the score is 0 — an order there earns nothing');
-  ok(near(RE.placementScore(1, 4.5), ((2.25 - 1) / 2.25) ** 2, 1e-9),
-    `one tick off a 4.5¢ band scores ${RE.placementScore(1, 4.5).toFixed(4)} — about 31% of the ceiling, not 100%`);
-  ok(near(RE.placementScore(1.125, 4.5), 0.25), 'a quarter of the band off the mid scores exactly 0.25, matching lib/rewardScore\'s "typical" placement');
-  ok(RE.placementScore(3, 4.5) === 0, 'beyond the band the score is 0, never negative and never extrapolated');
+  // ⚠ IL RAGGIO NON SI SCRIVE A MANO, SI DERIVA — e questa e' la sesta occorrenza della stessa deriva.
+  // Qui c'era «Band 4.5¢ ⇒ v = 2.25¢», cioe' `v = max_spread / 2`. Il 15 agosto (§5-bis p.155) e'
+  // stato misurato che la banda premiante e' larga il DOPPIO: `v = max_spread`. Tre selfcheck sono
+  // stati rimessi in scala allora e questo e' sfuggito, quindi asseriva il bordo a 2,25¢ su una
+  // banda il cui bordo sta a 4,5¢ — e la prima riga a diventare rossa e' stata proprio quella del
+  // bordo. Adesso il raggio arriva da `raggioBandaCents`, la STESSA funzione che `placementScore`
+  // usa dentro: se la definizione cambia ancora, questi numeri la seguono da soli.
+  const BANDA = 4.5;
+  const V = raggioBandaCents(BANDA);
+  ok(near(RE.placementScore(0, BANDA), 1), 'at the mid (s=0) the score is 1 — the ceiling the gross figure assumes');
+  ok(near(RE.placementScore(V, BANDA), 0), 'at the band edge (s=v) the score is 0 — an order there earns nothing');
+  ok(near(RE.placementScore(1, BANDA), ((V - 1) / V) ** 2, 1e-9),
+    `one tick off a ${BANDA}¢ band scores ${RE.placementScore(1, BANDA).toFixed(4)} — a fraction of the ceiling, not 100%`);
+  ok(near(RE.placementScore(V / 2, BANDA), 0.25), 'half the RADIUS off the mid scores exactly 0.25, matching lib/rewardScore\'s "typical" placement');
+  ok(RE.placementScore(V + 0.75, BANDA) === 0, 'beyond the band the score is 0, never negative and never extrapolated');
   ok(RE.placementScore(1, null) === null && RE.placementScore(null, 4.5) === null,
     'an unreadable band or offset returns null — the caller then applies NO correction and says so, rather than assuming 1.0');
 }
@@ -206,7 +216,10 @@ console.log('\n7. time in band — measured from the mid samples, assumed only w
     '…and the estimate then applies a STATED assumption rather than the optimistic zero');
 
   // An order sitting AT the band edge has no tolerance left at all — report that, do not divide by zero.
-  const edge = RE.bandExitRate(calm, 4.5, 2.25);
+  // ⚠ L'OFFSET DEL BORDO SI DERIVA, come sopra: `2.25` era il raggio della banda VECCHIA (§5-bis
+  // p.155), quindi su una banda 4,5¢ questo ordine non stava piu' al bordo ma a meta' strada, e
+  // «tolleranza zero» era falso per costruzione.
+  const edge = RE.bandExitRate(calm, 4.5, raggioBandaCents(4.5));
   ok(edge.measurable === false && edge.toleranceCents <= 0,
     'an order at the band edge has zero tolerance — reported honestly instead of producing an infinite exit rate');
 }

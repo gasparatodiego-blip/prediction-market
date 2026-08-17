@@ -91,7 +91,21 @@ console.log('\n1. killMaker — durable stop');
     // ── 5 · ONE CODE PATH — the button, the script, and the endpoint trip the SAME switch through the SAME route ──
     console.log('\n4. one code path — button ≡ script ≡ endpoint');
     {
-      const client = fs.readFileSync(path.join(ROOT, 'app', 'dashboard', 'maker', 'MakerKillClient.tsx'), 'utf8');
+      // ⚠ IL SORGENTE DEL BOTTONE PUO' STARE IN ARCHIVIO, E VA CERCATO ANCHE LI'.
+      // La riduzione del 15 agosto 2026 ha SPOSTATO — mai cancellato — 568 file in `_archivio`, che
+      // conserva i percorsi (`mv _archivio/<p> <p>` li riporta indietro). `MakerKillClient.tsx` e'
+      // fra quelli, e questo selfcheck moriva di `ENOENT` prima ancora di asserire: un test che non
+      // parte non e' un test rosso, e' un presidio spento. La proprieta' sotto esame — «bottone,
+      // script ed endpoint premono LO STESSO interruttore» — resta vera e verificabile sul sorgente
+      // archiviato, e resterebbe verificabile anche se il file tornasse al suo posto domani.
+      // ⚠ Questo NON riapre `_archivio` ai sei test che CAMMINANO l'albero (§banner CLAUDE.md): qui
+      // si legge UN file dal suo percorso noto, non si esplora una directory.
+      const viaViva = path.join(ROOT, 'app', 'dashboard', 'maker', 'MakerKillClient.tsx');
+      const viaArchivio = path.join(ROOT, '_archivio', 'app', 'dashboard', 'maker', 'MakerKillClient.tsx');
+      const viaClient = fs.existsSync(viaViva) ? viaViva : viaArchivio;
+      ok(fs.existsSync(viaClient),
+        `MakerKillClient.tsx esiste (${fs.existsSync(viaViva) ? 'in servizio' : 'in _archivio: il pannello non e\' piu\' nella flotta'})`);
+      const client = fs.readFileSync(viaClient, 'utf8');
       ok(/fetch\(\s*['"]\/api\/maker\/kill['"]/.test(client), 'MakerKillClient.tsx POSTs /api/maker/kill (the durable-disarm endpoint)');
       ok(!/fetch\(\s*['"]\/api\/maker\/cancel['"]/.test(client), 'MakerKillClient.tsx does NOT call /api/maker/cancel (cancel-without-disarm would let the engine re-quote)');
 

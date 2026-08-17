@@ -784,11 +784,20 @@ const { reconcile } = require('../lib/maker/reconcile');
   const uAudit = tmpFile('usage-audit.jsonl');
   const uFills = tmpFile('usage-fills.jsonl');
   // no fills yet + empty audit → exposure 0, realised 0 (ARMED default — absent ≠ null)
-  const u0 = readUsage({ userId: 'op', now: NOWMS }, { auditFile: uAudit, fillsFile: uFills });
+  // ⚠ `venuePositions: { readable: true, positions: [] }` VA INIETTATO, e senza era una trappola.
+  // `readUsage` legge le posizioni VERE dallo snapshot del venue quando il chiamante non le passa
+  // (`usage.js:78`), quindi questa asserzione — che parla di «registro dei fill ASSENTE» — misurava
+  // in realta' lo stato reale della macchina: con la posizione meteo residua da 6 share sul disco
+  // usciva `openNotionalUsd = 3` invece di 0, e il selfcheck diventava rosso senza nessun difetto.
+  // E' la quinta occorrenza della classe «un gate piu' recente precede quello sotto prova»
+  // (CLAUDE.md §5.2 p.27 ④): la cura e' la stessa, si inietta la fixture invece di ammorbidire.
+  const u0 = readUsage({ userId: 'op', now: NOWMS, venuePositions: { readable: true, positions: [] } },
+    { auditFile: uAudit, fillsFile: uFills });
   ok(u0.openNotionalUsd === 0 && u0.realisedDailyPnlUsd === 0 && u0.ordersInWindow === 0, 'usage: an ABSENT fill ledger yields exposure 0 / realised 0 (the limits ARM), not null — absent ≠ unreadable');
   // corrupt fill ledger → BOTH exposure and realised P&L null → both limits fail closed
   const uBad = tmpFile('usage-badfills.jsonl'); fs.writeFileSync(uBad, '{not json\n');
-  const uErr = readUsage({ userId: 'op', now: NOWMS }, { auditFile: uAudit, fillsFile: uBad });
+  const uErr = readUsage({ userId: 'op', now: NOWMS, venuePositions: { readable: true, positions: [] } },
+    { auditFile: uAudit, fillsFile: uBad });
   ok(uErr.openNotionalUsd === null && uErr.realisedDailyPnlUsd === null, 'usage: an UNREADABLE fill ledger → openNotionalUsd AND realisedDailyPnlUsd null → both limits FAIL CLOSED');
 
   // 12i. BOTH now-armed limits fail closed when their measured input is unavailable (direct evaluateLimits).

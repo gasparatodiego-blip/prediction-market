@@ -1239,8 +1239,14 @@ async function nettiDeiCandidati(board, orizzonteMassimoOre) {
       // ⚠ NIENTE `restringiAllaSelezione`: qui servono i netti degli SFIDANTI. La finestra e' 24 h e non
       // 6 h perche' sotto le 24 h molti mercati rispondono `nessun-fill-osservato`, cioe' netto `null`,
       // e un netto che non si sa non spodesta e non si fa spodestare: la selezione resterebbe congelata.
+      // ⚠ IL TETTO SI DERIVA DAL CAPITALE, come in ogni altro punto che pianifica (§4.2). Qui c'era
+      // `MARKET_CAP_FIXED_USD` nudo, ed e' stato preso da `coerenza-tetto-derivato.test.js`, che
+      // pretende che nessun percorso di piano usi la costante per DECIDERE. Non era una svista senza
+      // conseguenze: `capPerMarketUsd` si clampa al capitale, quindi con meno di $61,25 liquidi la
+      // classifica degli sfidanti sarebbe stata calcolata su un piano che il bot non puo' finanziare.
+      // Puo' solo STRINGERE — e' un `Math.min` — e `capitale` e' gia' garantito finito qui sopra.
       figlio.stdin.end(JSON.stringify({
-        capital: capitale, maxPerMarketUsd: MARKET_CAP_FIXED_USD,
+        capital: capitale, maxPerMarketUsd: capPerMarketUsd(capitale),
         from: new Date(ora - 24 * 3_600_000).toISOString(), to: new Date(ora).toISOString(),
         horizonFilter: true, onlyMarketIds: ammissibili,
       }));
