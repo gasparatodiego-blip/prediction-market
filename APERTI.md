@@ -177,6 +177,122 @@ vero**: il bot è fermo da prima che ne arrivasse uno.
 
 ---
 
+## 7 · 🔬 IL BANCO DEL CICLO COMPLETO — 37 regole su 91 arrivano a scattare
+
+`node scripts/ricerca/banco-scenari.js` fa girare **il bot vero** — auto-close, auto-reprice,
+manual-order, motore-unico, tutti i gate e i tetti — contro un venue simulato. Il seam è l'**adapter
+del venue**, cioè il punto più profondo possibile: tutto ciò che sta sopra è produzione non toccata.
+Sostituiti in `require.cache` cinque moduli e solo cinque — adapter, giornale, snapshot posizioni,
+gestione manuale e allowlist del riprezzo. Le regole di mercato **non** sono sostituite: si passano
+come `deps.books`/`deps.norm`, che `resolveMarketRules` già accetta.
+
+**Il criterio non è il test unitario verde**: una regola è a posto solo se nel ciclo intero viene
+RAGGIUNTA, SCATTA e produce l'EFFETTO. È la risposta al 16 agosto, quando ogni regola aveva il suo
+test verde e in produzione non è scattato niente.
+
+### Le 11 del GRUPPO 1 — dipendono solo da stato nostro, quindi avrebbero dovuto scattare
+
+⚠ **Tre di queste sono rosse per la ragione giusta, e vanno lette diversamente dalle altre otto.**
+Una lista in cui «rosso» vuol dire due cose diverse non si può usare.
+
+| regola | file:riga | perché non scatta |
+|---|---|---|
+| `merge-esito-mancante` | `auto-close.js:1969` | ✅ **giustamente rossa**: è il RILEVATORE che scatta quando un obbligo di esito resta aperto. Se scattasse sarebbe un difetto nostro |
+| `skip-cancel-non-collegato` | `auto-reprice.js:1830` | ✅ **giustamente rossa**: scatta solo se `deps.cancelOrder` non è una funzione, cioè su un errore di CABLAGGIO. agent40 la inietta sempre |
+| `dry-run-validated` | `auto-close.js:2688` | ✅ **giustamente rossa**: è il ramo della modalità dry-run, e il banco invia sempre. Irraggiungibile per costruzione |
+| `cancelled-top-of-book` | `auto-reprice.js:1845` | serve `d.action === 'cancel'` con gate top-of-book. Lo scenario «soli sul libro» c'è, ma la decisione non ci arriva |
+| `reject-cancel-failed` | `auto-reprice.js:1845` | serve una cancellazione rifiutata dal venue **dentro** un ramo di cancellazione. Lo scenario c'è, il ramo no |
+| `inseguimento-soppresso` | `auto-reprice.js:1768` | serve il gate `inseguimento-contro-mai-primo`: l'inseguimento che metterebbe primi sul libro |
+| `inseguimento-ripreso` | `auto-reprice.js:1785` | la controparte del precedente |
+| `modalita-chiusura-regole-attive` | `auto-close.js:1545` | scatta quando il tentativo immediato FALLISCE e le regole si aprono. Nel banco il tentativo riesce |
+| `posizione-non-valutata` | `agent40:1161` | è la sorella di `posizione-mai-valutata` (che scatta) e richiede un timbro PRECEDENTE: il banco non timbra mai |
+| `residuo-pronto-rivisitato` | `agent40:1228` | serve il registro dei residui popolato e una size tornata sopra il minimo |
+| `rimpiazzata` | `auto-close.js:2677` | il rimpiazzo della gamba dopo un fill, con spazio sotto il tetto del mercato |
+
+### Le 60 del GRUPPO 2 — dipendono da un evento esterno che il venue simulato non produce
+
+| categoria | n | cosa manca al simulatore |
+|---|---|---|
+| errori e casi degeneri | 18 | letture illeggibili, eccezioni, dati malformati |
+| ciclo di vita del mercato | 13 | risoluzione, chiusura, fine scala, scadenza del mercato |
+| rete e rate limit | 10 | 429, `Retry-After`, timeout, esiti ambigui |
+| interruttori e emergenze | 9 | KILL premuto, FERMA, guardiano che scatta |
+| limiti di capitale saturi | 7 | tetti raggiunti, quota della finestra esaurita |
+| concorrenza e corse | 3 | doppioni, chiavi bruciate, lock scaduti |
+
+⚠ **La classificazione è un'ipotesi dichiarata, non una misura**: le parole chiave dicono da cosa
+DIPENDE un ramo, non se sia raggiungibile. Per questo il gruppo 1 è corto e ogni voce porta
+`file:riga` — la verifica costa una lettura. Si rigenera con
+`node scripts/ricerca/classifica-regole-rosse.js`.
+
+### I SEI difetti del banco trovati finora — un banco che mente è peggio di nessun banco
+
+Tutti della stessa classe: **una fixture sbagliata che si maschera da regola morta**. Ogni volta il
+sintomo puntava al posto sbagliato, e ogni volta la correzione è annotata nel sorgente.
+
+1. **`maxSpread` scritto `rewardsMaxSpread`** — regole `readable:false`, OGNI ordine morto a
+   `rules-unreadable`: il banco misurava il proprio fixture.
+2. **`isManual` che tornava un booleano** invece di `{manual, readable}` — il ciclo usciva al primo
+   gate a `manual-mode-unreadable`.
+3. **`require.cache` su un percorso INESISTENTE** (`adapter_vero`) — `require()` risolve il percorso
+   PRIMA di consultare la cache, e il fallimento arrivava travestito da `gate: adapter-threw`.
+4. **`global.enabled` invece di `globalEnabled`** — il ciclo di riprezzo usciva a `disabled-global`
+   **senza guardare un solo mercato**: 18 cicli che sembravano girare e non giravano.
+5. **L'estrattore dell'inventario prendeva ogni stringa su una riga `outcome:`** — compresi
+   l'operando di un confronto (`rp.action === 'rimpiazza'`, che è un'AZIONE) e il ripiego dentro un
+   template (`reject-${gate || 'place'}`). Tre regole inesistenti in una lista da leggere a mano.
+   ⚠ E prima ancora **non vedeva gli `outcome` dentro un ternario**: due regole vere non erano
+   nemmeno inventariate — il banco non poteva dichiararle né rosse né verdi.
+6. **`expiresAtMs` non esposto dagli ordini simulati** — `scaduto-senza-rinnovo` lo legge e usciva a
+   `continue`: la regola risultava rossa per un campo mancante nella fixture.
+
+⚠ E una **regressione vera** presa dal banco, che vale più delle sei: i due presidi di agent40 avevano
+smesso di scattare **senza che nulla nel bot fosse cambiato**. Si appoggiavano alle posizioni lasciate
+dalle fasi precedenti, e quando il merge ha smesso di fallire — cioè quando il banco è diventato più
+FEDELE — le posizioni sparivano prima. **Uno scenario che dipende dagli avanzi di quello prima non è
+uno scenario.**
+
+---
+
+## 8 · ❓ LA DOMANDA CHE RESTA: con 37 su 91, si può fare un giro controllato?
+
+**La mia risposta è sì, a un mercato solo, e per una ragione che non è il numero.**
+
+37 su 91 sembra poco e non lo è, perché le due metà non sono confrontabili. Delle 54 che non scattano,
+**60 su 71 dipendono da eventi che in un giro controllato di poche ore non capiteranno** — un 429, un
+mercato che si risolve, un KILL premuto — e tre delle undici restanti sono rilevatori di difetto che
+**devono** restare rosse. Il numero che conta non è la copertura totale: è **quali** regole scattano.
+E quelle che scattano oggi sono esattamente le sette che il 16 agosto sono costate soldi:
+
+il fill parziale sotto il minimo trova una via d'uscita · il carico di ripiego copre il ciclo in cui
+il venue non ha ancora pubblicato `avgPrice` · l'uscita insegue il bid e arriva a un prezzo colpibile
+· l'attraversamento scatta con i quattro limiti e si dichiara · il merge on-chain esegue e riporta il
+capitale · il rinnovo sopravvive al tetto orario · e una posizione che sparisce senza un nostro
+ordine produce un allarme **subito** invece che il giorno dopo.
+
+**Ciò che rende il giro difendibile non è la copertura, sono le cinture**, e sono numeri, non
+promesse: un mercato solo, $61,25 di tetto, $150 di esposizione riconciliata, $100 di perdita
+giornaliera che è un kill. Il caso peggiore è dell'ordine di un centinaio di dollari, contro
+l'informazione che manca — che è **l'unica** che il banco non può dare: come si comporta il venue
+vero. Il banco dice che, dato un venue che si comporta così, il nostro codice fa quello che crede di
+fare. L'altra metà è il mercato, e si compra solo così.
+
+**Le tre condizioni che porrei prima di armare**, e sono le cose che oggi non so:
+1. **un mercato solo per davvero** — il pin `MAKER_LIVE_MIN_MARKET` **aggiunge** un'entrata, non
+   restringe (`adapter.js:289`), e la allowlist ne porta già 4 più quelli con posizione. Servono tre
+   scritture: selezione automatica spenta, allowlist svuotata, pin come cintura;
+2. **`riconciliaCopertura` e il ripristino delle gambe non sono mai stati esercitati su un fill vero**
+   — il banco li fa scattare, il mercato no;
+3. **l'attraversamento è il permesso più pericoloso** e non è mai arrivato al venue vero. Il primo
+   giro va guardato con `osserva-giro-controllato.js` acceso, non a posteriori.
+
+**Il rischio che accetterei è quello dichiarato; quello che non accetterei è armare senza il punto 1**,
+perché lì il numero che l'operatore ha in mente e quello che il codice applica sono diversi — ed è
+esattamente la forma dell'errore che il 16 agosto è costato $2,84 su tre posizioni che nessuno stava
+guardando.
+
+---
+
 ## Stato del sistema — riverificato il 17 agosto 2026, 05:0xZ, DOPO il riavvio di agent40 e agent41
 
 **Bot FERMO e disarmato.** `AVVIA: false` (dal 16/08 18:47:16Z, `cli/ferma`) · `MAKER_MODE=off` ·
