@@ -1,8 +1,8 @@
 {
- "generatoIl": "2026-08-17T09:30:49.149Z",
- "durataMs": 6003,
- "eventiVenue": 59,
- "righeGiornale": 199,
+ "generatoIl": "2026-08-17T09:52:53.279Z",
+ "durataMs": 5438,
+ "eventiVenue": 50,
+ "righeGiornale": 168,
  "passi": [
   {
    "ora": "09:00:00",
@@ -110,15 +110,22 @@
   {
    "ora": "20:44:00",
    "n": "scenario DEROGA SOTTO IL MINIMO: posizione da 1,82 share (minSize 50)",
-   "restaInPosizione": 1.82
+   "restaInPosizione": 0
   }
  ],
  "regoleInventariate": 102,
- "regoleScattate": 13,
- "regoleMaiScattate": 89,
+ "regoleScattate": 14,
+ "regoleMaiScattate": 88,
  "formeDinamiche": 13,
  "dinamicheConcretizzate": 16,
  "scattate": [
+  {
+   "regola": "attraversamento-consentito",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 2
+  },
   {
    "regola": "carico-di-ripiego",
    "file": [
@@ -138,7 +145,7 @@
    "file": [
     "lib/maker/auto-close.js"
    ],
-   "volte": 4
+   "volte": 2
   },
   {
    "regola": "merge-onchain-eseguito",
@@ -166,7 +173,7 @@
    "file": [
     "lib/maker/auto-close.js"
    ],
-   "volte": 4
+   "volte": 3
   },
   {
    "regola": "modalita-chiusura-ingresso",
@@ -180,7 +187,7 @@
    "file": [
     "lib/maker/auto-close.js"
    ],
-   "volte": 5
+   "volte": 3
   },
   {
    "regola": "reject-venue",
@@ -203,7 +210,7 @@
     "lib/maker/auto-reprice.js",
     "lib/maker/manual-order.js"
    ],
-   "volte": 30
+   "volte": 24
   },
   {
    "regola": "trigger",
@@ -211,7 +218,7 @@
     "lib/maker/auto-close.js",
     "lib/maker/auto-reprice.js"
    ],
-   "volte": 9
+   "volte": 8
   }
  ],
  "mai": [
@@ -240,13 +247,6 @@
    "regola": "applicata",
    "file": [
     "agents/agent41-realloc-scheduler.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "attraversamento-consentito",
-   "file": [
-    "lib/maker/auto-close.js"
    ],
    "volte": 0
   },
@@ -867,7 +867,7 @@
  "eventiVenueRiassunti": [
   {
    "tipo": "ordine-nato",
-   "n": 22
+   "n": 17
   },
   {
    "tipo": "mid-mosso",
@@ -875,11 +875,11 @@
   },
   {
    "tipo": "fill",
-   "n": 4
+   "n": 6
   },
   {
    "tipo": "ordine-scaduto-gtd",
-   "n": 19
+   "n": 13
   },
   {
    "tipo": "merge-fallito",
