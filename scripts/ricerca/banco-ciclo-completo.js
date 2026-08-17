@@ -294,6 +294,8 @@ sostituisci('lib/safety/venue-positions-snapshot.js', {
 // contrario di un banco di prova. La distinzione e' netta e va tenuta: si simula CIO' CHE IL BOT
 // LEGGE, mai CIO' CHE IL BOT DECIDE.
 const MERCATI_SIMULATI = new Set();
+// Lo stato del riprezzo, in memoria e VIVO fra un giro e l'altro.
+const STATO_RIPREZZO = { markets: {}, cycles: 0, lastCycleMs: 0 };
 const vero_mm = require(path.join(ROOT, 'lib/maker/manual-mode'));
 sostituisci('lib/maker/manual-mode.js', {
   ...vero_mm,
@@ -305,13 +307,26 @@ sostituisci('lib/maker/manual-mode.js', {
 const vero_arc = require(path.join(ROOT, 'lib/maker/auto-reprice-config'));
 sostituisci('lib/maker/auto-reprice-config.js', {
   ...vero_arc,
-  readAutoRepriceConfig: () => ({ readable: true, global: { enabled: true },
+  // ⚠ IL CAMPO E' `globalEnabled`, NON `global.enabled`: il ciclo legge `cfgState.globalEnabled`
+  // (auto-reprice.js:1048) e con la forma sbagliata esce a `disabled-global` senza guardare un solo
+  // mercato — cioe' il banco misurava la propria fixture, per la QUARTA volta. Si mettono entrambi:
+  // la forma annidata la usano altri lettori.
+  readAutoRepriceConfig: () => ({ readable: true, globalEnabled: true, global: { enabled: true },
     enabledMarketIds: [...MERCATI_SIMULATI], liveMinMarketIds: [...MERCATI_SIMULATI],
     markets: Object.fromEntries([...MERCATI_SIMULATI].map((m) => [m, { enabled: true }])) }),
   isAutoRepriceEnabled: (marketId) => ({ enabled: MERCATI_SIMULATI.has(String(marketId).toLowerCase()), readable: true }),
   setAutoReprice: () => ({ ok: true }),
-  recordAutoRepriceState: () => ({ ok: true }),
-  readAutoRepriceState: () => ({ readable: true, markets: {}, cycles: 0 }),
+  // ⚠ LO STATO DEL RIPREZZO DEV'ESSERE VERO, non un `{}` che dimentica tutto: il ciclo ci scrive i
+  // contatori dei rinnovi, l'istante dell'ultimo riprezzo e il battito, e li RILEGGE al giro dopo per
+  // decidere anti-churn, tetto orario e rinnovi dovuti. Con uno stub muto ogni giro credeva di essere
+  // il primo — e tre regole sui rinnovi non potevano scattare per costruzione.
+  recordAutoRepriceState: (patch = {}) => {
+    if (patch.heartbeat) { STATO_RIPREZZO.cycles = (STATO_RIPREZZO.cycles || 0) + 1; STATO_RIPREZZO.lastCycleMs = VENUE.ora; return { ok: true }; }
+    const id = String(patch.marketId || '').toLowerCase();
+    if (id) STATO_RIPREZZO.markets[id] = { ...(STATO_RIPREZZO.markets[id] || {}), ...patch, at: VENUE.ora };
+    return { ok: true };
+  },
+  readAutoRepriceState: () => ({ readable: true, ...STATO_RIPREZZO }),
 });
 
 // 3 · L'ADAPTER DEL VENUE. E' il seam vero: tutto cio' che sta sopra e' produzione.
@@ -393,7 +408,7 @@ function depsRegole() {
   return { books: { markets, updatedMs: VENUE.ora }, norm: { markets: norm, updatedMs: VENUE.ora } };
 }
 
-module.exports = { VenueSimulato, VENUE, GIORNALE, sostituisci, ROOT, OUT, VERBOSO, MERCATI_SIMULATI, depsRegole };
+module.exports = { VenueSimulato, VENUE, GIORNALE, sostituisci, ROOT, OUT, VERBOSO, MERCATI_SIMULATI, depsRegole, STATO_RIPREZZO };
 
 if (require.main === module) {
   console.log('Questo file e\' la base del banco. Lo scenario si lancia con:');

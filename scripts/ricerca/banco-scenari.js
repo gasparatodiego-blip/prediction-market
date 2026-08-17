@@ -39,6 +39,7 @@ const A40 = require(path.join(ROOT, 'agents/agent40-manual-reprice'));
 const AC = require(path.join(ROOT, 'lib/maker/auto-close'));
 const AR = require(path.join(ROOT, 'lib/maker/auto-reprice'));
 const MO = require(path.join(ROOT, 'lib/maker/manual-order'));
+const LOCK = require(path.join(ROOT, 'lib/maker/lock-mercato'));
 
 const MKT = '0x' + 'a1'.repeat(32);
 
@@ -336,6 +337,67 @@ const registroChiusura = () => { const m = new Map();
     await AC.runAutoCloseCycle({ ...depsChiusura(reg3), marketIds: [M3] }).catch(() => {});
     passo('scenario DEROGA SOTTO IL MINIMO: posizione da 1,82 share (minSize 50)',
       { restaInPosizione: (VENUE.posizioni.get(m3.tokenId) || {}).size || 0 });
+  }
+
+  // ── FASE 9 · I RINNOVI, CON LO STATO E IL LOCK VERI ─────────────────────────────────────────────
+  // ⚠ LA RAGIONE PER CUI QUESTO SCENARIO ESISTE: il 16 agosto 12 ordini sono scaduti di GTD senza
+  // rinnovo, ed e' il difetto che ha lasciato le gambe spaiate. Nel banco nessuna regola del rinnovo
+  // scattava — non perche' fossero morte, ma perche' il ciclo di riprezzo veniva guidato senza lo
+  // stato (contatori, ultimo riprezzo, battito) e senza il lucchetto. Un ciclo che crede di essere
+  // sempre il primo non puo' accorgersi di un rinnovo dovuto.
+  {
+    const M4 = '0x' + 'd4'.repeat(32);
+    const m4 = VENUE.creaMercato({ conditionId: M4, mid: 0.40, tick: 0.01, minSize: 50, bandaCents: 4.5 });
+    MERCATI_SIMULATI.add(M4.toLowerCase());
+    const r = await MO.placeManualOrder({ marketId: M4, book: 'yes', side: 'BUY', price: 0.38, size: 60,
+      userId: 'operator', inCoda: true }, depsRegole());
+    passo('rinnovi: gamba piazzata', { ok: r.ok, gate: r.gate || null });
+
+    const cicloRiprezzo = async () => AR.runAutoRepriceCycle({
+      now: () => VENUE.ora,
+      configDeps: {},
+      killStatus: () => ({ effectivelyKilled: false, readable: true }),
+      listOrders: async () => ({ ok: true, orders: VENUE.ordiniVivi(M4) }),
+      resolveRules: () => regolePer(M4),
+      readVenue: async () => ({ readable: true, closed: false, acceptingOrders: true }),
+      // ⚠ LA PROFONDITA' VA INIETTATA, o il pavimento non e' nemmeno valutabile e l'esenzione sul
+      // rinnovo (`rinnovo-esente-dal-tetto`) non ha niente da esentare.
+      readDepth: () => { const m = VENUE.mercato(M4);
+        return { readable: true, ageMs: 0, live: true,
+          yes: { bids: m.book.yes.bids, asks: m.book.yes.asks }, no: { bids: m.book.no.bids, asks: m.book.no.asks } }; },
+      replaceOrder: async (spec) => MO.replaceManualOrder(spec, depsRegole()),
+      cancelOrder: async (spec) => MO.cancelManualOrder(spec, 'banco'),
+      audit: (x) => GIORNALE.push(x),
+    }).catch((e) => ({ errore: e.message }));
+
+    // ① IL LUCCHETTO GIA' PRESO: e' la corsa del 16 agosto, due cicli sovrapposti sullo stesso mercato.
+    LOCK.prendi(M4, { da: 'banco-altro-percorso', ora: VENUE.ora });
+    await cicloRiprezzo();
+    passo('rinnovi: ciclo con il LUCCHETTO gia\' preso');
+    LOCK.rilascia(M4);
+
+    // ② IL RINNOVO DOVUTO: si avanza fino a dentro il margine di rinnovo (180 s dalla scadenza GTD),
+    //    con un ciclo a ogni passo — come in produzione, dove il ciclo gira e vede il conto alla
+    //    rovescia scendere. Il mid si muove di poco, o il riprezzo lo tratterebbe come uscita di banda.
+    for (let k = 0; k < 14; k++) {
+      VENUE.avanza(100_000);
+      if (k % 5 === 4) VENUE.muoviMid(M4, -0.005);
+      // ⚠ DAL SESTO GIRO IL LIBRO SI ASSOTTIGLIA. E' la condizione che il 16 agosto ha prodotto 2.100
+      // blocchi (`profondita-insufficiente`) e 12 ordini morti di GTD: dentro la banda premiante resta
+      // UN solo livello popolato, e il pavimento di profondita' rifiuta. L'esenzione sui rinnovi
+      // (§5.2 p.21, `63c10a0`) esiste proprio per questo — un RINNOVO non aggiunge esposizione, la
+      // mantiene — e senza un libro sottile non c'e' niente da esentare.
+      if (k >= 5) {
+        const mm = VENUE.mercato(M4);
+        mm.book.yes.bids = [{ price: mm.book.yes.bestBid, size: 5 }];
+        mm.book.no.bids = [{ price: mm.book.no.bestBid, size: 5 }];
+      }
+      await cicloRiprezzo();
+    }
+    const vivi = VENUE.ordiniVivi(M4);
+    passo('rinnovi: dopo 14 cicli attraverso la finestra di rinnovo',
+      { ordiniVivi: vivi.length, scadenzaSec: vivi[0] ? vivi[0].secondsToExpiry : null,
+        cicli: BASE.STATO_RIPREZZO.cycles });
   }
 
   // ════════════════════════════════════════════════════════════════════════════════════════════════

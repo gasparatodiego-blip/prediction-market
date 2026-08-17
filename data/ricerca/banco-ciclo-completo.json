@@ -1,8 +1,8 @@
 {
- "generatoIl": "2026-08-17T09:52:53.279Z",
- "durataMs": 5438,
- "eventiVenue": 50,
- "righeGiornale": 168,
+ "generatoIl": "2026-08-17T09:56:09.960Z",
+ "durataMs": 6240,
+ "eventiVenue": 56,
+ "righeGiornale": 187,
  "passi": [
   {
    "ora": "09:00:00",
@@ -111,11 +111,28 @@
    "ora": "20:44:00",
    "n": "scenario DEROGA SOTTO IL MINIMO: posizione da 1,82 share (minSize 50)",
    "restaInPosizione": 0
+  },
+  {
+   "ora": "20:44:00",
+   "n": "rinnovi: gamba piazzata",
+   "ok": true,
+   "gate": null
+  },
+  {
+   "ora": "20:44:00",
+   "n": "rinnovi: ciclo con il LUCCHETTO gia' preso"
+  },
+  {
+   "ora": "21:07:20",
+   "n": "rinnovi: dopo 14 cicli attraverso la finestra di rinnovo",
+   "ordiniVivi": 2,
+   "scadenzaSec": 1180,
+   "cicli": 18
   }
  ],
  "regoleInventariate": 102,
- "regoleScattate": 14,
- "regoleMaiScattate": 88,
+ "regoleScattate": 15,
+ "regoleMaiScattate": 87,
  "formeDinamiche": 13,
  "dinamicheConcretizzate": 16,
  "scattate": [
@@ -197,6 +214,13 @@
    "volte": 9
   },
   {
+   "regola": "riprezzo-in-corso",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 1
+  },
+  {
    "regola": "scoperto-oltre-soglia-grave",
    "file": [
     "lib/maker/auto-close.js"
@@ -210,7 +234,7 @@
     "lib/maker/auto-reprice.js",
     "lib/maker/manual-order.js"
    ],
-   "volte": 24
+   "volte": 31
   },
   {
    "regola": "trigger",
@@ -218,7 +242,7 @@
     "lib/maker/auto-close.js",
     "lib/maker/auto-reprice.js"
    ],
-   "volte": 8
+   "volte": 10
   }
  ],
  "mai": [
@@ -775,13 +799,6 @@
    "volte": 0
   },
   {
-   "regola": "riprezzo-in-corso",
-   "file": [
-    "lib/maker/auto-reprice.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "scaduto-senza-rinnovo",
    "file": [
     "lib/maker/auto-reprice.js"
@@ -867,11 +884,11 @@
  "eventiVenueRiassunti": [
   {
    "tipo": "ordine-nato",
-   "n": 17
+   "n": 20
   },
   {
    "tipo": "mid-mosso",
-   "n": 8
+   "n": 10
   },
   {
    "tipo": "fill",
@@ -879,7 +896,7 @@
   },
   {
    "tipo": "ordine-scaduto-gtd",
-   "n": 13
+   "n": 14
   },
   {
    "tipo": "merge-fallito",
