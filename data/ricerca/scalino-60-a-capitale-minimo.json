@@ -1,0 +1,1775 @@
+{
+ "generatoIl": "2026-08-17T12:15:24.237Z",
+ "boardGeneratoIl": "2026-08-17T12:02:37.624Z",
+ "soglia": 0.6,
+ "costoCoppiaTipico": 0.98,
+ "tettoPerMercatoUsd": 61.25,
+ "righeBoard": 142,
+ "ammissibili": 41,
+ "gambeAmmissibili": 82,
+ "scartatiPerMotivo": [
+  {
+   "motivo": "scadenza sotto 24 h",
+   "n": 79
+  },
+  {
+   "motivo": "rewardsMinSize > 50",
+   "n": 21
+  },
+  {
+   "motivo": "scadenza non ammissibile",
+   "n": 1
+  }
+ ],
+ "esiti": [
+  {
+   "scenario": "minimo del mercato (pavimentoPremiante(minSize))",
+   "gambeOk": 82,
+   "gambeSottili": 0,
+   "gambeIgnote": 0,
+   "mercatiConAlmenoUnaGambaOk": 41,
+   "dettaglio": [
+    {
+     "conditionId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.000576188765156993,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.00055909334033041,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0002680588708339184,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0002816691303536411,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c49279846b1226fadc7c8d4299eb0a350dd997bc6d5a8164e2975ec47a616ef",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0035466954229178027,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c49279846b1226fadc7c8d4299eb0a350dd997bc6d5a8164e2975ec47a616ef",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.003988536650220109,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x0ae519a9f7a518f9c19bdcd6f077c2fbe8c32e03b39642343f27d77ba649414e",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.001970736378342695,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x0ae519a9f7a518f9c19bdcd6f077c2fbe8c32e03b39642343f27d77ba649414e",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.002067108394694795,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf88334704e9781b78f3e4da3724d5db06083ad76ab32f66f16d92310e8f3c62a",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0018906133149593728,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf88334704e9781b78f3e4da3724d5db06083ad76ab32f66f16d92310e8f3c62a",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0023035105500783188,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.00015078814920252724,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.00015936408899277075,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.00028289321409155096,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0002980204542691289,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa4ada0a23e4ae5e86df25562be322a21dbeb5f563820f55ad3f2e086c4ee08bb",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.007233772778256416,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa4ada0a23e4ae5e86df25562be322a21dbeb5f563820f55ad3f2e086c4ee08bb",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0075118768864285415,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xe9e713e3d02d67100e35716868238b3824a060ae6c716f310cacc8c39c6a30d0",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.004115747483062117,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xe9e713e3d02d67100e35716868238b3824a060ae6c716f310cacc8c39c6a30d0",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.004423473901503981,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9cdc7f505b444443b4aa0a015814c79ba574c26c57e53e7cbcbb052f6c55bd1e",
+     "lato": "yes",
+     "capitale": 24.5,
+     "quota": 0.023269513991163476,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9cdc7f505b444443b4aa0a015814c79ba574c26c57e53e7cbcbb052f6c55bd1e",
+     "lato": "no",
+     "capitale": 24.5,
+     "quota": 0.0227027027027027,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x303658c00317867d8206adeed79933fa70ed41854f6ec30de104c8c6babfcf2c",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0044962553085350085,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x303658c00317867d8206adeed79933fa70ed41854f6ec30de104c8c6babfcf2c",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.004393856969494078,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x81245d187bed92754cd5e695df5d7598fa2cf4e0d6d904e8a326df315632d75b",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.030830612985128764,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x81245d187bed92754cd5e695df5d7598fa2cf4e0d6d904e8a326df315632d75b",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.030534756518506713,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9d1b9c496cb263b56e3cc6b7b7c54f433a3bedb23e61ddcc52f7f9c77ef003c5",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.008383233532934133,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9d1b9c496cb263b56e3cc6b7b7c54f433a3bedb23e61ddcc52f7f9c77ef003c5",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.008084226358338033,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xbbf84b087712b034fc20b72ea2f410031b09dbedad7db1e13b1aa88a2d76c3e6",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.010621806281219498,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xbbf84b087712b034fc20b72ea2f410031b09dbedad7db1e13b1aa88a2d76c3e6",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.00765524172717282,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf45ea40c1c1dafa07037523ffce5f0c998bca21b3cfc36a28bfb01acb1451b12",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.004219674691911329,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf45ea40c1c1dafa07037523ffce5f0c998bca21b3cfc36a28bfb01acb1451b12",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.003972214866268765,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c5113c1b129827c7dcddcdd2fd86ba49cd714617892d5bbbae486605644329f",
+     "lato": "yes",
+     "capitale": 24.5,
+     "quota": 0.30434782608695654,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c5113c1b129827c7dcddcdd2fd86ba49cd714617892d5bbbae486605644329f",
+     "lato": "no",
+     "capitale": 24.5,
+     "quota": 0.3142857142857142,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x3e6273bbe7069f0216c6e19435a45798053d2cbbbec2085b8b4d1e8831b12a3a",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.007142168590232317,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x3e6273bbe7069f0216c6e19435a45798053d2cbbbec2085b8b4d1e8831b12a3a",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.008769019291842444,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4b86df564913dac60c3f633dc25fc80394615f79b44a9ad4c7b36bb5963aebb9",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.006024817460000798,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4b86df564913dac60c3f633dc25fc80394615f79b44a9ad4c7b36bb5963aebb9",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.006246653578440121,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd5b21e4d9914de45f51a5e32246572d2059d52702670c4a6a32e354ac4c61f7b",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.02015663114648864,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd5b21e4d9914de45f51a5e32246572d2059d52702670c4a6a32e354ac4c61f7b",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.032190447671807156,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5762b07c34cd8b8615e4f406d9e69874c26e03d0d30aed29766e278b2b80b914",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.027667216775070384,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5762b07c34cd8b8615e4f406d9e69874c26e03d0d30aed29766e278b2b80b914",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.02868579052701801,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x283d526b2eec1663627b607aea649c1eea2440cc532c683fc119857764665cf2",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0026925148088314485,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x283d526b2eec1663627b607aea649c1eea2440cc532c683fc119857764665cf2",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0026693874645564667,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x2b9d2441d95f7fd64f7a2154fcd864951805477ae7865ad3dcb516dc2e6c7948",
+     "lato": "yes",
+     "capitale": 24.5,
+     "quota": 0.0172844070616508,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x2b9d2441d95f7fd64f7a2154fcd864951805477ae7865ad3dcb516dc2e6c7948",
+     "lato": "no",
+     "capitale": 24.5,
+     "quota": 0.01990811638591116,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x280a469e638f02118890193a7e75f804ddc1e485ba6236f6bab7e0266ed0333c",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.021325706257213105,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x280a469e638f02118890193a7e75f804ddc1e485ba6236f6bab7e0266ed0333c",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.02356653961227919,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xb5dfbe88c5de52be50482bc4a6375b3e5c29a1672e959e5b49ac62f63f4a1b68",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.007957926787073558,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xb5dfbe88c5de52be50482bc4a6375b3e5c29a1672e959e5b49ac62f63f4a1b68",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.008425060726087051,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27c7221e0b3dc8e611df662c4ba88cd9600c6c5b5c231d8fe03c0b06e2fa6c0d",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0088999644001424,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27c7221e0b3dc8e611df662c4ba88cd9600c6c5b5c231d8fe03c0b06e2fa6c0d",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0038360495664101547,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x995705f945b0ca47cafcb3ec89fead6d9a0f2d0a5f42fecff68fed619d25e86e",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.00765209083429906,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x995705f945b0ca47cafcb3ec89fead6d9a0f2d0a5f42fecff68fed619d25e86e",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.009422768199902284,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x55ac42ecb571b2dccb76735ba8d8510ee6f78fc90ea96d132a11dfbb29d8deae",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.031572462652086866,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x55ac42ecb571b2dccb76735ba8d8510ee6f78fc90ea96d132a11dfbb29d8deae",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.03202158939863858,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xc9abc0f43d239d351badb0436fe6a0c9e1fc96cbb581420a5c301785acac6de2",
+     "lato": "yes",
+     "capitale": 24.5,
+     "quota": 0.10271546635182999,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xc9abc0f43d239d351badb0436fe6a0c9e1fc96cbb581420a5c301785acac6de2",
+     "lato": "no",
+     "capitale": 24.5,
+     "quota": 0.10991233985165207,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x8deb8be8441ee7003dd57ee83ded2998ab11b0b844aa9828d3930cea22beb88f",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.16937967443906732,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x8deb8be8441ee7003dd57ee83ded2998ab11b0b844aa9828d3930cea22beb88f",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.1705018020515664,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xc145a4fabea9c2db89d6c1f3be93fe1859083089c784e2b4587b0eb2bb364747",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.012161672618123478,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xc145a4fabea9c2db89d6c1f3be93fe1859083089c784e2b4587b0eb2bb364747",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.011938761177957771,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xab9164543b7d44d7a31f0ec27eedea5acd459707b5e359d4cfdd16d9e2b99cb8",
+     "lato": "yes",
+     "capitale": 24.5,
+     "quota": 0.0379746835443038,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xab9164543b7d44d7a31f0ec27eedea5acd459707b5e359d4cfdd16d9e2b99cb8",
+     "lato": "no",
+     "capitale": 24.5,
+     "quota": 0.038068709377901584,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x91836772753996ff5241f027990028192cc55b016c52e5d6cadb9d6a25f07782",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.021767934885481732,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x91836772753996ff5241f027990028192cc55b016c52e5d6cadb9d6a25f07782",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.019979867614312297,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x162b8f17f97398a40ccb5db82493d7b814a4c63559fe7f3f7af345c2a8932c4d",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.04885993485342019,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x162b8f17f97398a40ccb5db82493d7b814a4c63559fe7f3f7af345c2a8932c4d",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.04975124378109453,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4d5a3e6b6b517cc88182a42d4a5887790f3c0bdb050c3ada0f03d47616f64bd9",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.012528544096772202,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4d5a3e6b6b517cc88182a42d4a5887790f3c0bdb050c3ada0f03d47616f64bd9",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.01150705984055326,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4fa2fd10aaefca5453def5aebc83a594b5e744347abc716177b8cea02fed46bd",
+     "lato": "yes",
+     "capitale": 24.5,
+     "quota": 0.07315010570824525,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4fa2fd10aaefca5453def5aebc83a594b5e744347abc716177b8cea02fed46bd",
+     "lato": "no",
+     "capitale": 24.5,
+     "quota": 0.06699751861042183,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa5136fea0a1e15bcafc95a951f3a652da7d54d5b9776a75a9d6ad3036d4ff3fb",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.1715833835039133,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa5136fea0a1e15bcafc95a951f3a652da7d54d5b9776a75a9d6ad3036d4ff3fb",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.1620947630922693,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xda455cb37e869e4c8059ace1e8cb1b207be7c0ad2515ae6c2b098653f7dfde63",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.06395073424917101,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xda455cb37e869e4c8059ace1e8cb1b207be7c0ad2515ae6c2b098653f7dfde63",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.06493506493506493,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x25d95a6b467a479723081632604b0d207fc4e1abc7f5cf3c2699682522411f21",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.05842649230120228,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x25d95a6b467a479723081632604b0d207fc4e1abc7f5cf3c2699682522411f21",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0535278003997927,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27dc7db9777dc05bb6475c681bf5a7296c20b114c9493982f1cd37843e1feb7a",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.02374051920823827,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27dc7db9777dc05bb6475c681bf5a7296c20b114c9493982f1cd37843e1feb7a",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.024725865405289184,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9a10f6422c7905c8970059e93ec0fb910270dc15e897c251d5de382efa99c5d3",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.03728464901002829,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9a10f6422c7905c8970059e93ec0fb910270dc15e897c251d5de382efa99c5d3",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0379258033374707,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x732bdf1687a85c282d58cf89b38cd5d9d7e9e0e93fd0e9e7d102219d657efc30",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.017567341475656684,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x732bdf1687a85c282d58cf89b38cd5d9d7e9e0e93fd0e9e7d102219d657efc30",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.018859972605626385,
+     "stato": "ok"
+    }
+   ]
+  },
+  {
+   "scenario": "tetto per mercato ($61.25)",
+   "gambeOk": 82,
+   "gambeSottili": 0,
+   "gambeIgnote": 0,
+   "mercatiConAlmenoUnaGambaOk": 41,
+   "dettaglio": [
+    {
+     "conditionId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.000576188765156993,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.00055909334033041,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0002680588708339184,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0002816691303536411,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c49279846b1226fadc7c8d4299eb0a350dd997bc6d5a8164e2975ec47a616ef",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0035466954229178027,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c49279846b1226fadc7c8d4299eb0a350dd997bc6d5a8164e2975ec47a616ef",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.003988536650220109,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x0ae519a9f7a518f9c19bdcd6f077c2fbe8c32e03b39642343f27d77ba649414e",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.001970736378342695,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x0ae519a9f7a518f9c19bdcd6f077c2fbe8c32e03b39642343f27d77ba649414e",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.002067108394694795,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf88334704e9781b78f3e4da3724d5db06083ad76ab32f66f16d92310e8f3c62a",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0018906133149593728,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf88334704e9781b78f3e4da3724d5db06083ad76ab32f66f16d92310e8f3c62a",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0023035105500783188,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.00015078814920252724,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.00015936408899277075,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.00028289321409155096,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0002980204542691289,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa4ada0a23e4ae5e86df25562be322a21dbeb5f563820f55ad3f2e086c4ee08bb",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.007233772778256416,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa4ada0a23e4ae5e86df25562be322a21dbeb5f563820f55ad3f2e086c4ee08bb",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0075118768864285415,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xe9e713e3d02d67100e35716868238b3824a060ae6c716f310cacc8c39c6a30d0",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.004115747483062117,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xe9e713e3d02d67100e35716868238b3824a060ae6c716f310cacc8c39c6a30d0",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.004423473901503981,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9cdc7f505b444443b4aa0a015814c79ba574c26c57e53e7cbcbb052f6c55bd1e",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.056211754660594845,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9cdc7f505b444443b4aa0a015814c79ba574c26c57e53e7cbcbb052f6c55bd1e",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.05488761108207004,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x303658c00317867d8206adeed79933fa70ed41854f6ec30de104c8c6babfcf2c",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0044962553085350085,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x303658c00317867d8206adeed79933fa70ed41854f6ec30de104c8c6babfcf2c",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.004393856969494078,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x81245d187bed92754cd5e695df5d7598fa2cf4e0d6d904e8a326df315632d75b",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.030830612985128764,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x81245d187bed92754cd5e695df5d7598fa2cf4e0d6d904e8a326df315632d75b",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.030534756518506713,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9d1b9c496cb263b56e3cc6b7b7c54f433a3bedb23e61ddcc52f7f9c77ef003c5",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.008383233532934133,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9d1b9c496cb263b56e3cc6b7b7c54f433a3bedb23e61ddcc52f7f9c77ef003c5",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.008084226358338033,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xbbf84b087712b034fc20b72ea2f410031b09dbedad7db1e13b1aa88a2d76c3e6",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.010621806281219498,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xbbf84b087712b034fc20b72ea2f410031b09dbedad7db1e13b1aa88a2d76c3e6",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.00765524172717282,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf45ea40c1c1dafa07037523ffce5f0c998bca21b3cfc36a28bfb01acb1451b12",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.004219674691911329,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf45ea40c1c1dafa07037523ffce5f0c998bca21b3cfc36a28bfb01acb1451b12",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.003972214866268765,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c5113c1b129827c7dcddcdd2fd86ba49cd714617892d5bbbae486605644329f",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.5223880597014926,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c5113c1b129827c7dcddcdd2fd86ba49cd714617892d5bbbae486605644329f",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.5339805825242717,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x3e6273bbe7069f0216c6e19435a45798053d2cbbbec2085b8b4d1e8831b12a3a",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.007142168590232317,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x3e6273bbe7069f0216c6e19435a45798053d2cbbbec2085b8b4d1e8831b12a3a",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.008769019291842444,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4b86df564913dac60c3f633dc25fc80394615f79b44a9ad4c7b36bb5963aebb9",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.006024817460000798,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4b86df564913dac60c3f633dc25fc80394615f79b44a9ad4c7b36bb5963aebb9",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.006246653578440121,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd5b21e4d9914de45f51a5e32246572d2059d52702670c4a6a32e354ac4c61f7b",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.02015663114648864,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd5b21e4d9914de45f51a5e32246572d2059d52702670c4a6a32e354ac4c61f7b",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.032190447671807156,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5762b07c34cd8b8615e4f406d9e69874c26e03d0d30aed29766e278b2b80b914",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.027667216775070384,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5762b07c34cd8b8615e4f406d9e69874c26e03d0d30aed29766e278b2b80b914",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.02868579052701801,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x283d526b2eec1663627b607aea649c1eea2440cc532c683fc119857764665cf2",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0026925148088314485,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x283d526b2eec1663627b607aea649c1eea2440cc532c683fc119857764665cf2",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0026693874645564667,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x2b9d2441d95f7fd64f7a2154fcd864951805477ae7865ad3dcb516dc2e6c7948",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.04211901437001667,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x2b9d2441d95f7fd64f7a2154fcd864951805477ae7865ad3dcb516dc2e6c7948",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.04832713754646836,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x280a469e638f02118890193a7e75f804ddc1e485ba6236f6bab7e0266ed0333c",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.021325706257213105,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x280a469e638f02118890193a7e75f804ddc1e485ba6236f6bab7e0266ed0333c",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.02356653961227919,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xb5dfbe88c5de52be50482bc4a6375b3e5c29a1672e959e5b49ac62f63f4a1b68",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.007957926787073558,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xb5dfbe88c5de52be50482bc4a6375b3e5c29a1672e959e5b49ac62f63f4a1b68",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.008425060726087051,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27c7221e0b3dc8e611df662c4ba88cd9600c6c5b5c231d8fe03c0b06e2fa6c0d",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.0088999644001424,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27c7221e0b3dc8e611df662c4ba88cd9600c6c5b5c231d8fe03c0b06e2fa6c0d",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0038360495664101547,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x995705f945b0ca47cafcb3ec89fead6d9a0f2d0a5f42fecff68fed619d25e86e",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.00765209083429906,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x995705f945b0ca47cafcb3ec89fead6d9a0f2d0a5f42fecff68fed619d25e86e",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.009422768199902284,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x55ac42ecb571b2dccb76735ba8d8510ee6f78fc90ea96d132a11dfbb29d8deae",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.031572462652086866,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x55ac42ecb571b2dccb76735ba8d8510ee6f78fc90ea96d132a11dfbb29d8deae",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.03202158939863858,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xc9abc0f43d239d351badb0436fe6a0c9e1fc96cbb581420a5c301785acac6de2",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.22250639386189258,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xc9abc0f43d239d351badb0436fe6a0c9e1fc96cbb581420a5c301785acac6de2",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.23589001447178004,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x8deb8be8441ee7003dd57ee83ded2998ab11b0b844aa9828d3930cea22beb88f",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.16937967443906732,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x8deb8be8441ee7003dd57ee83ded2998ab11b0b844aa9828d3930cea22beb88f",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.1705018020515664,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xc145a4fabea9c2db89d6c1f3be93fe1859083089c784e2b4587b0eb2bb364747",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.012161672618123478,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xc145a4fabea9c2db89d6c1f3be93fe1859083089c784e2b4587b0eb2bb364747",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.011938761177957771,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xab9164543b7d44d7a31f0ec27eedea5acd459707b5e359d4cfdd16d9e2b99cb8",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.08982035928143713,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xab9164543b7d44d7a31f0ec27eedea5acd459707b5e359d4cfdd16d9e2b99cb8",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.09003074220465526,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x91836772753996ff5241f027990028192cc55b016c52e5d6cadb9d6a25f07782",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.021767934885481732,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x91836772753996ff5241f027990028192cc55b016c52e5d6cadb9d6a25f07782",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.019979867614312297,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x162b8f17f97398a40ccb5db82493d7b814a4c63559fe7f3f7af345c2a8932c4d",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.04885993485342019,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x162b8f17f97398a40ccb5db82493d7b814a4c63559fe7f3f7af345c2a8932c4d",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.04975124378109453,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4d5a3e6b6b517cc88182a42d4a5887790f3c0bdb050c3ada0f03d47616f64bd9",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.012528544096772202,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4d5a3e6b6b517cc88182a42d4a5887790f3c0bdb050c3ada0f03d47616f64bd9",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.01150705984055326,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4fa2fd10aaefca5453def5aebc83a594b5e744347abc716177b8cea02fed46bd",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.16479329396075443,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4fa2fd10aaefca5453def5aebc83a594b5e744347abc716177b8cea02fed46bd",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.15219842164599776,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa5136fea0a1e15bcafc95a951f3a652da7d54d5b9776a75a9d6ad3036d4ff3fb",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.1715833835039133,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa5136fea0a1e15bcafc95a951f3a652da7d54d5b9776a75a9d6ad3036d4ff3fb",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.1620947630922693,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xda455cb37e869e4c8059ace1e8cb1b207be7c0ad2515ae6c2b098653f7dfde63",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.06395073424917101,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xda455cb37e869e4c8059ace1e8cb1b207be7c0ad2515ae6c2b098653f7dfde63",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.06493506493506493,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x25d95a6b467a479723081632604b0d207fc4e1abc7f5cf3c2699682522411f21",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.05842649230120228,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x25d95a6b467a479723081632604b0d207fc4e1abc7f5cf3c2699682522411f21",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0535278003997927,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27dc7db9777dc05bb6475c681bf5a7296c20b114c9493982f1cd37843e1feb7a",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.02374051920823827,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27dc7db9777dc05bb6475c681bf5a7296c20b114c9493982f1cd37843e1feb7a",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.024725865405289184,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9a10f6422c7905c8970059e93ec0fb910270dc15e897c251d5de382efa99c5d3",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.03728464901002829,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9a10f6422c7905c8970059e93ec0fb910270dc15e897c251d5de382efa99c5d3",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.0379258033374707,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x732bdf1687a85c282d58cf89b38cd5d9d7e9e0e93fd0e9e7d102219d657efc30",
+     "lato": "yes",
+     "capitale": 61.25,
+     "quota": 0.017567341475656684,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x732bdf1687a85c282d58cf89b38cd5d9d7e9e0e93fd0e9e7d102219d657efc30",
+     "lato": "no",
+     "capitale": 61.25,
+     "quota": 0.018859972605626385,
+     "stato": "ok"
+    }
+   ]
+  },
+  {
+   "scenario": "riferimento del board ($500)",
+   "gambeOk": 73,
+   "gambeSottili": 9,
+   "gambeIgnote": 0,
+   "mercatiConAlmenoUnaGambaOk": 37,
+   "dettaglio": [
+    {
+     "conditionId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.00468424802392052,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.004545821553036445,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.0021840419336051253,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.002294709870729122,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c49279846b1226fadc7c8d4299eb0a350dd997bc6d5a8164e2975ec47a616ef",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.028235272612373123,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c49279846b1226fadc7c8d4299eb0a350dd997bc6d5a8164e2975ec47a616ef",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.031655067624603725,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x0ae519a9f7a518f9c19bdcd6f077c2fbe8c32e03b39642343f27d77ba649414e",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.01586369755344801,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x0ae519a9f7a518f9c19bdcd6f077c2fbe8c32e03b39642343f27d77ba649414e",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.016628137325045037,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf88334704e9781b78f3e4da3724d5db06083ad76ab32f66f16d92310e8f3c62a",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.015227354555077002,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf88334704e9781b78f3e4da3724d5db06083ad76ab32f66f16d92310e8f3c62a",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.01849892336266029,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.0012295955371472579,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.001299447931515157,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.0023046621024287338,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.0024276375153005655,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa4ada0a23e4ae5e86df25562be322a21dbeb5f563820f55ad3f2e086c4ee08bb",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.05614206845042844,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa4ada0a23e4ae5e86df25562be322a21dbeb5f563820f55ad3f2e086c4ee08bb",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.05819025171739877,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xe9e713e3d02d67100e35716868238b3824a060ae6c716f310cacc8c39c6a30d0",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.032635764781491,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xe9e713e3d02d67100e35716868238b3824a060ae6c716f310cacc8c39c6a30d0",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.03500093335822288,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9cdc7f505b444443b4aa0a015814c79ba574c26c57e53e7cbcbb052f6c55bd1e",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.3271438273343162,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9cdc7f505b444443b4aa0a015814c79ba574c26c57e53e7cbcbb052f6c55bd1e",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.3216123499142367,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x303658c00317867d8206adeed79933fa70ed41854f6ec30de104c8c6babfcf2c",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.035558850156562766,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x303658c00317867d8206adeed79933fa70ed41854f6ec30de104c8c6babfcf2c",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.03477373887240355,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x81245d187bed92754cd5e695df5d7598fa2cf4e0d6d904e8a326df315632d75b",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.20615056266977103,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x81245d187bed92754cd5e695df5d7598fa2cf4e0d6d904e8a326df315632d75b",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.20452734619543564,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9d1b9c496cb263b56e3cc6b7b7c54f433a3bedb23e61ddcc52f7f9c77ef003c5",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.0645577792123951,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9d1b9c496cb263b56e3cc6b7b7c54f433a3bedb23e61ddcc52f7f9c77ef003c5",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.06238122180151165,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xbbf84b087712b034fc20b72ea2f410031b09dbedad7db1e13b1aa88a2d76c3e6",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.08057772047806544,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xbbf84b087712b034fc20b72ea2f410031b09dbedad7db1e13b1aa88a2d76c3e6",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.05924308418769372,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf45ea40c1c1dafa07037523ffce5f0c998bca21b3cfc36a28bfb01acb1451b12",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.033435675575093624,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xf45ea40c1c1dafa07037523ffce5f0c998bca21b3cfc36a28bfb01acb1451b12",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.031529113498341074,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x1c5113c1b129827c7dcddcdd2fd86ba49cd714617892d5bbbae486605644329f",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.8992805755395683,
+     "stato": "sottile"
+    },
+    {
+     "conditionId": "0x1c5113c1b129827c7dcddcdd2fd86ba49cd714617892d5bbbae486605644329f",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.9034165571616294,
+     "stato": "sottile"
+    },
+    {
+     "conditionId": "0x3e6273bbe7069f0216c6e19435a45798053d2cbbbec2085b8b4d1e8831b12a3a",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.0554657215035498,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x3e6273bbe7069f0216c6e19435a45798053d2cbbbec2085b8b4d1e8831b12a3a",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.06735306110560961,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4b86df564913dac60c3f633dc25fc80394615f79b44a9ad4c7b36bb5963aebb9",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.04714742468901434,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4b86df564913dac60c3f633dc25fc80394615f79b44a9ad4c7b36bb5963aebb9",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.04880905896134322,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd5b21e4d9914de45f51a5e32246572d2059d52702670c4a6a32e354ac4c61f7b",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.14378342735731559,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xd5b21e4d9914de45f51a5e32246572d2059d52702670c4a6a32e354ac4c61f7b",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.21353939056851137,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5762b07c34cd8b8615e4f406d9e69874c26e03d0d30aed29766e278b2b80b914",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.1884970501865129,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x5762b07c34cd8b8615e4f406d9e69874c26e03d0d30aed29766e278b2b80b914",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.1942537043729671,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x283d526b2eec1663627b607aea649c1eea2440cc532c683fc119857764665cf2",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.021563807305817917,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x283d526b2eec1663627b607aea649c1eea2440cc532c683fc119857764665cf2",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.02138206035632966,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x2b9d2441d95f7fd64f7a2154fcd864951805477ae7865ad3dcb516dc2e6c7948",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.2641362321460857,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x2b9d2441d95f7fd64f7a2154fcd864951805477ae7865ad3dcb516dc2e6c7948",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.2930568079350765,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x280a469e638f02118890193a7e75f804ddc1e485ba6236f6bab7e0266ed0333c",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.1510176815054864,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x280a469e638f02118890193a7e75f804ddc1e485ba6236f6bab7e0266ed0333c",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.16459421086379042,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xb5dfbe88c5de52be50482bc4a6375b3e5c29a1672e959e5b49ac62f63f4a1b68",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.06145920177857585,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xb5dfbe88c5de52be50482bc4a6375b3e5c29a1672e959e5b49ac62f63f4a1b68",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.06486155007311666,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27c7221e0b3dc8e611df662c4ba88cd9600c6c5b5c231d8fe03c0b06e2fa6c0d",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.0682985466069282,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27c7221e0b3dc8e611df662c4ba88cd9600c6c5b5c231d8fe03c0b06e2fa6c0d",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.03047721781790509,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x995705f945b0ca47cafcb3ec89fead6d9a0f2d0a5f42fecff68fed619d25e86e",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.05921996691897339,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x995705f945b0ca47cafcb3ec89fead6d9a0f2d0a5f42fecff68fed619d25e86e",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.072056876894829,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x55ac42ecb571b2dccb76735ba8d8510ee6f78fc90ea96d132a11dfbb29d8deae",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.2101960462636371,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x55ac42ecb571b2dccb76735ba8d8510ee6f78fc90ea96d132a11dfbb29d8deae",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.2126282455896355,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xc9abc0f43d239d351badb0436fe6a0c9e1fc96cbb581420a5c301785acac6de2",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.7002575660012879,
+     "stato": "sottile"
+    },
+    {
+     "conditionId": "0xc9abc0f43d239d351badb0436fe6a0c9e1fc96cbb581420a5c301785acac6de2",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.715917076598735,
+     "stato": "sottile"
+    },
+    {
+     "conditionId": "0x8deb8be8441ee7003dd57ee83ded2998ab11b0b844aa9828d3930cea22beb88f",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.6247160381644707,
+     "stato": "sottile"
+    },
+    {
+     "conditionId": "0x8deb8be8441ee7003dd57ee83ded2998ab11b0b844aa9828d3930cea22beb88f",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.626579183307523,
+     "stato": "sottile"
+    },
+    {
+     "conditionId": "0xc145a4fabea9c2db89d6c1f3be93fe1859083089c784e2b4587b0eb2bb364747",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.0913231362308027,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xc145a4fabea9c2db89d6c1f3be93fe1859083089c784e2b4587b0eb2bb364747",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.08978114525533054,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xab9164543b7d44d7a31f0ec27eedea5acd459707b5e359d4cfdd16d9e2b99cb8",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.446162998215348,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xab9164543b7d44d7a31f0ec27eedea5acd459707b5e359d4cfdd16d9e2b99cb8",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.44679830870493875,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x91836772753996ff5241f027990028192cc55b016c52e5d6cadb9d6a25f07782",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.15372687413110897,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x91836772753996ff5241f027990028192cc55b016c52e5d6cadb9d6a25f07782",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.14268038721932264,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x162b8f17f97398a40ccb5db82493d7b814a4c63559fe7f3f7af345c2a8932c4d",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.2954500689383494,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x162b8f17f97398a40ccb5db82493d7b814a4c63559fe7f3f7af345c2a8932c4d",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.2994236095516132,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4d5a3e6b6b517cc88182a42d4a5887790f3c0bdb050c3ada0f03d47616f64bd9",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.09385113268608414,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4d5a3e6b6b517cc88182a42d4a5887790f3c0bdb050c3ada0f03d47616f64bd9",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.08678191227348327,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x4fa2fd10aaefca5453def5aebc83a594b5e744347abc716177b8cea02fed46bd",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.6169581467005221,
+     "stato": "sottile"
+    },
+    {
+     "conditionId": "0x4fa2fd10aaefca5453def5aebc83a594b5e744347abc716177b8cea02fed46bd",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.594399436421275,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xa5136fea0a1e15bcafc95a951f3a652da7d54d5b9776a75a9d6ad3036d4ff3fb",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.6283622894435136,
+     "stato": "sottile"
+    },
+    {
+     "conditionId": "0xa5136fea0a1e15bcafc95a951f3a652da7d54d5b9776a75a9d6ad3036d4ff3fb",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.6122833458929917,
+     "stato": "sottile"
+    },
+    {
+     "conditionId": "0xda455cb37e869e4c8059ace1e8cb1b207be7c0ad2515ae6c2b098653f7dfde63",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.3580332042645733,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0xda455cb37e869e4c8059ace1e8cb1b207be7c0ad2515ae6c2b098653f7dfde63",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.36179450072358904,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x25d95a6b467a479723081632604b0d207fc4e1abc7f5cf3c2699682522411f21",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.33623033598757046,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x25d95a6b467a479723081632604b0d207fc4e1abc7f5cf3c2699682522411f21",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.31585293398105757,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27dc7db9777dc05bb6475c681bf5a7296c20b114c9493982f1cd37843e1feb7a",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.16563271697885926,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x27dc7db9777dc05bb6475c681bf5a7296c20b114c9493982f1cd37843e1feb7a",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.1714728774639907,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9a10f6422c7905c8970059e93ec0fb910270dc15e897c251d5de382efa99c5d3",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.24020939632893779,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x9a10f6422c7905c8970059e93ec0fb910270dc15e897c251d5de382efa99c5d3",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.2434576295194589,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x732bdf1687a85c282d58cf89b38cd5d9d7e9e0e93fd0e9e7d102219d657efc30",
+     "lato": "yes",
+     "capitale": 500,
+     "quota": 0.12737771739130435,
+     "stato": "ok"
+    },
+    {
+     "conditionId": "0x732bdf1687a85c282d58cf89b38cd5d9d7e9e0e93fd0e9e7d102219d657efc30",
+     "lato": "no",
+     "capitale": 500,
+     "quota": 0.13563483163095202,
+     "stato": "ok"
+    }
+   ]
+  }
+ ]
+}
