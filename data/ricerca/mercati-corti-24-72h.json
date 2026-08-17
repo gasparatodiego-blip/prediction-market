@@ -1,0 +1,429 @@
+{
+  "generatoIl": "2026-08-17T19:53:39.095Z",
+  "capitaleUsd": 147,
+  "tettoPerMercatoUsd": 61.25,
+  "board": {
+    "file": "/home/bot/bot/data/liquidity-rewards.json",
+    "righe": 141,
+    "etaMinuti": 19.2
+  },
+  "finestra": {
+    "oreMin": 24,
+    "oreMax": 72
+  },
+  "costantiDelCicloDiVita": {
+    "oreChiusuraForzata": 3,
+    "minutiMinimiAllaChiusura": 3,
+    "gtdSecondi": 1380,
+    "margineRinnovoSecondi": 180,
+    "orizzonteMinimoOreSelezione": 24,
+    "orizzonteMinimoGiorniPiano": 0.5
+  },
+  "imbuto": {
+    "valutati": 141,
+    "senzaMinSize": 0,
+    "pavimentoOltreIlTetto": 49,
+    "selezione": 61,
+    "scadenzaIgnota": 0,
+    "fuoriFinestra": 5,
+    "nettoNonCalcolabile": 4,
+    "superstiti": 22
+  },
+  "cinque": [
+    {
+      "conditionId": "0xd5b21e4d9914de45f51a5e32246572d2059d52702670c4a6a32e354ac4c61f7b",
+      "question": "Will Eric Yonce be the FL-06 Democratic nominee?",
+      "categoria": "Elections",
+      "oreAllaScadenza": 28.09,
+      "scadenza": "2026-08-18T23:59:00Z",
+      "nettoGiornoUsd": 5.1361,
+      "lordoGiornoUsd": 10.0722,
+      "quotaDelMontepremi": 0.092405,
+      "concorrenzaShareInBanda": 601.3,
+      "profonditaAltruiUsd": 951,
+      "montepremiGiornoUsd": 109,
+      "minSize": 50,
+      "pavimentoPremianteUsd": 61.25,
+      "tettoPerMercatoUsd": 61.25,
+      "sharePerLatoAlTetto": 62.5,
+      "superaIlMinimoPremiante": true,
+      "bandaCents": 4.5,
+      "raggioBandaCents": 4.5,
+      "mid": 0.755,
+      "nettoSuCapitalePctGiorno": 8.386,
+      "nettoFinoAllaScadenzaUsd": 6.01,
+      "allaScadenza": [
+        {
+          "istanteMs": 1787011140000,
+          "cosa": "la SELEZIONE lo rilascia: scende sotto le 24 ore di orizzonte minimo",
+          "modulo": "lib/maker/selezione-mercati (ORIZZONTE_MINIMO_ORE) + scadenzeFuoriPerimetro",
+          "effetto": "lo slot si libera e ne entra un altro; `rilasciaDallaSelezione` spegne l'INGRESSO, non l'uscita — la posizione resta gestita da §4.8 (uscita automatica, riprezzo, merge)",
+          "istante": "2026-08-17 23:59Z",
+          "fraOre": 4.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787054340000,
+          "cosa": "esce dall'universo del PIANO: sotto 0.5 giorni il filtro d'orizzonte non lo ammette piu'",
+          "modulo": "lib/rewards/horizon (MIN_HORIZON_DAYS)",
+          "effetto": "nessuna riga nuova nel piano — quello che e' gia' a libro NON viene toccato da questo",
+          "istante": "2026-08-18 11:59Z",
+          "fraOre": 16.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787086740000,
+          "cosa": "CHIUSURA FORZATA a 3 ore dalla risoluzione",
+          "modulo": "lib/maker/modalita-chiusura (ORE_CHIUSURA_FORZATA)",
+          "effetto": "una coppia COMPLETA non si forza (vale $1 comunque); una gamba NUDA viene spinta all'uscita",
+          "istante": "2026-08-18 20:59Z",
+          "fraOre": 25.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787097360000,
+          "cosa": "il venue smette di essere quotabile: 3 minuti alla chiusura",
+          "modulo": "lib/maker/market-clock (minMinutesToClose)",
+          "effetto": "gate `market-too-close-to-close`: nessun ordine nuovo, nemmeno un rinnovo",
+          "istante": "2026-08-18 23:56Z",
+          "fraOre": 28.04,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787097540000,
+          "cosa": "chiusura del mercato al venue",
+          "modulo": "venue",
+          "effetto": "gli ordini a riposo non rinnovati muoiono per GTD entro 23 minuti; il mercato esce dal perimetro (scadenzeFuoriPerimetro)",
+          "istante": "2026-08-18 23:59Z",
+          "fraOre": 28.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": null,
+          "cosa": "RISOLUZIONE — e non e' la chiusura: l'oracolo riporta l'esito ORE dopo",
+          "modulo": "lib/maker/riscatto-automatico (payoutDenominator on-chain)",
+          "effetto": "il riscatto scatta su `payoutDenominator(conditionId) > 0` letto ON-CHAIN, mai su `closed`",
+          "istante": null,
+          "fraOre": null,
+          "giaPassato": null
+        }
+      ]
+    },
+    {
+      "conditionId": "0x91836772753996ff5241f027990028192cc55b016c52e5d6cadb9d6a25f07782",
+      "question": "Will James Fishback win 10–15% of votes in the Florida Repub",
+      "categoria": "Elections",
+      "oreAllaScadenza": 28.09,
+      "scadenza": "2026-08-18T23:59:00Z",
+      "nettoGiornoUsd": 3.6592,
+      "lordoGiornoUsd": 6.8153,
+      "quotaDelMontepremi": 0.090871,
+      "concorrenzaShareInBanda": 612.5,
+      "profonditaAltruiUsd": 1246,
+      "montepremiGiornoUsd": 75,
+      "minSize": 50,
+      "pavimentoPremianteUsd": 61.25,
+      "tettoPerMercatoUsd": 61.25,
+      "sharePerLatoAlTetto": 62.5,
+      "superaIlMinimoPremiante": true,
+      "bandaCents": 4.5,
+      "raggioBandaCents": 4.5,
+      "mid": 0.345,
+      "nettoSuCapitalePctGiorno": 5.974,
+      "nettoFinoAllaScadenzaUsd": 4.28,
+      "allaScadenza": [
+        {
+          "istanteMs": 1787011140000,
+          "cosa": "la SELEZIONE lo rilascia: scende sotto le 24 ore di orizzonte minimo",
+          "modulo": "lib/maker/selezione-mercati (ORIZZONTE_MINIMO_ORE) + scadenzeFuoriPerimetro",
+          "effetto": "lo slot si libera e ne entra un altro; `rilasciaDallaSelezione` spegne l'INGRESSO, non l'uscita — la posizione resta gestita da §4.8 (uscita automatica, riprezzo, merge)",
+          "istante": "2026-08-17 23:59Z",
+          "fraOre": 4.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787054340000,
+          "cosa": "esce dall'universo del PIANO: sotto 0.5 giorni il filtro d'orizzonte non lo ammette piu'",
+          "modulo": "lib/rewards/horizon (MIN_HORIZON_DAYS)",
+          "effetto": "nessuna riga nuova nel piano — quello che e' gia' a libro NON viene toccato da questo",
+          "istante": "2026-08-18 11:59Z",
+          "fraOre": 16.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787086740000,
+          "cosa": "CHIUSURA FORZATA a 3 ore dalla risoluzione",
+          "modulo": "lib/maker/modalita-chiusura (ORE_CHIUSURA_FORZATA)",
+          "effetto": "una coppia COMPLETA non si forza (vale $1 comunque); una gamba NUDA viene spinta all'uscita",
+          "istante": "2026-08-18 20:59Z",
+          "fraOre": 25.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787097360000,
+          "cosa": "il venue smette di essere quotabile: 3 minuti alla chiusura",
+          "modulo": "lib/maker/market-clock (minMinutesToClose)",
+          "effetto": "gate `market-too-close-to-close`: nessun ordine nuovo, nemmeno un rinnovo",
+          "istante": "2026-08-18 23:56Z",
+          "fraOre": 28.04,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787097540000,
+          "cosa": "chiusura del mercato al venue",
+          "modulo": "venue",
+          "effetto": "gli ordini a riposo non rinnovati muoiono per GTD entro 23 minuti; il mercato esce dal perimetro (scadenzeFuoriPerimetro)",
+          "istante": "2026-08-18 23:59Z",
+          "fraOre": 28.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": null,
+          "cosa": "RISOLUZIONE — e non e' la chiusura: l'oracolo riporta l'esito ORE dopo",
+          "modulo": "lib/maker/riscatto-automatico (payoutDenominator on-chain)",
+          "effetto": "il riscatto scatta su `payoutDenominator(conditionId) > 0` letto ON-CHAIN, mai su `closed`",
+          "istante": null,
+          "fraOre": null,
+          "giaPassato": null
+        }
+      ]
+    },
+    {
+      "conditionId": "0x27c7221e0b3dc8e611df662c4ba88cd9600c6c5b5c231d8fe03c0b06e2fa6c0d",
+      "question": "Will Keith Gross be the FL-02 Republican nominee?",
+      "categoria": "Elections",
+      "oreAllaScadenza": 28.09,
+      "scadenza": "2026-08-18T23:59:00Z",
+      "nettoGiornoUsd": 2.124,
+      "lordoGiornoUsd": 3.8851,
+      "quotaDelMontepremi": 0.040469,
+      "concorrenzaShareInBanda": 1451.6,
+      "profonditaAltruiUsd": 1546,
+      "montepremiGiornoUsd": 96,
+      "minSize": 50,
+      "pavimentoPremianteUsd": 61.25,
+      "tettoPerMercatoUsd": 61.25,
+      "sharePerLatoAlTetto": 62.5,
+      "superaIlMinimoPremiante": true,
+      "bandaCents": 4.5,
+      "raggioBandaCents": 4.5,
+      "mid": 0.17,
+      "nettoSuCapitalePctGiorno": 3.468,
+      "nettoFinoAllaScadenzaUsd": 2.49,
+      "allaScadenza": [
+        {
+          "istanteMs": 1787011140000,
+          "cosa": "la SELEZIONE lo rilascia: scende sotto le 24 ore di orizzonte minimo",
+          "modulo": "lib/maker/selezione-mercati (ORIZZONTE_MINIMO_ORE) + scadenzeFuoriPerimetro",
+          "effetto": "lo slot si libera e ne entra un altro; `rilasciaDallaSelezione` spegne l'INGRESSO, non l'uscita — la posizione resta gestita da §4.8 (uscita automatica, riprezzo, merge)",
+          "istante": "2026-08-17 23:59Z",
+          "fraOre": 4.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787054340000,
+          "cosa": "esce dall'universo del PIANO: sotto 0.5 giorni il filtro d'orizzonte non lo ammette piu'",
+          "modulo": "lib/rewards/horizon (MIN_HORIZON_DAYS)",
+          "effetto": "nessuna riga nuova nel piano — quello che e' gia' a libro NON viene toccato da questo",
+          "istante": "2026-08-18 11:59Z",
+          "fraOre": 16.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787086740000,
+          "cosa": "CHIUSURA FORZATA a 3 ore dalla risoluzione",
+          "modulo": "lib/maker/modalita-chiusura (ORE_CHIUSURA_FORZATA)",
+          "effetto": "una coppia COMPLETA non si forza (vale $1 comunque); una gamba NUDA viene spinta all'uscita",
+          "istante": "2026-08-18 20:59Z",
+          "fraOre": 25.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787097360000,
+          "cosa": "il venue smette di essere quotabile: 3 minuti alla chiusura",
+          "modulo": "lib/maker/market-clock (minMinutesToClose)",
+          "effetto": "gate `market-too-close-to-close`: nessun ordine nuovo, nemmeno un rinnovo",
+          "istante": "2026-08-18 23:56Z",
+          "fraOre": 28.04,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787097540000,
+          "cosa": "chiusura del mercato al venue",
+          "modulo": "venue",
+          "effetto": "gli ordini a riposo non rinnovati muoiono per GTD entro 23 minuti; il mercato esce dal perimetro (scadenzeFuoriPerimetro)",
+          "istante": "2026-08-18 23:59Z",
+          "fraOre": 28.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": null,
+          "cosa": "RISOLUZIONE — e non e' la chiusura: l'oracolo riporta l'esito ORE dopo",
+          "modulo": "lib/maker/riscatto-automatico (payoutDenominator on-chain)",
+          "effetto": "il riscatto scatta su `payoutDenominator(conditionId) > 0` letto ON-CHAIN, mai su `closed`",
+          "istante": null,
+          "fraOre": null,
+          "giaPassato": null
+        }
+      ]
+    },
+    {
+      "conditionId": "0x9d1b9c496cb263b56e3cc6b7b7c54f433a3bedb23e61ddcc52f7f9c77ef003c5",
+      "question": "Will Cory Mills be the FL-07 Republican nominee?",
+      "categoria": "Elections",
+      "oreAllaScadenza": 28.09,
+      "scadenza": "2026-08-18T23:59:00Z",
+      "nettoGiornoUsd": 1.1803,
+      "lordoGiornoUsd": 2.6832,
+      "quotaDelMontepremi": 0.026832,
+      "concorrenzaShareInBanda": 2220.6,
+      "profonditaAltruiUsd": 1053,
+      "montepremiGiornoUsd": 100,
+      "minSize": 50,
+      "pavimentoPremianteUsd": 61.25,
+      "tettoPerMercatoUsd": 61.25,
+      "sharePerLatoAlTetto": 62.5,
+      "superaIlMinimoPremiante": true,
+      "bandaCents": 4.5,
+      "raggioBandaCents": 4.5,
+      "mid": 0.115,
+      "nettoSuCapitalePctGiorno": 1.927,
+      "nettoFinoAllaScadenzaUsd": 1.38,
+      "allaScadenza": [
+        {
+          "istanteMs": 1787011140000,
+          "cosa": "la SELEZIONE lo rilascia: scende sotto le 24 ore di orizzonte minimo",
+          "modulo": "lib/maker/selezione-mercati (ORIZZONTE_MINIMO_ORE) + scadenzeFuoriPerimetro",
+          "effetto": "lo slot si libera e ne entra un altro; `rilasciaDallaSelezione` spegne l'INGRESSO, non l'uscita — la posizione resta gestita da §4.8 (uscita automatica, riprezzo, merge)",
+          "istante": "2026-08-17 23:59Z",
+          "fraOre": 4.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787054340000,
+          "cosa": "esce dall'universo del PIANO: sotto 0.5 giorni il filtro d'orizzonte non lo ammette piu'",
+          "modulo": "lib/rewards/horizon (MIN_HORIZON_DAYS)",
+          "effetto": "nessuna riga nuova nel piano — quello che e' gia' a libro NON viene toccato da questo",
+          "istante": "2026-08-18 11:59Z",
+          "fraOre": 16.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787086740000,
+          "cosa": "CHIUSURA FORZATA a 3 ore dalla risoluzione",
+          "modulo": "lib/maker/modalita-chiusura (ORE_CHIUSURA_FORZATA)",
+          "effetto": "una coppia COMPLETA non si forza (vale $1 comunque); una gamba NUDA viene spinta all'uscita",
+          "istante": "2026-08-18 20:59Z",
+          "fraOre": 25.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787097360000,
+          "cosa": "il venue smette di essere quotabile: 3 minuti alla chiusura",
+          "modulo": "lib/maker/market-clock (minMinutesToClose)",
+          "effetto": "gate `market-too-close-to-close`: nessun ordine nuovo, nemmeno un rinnovo",
+          "istante": "2026-08-18 23:56Z",
+          "fraOre": 28.04,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787097540000,
+          "cosa": "chiusura del mercato al venue",
+          "modulo": "venue",
+          "effetto": "gli ordini a riposo non rinnovati muoiono per GTD entro 23 minuti; il mercato esce dal perimetro (scadenzeFuoriPerimetro)",
+          "istante": "2026-08-18 23:59Z",
+          "fraOre": 28.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": null,
+          "cosa": "RISOLUZIONE — e non e' la chiusura: l'oracolo riporta l'esito ORE dopo",
+          "modulo": "lib/maker/riscatto-automatico (payoutDenominator on-chain)",
+          "effetto": "il riscatto scatta su `payoutDenominator(conditionId) > 0` letto ON-CHAIN, mai su `closed`",
+          "istante": null,
+          "fraOre": null,
+          "giaPassato": null
+        }
+      ]
+    },
+    {
+      "conditionId": "0x4b86df564913dac60c3f633dc25fc80394615f79b44a9ad4c7b36bb5963aebb9",
+      "question": "Will Joe Strada be the FL-11 Republican nominee?",
+      "categoria": "Elections",
+      "oreAllaScadenza": 28.09,
+      "scadenza": "2026-08-18T23:59:00Z",
+      "nettoGiornoUsd": 1.0688,
+      "lordoGiornoUsd": 1.755,
+      "quotaDelMontepremi": 0.017038,
+      "concorrenzaShareInBanda": 3532.1,
+      "profonditaAltruiUsd": 5969,
+      "montepremiGiornoUsd": 103,
+      "minSize": 50,
+      "pavimentoPremianteUsd": 61.25,
+      "tettoPerMercatoUsd": 61.25,
+      "sharePerLatoAlTetto": 62.5,
+      "superaIlMinimoPremiante": true,
+      "bandaCents": 4.5,
+      "raggioBandaCents": 4.5,
+      "mid": 0.755,
+      "nettoSuCapitalePctGiorno": 1.745,
+      "nettoFinoAllaScadenzaUsd": 1.25,
+      "allaScadenza": [
+        {
+          "istanteMs": 1787011140000,
+          "cosa": "la SELEZIONE lo rilascia: scende sotto le 24 ore di orizzonte minimo",
+          "modulo": "lib/maker/selezione-mercati (ORIZZONTE_MINIMO_ORE) + scadenzeFuoriPerimetro",
+          "effetto": "lo slot si libera e ne entra un altro; `rilasciaDallaSelezione` spegne l'INGRESSO, non l'uscita — la posizione resta gestita da §4.8 (uscita automatica, riprezzo, merge)",
+          "istante": "2026-08-17 23:59Z",
+          "fraOre": 4.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787054340000,
+          "cosa": "esce dall'universo del PIANO: sotto 0.5 giorni il filtro d'orizzonte non lo ammette piu'",
+          "modulo": "lib/rewards/horizon (MIN_HORIZON_DAYS)",
+          "effetto": "nessuna riga nuova nel piano — quello che e' gia' a libro NON viene toccato da questo",
+          "istante": "2026-08-18 11:59Z",
+          "fraOre": 16.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787086740000,
+          "cosa": "CHIUSURA FORZATA a 3 ore dalla risoluzione",
+          "modulo": "lib/maker/modalita-chiusura (ORE_CHIUSURA_FORZATA)",
+          "effetto": "una coppia COMPLETA non si forza (vale $1 comunque); una gamba NUDA viene spinta all'uscita",
+          "istante": "2026-08-18 20:59Z",
+          "fraOre": 25.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787097360000,
+          "cosa": "il venue smette di essere quotabile: 3 minuti alla chiusura",
+          "modulo": "lib/maker/market-clock (minMinutesToClose)",
+          "effetto": "gate `market-too-close-to-close`: nessun ordine nuovo, nemmeno un rinnovo",
+          "istante": "2026-08-18 23:56Z",
+          "fraOre": 28.04,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": 1787097540000,
+          "cosa": "chiusura del mercato al venue",
+          "modulo": "venue",
+          "effetto": "gli ordini a riposo non rinnovati muoiono per GTD entro 23 minuti; il mercato esce dal perimetro (scadenzeFuoriPerimetro)",
+          "istante": "2026-08-18 23:59Z",
+          "fraOre": 28.09,
+          "giaPassato": false
+        },
+        {
+          "istanteMs": null,
+          "cosa": "RISOLUZIONE — e non e' la chiusura: l'oracolo riporta l'esito ORE dopo",
+          "modulo": "lib/maker/riscatto-automatico (payoutDenominator on-chain)",
+          "effetto": "il riscatto scatta su `payoutDenominator(conditionId) > 0` letto ON-CHAIN, mai su `closed`",
+          "istante": null,
+          "fraOre": null,
+          "giaPassato": null
+        }
+      ]
+    }
+  ]
+}
