@@ -1,8 +1,8 @@
 {
- "generatoIl": "2026-08-17T09:56:09.960Z",
- "durataMs": 6240,
- "eventiVenue": 56,
- "righeGiornale": 187,
+ "generatoIl": "2026-08-17T09:59:17.409Z",
+ "durataMs": 6760,
+ "eventiVenue": 57,
+ "righeGiornale": 189,
  "passi": [
   {
    "ora": "09:00:00",
@@ -94,9 +94,13 @@
   {
    "ora": "17:41:00",
    "n": "sorveglianza: posizione aperta e non valutata per oltre due cicli",
-   "posizioni": 0,
-   "anomalie": 0,
-   "motivo": "tutte le posizioni aperte sono state valutate nei tempi"
+   "posizioni": 1,
+   "anomalie": 1,
+   "motivo": "1 posizione/i non valutata/e da oltre 2 cicli"
+  },
+  {
+   "ora": "17:41:00",
+   "n": "SPARIZIONE NON NOSTRA"
   },
   {
    "ora": "17:42:00",
@@ -130,9 +134,9 @@
    "cicli": 18
   }
  ],
- "regoleInventariate": 102,
- "regoleScattate": 15,
- "regoleMaiScattate": 87,
+ "regoleInventariate": 91,
+ "regoleScattate": 17,
+ "regoleMaiScattate": 74,
  "formeDinamiche": 13,
  "dinamicheConcretizzate": 16,
  "scattate": [
@@ -205,6 +209,20 @@
     "lib/maker/auto-close.js"
    ],
    "volte": 3
+  },
+  {
+   "regola": "posizione-mai-valutata",
+   "file": [
+    "agents/agent40-manual-reprice.js"
+   ],
+   "volte": 1
+  },
+  {
+   "regola": "posizione-uscita-senza-nostro-ordine",
+   "file": [
+    "agents/agent40-manual-reprice.js"
+   ],
+   "volte": 1
   },
   {
    "regola": "reject-venue",
@@ -352,13 +370,6 @@
    "volte": 0
   },
   {
-   "regola": "disarmato",
-   "file": [
-    "agents/agent41-realloc-scheduler.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "dry-run-validated",
    "file": [
     "lib/maker/auto-close.js",
@@ -419,13 +430,6 @@
    "volte": 0
   },
   {
-   "regola": "eseguito",
-   "file": [
-    "agents/agent41-realloc-scheduler.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "esenzione-tetto-chiusura",
    "file": [
     "lib/maker/manual-order.js"
@@ -461,23 +465,9 @@
    "volte": 0
   },
   {
-   "regola": "fallito",
-   "file": [
-    "agents/agent41-realloc-scheduler.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "gemella-cancellata-prima-del-nuovo",
    "file": [
     "lib/maker/manual-order.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "ignoto",
-   "file": [
-    "lib/maker/auto-close.js"
    ],
    "volte": 0
   },
@@ -496,13 +486,6 @@
    "volte": 0
   },
   {
-   "regola": "kill",
-   "file": [
-    "lib/maker/manual-order.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "leg-orphan",
    "file": [
     "lib/maker/bulk-allocate.js"
@@ -513,13 +496,6 @@
    "regola": "leg-rolled-back",
    "file": [
     "lib/maker/bulk-allocate.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "limit",
-   "file": [
-    "lib/maker/auto-close.js"
    ],
    "volte": 0
   },
@@ -629,29 +605,7 @@
    "volte": 0
   },
   {
-   "regola": "place",
-   "file": [
-    "lib/maker/auto-close.js",
-    "lib/maker/manual-order.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "posizione-mai-valutata",
-   "file": [
-    "agents/agent40-manual-reprice.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "posizione-non-valutata",
-   "file": [
-    "agents/agent40-manual-reprice.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "posizione-uscita-senza-nostro-ordine",
    "file": [
     "agents/agent40-manual-reprice.js"
    ],
@@ -722,13 +676,6 @@
    "volte": 0
   },
   {
-   "regola": "replace",
-   "file": [
-    "lib/maker/auto-reprice.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "residuo-ancora-bloccato",
    "file": [
     "agents/agent40-manual-reprice.js"
@@ -760,13 +707,6 @@
    "regola": "rimandato-per-quota",
    "file": [
     "lib/maker/bulk-allocate.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "rimpiazza",
-   "file": [
-    "lib/maker/auto-close.js"
    ],
    "volte": 0
   },
@@ -834,21 +774,6 @@
    "volte": 0
   },
   {
-   "regola": "taker",
-   "file": [
-    "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "venue",
-   "file": [
-    "lib/maker/auto-close.js",
-    "lib/maker/manual-order.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "via-alternativa",
    "file": [
     "agents/agent41-realloc-scheduler.js"
@@ -908,6 +833,10 @@
   },
   {
    "tipo": "rifiuto-saldo",
+   "n": 1
+  },
+  {
+   "tipo": "sparizione-esterna",
    "n": 1
   },
   {

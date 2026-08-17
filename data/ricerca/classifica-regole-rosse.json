@@ -1,0 +1,470 @@
+{
+ "generatoIl": "2026-08-17T09:59:17.739Z",
+ "totaleRosse": 74,
+ "gruppo1_sospette": 12,
+ "gruppo2_mancaScenario": 62,
+ "nonTrovate": 0,
+ "perFamiglia": [
+  {
+   "famiglia": "errori e casi degeneri",
+   "n": 18
+  },
+  {
+   "famiglia": "ciclo di vita del mercato",
+   "n": 15
+  },
+  {
+   "famiglia": "rete e rate limit",
+   "n": 10
+  },
+  {
+   "famiglia": "interruttori e emergenze",
+   "n": 9
+  },
+  {
+   "famiglia": "limiti di capitale saturi",
+   "n": 7
+  },
+  {
+   "famiglia": "concorrenza e corse",
+   "n": 3
+  }
+ ],
+ "sospette": [
+  {
+   "regola": "cancelled-lato-singolo-zero",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 2213
+  },
+  {
+   "regola": "cancelled-top-of-book",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1845
+  },
+  {
+   "regola": "dry-run-validated",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2688
+  },
+  {
+   "regola": "inseguimento-ripreso",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1785
+  },
+  {
+   "regola": "inseguimento-soppresso",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1768
+  },
+  {
+   "regola": "merge-esito-mancante",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1969
+  },
+  {
+   "regola": "modalita-chiusura-regole-attive",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1545
+  },
+  {
+   "regola": "posizione-non-valutata",
+   "file": "agents/agent40-manual-reprice.js",
+   "riga": 1161
+  },
+  {
+   "regola": "reject-cancel-failed",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1845
+  },
+  {
+   "regola": "residuo-pronto-rivisitato",
+   "file": "agents/agent40-manual-reprice.js",
+   "riga": 1228
+  },
+  {
+   "regola": "rimpiazzata",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2677
+  },
+  {
+   "regola": "skip-cancel-non-collegato",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1830
+  }
+ ],
+ "mancaScenario": [
+  {
+   "regola": "allowlist-auto-off",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1428,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "allowlist-auto-off-failed",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1428,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "anomalia-rinnovo-fermato",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1995,
+   "famiglia": "rete e rate limit"
+  },
+  {
+   "regola": "applicata",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 1755,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "chiusura-forzata-pre-scadenza",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1317,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "chiusura-forzata-pre-scadenza-non-riuscita",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1335,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "collasso-oltre-soglia",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 2587,
+   "famiglia": "interruttori e emergenze"
+  },
+  {
+   "regola": "complete",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 408,
+   "famiglia": "interruttori e emergenze"
+  },
+  {
+   "regola": "coppia-completa-residuo-cancellato",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1136,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "coppia-completa-residuo-cancellazione-fallita",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1136,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "coppia-oltre-il-tetto",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1095,
+   "famiglia": "limiti di capitale saturi"
+  },
+  {
+   "regola": "coppia-scartata-preflight",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 277,
+   "famiglia": "limiti di capitale saturi"
+  },
+  {
+   "regola": "cross-dichiarato",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1102,
+   "famiglia": "limiti di capitale saturi"
+  },
+  {
+   "regola": "end-of-life-cancel",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1379,
+   "famiglia": "rete e rate limit"
+  },
+  {
+   "regola": "end-of-life-cancel-failed",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1392,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "end-of-life-cancelled",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1392,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "end-of-scale-cancel",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1459,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "end-of-scale-cancel-failed",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1470,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "end-of-scale-cancelled",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1470,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "error",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2640,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "esenzione-tetto-chiusura",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1274,
+   "famiglia": "limiti di capitale saturi"
+  },
+  {
+   "regola": "esenzione-tetto-chiusura-non-provata",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1274,
+   "famiglia": "limiti di capitale saturi"
+  },
+  {
+   "regola": "exit-cancel-failed",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2429,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "exit-market-dry-run",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2488,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "exit-market-sent",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2488,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "gemella-cancellata-prima-del-nuovo",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1355,
+   "famiglia": "concorrenza e corse"
+  },
+  {
+   "regola": "leg-orphan",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 391,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "leg-rolled-back",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 391,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "lock-scaduto-stato-incoerente",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1194,
+   "famiglia": "concorrenza e corse"
+  },
+  {
+   "regola": "merge-onchain-non-eseguito",
+   "file": "lib/maker/auto-close.js",
+   "riga": 694,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "merge-timeout-cancel-fallita",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2579,
+   "famiglia": "rete e rate limit"
+  },
+  {
+   "regola": "mid-stantio-risolto",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 2136,
+   "famiglia": "rete e rate limit"
+  },
+  {
+   "regola": "modalita-chiusura-sorella-aumentata",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1183,
+   "famiglia": "interruttori e emergenze"
+  },
+  {
+   "regola": "modalita-chiusura-sorella-ridotta-dal-capitale",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1517,
+   "famiglia": "interruttori e emergenze"
+  },
+  {
+   "regola": "modalita-chiusura-sorella-rimandata-dal-capitale",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1517,
+   "famiglia": "interruttori e emergenze"
+  },
+  {
+   "regola": "modalita-chiusura-sorella-sotto-bersaglio",
+   "file": "lib/maker/auto-close.js",
+   "riga": 1197,
+   "famiglia": "interruttori e emergenze"
+  },
+  {
+   "regola": "nessuna-azione-regola-di-rischio",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 2315,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "non-misurabile",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 230,
+   "famiglia": "rete e rate limit"
+  },
+  {
+   "regola": "noop",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1638,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "obiettivo-raggiunto",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 230,
+   "famiglia": "rete e rate limit"
+  },
+  {
+   "regola": "partial",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 408,
+   "famiglia": "interruttori e emergenze"
+  },
+  {
+   "regola": "reconnect-cancel",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1346,
+   "famiglia": "rete e rate limit"
+  },
+  {
+   "regola": "reconnect-cancel-failed",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1354,
+   "famiglia": "rete e rate limit"
+  },
+  {
+   "regola": "reconnect-cancelled",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1354,
+   "famiglia": "rete e rate limit"
+  },
+  {
+   "regola": "registri-mercato-chiuso-errore",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2254,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "registri-ripuliti-mercato-chiuso",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2246,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "reject-cap-preflight",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1837,
+   "famiglia": "limiti di capitale saturi"
+  },
+  {
+   "regola": "reject-idempotency-preflight",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1851,
+   "famiglia": "concorrenza e corse"
+  },
+  {
+   "regola": "reject-venue-rules-preflight",
+   "file": "lib/maker/manual-order.js",
+   "riga": 1813,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "residuo-ancora-bloccato",
+   "file": "agents/agent40-manual-reprice.js",
+   "riga": 1446,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "residuo-ripiazzato",
+   "file": "agents/agent40-manual-reprice.js",
+   "riga": 1446,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "residuo-sotto-soglia",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 1922,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "rimandato-per-quota",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 313,
+   "famiglia": "interruttori e emergenze"
+  },
+  {
+   "regola": "rinnovo-esente-dal-tetto",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 2018,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "riposizionamento-mercato-non-valido",
+   "file": "lib/maker/auto-close.js",
+   "riga": 2754,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "riposizionamento-piazzato",
+   "file": "lib/maker/auto-close.js",
+   "riga": 774,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "scaduto-senza-rinnovo",
+   "file": "lib/maker/auto-reprice.js",
+   "riga": 2318,
+   "famiglia": "ciclo di vita del mercato"
+  },
+  {
+   "regola": "sotto-obiettivo",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 230,
+   "famiglia": "rete e rate limit"
+  },
+  {
+   "regola": "start",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 173,
+   "famiglia": "limiti di capitale saturi"
+  },
+  {
+   "regola": "stopped-cap",
+   "file": "lib/maker/bulk-allocate.js",
+   "riga": 293,
+   "famiglia": "interruttori e emergenze"
+  },
+  {
+   "regola": "via-alternativa",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 2315,
+   "famiglia": "errori e casi degeneri"
+  },
+  {
+   "regola": "vuoto-oltre-soglia",
+   "file": "agents/agent41-realloc-scheduler.js",
+   "riga": 2622,
+   "famiglia": "errori e casi degeneri"
+  }
+ ],
+ "nonTrovateElenco": []
+}

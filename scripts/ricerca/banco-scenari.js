@@ -68,7 +68,17 @@ function inventarioRegole() {
     // inventariate: il banco non poteva dichiararle rosse ne' verdi, semplicemente non le vedeva.
     // Un inventario che non vede una regola e' peggio di un inventario che la dichiara rossa.
     for (const m of codice.matchAll(/outcome:\s*([^,\n]+)/g)) {
-      for (const q of String(m[1]).matchAll(/'([a-z0-9-]{3,})'/g)) {
+      const espr = String(m[1]);
+      // ⚠ NON TUTTE LE STRINGHE SU UNA RIGA `outcome:` SONO UN OUTCOME, e prenderle tutte gonfia
+      // l'inventario di regole che non esistono — che e' il modo di rendere illeggibile la lista da
+      // guardare a mano. Si scartano due forme:
+      //   · l'operando di un confronto — `(rp && rp.action === 'rimpiazza') ? …` : e' un'AZIONE, non
+      //     un esito, e il suo nome finisce nella riga solo perche' la decide;
+      //   · il ripiego dentro un template — `` `reject-${gate || 'place'}` `` : «place» non e' un
+      //     outcome, e' il pezzo che si usa quando il gate non si legge. L'outcome vero e' dinamico.
+      const senzaConfronti = espr.replace(/[!=]==?\s*'[^']*'/g, ' ');
+      const senzaRipieghi = senzaConfronti.replace(/\$\{[^}]*\}/g, ' ');
+      for (const q of senzaRipieghi.matchAll(/'([a-z0-9-]{3,})'/g)) {
         if (!statiche.has(q[1])) statiche.set(q[1], []);
         if (!statiche.get(q[1]).includes(f)) statiche.get(q[1]).push(f);
       }
@@ -250,6 +260,16 @@ const registroChiusura = () => { const m = new Map();
   // Un presidio che il banco non chiama risulta rosso per colpa del banco, non del bot — che e'
   // esattamente il tipo di bugia che questo banco esiste per non raccontare.
   //
+  // ⚠ SCENARIO CON MERCATO PROPRIO, e la ragione e' una regressione vera che il banco ha preso:
+  // finche' questi due presidi si appoggiavano alle posizioni lasciate dalle fasi precedenti,
+  // funzionavano per caso. Quando il merge ha smesso di fallire — cioe' quando ho reso il banco piu'
+  // fedele — le posizioni sparivano prima e i due presidi tornavano rossi senza che nulla nel bot
+  // fosse cambiato. Uno scenario che dipende dagli avanzi di quello prima non e' uno scenario.
+  const M5 = '0x' + 'e5'.repeat(32);
+  const m5 = VENUE.creaMercato({ conditionId: M5, mid: 0.40, tick: 0.01, minSize: 50, bandaCents: 4.5 });
+  MERCATI_SIMULATI.add(M5.toLowerCase());
+  VENUE.posizioni.set(m5.tokenId, { size: 60, costoTotale: 60 * 0.38, nascondiPerCicli: 0 });
+
   // ① LA SORVEGLIANZA: si fa passare una posizione aperta senza mai valutarla per due cicli.
   await A40.sparizioneTask({ now: () => VENUE.ora }).catch(() => {});   // primo giro: fotografa lo stato di partenza
   await A40.sorveglianzaTask({ now: () => VENUE.ora }).catch(() => {});
@@ -260,7 +280,7 @@ const registroChiusura = () => { const m = new Map();
       motivo: rs && rs.motivo });
 
   // ② LA SPARIZIONE NON NOSTRA: la posizione se ne va senza un nostro ordine.
-  const tokPos = [...VENUE.posizioni.keys()][0];
+  const tokPos = m5.tokenId;
   if (tokPos) { VENUE.sparizioneEsterna(tokPos, VENUE.posizioni.get(tokPos).size); passo('SPARIZIONE NON NOSTRA'); }
   VENUE.avanza(60_000);
   await A40.sparizioneTask({ now: () => VENUE.ora }).catch((e) => passo('sparizioneTask errore', { e: e.message }));
