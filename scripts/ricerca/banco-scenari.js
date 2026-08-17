@@ -105,6 +105,20 @@ const depsChiusura = (registri) => ({
     return { readable: true, ageMs: 0, live: true,
       yes: { bids: m.book.yes.bids, asks: m.book.yes.asks }, no: { bids: m.book.no.bids, asks: m.book.no.asks } }; },
   attesaMerge: registri.merge, chiusura: registri.chiusura,
+  // ⚠ IL MERGE PASSA DALLA DEP CHE `fondiCoppia` GIA' ACCETTA (`deps.mergeOnChain`): la decisione di
+  // fondere — `decidiLivello` che risponde `azione:'merge'` — resta quella di produzione, e qui si
+  // sostituisce solo la catena on-chain, che senza rete non e' esercitabile.
+  // ⚠ LA FORMA DELLA RISPOSTA E' UN CONTRATTO, E VA RISPETTATA ALLA LETTERA: `fondiCoppia` accetta
+  // il merge solo se `r.eseguito === true` (auto-close.js:597), non se `r.ok`. Con la forma sbagliata
+  // il merge AVVIENE — il capitale torna, le posizioni spariscono — ma il bot lo registra come
+  // `merge-onchain-non-eseguito`: effetto giusto, verbale sbagliato. E' il tipo di divergenza che un
+  // banco deve prendere, e l'ha presa.
+  mergeOnChain: async ({ marketId, size }) => {
+    const r = VENUE.merge(marketId, size);
+    if (!r.ok) throw new Error(r.reason);
+    return { eseguito: true, transactionID: r.transactionID, transactionHash: `0x${'ab'.repeat(32)}`,
+      stato: 'CONFIRMED', size: r.quanteShare };
+  },
   // ⚠ `placeOrder` PASSA DAL `placeManualOrder` VERO — con tutti i suoi gate — e non dal venue diretto.
   // E' la differenza fra provare il ciclo e provare il simulatore.
   placeOrder: (spec) => MO.placeManualOrder({ ...spec, userId: 'operator' }, depsRegole()),
@@ -202,9 +216,21 @@ const registroChiusura = () => { const m = new Map();
     || (o.tokenId === VENUE.mercato(MKT).tokenIdNo && o.side === 'BUY'));
   if (gambaNo) { VENUE.riempi(gambaNo.orderId, gambaNo.sizeRemaining); passo('la gamba NO si riempie: coppia COMPLETA'); }
   VENUE.avanza(60_000);
+  // ⚠ PRIMA IL MERGE CHE FALLISCE, POI QUELLO CHE RIESCE: i due esiti sono regole diverse
+  // (`merge-onchain-fallito` e `merge-onchain-eseguito`) e vanno entrambi raggiunti. Provare solo il
+  // fallimento — com'era la prima corsa — lascia rossa la regola che conta davvero, cioe' quella che
+  // riporta il capitale.
   VENUE.scenari.mergeFallisce = true;
   await AC.runAutoCloseCycle(depsChiusura(registri)).catch(() => {});
-  passo('ciclo con coppia completa (merge che fallisce)');
+  passo('ciclo con coppia completa · merge che FALLISCE', { saldo: +VENUE.saldo.toFixed(2) });
+
+  VENUE.scenari.mergeFallisce = false;
+  VENUE.avanza(60_000);
+  const saldoPrima = VENUE.saldo; const posPrima = VENUE.posizioni.size;
+  await AC.runAutoCloseCycle(depsChiusura(registri)).catch(() => {});
+  passo('ciclo con coppia completa · merge che RIESCE',
+    { saldoPrima: +saldoPrima.toFixed(2), saldoDopo: +VENUE.saldo.toFixed(2),
+      posizioniPrima: posPrima, posizioniDopo: VENUE.posizioni.size });
 
   // ── FASE 7 · GLI SCENARI CATTIVI ────────────────────────────────────────────────────────────────
   VENUE.scenari.feedTace = true;

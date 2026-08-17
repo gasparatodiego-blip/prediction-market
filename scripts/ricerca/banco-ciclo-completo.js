@@ -207,6 +207,31 @@ class VenueSimulato {
     }
   }
 
+  /**
+   * IL MERGE ON-CHAIN. Rende $1 per coppia: le DUE gambe spariscono insieme e il capitale torna.
+   * ⚠ L'EFFETTO E' LA PARTE CHE CONTA. Un simulatore che restituisse `{ok:true}` senza togliere le
+   * posizioni farebbe scattare la regola e non proverebbe niente: il banco dichiara «SCATTATA» dove
+   * il sistema non ha fatto nulla, cioe' esattamente la bugia che deve impedire.
+   */
+  merge(conditionId, quanteShare) {
+    const m = this.mercato(conditionId);
+    if (!m) return { ok: false, reason: 'mercato sconosciuto' };
+    if (this.scenari.mergeFallisce) {
+      this.log('merge-fallito', { conditionId, quanteShare });
+      return { ok: false, reason: 'submit rifiutato dal relayer (HTTP 400)' };
+    }
+    const y = this.posizioni.get(m.tokenId); const n = this.posizioni.get(m.tokenIdNo);
+    const q = Math.min(quanteShare, y ? y.size : 0, n ? n.size : 0);
+    if (!(q > 0)) return { ok: false, reason: 'la coppia non e\' completa: niente da fondere' };
+    for (const [tok, p] of [[m.tokenId, y], [m.tokenIdNo, n]]) {
+      p.size -= q; p.costoTotale = Math.max(0, p.costoTotale - q * (p.costoTotale / Math.max(p.size + q, 1e-9)));
+      if (p.size <= 1e-9) this.posizioni.delete(tok);
+    }
+    this.saldo += q;   // $1 per coppia, per costruzione
+    this.log('merge-eseguito', { conditionId, quanteShare: q, saldo: +this.saldo.toFixed(2) });
+    return { ok: true, transactionID: `sim-tx-${++this.seq}`, quanteShare: q };
+  }
+
   /** Una posizione che se ne va senza un nostro ordine: il fatto del 16 agosto alle 19:27. */
   sparizioneEsterna(tokenId, quanto) {
     const p = this.posizioni.get(tokenId);

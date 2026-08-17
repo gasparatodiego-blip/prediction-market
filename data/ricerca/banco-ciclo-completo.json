@@ -1,8 +1,8 @@
 {
- "generatoIl": "2026-08-17T09:10:04.855Z",
- "durataMs": 5512,
- "eventiVenue": 36,
- "righeGiornale": 118,
+ "generatoIl": "2026-08-17T09:12:01.578Z",
+ "durataMs": 4151,
+ "eventiVenue": 34,
+ "righeGiornale": 99,
  "passi": [
   {
    "ora": "09:00:00",
@@ -72,29 +72,34 @@
   },
   {
    "ora": "17:11:00",
-   "n": "ciclo con coppia completa (merge che fallisce)"
+   "n": "ciclo con coppia completa · merge che FALLISCE",
+   "saldo": 439.58
   },
   {
    "ora": "17:12:00",
+   "n": "ciclo con coppia completa · merge che RIESCE",
+   "saldoPrima": 439.58,
+   "saldoDopo": 499.4,
+   "posizioniPrima": 2,
+   "posizioniDopo": 0
+  },
+  {
+   "ora": "17:13:00",
    "n": "ciclo con il FEED CHE TACE"
   },
   {
-   "ora": "17:37:00",
+   "ora": "17:38:00",
    "n": "avanzato oltre la GTD: gli ordini scadono"
   },
   {
-   "ora": "17:40:00",
-   "n": "sorveglianza: posizione aperta e non valutata per oltre due cicli",
-   "posizioni": 2,
-   "anomalie": 2,
-   "motivo": "2 posizione/i non valutata/e da oltre 2 cicli"
-  },
-  {
-   "ora": "17:40:00",
-   "n": "SPARIZIONE NON NOSTRA"
-  },
-  {
    "ora": "17:41:00",
+   "n": "sorveglianza: posizione aperta e non valutata per oltre due cicli",
+   "posizioni": 0,
+   "anomalie": 0,
+   "motivo": "tutte le posizioni aperte sono state valutate nei tempi"
+  },
+  {
+   "ora": "17:42:00",
    "n": "ciclo dopo la sparizione"
   }
  ],
@@ -112,11 +117,18 @@
    "volte": 1
   },
   {
+   "regola": "merge-onchain-eseguito",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 1
+  },
+  {
    "regola": "merge-onchain-fallito",
    "file": [
     "lib/maker/auto-close.js"
    ],
-   "volte": 3
+   "volte": 2
   },
   {
    "regola": "merge-saltato-senza-ingressi",
@@ -137,7 +149,7 @@
    "file": [
     "lib/maker/auto-close.js"
    ],
-   "volte": 2
+   "volte": 1
   },
   {
    "regola": "modalita-chiusura-lato-posseduto-piazzato",
@@ -147,18 +159,11 @@
    "volte": 3
   },
   {
-   "regola": "posizione-mai-valutata",
+   "regola": "reject-venue",
    "file": [
-    "agents/agent40-manual-reprice.js"
+    "lib/maker/manual-order.js"
    ],
-   "volte": 2
-  },
-  {
-   "regola": "posizione-uscita-senza-nostro-ordine",
-   "file": [
-    "agents/agent40-manual-reprice.js"
-   ],
-   "volte": 1
+   "volte": 3
   },
   {
    "regola": "scoperto-oltre-soglia-grave",
@@ -174,7 +179,7 @@
     "lib/maker/auto-reprice.js",
     "lib/maker/manual-order.js"
    ],
-   "volte": 19
+   "volte": 14
   },
   {
    "regola": "trigger",
@@ -182,7 +187,7 @@
     "lib/maker/auto-close.js",
     "lib/maker/auto-reprice.js"
    ],
-   "volte": 5
+   "volte": 4
   }
  ],
  "mai": [
@@ -499,13 +504,6 @@
    "volte": 0
   },
   {
-   "regola": "merge-onchain-eseguito",
-   "file": [
-    "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "merge-onchain-non-eseguito",
    "file": [
     "lib/maker/auto-close.js"
@@ -605,7 +603,21 @@
    "volte": 0
   },
   {
+   "regola": "posizione-mai-valutata",
+   "file": [
+    "agents/agent40-manual-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
    "regola": "posizione-non-valutata",
+   "file": [
+    "agents/agent40-manual-reprice.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "posizione-uscita-senza-nostro-ordine",
    "file": [
     "agents/agent40-manual-reprice.js"
    ],
@@ -663,13 +675,6 @@
   },
   {
    "regola": "reject-idempotency-preflight",
-   "file": [
-    "lib/maker/manual-order.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "reject-venue",
    "file": [
     "lib/maker/manual-order.js"
    ],
@@ -846,12 +851,12 @@
   "merge-saltato-non-applicabile",
   "merge-livello-1",
   "skip-no-entry-price",
-  "merge-livello-1-piazzato"
+  "riposizionamento-niente"
  ],
  "eventiVenueRiassunti": [
   {
    "tipo": "ordine-nato",
-   "n": 14
+   "n": 11
   },
   {
    "tipo": "mid-mosso",
@@ -859,14 +864,22 @@
   },
   {
    "tipo": "fill",
-   "n": 4
+   "n": 3
   },
   {
    "tipo": "ordine-scaduto-gtd",
    "n": 10
   },
   {
-   "tipo": "sparizione-esterna",
+   "tipo": "merge-fallito",
+   "n": 1
+  },
+  {
+   "tipo": "merge-eseguito",
+   "n": 1
+  },
+  {
+   "tipo": "rifiuto-saldo",
    "n": 1
   }
  ]
