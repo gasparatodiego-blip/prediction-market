@@ -30,6 +30,12 @@ const BASE = require('./banco-ciclo-completo');
 const { VENUE, GIORNALE, ROOT, VERBOSO, MERCATI_SIMULATI, depsRegole } = BASE;
 
 // Da qui in giu' e' tutto codice di PRODUZIONE.
+// ⚠ agent40 SI CARICA COME MODULO, non si avvia: `require` di un agent esegue il suo corpo di
+// modulo (caricatore .env, costanti) ma NON il suo `main()`, che sta dietro `require.main === module`.
+// Serve perche' due presidi — la sorveglianza sulla valutazione e l'allarme sulle sparizioni non
+// nostre — vivono LI' e non in `lib/`: il banco che non li chiama non li puo' vedere scattare, ed e'
+// esattamente perche' nella prima corsa risultavano rossi.
+const A40 = require(path.join(ROOT, 'agents/agent40-manual-reprice'));
 const AC = require(path.join(ROOT, 'lib/maker/auto-close'));
 const AR = require(path.join(ROOT, 'lib/maker/auto-reprice'));
 const MO = require(path.join(ROOT, 'lib/maker/manual-order'));
@@ -55,9 +61,16 @@ function inventarioRegole() {
     let src; try { src = fs.readFileSync(path.join(ROOT, f), 'utf8'); } catch { continue; }
     // I commenti non sono codice: un `outcome` NOMINATO in un commento non e' una regola che esiste.
     const codice = src.split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
-    for (const m of codice.matchAll(/outcome:\s*'([a-z0-9-]+)'/g)) {
-      if (!statiche.has(m[1])) statiche.set(m[1], []);
-      if (!statiche.get(m[1]).includes(f)) statiche.get(m[1]).push(f);
+    // ⚠ SI PRENDE TUTTA L'ESPRESSIONE DI `outcome:`, NON IL SOLO LETTERALE ATTACCATO AL DUE PUNTI.
+    // Un `outcome: cond ? 'a' : 'b'` — e ce ne sono — sfuggiva a una regex ancorata a `outcome:\s*'`,
+    // quindi DUE regole vere (`posizione-mai-valutata`, `posizione-non-valutata`) non erano nemmeno
+    // inventariate: il banco non poteva dichiararle rosse ne' verdi, semplicemente non le vedeva.
+    // Un inventario che non vede una regola e' peggio di un inventario che la dichiara rossa.
+    for (const m of codice.matchAll(/outcome:\s*([^,\n]+)/g)) {
+      for (const q of String(m[1]).matchAll(/'([a-z0-9-]{3,})'/g)) {
+        if (!statiche.has(q[1])) statiche.set(q[1], []);
+        if (!statiche.get(q[1]).includes(f)) statiche.get(q[1]).push(f);
+      }
     }
     for (const m of codice.matchAll(/outcome:\s*`([^`]+)`/g)) dinamiche.push({ file: f, forma: m[1] });
   }
@@ -204,11 +217,28 @@ const registroChiusura = () => { const m = new Map();
   passo('avanzato oltre la GTD: gli ordini scadono');
   await AC.runAutoCloseCycle(depsChiusura(registri)).catch(() => {});
 
+  // ── I DUE PRESIDI DI agent40 ───────────────────────────────────────────────────────────────────
+  // ⚠ VANNO CHIAMATI, e la prima corsa non lo faceva: `sorveglianzaTask` e `sparizioneTask` girano sul
+  // giro principale di agent40, FUORI da `closeTask`, e il banco guidava solo i cicli di `lib/`.
+  // Un presidio che il banco non chiama risulta rosso per colpa del banco, non del bot — che e'
+  // esattamente il tipo di bugia che questo banco esiste per non raccontare.
+  //
+  // ① LA SORVEGLIANZA: si fa passare una posizione aperta senza mai valutarla per due cicli.
+  await A40.sparizioneTask({ now: () => VENUE.ora }).catch(() => {});   // primo giro: fotografa lo stato di partenza
+  await A40.sorveglianzaTask({ now: () => VENUE.ora }).catch(() => {});
+  VENUE.avanza(3 * 60_000);                      // oltre i 2 cicli da 60 s di tolleranza
+  const rs = await A40.sorveglianzaTask({ now: () => VENUE.ora }).catch((e) => ({ errore: e.message }));
+  passo('sorveglianza: posizione aperta e non valutata per oltre due cicli',
+    { posizioni: VENUE.posizioni.size, anomalie: rs && rs.anomalie ? rs.anomalie.length : null,
+      motivo: rs && rs.motivo });
+
+  // ② LA SPARIZIONE NON NOSTRA: la posizione se ne va senza un nostro ordine.
   const tokPos = [...VENUE.posizioni.keys()][0];
   if (tokPos) { VENUE.sparizioneEsterna(tokPos, VENUE.posizioni.get(tokPos).size); passo('SPARIZIONE NON NOSTRA'); }
   VENUE.avanza(60_000);
-  await AC.runAutoCloseCycle(depsChiusura(registri)).catch(() => {});
+  await A40.sparizioneTask({ now: () => VENUE.ora }).catch((e) => passo('sparizioneTask errore', { e: e.message }));
   passo('ciclo dopo la sparizione');
+  await AC.runAutoCloseCycle(depsChiusura(registri)).catch(() => {});
 
   // ════════════════════════════════════════════════════════════════════════════════════════════════
   // IL VERDETTO
@@ -239,6 +269,11 @@ const registroChiusura = () => { const m = new Map();
   };
   fs.mkdirSync(path.dirname(BASE.OUT), { recursive: true });
   fs.writeFileSync(BASE.OUT, JSON.stringify(referto, null, 1));
+  // ⚠ IL GIORNALE INTERO SI SCRIVE A PARTE, e serve piu' del referto: quando una regola NON scatta, la
+  // domanda e' «dove si e' fermato il codice», e la risposta sta nelle righe che ha scritto invece.
+  // Senza questo file si finisce a indovinare, che e' il modo in cui si aggira un banco.
+  fs.writeFileSync(BASE.OUT.replace(/\.json$/, '-giornale.jsonl'),
+    GIORNALE.map((r) => JSON.stringify(r)).join('\n') + '\n');
 
   console.log('── il ciclo percorso ──');
   for (const p of passi) console.log(`  ${p.ora}  ${p.n}${p.gate ? `  ⟨${p.gate}⟩` : ''}`);

@@ -1059,8 +1059,10 @@ function scadenzaMercato(marketId) {
  * posizione puo' comunque essere uscita — e trattarlo come «non nostro» sarebbe un falso allarme sul
  * caso peggiore. Meglio spiegare una sparizione in piu' che gridare su una nostra.
  */
-function registraNostroInvio({ tokenId, marketId, book, side, size }) {
-  const ora = Date.now();
+function registraNostroInvio({ tokenId, marketId, book, side, size, ora: oraIn } = {}) {
+  // Stessa ragione dell'orologio iniettabile di sopra: un invio registrato con l'ora di sistema mentre
+  // le sparizioni si giudicano con l'ora virtuale cadrebbe sempre fuori finestra.
+  const ora = Number.isFinite(oraIn) ? oraIn : Date.now();
   // ⚠ LE SPEC PORTANO `book`, NON `tokenId` — il token lo risolve `placeManualOrder` a valle dalle
   // regole del mercato. E' la stessa trappola che ha reso muto il ripristino delle gambe: due meta'
   // del sistema che parlano lingue diverse. Qui si traduce, e se non si riesce si registra comunque
@@ -1086,7 +1088,8 @@ function registraNostroInvio({ tokenId, marketId, book, side, size }) {
  * Gira insieme alla sorveglianza sulla valutazione, e per la stessa ragione: FUORI dal percorso che
  * osserva. Non agisce — scrive a verbale e lo dice nei log.
  */
-async function sparizioneTask() {
+async function sparizioneTask(deps = {}) {
+  const ora = typeof deps.now === 'function' ? deps.now() : Date.now();
   let posizioni = null;
   try {
     const snap = readVenuePositions();
@@ -1101,7 +1104,7 @@ async function sparizioneTask() {
   if (!Array.isArray(posizioni)) return { girato: false, motivo: 'posizioni non leggibili' };
 
   const r = SPAR.sparizioniNonSpiegate({
-    prima: posizioniPrecedenti, dopo: posizioni, nostriInvii, ora: Date.now(),
+    prima: posizioniPrecedenti, dopo: posizioni, nostriInvii, ora,
     // ⚠ Le due spiegazioni legittime che questo processo NON sa ancora leggere: un mercato risolto e
     // un merge riuscito. Si passano vuote, ed e' il verso PRUDENTE — al massimo si produce un allarme
     // in piu' su una chiusura legittima, mai uno in meno su una che non lo e'. Il giorno in cui
@@ -1113,7 +1116,7 @@ async function sparizioneTask() {
   for (const a of r.allarmi) {
     log(`🚨 SPARIZIONE NON NOSTRA · ${a.motivo}`);
     try {
-      appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'auto-close-on-fill',
+      appendMakerAudit({ ts: ora, venue: 'polymarket', source: 'auto-close-on-fill',
         op: 'sparizione-non-nostra', outcome: 'posizione-uscita-senza-nostro-ordine',
         marketRef: a.marketId ? `cid_${a.marketId.replace(/^0x/, '')}` : null,
         reason: a.motivo,
@@ -1126,7 +1129,13 @@ async function sparizioneTask() {
   return r;
 }
 
-async function sorveglianzaTask() {
+// ⚠ L'OROLOGIO E' UNA DEP, dal 17 agosto 2026. Questi due presidi misurano TEMPO — «due cicli di
+// silenzio», «dieci minuti di finestra» — e con `Date.now()` cablato non sono esercitabili da un banco
+// che ha un orologio virtuale: il banco li dichiarerebbe rossi per colpa propria. E' la stessa
+// disciplina di tutto il resto del maker («ogni effetto collaterale e' iniettabile»), applicata
+// all'effetto piu' facile da dimenticare. In produzione la dep non e' passata e vale `Date.now()`.
+async function sorveglianzaTask(deps = {}) {
+  const ora = typeof deps.now === 'function' ? deps.now() : Date.now();
   let posizioni = null;
   try {
     const snap = readVenuePositions();
@@ -1139,7 +1148,7 @@ async function sorveglianzaTask() {
     }
   } catch { posizioni = null; }
 
-  const r = SORV.anomalie({ stato: statoSorveglianza, posizioni, ora: Date.now(),
+  const r = SORV.anomalie({ stato: statoSorveglianza, posizioni, ora,
     // La cadenza VERA del ciclo di chiusura, importata dalla costante che la governa: scriverne una
     // copia qui renderebbe la soglia sorda a un cambio di `MAKER_MANUAL_RECONCILE_MS` (reperto D1).
     cicloMs: RECONCILE_EVERY_MS, cicli: SORV.CICLI_DI_TOLLERANZA });
@@ -1148,7 +1157,7 @@ async function sorveglianzaTask() {
   for (const a of r.anomalie) {
     log(`⚠ ANOMALIA · ${a.motivo}`);
     try {
-      appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'auto-close-on-fill',
+      appendMakerAudit({ ts: ora, venue: 'polymarket', source: 'auto-close-on-fill',
         op: 'sorveglianza-valutazione', outcome: a.maiValutata ? 'posizione-mai-valutata' : 'posizione-non-valutata',
         marketRef: a.marketId ? `cid_${a.marketId.replace(/^0x/, '')}` : null,
         reason: a.motivo,
