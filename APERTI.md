@@ -1,7 +1,38 @@
-# Cosa resta aperto — chiuso il 16 agosto 2026, sera
+# Cosa resta aperto — aggiornato il 17 agosto 2026
 
 Scritto perché una sessione nuova possa riprendere **senza rileggere tutto**. In ordine di quanto
 costa se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
+
+---
+
+## 0 · 🔴 IL RIPREZZO CANCELLA E NON RIPIAZZA — 197 minuti di gamba singola il 16 agosto
+
+**È il capofila, e l'ha trovato la misura del 17 agosto** (`data/ricerca/gambe-16-agosto.md`,
+script `scripts/ricerca/cronologia-gambe-16-agosto.js`): **il 68,1 % dei minuti di gamba singola**
+della giornata viene da qui — 160,8 min da `nozionale-mercato-oltre-tetto` e 36,2 da
+`doppione-identico`, su 289,3 totali.
+
+`replaceManualOrder` ha **cinque precontrolli prima di cancellare**, tutti con `oldCancelled:false`,
+esattamente perché una cancellazione senza ripiazzo lascia la gamba scoperta
+(`lib/maker/manual-order.js:1716-1806`). **I due gate aggiunti ieri sera non sono in quell'elenco**:
+`doppione-identico` (`:1291`) e `nozionale-mercato-oltre-tetto` (`:1316`) vivono dentro
+`placeManualOrder`, cioè **dopo** la cancellazione. Il riprezzo passa i cinque, **cancella**, poi il
+sesto gate rifiuta, e la gamba è persa. Classe «protezione presente su un percorso e assente sul suo
+gemello», già contata 5+ volte nel registro.
+
+**⚠ E un secondo difetto dentro il primo, di segno**: il gate del nozionale somma `ordini a riposo +
+questo ordine`, che è l'aritmetica di chi **apre**. Su un riprezzo l'ordine che si sta sostituendo
+**è già dentro** gli ordini a riposo ⇒ contato due volte. Evidenza, giornale delle 12:14:42 su FL-27:
+«$53.67 di ordini a riposo (2) e questo ne aggiungerebbe $11.42» — e $11,42 **era** l'ordine che
+stava per essere ripiazzato. Il sottraendo esiste già (`:1311`) ma si applica solo al ramo della
+gemella dentro `place`. **Terza occorrenza** della classe «regola nata per limitare l'APERTURA
+applicata a un'azione che non apre» (§5-bis p.133, p.147, p.168).
+
+**La cura**, e le due condizioni che il difetto insegna: ① **la stessa funzione, non una copia** —
+precontrollare con un numero diverso da quello che poi rifiuta è peggio che non precontrollare
+(è scritto nel commento del precontrollo esistente, `:1782`, ed è il reperto **D1**); ② il nozionale
+a riposo deve **escludere l'ordine che si sta sostituendo**, o il tetto rifiuta un riprezzo che non
+aggiunge un dollaro.
 
 ---
 
@@ -22,6 +53,19 @@ non chiude più l'anello, e la frequenza del ciclo diventa la frequenza dell'azi
 
 **La strada giusta**: aprire le gambe mancanti sui mercati **già in gestione**, senza ricostruire il
 piano — cioè un piazzamento mirato che riusa il prezzo del motore, non un ricalcolo della selezione.
+
+**Misurato il 17 agosto**, e conferma il quadro con tre fatti invece che con un'impressione:
+`riconciliaCopertura` **è stata chiamata** a ogni ciclo (agent41 riga 2607, prima di `decidiTrigger`)
+e **per progetto non piazza** — il suo commento lo dice (riga 1283): dichiara e forza il mini-ciclo,
+che su **82 esecuzioni** ha risposto **49 volte `nessuna-azione`**.
+**⚠ E scrive con `annuncia`, cioè nei log di pm2: ZERO record nel giornale del 16 agosto.** Non si
+può quindi dire *quali* gambe abbia visto mancanti né *quando* — solo che è stata chiamata. Stessa
+lacuna di §5.2 p.10: «non è che nessuno l'abbia guardato, è che nessuno lo scrive». **Chi ripara
+questo punto scriva prima il record**, o la riparazione non sarà verificabile.
+**⚠ E l'unico percorso che ripiazza davvero è stato saturato**: `rimpiazzo-gamba`
+(`source: auto-close-on-fill`) ha fatto **133 `saltato-tetto-saturo`** e 21 `sotto-size-minima`
+contro **3 `rimpiazzata`**. Il comportamento è corretto — non forzare il tetto è la regola — ma la
+via di ritorno esisteva e per 133 volte su 157 non poteva percorrerla.
 
 ---
 
@@ -45,18 +89,21 @@ per quello. **Sono trappole, non test**: si romperanno a ogni refactor finché g
 
 ---
 
-## 3 · Un percorso rigenera il BUY sulla stessa gamba
+## 3 · Un percorso rigenera il BUY sulla stessa gamba — 🟢 **IDENTIFICATO il 17 agosto**
 
-**Costo**: alto e non quantificato. Un ordine che ingrossa la gamba già scoperta mentre la scala
-d'uscita cerca di ridurla.
+**Il percorso è `op: 'rimpiazzo-gamba'`, `source: 'auto-close-on-fill'`.** Nel giornale, con le
+proprie parole: «*la gamba NO era stata eseguita: torna sul libro a 0.14 per 152,4 share, dentro lo
+spazio rimasto sotto il tetto ($21.342 di $56)*» — e la gemella a 237,6 share, stessa forma.
 
-Misurato due volte oggi sullo stesso token della posizione aperta: **`BUY 14¢ × 237,6`** e
-**`BUY 14¢ × 152,4`** — fino a **quattro volte** la size della posizione. Cancellati entrambi a mano;
-**sono ricomparsi**, quindi c'è un percorso che li rigenera e non l'ho identificato.
+**Non è un difetto: è il meccanismo che rimette la gamba sul libro dopo un fill**, ed è l'unico che
+lo fa (vedi punto 1). Le due comparse di ieri sono **3 `rimpiazzata` su 157 tracce**; le altre 154
+si sono fermate da sole al tetto o sotto la size minima. Quello che mancava non era un freno: era
+**sapere chi fosse**, e ora si sa.
 
-Il commit `9a1030b` (divieto di doppioni su token+lato) **non lo copre**: quello impedisce due ordini
-identici, non un ordine di liquidità che cresce sul lato che possediamo. Da cercare partendo da
-`source` nel giornale maker su quegli `orderId`.
+**⚠ Resta però vera la preoccupazione che ha aperto questo punto**, e va tenuta: un rimpiazzo sul
+lato che già possediamo **ingrossa la gamba scoperta** se il fill arriva prima della sorella. Oggi
+lo limitano il tetto per mercato e la size minima — cioè due cinture che hanno agito 154 volte su
+157. **Da guardare al primo giro vivo con un fill vero**, non da correggere alla cieca.
 
 ---
 
@@ -71,7 +118,23 @@ processi sono armati — verificato oggi: `.env` diceva `MAKER_PLACEMENT=` vuota
 
 ---
 
-## 5 · `git push` bloccato — 26 commit solo locali
+## 4-bis · 🟢 La presa di profitto — **FATTA il 17 agosto**, resta da osservare dal vivo
+
+Commit `6be1fe7`. `lib/maker/presa-di-profitto.js` (puro) + 33 asserzioni che esercitano lo **scatto**
+di ogni ramo attraverso il `decideClose` vero, cablata in `auto-close` prima di `already-covered`.
+Decide sul **bid camminato**, mai sul mid.
+
+**La misura che l'ha giustificata**: sui due fill del 16 agosto, **283 campioni di book su 354
+minuti, ZERO istanti offrivano un'uscita realizzabile in guadagno** — e sotto l'ipotesi più generosa
+possibile. Il guadagno visto sul pannello era la **differenza fra il mid e il bid**.
+**E la scoperta che vale di più**: un take-profit **esisteva già** (ramo `marketAhead` di `planExit`,
+3 agosto, con cricchetto) e non ha mai incassato niente perché è ancorato a `scoringMid`, cioè a un
+numero che la misura dichiara non consumabile. Il buco non era «manca la regola» ma «la regola guarda
+il numero sbagliato». **Non è mai stata esercitata su un fill vero**: il bot è fermo.
+
+---
+
+## 5 · `git push` bloccato — 31 commit solo locali
 
 **Costo**: un disco perso li perde tutti.
 
@@ -91,11 +154,22 @@ vero**: il bot è fermo da prima che ne arrivasse uno.
 
 ---
 
-## Stato del sistema alla chiusura
+## Stato del sistema — riverificato il 17 agosto 2026, 05:0xZ, DOPO il riavvio di agent40 e agent41
 
-**Bot FERMO e disarmato.** `AVVIA: false` · `MAKER_MODE=off` · `MAKER_PLACEMENT` vuota ·
-`MAKER_ADAPTER_DRYRUN=true` · freno agent41 **INSERITO** — verificato su `/proc/<pid>/environ` dei
-processi vivi, non sul `.env`. **Zero ordini a libro.**
+**Bot FERMO e disarmato.** `AVVIA: false` (dal 16/08 18:47:16Z, `cli/ferma`) · `MAKER_MODE=off` ·
+`MAKER_PLACEMENT` vuota · `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT` **assente** · KILL
+spento · freno agent41 **INSERITO** (fail-closed: `REALLOC_SCHEDULER_DRY_RUN` assente) — letto da
+`/proc/<pid>/environ` dei pid **174332** e **174326**, non dal `.env`. **Zero ordini a libro.**
+
+**⚠ Il riavvio dal file NON ha riarmato niente, ed è stato verificato PRIMA di eseguirlo**:
+`agents/ecosystem.config.js` non dichiara nessuna delle cinque cinture per quei due processi (porta
+solo `MAKER_AUTO_REPRICE_POLL_MS`, `SBLOCCO_GRADINO6_ARMATO`, `REALLOC_SCHEDULER_ENABLED` e la
+manopola della distanza), e il `.env` è neutralizzato. Le due sorgenti concordavano su `off` prima
+del riavvio, e i processi vivi lo confermano dopo.
+
+**⚠ La allowlist ha 4 mercati contro i 3 della selezione** — `0x33ec826f37` è quello in più. È lo
+stesso disallineamento segnato ieri (allora era `0x776841ce`): il trigger a capitale fermo abilita
+fuori dagli slot. Resta **aperto**.
 
 ⚠ **Anche il `.env` è stato neutralizzato** (`MAKER_MODE=off`, `MANUAL_ORDER_PLACEMENT` vuota): con
 l'ecosystem pulito sarebbe stato lui a riarmare al primo riavvio, ed è gitignored, quindi non lo dice
