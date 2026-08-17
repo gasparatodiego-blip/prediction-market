@@ -132,6 +132,16 @@ const pct = (x) => (x == null ? '—' : `${(x * 100).toFixed(1)}%`);
     residuoPeggioreSuUnMercato: residuoPeggiore(tettoOggi),
   };
 
+  // ⚠ LA TABELLA (b) SI MISURA DA SOLA L'INCERTEZZA — 17 agosto 2026. Le cinque righe sono cinque corse
+  // del pianificatore, e ognuna costa 1-2 minuti: fra la prima e l'ultima passano ~8 minuti, durante i
+  // quali agent24 riscrive il board (ciclo 15 min) e agent34 accumula storico. Misurato: due corse allo
+  // STESSO tetto a otto minuti di distanza hanno dato $24,84 e $58,11 di realistico — 2,3x. ⚠ E NON e'
+  // rumore fra corse: tre corse CONSECUTIVE allo stesso tetto danno $57,63 · $57,17 · $57,63, cioe' l'1%.
+  // E' DERIVA NEL TEMPO, e su una flotta appena riaccesa e' in salita perche' lo storico si riempie.
+  // Quindi si gira il tetto di oggi PRIMA e DOPO la scala, e si dichiara lo scarto: una tabella le cui
+  // righe non sono confrontabili fra loro deve dirlo, o si legge come se lo fossero.
+  const baselinePrima = pianoAlTetto(tettoOggi);
+
   // (b) ALZARE IL TETTO. Non e' continuo: si enumera scaglione per scaglione, e per ognuno si gira il
   //     pianificatore VERO. `capitaleMinimoPerNonSprecare` = il capitale che quel tetto vorrebbe per
   //     riempire tre mercati, cioe' la cifra sotto la quale alzare il tetto non aiuta.
@@ -187,14 +197,21 @@ const pct = (x) => (x == null ? '—' : `${(x * 100).toFixed(1)}%`);
       } catch { return null; }
     })(),
   };
-  const pianoTre = pianoAlTetto(tettoOggi);
+  const baselineDopo = pianoAlTetto(tettoOggi);
+  const deriva = (() => {
+    const a = baselinePrima && baselinePrima.realisticoGiornoUsd;
+    const b = baselineDopo && baselineDopo.realisticoGiornoUsd;
+    if (!fin(a) || !fin(b) || a <= 0) return null;
+    return { primaUsd: a, dopoUsd: b, fattore: +(b / a).toFixed(2), scartoUsd: +(b - a).toFixed(2) };
+  })();
+  const pianoTre = baselineDopo;
 
   const referto = {
     generatoIl: new Date(ora).toISOString(), capitaleUsd: CAPITALE,
     board: { righe: righe.length, file: path.join(DATA_DIR, 'liquidity-rewards.json') },
     tettoOggiUsd: tettoOggi, tettoPerOrdineOggiUsd: CONC.liveMinOrderCapUsd(tettoOggi),
     scaglioneFinanziabileOggi: CONC.SCAGLIONE_FINANZIABILE,
-    viaA: unoOggi, viaB: { scale, tettoCheServirebbe }, viaC: due,
+    viaA: unoOggi, viaB: { scale, tettoCheServirebbe, baselinePrima, baselineDopo, deriva }, viaC: due,
     pianoLiberoAlTettoDiOggi: pianoTre,
   };
   try { fs.mkdirSync(path.dirname(OUT), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(referto, null, 2)); } catch { /* pazienza */ }
@@ -229,6 +246,14 @@ const pct = (x) => (x == null ? '—' : `${(x * 100).toFixed(1)}%`);
   console.log(`    residuo irraggiungibile peggiore TOTALE: ${usd(due.residuoPeggioreTotaleUsd)} (e' per-mercato: due mercati, due residui possibili)`);
   console.log(`    tetto sull'esposizione aperta: ${usd(due.tettoEsposizioneApertaUsd)} — conta i fill riconciliati, non gli ordini a riposo\n`);
 
+  if (deriva) {
+    console.log(`    ⚠ INCERTEZZA DELLA TABELLA: il tetto di oggi girato PRIMA della scala dava`
+      + ` ${usd(deriva.primaUsd)}/g di realistico, girato DOPO ${usd(deriva.dopoUsd)}/g — fattore ${deriva.fattore}x`
+      + ` in ~${scale.length * 2} minuti.`);
+    console.log('      Non e\' rumore fra corse (tre consecutive stanno entro l\'1%): e\' DERIVA, perche\' il board');
+    console.log('      si riscrive ogni 15 min e lo storico di agent34 si riempie. Le righe della tabella NON sono');
+    console.log('      confrontabili fra loro al centesimo: si leggano come ordini di grandezza.\n');
+  }
   console.log('PER CONFRONTO · il piano che il pianificatore sceglie DA SOLO al tetto di oggi');
   console.log(`    ${pianoTre.mercati} mercati · impiegato ${usd(pianoTre.capitaleImpiegatoUsd)} · fermo ${usd(pianoTre.capitaleFermoUsd)} = ${pct(pianoTre.frazioneFerma)} · realistico ${usd(pianoTre.realisticoGiornoUsd)}/g · lordo ${usd(pianoTre.lordoGiornoUsd)}/g\n`);
   console.log(`referto → ${path.relative(ROOT, OUT)}\n`);
