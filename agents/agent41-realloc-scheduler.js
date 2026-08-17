@@ -1609,11 +1609,22 @@ async function presidioPosizioniVecchie(deps = {}) {
       }, 'presidio-posizioni-vecchie');
     } catch (e) { r = { ok: false, reason: e && e.message ? e.message : String(e) }; }
     esito.chiuse.push({ ...c, prezzo, chiusa: !!(r && r.ok), error: (r && r.ok) ? null : String((r && r.reason) || 'ignoto').slice(0, 160) });
-    annuncia('log', `⚠ PRESIDIO: chiusura forzata ${c.conditionId.slice(0, 12)}… ${c.size} share a ${(prezzo * 100).toFixed(1)}c`
+    annuncia('log', `⚠ PRESIDIO (ULTIMA RETE — la scala d'uscita NON ha chiuso): ${c.conditionId.slice(0, 12)}…`
+      + ` ${c.size} share a ${(prezzo * 100).toFixed(1)}c`
       + ` — ${c.motivo}${r && r.ok ? '' : ' ⚠ FALLITA: ' + String((r && r.reason) || '').slice(0, 90)}`);
+    // ⚠ SE INTERVIENE QUESTO PRESIDIO, LA SCALA D'USCITA NON HA FUNZIONATO — e va detto qui, non
+    // dedotto dopo. Requisito dell'operatore, 17 agosto 2026: «il presidio dei 60 minuti resta come
+    // ultima rete, ma non deve essere quello che chiude: se e' lui a intervenire, vuol dire che la
+    // scala non ha funzionato, e voglio saperlo».
+    // La scala ha gradini a 30, 60 e 240 minuti e una posizione che arriva fin qui li ha attraversati
+    // tutti senza chiudere: `scalaNonHaChiuso: true` rende il fatto CERCABILE nel giornale invece che
+    // ricostruibile confrontando due registri.
     scrivi({ tipo: 'presidio-posizioni-vecchie', esito: (r && r.ok) ? 'chiusa' : 'chiusura-fallita',
       marketId: c.conditionId, asset: c.asset, size: c.size, etaMin: c.etaMin, prezzo,
-      motivo: c.motivo, error: (r && r.ok) ? null : String((r && r.reason) || '').slice(0, 200) });
+      motivo: c.motivo, scalaNonHaChiuso: true,
+      nota: 'ULTIMA RETE: questa posizione ha attraversato tutti i gradini della scala d\'uscita senza'
+        + ' chiudersi. L\'intervento del presidio e\' di per se\' un\'anomalia da guardare.',
+      error: (r && r.ok) ? null : String((r && r.reason) || '').slice(0, 200) });
   }
   return esito;
 }
