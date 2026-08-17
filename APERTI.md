@@ -1,7 +1,70 @@
-# Cosa resta aperto — aggiornato il 17 agosto 2026, sera
+# Cosa resta aperto — aggiornato il 17 agosto 2026, sera (DOPO LA MIGRAZIONE)
 
 Scritto perché una sessione nuova possa riprendere **senza rileggere tutto**. In ordine di quanto
 costa se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
+
+---
+
+## 🚚 LA MIGRAZIONE — `/root/bot` → `/home/bot/bot`, utente `root` → `bot`
+
+**Il repo vero è `/home/bot/bot`, ed è l'unico che esista per questo utente.** `/root` non è leggibile
+(`sudo` chiede la password), quindi `/root/bot` e `/root/prediction-market` **non sono stati né letti né
+cancellati**: se ci sono ancora, sono lì e nessuno li ha toccati. Il repo qui è a `main`, HEAD `8ccbe78`
+al momento dell'apertura — quello atteso — più i due commit della riparazione.
+
+> **🔴 LA FLOTTA È A ZERO PROCESSI, ED È LA COSA PIÙ GRANDE CHE LA MIGRAZIONE HA CAMBIATO.**
+> `pm2 jlist` dell'utente `bot` risponde `[]`; `/home/bot/.pm2/dump.pm2` non esiste. I due pid della sera
+> prima — **270521** (agent40) e **270527** (agent41) — **non esistono più**. Il demone pm2 di `root`
+> (pid 26116) è ancora vivo ma non porta nessun agent: sotto di lui restano solo due
+> `scripts/ricerca/conformita.js` lanciati a mano più di un giorno fa.
+> **Conseguenze**: nessun ciclo, nessuna scoperta, nessun guardiano; lo snapshot delle posizioni ha
+> **703 s** contro un limite di 180, quindi `venue-positions-unreadable` rifiuta ogni apertura — il bot è
+> fermo **anche** per fail-closed; e il perimetro live-min è **0**, non 1.
+> **NON RIACCESA**: §2 regola 2 vuole la conferma in chat, ogni volta. Il comando sarebbe
+> `pm2 start agents/ecosystem.config.js` (dal file, per i `cwd` derivati).
+
+**Dodici percorsi assoluti erano diventati puntatori a niente, e nessuno falliva rumorosamente** —
+riparati in `57de3e8` e `abed26d`. La forma del guasto è sempre la stessa: ogni lettore ha già un ramo
+per «non l'ho letto», e quel ramo si prende la scena.
+
+| dove | cosa rompeva | come falliva |
+|---|---|---|
+| `ecosystem.config.js` | 11 × `cwd` + 11 × `HOME` | pm2 non trovava gli agent; HOME illeggibile fallisce dove nessuno guarda |
+| `rewards-normalize` + **`agent24.OUTPUT_FILE`** | il board, lettore **e scrittore** | `readJson` → `null` ⇒ board **vuoto**, non illeggibile |
+| `agent34` | watchlist, mid-history, trade-tape | zero sottoscrizioni senza un errore |
+| `agent45` | il log del guardiano | `''` ⇒ «il guardiano non ha detto niente» = «sta bene» |
+| `route.ts` allocate | il runner dell'allocatore | figlio con MODULE_NOT_FOUND ⇒ «output not JSON» |
+| `rewards-selfcheck` | il manifest copertura | 3 asserzioni saltate con una causa inventata |
+| **`banco-ciclo-completo.VIVO`** | il repo vivo | **il cancello si APRIVA**: `diff` esce 2, il `catch` legge `e.stdout` vuoto = zero differenze |
+
+⚠ **`agent24` è il gemello SCRITTORE di `rewards-normalize`**: correggere solo il lettore avrebbe prodotto
+due percorsi per lo stesso file che divergono in silenzio (il reperto D1), invece di un guasto visibile.
+
+**E LA POLICY DEI PERMESSI ERA LA PARTE PEGGIORE, perché proteggeva sul serio:**
+- l'hook `PreToolUse` puntava a `/root/rewards-bot/.claude/hooks/` ⇒ **non girava più**. Ora
+  `$CLAUDE_PROJECT_DIR`. *(Verificato dal vivo: ha bloccato due miei heredoc che nominavano il
+  piazzamento — §5.3 lo dice, e ha ragione.)*
+- le 7 regole `Edit(//root/rewards-bot/...)` non corrispondevano più a niente: `.env`,
+  `ecosystem.config.js` e i sei flag di stato erano modificabili **senza `ask`**.
+- `~/.claude/settings.json` aveva perso la copia della policy. Ricostruita: **164 `ask`** in entrambe.
+
+**Due rossi noti sono diventati verdi, e nessuno dei due era un difetto del codice:**
+`hook-piazzamento` 69/1 → **70/0** (il caso della catena di tre `require` era rosso perché `camminaFile`
+segue un `require` **solo se il file esiste**, e `/root/…/bulk-allocate` era morto) · `policy-permessi` →
+**84/0** (leggeva `/root/.claude/settings.json` e **sollevava prima della prima asserzione**: il presidio
+sulle due copie divergenti spariva senza dirlo). ⇒ **i rossi noti scendono da 12 a 10.**
+
+⚠ `punti-di-filtro` riscriveva il sorgente di `rewards-normalize` con una regex che pretendeva un
+letterale fra apici: con `path.join` non avrebbe matchato più niente, `String.replace` non solleva, e il
+test avrebbe letto il file di **produzione** dichiarandosi verde. Ora la sostituzione **asserisce** di
+essere avvenuta.
+
+**Il worktree del banco è ricostruito**: `/root/bot-banco` era `prunable` (gitdir morto), rimosso dal
+registro con `git worktree prune`; il nuovo è **`/home/bot/bot-banco`**, allo stesso commit, `data/`
+copiato, `node_modules` collegato. Verificato `diff -rq` identico su `lib/ agents/ scripts/`.
+
+**Cosa NON è stato toccato**: `.env` (600, `bot:bot`, 21 chiavi, i 5 TODO vuoti come prima), `data/`
+(619 MB, 85 voci), nessun processo avviato o fermato, nessun ordine, nessun interruttore.
 
 ---
 
@@ -9,16 +72,32 @@ costa se non si ripara. Lo stato del sistema al momento della chiusura è in fon
 
 | | |
 |---|---|
-| **passi del giro completo che arrivano in fondo** | **18 su 18** (i 17 + il 15-bis) — nessuno bloccato, nessuno annotato |
-| **regole che scattano** | **21 statiche + 16 dinamiche su 91**, col cablaggio di produzione |
+| **passi del giro completo che arrivano in fondo** | **17 su 18** — il passo 13, e **non è una regressione del bot**: cade identico sul commit precedente (v. sotto) |
+| **regole che scattano** | **20 statiche + 16 dinamiche su 91**, col cablaggio di produzione |
 | **regole rosse perché il pezzo NON ESISTE** | **ZERO**, e non è un'ipotesi: misurato cercando i chiamanti |
-| **determinismo** | **10 corse su 10**, una firma sola (`61f5582e56f75903`) — riprovato DOPO il riavvio |
+| **determinismo** | **10 corse su 10**, una firma sola (`11de0628429da1a4`) — riprovato dopo la migrazione |
 | **cinture che mordono davvero** | **2 su 5**: `MANUAL_ORDER_PLACEMENT` + il freno di agent41. Le altre tre sono inerti sul percorso che piazza — vedi «LA SEQUENZA DI ARMAMENTO» |
+| **flotta pm2** | **0 processi** (sopra). A flotta spenta le cinture si leggono dal `.env`, non da `/proc` |
 
-⚠ **Il conteggio è SCESO da 22+17 a 21+16, ed è la conseguenza voluta della cura del passo 13**: sparisce
-`reject-nozionale-mercato-oltre-tetto` (non c'è più il rifiuto) e sparisce `partial` di `bulk-allocate` (non
-c'è più un bulk parzialmente rifiutato). Meno regole esercitate perché ci sono meno rifiuti da esercitare —
-non una copertura peggiore.
+> **🟠 IL PASSO 13 NON ARRIVA IN FONDO, E LA CAUSA È NEL BANCO — non nel bot.**
+> **Misurato, non dedotto**: lo stesso passo cade **identico su `8ccbe78`** — il commit il cui messaggio
+> dichiara «18/18, 10 corse su 10» — con lo stesso `data/` e lo stesso conteggio 20+16. Worktree di
+> controllo apposta, poi rimosso dal ragionamento ma non dal disco.
+> **Perché**: il passo sceglie il proprio soggetto con `candidati13[0]`, cioè **il primo mercato coperto
+> sui due lati** che trova iterando gli ordini vivi. Con questo `data/` gli capita **M6 `0xf6f6f6…`, il
+> mercato del passo 12 «il merge che FALLISCE»** — che ha una posizione aperta e la macchina di chiusura
+> in corso (a libro resta un `SELL 40×0,52`). Il ripristino fa la cosa giusta e lo **dichiara**: «coppia
+> ricostruita: 2 gambe a 61,2 share — $59,98 sul tetto di $61,25 (vincolo: piano)». Ma su quel mercato la
+> coppia non regge, e l'esito finale è `{yes:1, no:0}`.
+> **Il «18 su 18» era vero per QUELLO snapshot di `data/`, non per il codice.** È la classe «test che
+> fotografa lo stato invece della proprietà» (§5.3), la stessa che questo repo ha già incontrato tre volte.
+> **La cura è scegliere il soggetto in modo deterministico** — un mercato senza posizione e senza
+> macchina di chiusura attiva — e **non è stata fatta**: cambia cosa misura il banco, ed è una decisione.
+
+⚠ **Il conteggio era sceso da 22+17 a 21+16 con la cura del passo 13** (spariscono
+`reject-nozionale-mercato-oltre-tetto` e `partial` di `bulk-allocate`: meno rifiuti da esercitare, non
+copertura peggiore). **Oggi è 20+16**, perché il passo 13 non arriva in fondo e le sue regole non si
+esercitano: la differenza è il costo della scelta di soggetto del banco, non del bot.
 
 ⚠ **Il vecchio «37 su 91» è stato buttato**, e va ricordato perché: quel banco non chiamava
 `agent40.closeTask()` — ricablava `runAutoCloseCycle` da sé, con **17 dep contro le 20** che la
@@ -36,15 +115,16 @@ simulato. Esce **1** se un passo non arriva in fondo, e dice quale.
 `A40.sparizioneTask()` · `A43.poll()`. Un test lo asserisce **per assenza**: `runAutoCloseCycle(` e
 `runReallocCycle(` non compaiono nel banco (`lib/maker/cablaggio-di-produzione.test.js`).
 
-**Dove gira**: worktree `/root/bot-banco`, con `data/` **copiato**. Il banco **verifica `diff -rq` su
-`lib/ agents/ scripts/`** contro `/root/bot` e **si rifiuta di partire se differiscono** — non è una
+**Dove gira**: worktree **`/home/bot/bot-banco`**, con `data/` **copiato**. Il banco **verifica `diff -rq`
+su `lib/ agents/ scripts/`** contro il repo vivo — che dal 17/08 sera **chiede a `git worktree list`**
+invece di cablarlo — e **si rifiuta di partire se differiscono** — non è una
 promessa, è un cancello. `data/` non è dirottabile (`store.js:32` risolve sul package root, senza env) e
 agent41 ci scrive piano, tetti, allowlist, selezione, giornale. Le credenziali non esistono nel worktree.
 
 ```bash
-git worktree add -f /root/bot-banco HEAD && ln -sfn /root/bot/node_modules /root/bot-banco/node_modules
-rsync -a --exclude 'mid-history-*.jsonl' --exclude 'ricerca/' --exclude 'history/' /root/bot/data/ /root/bot-banco/data/
-cd /root/bot-banco && node scripts/ricerca/banco-scenari.js
+git worktree add -f /home/bot/bot-banco HEAD && ln -sfn /home/bot/bot/node_modules /home/bot/bot-banco/node_modules
+rsync -a --exclude 'mid-history-*.jsonl' --exclude 'ricerca/' --exclude 'history/' /home/bot/bot/data/ /home/bot/bot-banco/data/
+cd /home/bot/bot-banco && node scripts/ricerca/banco-scenari.js
 ```
 
 ### Il venue ha SEI porte, e una sola era configurabile
@@ -75,10 +155,15 @@ lontano farebbe sembrare al figlio che lo storico seminato dal banco sia nel fut
 
 ---
 
-## 1 · 🟢 CHIUSO — IL PASSO 13 RICOSTRUISCE LA COPPIA, NON LA GAMBA
+## 1 · 🟢 CHIUSO NEL CODICE — IL PASSO 13 RICOSTRUISCE LA COPPIA, NON LA GAMBA
 
-**Il passo 13 arriva in fondo**, e il criterio non è più «il lato è tornato a libro» (che si accontentava
-di un ripristino asimmetrico, cioè dello stato che sfondava il tetto) ma **tre cose insieme**:
+> ⚠ **AGGIORNAMENTO 17/08 SERA: il passo 13 del banco NON arriva più in fondo, e la causa è la scelta del
+> soggetto — non questa cura.** Vedi il riquadro nel QUADRO qui sopra: il passo prende `candidati13[0]` e
+> con questo `data/` gli capita il mercato del passo 12 (merge fallito, posizione aperta, chiusura in
+> corso). Il modulo decide ancora bene e lo dichiara. **Quello che segue resta vero del codice.**
+
+Il criterio non è più «il lato è tornato a libro» (che si accontentava di un ripristino asimmetrico, cioè
+dello stato che sfondava il tetto) ma **tre cose insieme**:
 
 ```
 lati dopo il ripristino : {yes:1, no:1}
@@ -115,8 +200,8 @@ misura del costo di *non* fare la cura, non come proposta.
 
 **Prove**: `coppia-simmetrica.js` selfcheck **30 asserzioni** (monotonia su 100 size, invariante del tetto
 su 425 combinazioni) · `coppia-simmetrica-scatta.test.js` **21 asserzioni** sul CABLAGGIO, attraverso
-`agent41.ripristinaGamba` vera, con la sequenza delle chiamate misurata · banco passo 13 verde, **10 corse
-su 10** con la stessa firma.
+`agent41.ripristinaGamba` vera, con la sequenza delle chiamate misurata. ⚠ Il banco **non** è più fra le
+prove di questo punto finché il passo 13 non sceglie il soggetto in modo deterministico.
 
 **⚠ Due regole del banco non scattano più, ed è la conseguenza voluta**: `reject-nozionale-mercato-oltre-tetto`
 (non c'è più il rifiuto) e `partial` di `bulk-allocate` (non c'è più un bulk parzialmente rifiutato). Il
@@ -499,34 +584,40 @@ operativo. **Definitivo**: rimettere `MANUAL_ORDER_PLACEMENT: 'dry-run'` e riavv
 
 ---
 
-## Stato del sistema — 17 agosto 2026, dopo il riavvio dei due processi (pid 270521 / 270527)
+## Stato del sistema — 17 agosto 2026, sera, DOPO LA MIGRAZIONE (flotta a zero processi)
 
-**Bot FERMO e disarmato**, letto da `/proc/<pid>/environ` e non dai file:
+**Bot FERMO e disarmato.** ⚠ **Non c'è più nessun `/proc/<pid>` da leggere**: i pid 270521 / 270527 / 243973
+non esistono, e `pm2 jlist` risponde `[]`. Quindi lo stato qui sotto viene dal **`.env`**, ed è dichiarato
+per quello che è — *cosa entrerebbe nei processi al prossimo avvio dal file*, non cosa c'è in un processo.
+`node scripts/cli/stato.js` lo dice da sé: «ambiente non leggibile (non in pm2) ⇒ non lo so».
 
-| | agent40 · **270521** | agent41 · **270527** | agent43 · 243973 |
-|---|---|---|---|
-| `MAKER_MODE` | `off` | `off` | `off` |
-| `MAKER_PLACEMENT` | vuota | vuota | vuota |
-| `MAKER_ADAPTER_DRYRUN` | `true` | `true` | `true` |
-| `MANUAL_ORDER_PLACEMENT` | `dry-run` | assente | assente |
-| `MAKER_LIVE_MIN_MARKET` | **vuota** | **vuota** | vuota |
-| `REALLOC_SCHEDULER_DRY_RUN` | — | **assente ⇒ freno INSERITO** | — |
+| cintura | valore nel `.env` | posizione |
+|---|---|---|
+| `MAKER_MODE` | `off` | inserita |
+| `MAKER_PLACEMENT` | vuota | inserita |
+| `MAKER_ADAPTER_DRYRUN` | `true` | inserita |
+| `MANUAL_ORDER_PLACEMENT` | `dry-run` (da `ecosystem.config.js`, su agent40) | inserita |
+| `REALLOC_SCHEDULER_DRY_RUN` | **assente** | inserita, per **assenza** (fail-closed) |
 
-AVVIA `false` · KILL spento · allowlist **vuota** · selezione **spenta** · `guardian-state.json` assente ·
-**zero ordini a libro** · **perimetro live-min = 1** (`0xe9b3e28d`, la posizione residua di Hong Kong, che
-entra dall'unione di §4.8 — non un opt-in; 6 share sotto il minimo del venue ⇒ perimetro **quotabile zero**).
+⇒ **5/5 inserite**, coerenti fra `.env` ed ecosystem. ⚠ Ma solo **2 morderebbero** (§4.14).
 
-**Il riavvio dal file, verificato prima e dopo**: `ecosystem.config.js` dichiara **una sola** cintura, e
-nella posizione **inserita** — `MANUAL_ORDER_PLACEMENT: 'dry-run'` su agent40 — più
-`MAKER_FUNDING_APPROVED: 'true'` su entrambi, che non è una delle cinque ma un'attestazione, cioè una
-cintura nella posizione **aperta**, già `true` da prima. **Nessuna cintura è dichiarata aperta nel file.**
-Le quattro che l'ecosystem non nomina arrivano dove serve: tre dal `.env` (`MAKER_MODE=off`,
-`MAKER_ADAPTER_DRYRUN=true`, `MAKER_PLACEMENT` vuota — i caricatori scrivono solo le chiavi assenti) e il
-freno di agent41 per **assenza**, che è fail-closed. Dai due pid nuovi: **5/5 inserite su entrambi**,
-identiche fra loro e coerenti col `.env`.
+AVVIA `false` (16/08 18:47:16Z, `by: cli/ferma`) · KILL spento · allowlist **vuota** · selezione
+**spenta** · `guardian-state.json` assente · **zero ordini a libro** (osservati 12 min prima che agent40
+morisse) · **perimetro live-min = 0**.
 
-⚠ E `MAKER_FEED_BOOKS_FILE`, `MAKER_FEED_BOARD_FILE`, `POLY_CLOB_BASE` **non sono dichiarate** né
-nell'ecosystem né nel `.env`: i processi vivi leggono `/tmp/clob-live-books.json`, non i file del banco.
+⚠ **Il perimetro è 0 e non 1, ed è una conseguenza della flotta spenta**: lo snapshot delle posizioni ha
+**703 s** contro il limite di 180 ⇒ `readVenuePositions` illeggibile ⇒ l'unione di §4.8 è **vuota** per
+fail-closed. Ieri valeva 1 (Hong Kong `0xe9b3e28d`). La posizione **c'è ancora**: quello che manca è
+qualcuno che la fotografi.
+
+**`ecosystem.config.js` non dichiara nessuna cintura APERTA**: `MANUAL_ORDER_PLACEMENT: 'dry-run'` su
+agent40 (inserita, di proposito) e `MAKER_FUNDING_APPROVED: 'true'` su entrambi — che non è una delle
+cinque ma un'attestazione, già `true` da prima. Le altre tre arrivano dal `.env` (i caricatori scrivono
+solo le chiavi **assenti**) e il freno per assenza.
+
+⚠ `MAKER_FEED_BOOKS_FILE`, `MAKER_FEED_BOARD_FILE`, `POLY_CLOB_BASE` **non sono dichiarate** né
+nell'ecosystem né nel `.env`: all'avvio i processi leggerebbero `/tmp/clob-live-books.json`, non i file
+del banco. ⚠ E `/tmp/clob-live-books.json` **è vecchio**: lo scrive agent34, che non gira.
 
 **Posizione residua: una sola.** Hong Kong `0xe9b3e28d`, 6 share a carico 0,50, non chiudibile (punto 7).
 FL-02 `0x33ec826f` non c'è più: la coppia completa è stata fusa o risolta.
@@ -536,7 +627,7 @@ FL-02 `0x33ec826f` non c'è più: la coppia completa è stata fusa o risolta.
 ## Come ripartire
 
 ```bash
-cd /root/bot && claude --permission-mode auto
+claude --permission-mode auto
 ```
 
 ```bash
@@ -545,11 +636,11 @@ node scripts/cli/stato.js              # le cinque cinture da /proc/<pid>/enviro
 node scripts/cli/mercati.js            # perimetro live-min, stessa fonte
 
 # 2 · IL BANCO: 18 passi su 18, 21+16 su 91, e DETERMINISTICO
-cd /root/bot-banco && node scripts/ricerca/banco-scenari.js
-cd /root/bot-banco && node scripts/ricerca/prova-determinismo-banco.js
-cd /root/bot-banco && node scripts/ricerca/perche-non-scattano.js
+cd /home/bot/bot-banco && node scripts/ricerca/banco-scenari.js
+cd /home/bot/bot-banco && node scripts/ricerca/prova-determinismo-banco.js
+cd /home/bot/bot-banco && node scripts/ricerca/perche-non-scattano.js
 
-# 3 · LA SUITE: 208 test, 195 verdi, 12 rossi — si confrontano i NOMI, non il conteggio
+# 3 · LA SUITE: si confrontano i NOMI, non il conteggio (10 rossi noti dopo la migrazione)
 node scripts/ricerca/suite-rossi.js <nome-sessione>
 
 # 4 · LE MISURE SUL CAPITALE PICCOLO
