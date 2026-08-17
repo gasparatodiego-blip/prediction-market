@@ -332,11 +332,39 @@ nessuno.
 ```bash
 cd /root/bot && claude --permission-mode auto
 ```
-Poi, prima di qualunque cosa, leggere lo stato dai processi vivi e non dai file:
+Poi, in quest'ordine:
+
 ```bash
-node scripts/cli/stato.js          # ⚠ legge le cinture dal .env: vedi punto 4
-node scripts/ricerca/conformita.js --dry     # secondo parere sugli ordini vivi
+# 1 · LO STATO VERO, dai processi vivi e non dai file (⚠ `stato.js` legge le cinture dal .env: punto 4)
+pm2 jlist | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{for(const p of JSON.parse(s))if(/agent4[01]/.test(p.name))console.log(p.name,p.pid)})"
+tr '\0' '\n' < /proc/<pid>/environ | grep -E '^(MAKER_MODE|MAKER_PLACEMENT|MANUAL_ORDER_PLACEMENT|MAKER_ADAPTER_DRYRUN)='
+
+# 2 · IL BANCO: 37 su 91 devono restare 37, e nessuna che scattava deve aver smesso
+node scripts/ricerca/banco-scenari.js
+node scripts/ricerca/classifica-regole-rosse.js
+
+# 3 · LA SUITE: 202 test, 189 verdi, 12 rossi NOTI — si confrontano i NOMI, non il conteggio
+node scripts/ricerca/suite-rossi.js <nome-sessione>
+
+# 4 · LE CHIAVI E LE APPROVAZIONI — sola lettura, nessuna transazione
+node scripts/ricerca/verifica-chiavi-relayer.js     # relayer: nonce letto, chiave accettata
+node scripts/ricerca/verifica-approvazioni.js       # ERC-20 e ERC-1155 sul FUNDER, non sull'EOA
+
+# 5 · durante un giro vivo, l'osservatore acceso PRIMA di armare
+node scripts/ricerca/osserva-giro-controllato.js <conditionId>
 ```
+
+⚠ **Il riavvio dei due processi che decidono un prezzo si fa DAL FILE e INSIEME**, o i prezzi
+divergono (`--update-env` non rilegge l'ecosystem):
+
+```bash
+pm2 restart agents/ecosystem.config.js --only agent40-manual-reprice,agent41-realloc-scheduler
+```
+
+⚠ **E si verifica PRIMA che `agents/ecosystem.config.js` non dichiari nessuna cintura di armamento.**
+Oggi porta `MANUAL_ORDER_PLACEMENT: 'dry-run'` di proposito: è lo stato leggibile e deterministico,
+non un grilletto. Per armare si cambia quella riga in `'send'` — una modifica visibile in git, in
+`pm2 env` e in `/proc`, cioè le tre cose che il 16 agosto non c'erano.
 
 **La regola che vale più di tutte, imparata oggi a caro prezzo**: *prima di modificare un ciclo vivo,
 misura quanto spesso quel ciclo passa dal punto che stai toccando.* Le tre volte in cui l'ho fatto non
