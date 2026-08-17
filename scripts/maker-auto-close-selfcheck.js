@@ -115,8 +115,19 @@ console.log('\n2. la decisione su una posizione — vendere il token posseduto')
 
   const tinyRest = AC.decideClose({ position: { tokenId: NO, size: 50, avgPrice: 0.485 }, rules, book: 'no',
     restingOrders: [{ tokenId: NO, side: 'SELL', price: 0.49, size: 20, sizeRemaining: 20 }] });
-  ok(tinyRest.action === 'skip' && tinyRest.gate === 'remainder-below-min-size',
-    '…ma se il resto scende sotto la size minima del mercato la chiusura viene RIFIUTATA e dichiarata: il guard condiviso e l\'adapter la rifiuterebbero comunque, e indebolirli per un chiamante non e uno scambio che vale la pena');
+  // ⚠ ROVESCIATA IL 17 AGOSTO 2026, e la ragione sta nell'ultima frase del vecchio messaggio: «il
+  // resto resta aperto e va chiuso a mano». Non c'e' nessuna mano — quello e' capitale incagliato
+  // fino alla risoluzione (§5.2 p.1, $26,30 in cinque residui). `min_incentive_size` e' il minimo dei
+  // PREMI: dice «non maturera' nulla», non «il venue rifiutera'». Su una vendita che CHIUDE il premio
+  // non e' lo scopo e il capitale si libera — stessa aritmetica per cui il tetto per ordine e quello
+  // di esposizione sono gia' esentati.
+  // ⚠ L'HA TROVATA IL BANCO DEL CICLO COMPLETO, non la rilettura: la deroga era gia' in
+  // `placeManualOrder` e non veniva MAI raggiunta, perche' QUESTO guard rifiuta prima. Due gate, uno
+  // solo corretto — e un test unitario sul secondo sarebbe rimasto verde per sempre.
+  ok(tinyRest.action === 'close' && tinyRest.sottoMinimoDerogato === true,
+    '…e se il resto scende sotto la size minima l\'uscita si TENTA lo stesso, dichiarandolo: il minimo e quello dei premi, e questa vendita chiude invece di aprire');
+  ok(tinyRest.size === 30 && tinyRest.minSizeMercato === rules.minSize,
+    '  con la size del solo resto da chiudere, e il minimo del mercato dichiarato accanto');
 
   const buyIgnored = AC.decideClose({ position: pos, rules, book: 'no',
     restingOrders: [{ tokenId: NO, side: 'BUY', price: 0.485, size: 50, sizeRemaining: 50 }] });

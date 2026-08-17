@@ -1,8 +1,8 @@
 {
- "generatoIl": "2026-08-17T09:12:01.578Z",
- "durataMs": 4151,
- "eventiVenue": 34,
- "righeGiornale": 99,
+ "generatoIl": "2026-08-17T09:20:02.169Z",
+ "durataMs": 5840,
+ "eventiVenue": 59,
+ "righeGiornale": 199,
  "passi": [
   {
    "ora": "09:00:00",
@@ -101,13 +101,23 @@
   {
    "ora": "17:42:00",
    "n": "ciclo dopo la sparizione"
+  },
+  {
+   "ora": "19:13:00",
+   "n": "scenario ATTRAVERSAMENTO: bid al pavimento",
+   "bid": 0.47000000000000003
+  },
+  {
+   "ora": "20:44:00",
+   "n": "scenario DEROGA SOTTO IL MINIMO: posizione da 1,82 share (minSize 50)",
+   "restaInPosizione": 1.82
   }
  ],
  "regoleInventariate": 102,
- "regoleScattate": 11,
- "regoleMaiScattate": 91,
+ "regoleScattate": 13,
+ "regoleMaiScattate": 89,
  "formeDinamiche": 13,
- "dinamicheConcretizzate": 15,
+ "dinamicheConcretizzate": 16,
  "scattate": [
   {
    "regola": "carico-di-ripiego",
@@ -115,6 +125,20 @@
     "lib/maker/auto-close.js"
    ],
    "volte": 1
+  },
+  {
+   "regola": "deroga-sotto-minimo-per-chiusura",
+   "file": [
+    "lib/maker/manual-order.js"
+   ],
+   "volte": 3
+  },
+  {
+   "regola": "merge-in-attesa",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 4
   },
   {
    "regola": "merge-onchain-eseguito",
@@ -135,35 +159,35 @@
    "file": [
     "lib/maker/auto-close.js"
    ],
-   "volte": 1
+   "volte": 2
   },
   {
    "regola": "merge-timeout-livello-3",
    "file": [
     "lib/maker/auto-close.js"
    ],
-   "volte": 2
+   "volte": 4
   },
   {
    "regola": "modalita-chiusura-ingresso",
    "file": [
     "lib/maker/auto-close.js"
    ],
-   "volte": 1
+   "volte": 3
   },
   {
    "regola": "modalita-chiusura-lato-posseduto-piazzato",
    "file": [
     "lib/maker/auto-close.js"
    ],
-   "volte": 3
+   "volte": 5
   },
   {
    "regola": "reject-venue",
    "file": [
     "lib/maker/manual-order.js"
    ],
-   "volte": 3
+   "volte": 9
   },
   {
    "regola": "scoperto-oltre-soglia-grave",
@@ -179,7 +203,7 @@
     "lib/maker/auto-reprice.js",
     "lib/maker/manual-order.js"
    ],
-   "volte": 14
+   "volte": 30
   },
   {
    "regola": "trigger",
@@ -187,7 +211,7 @@
     "lib/maker/auto-close.js",
     "lib/maker/auto-reprice.js"
    ],
-   "volte": 4
+   "volte": 9
   }
  ],
  "mai": [
@@ -298,13 +322,6 @@
   },
   {
    "regola": "cross-dichiarato",
-   "file": [
-    "lib/maker/manual-order.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "deroga-sotto-minimo-per-chiusura",
    "file": [
     "lib/maker/manual-order.js"
    ],
@@ -491,13 +508,6 @@
   },
   {
    "regola": "merge-esito-mancante",
-   "file": [
-    "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "merge-in-attesa",
    "file": [
     "lib/maker/auto-close.js"
    ],
@@ -845,30 +855,31 @@
   "rimasuglio-rimanenza-reject-venue-rules",
   "rimasuglio-controparte-aggressiva-reject-venue-rules",
   "merge-saltato-rinuncia",
-  "skip-remainder-below-min-size",
   "merge-livello-2-piazzato",
   "merge-livello-3",
   "merge-saltato-non-applicabile",
   "merge-livello-1",
   "skip-no-entry-price",
-  "riposizionamento-niente"
+  "riposizionamento-niente",
+  "modalita-chiusura-lato-posseduto-tentativo-fallito",
+  "modalita-chiusura-lato-posseduto-reject-venue"
  ],
  "eventiVenueRiassunti": [
   {
    "tipo": "ordine-nato",
-   "n": 11
+   "n": 22
   },
   {
    "tipo": "mid-mosso",
-   "n": 7
+   "n": 8
   },
   {
    "tipo": "fill",
-   "n": 3
+   "n": 4
   },
   {
    "tipo": "ordine-scaduto-gtd",
-   "n": 10
+   "n": 19
   },
   {
    "tipo": "merge-fallito",
@@ -881,6 +892,10 @@
   {
    "tipo": "rifiuto-saldo",
    "n": 1
+  },
+  {
+   "tipo": "rifiuto-post-only",
+   "n": 3
   }
  ]
 }

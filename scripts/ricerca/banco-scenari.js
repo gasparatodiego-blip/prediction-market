@@ -266,6 +266,78 @@ const registroChiusura = () => { const m = new Map();
   passo('ciclo dopo la sparizione');
   await AC.runAutoCloseCycle(depsChiusura(registri)).catch(() => {});
 
+  // ── FASE 8 · GLI SCENARI MIRATI ─────────────────────────────────────────────────────────────────
+  // ⚠ NON SONO UN AGGIRAMENTO DEL BANCO: sono le CONDIZIONI DI MERCATO che il ciclo principale non
+  // produce mai. Una regola che richiede «il bid arriva al pavimento» non e' raggiungibile in uno
+  // scenario in cui il mid cade sempre di piu' del pavimento — e non perche' la regola sia morta, ma
+  // perche' quel mercato non e' mai capitato. Aggiungere lo scenario e' completare il banco;
+  // ammorbidire la regola sarebbe aggirarlo.
+
+  // ① L'ATTRAVERSAMENTO. Serve: uscita a libro, gradino ≥ 1, e il bid AL pavimento o sopra.
+  //    Nel ciclo principale il mid cade di 3-5 tick e il pavimento (carico − 1 tick) resta sopra il
+  //    bid: il prezzo non incrocia e il permesso non serve. Qui il mercato scende di UN tick solo,
+  //    che e' il caso piu' comune di tutti.
+  {
+    const M2 = '0x' + 'b2'.repeat(32);
+    const m2 = VENUE.creaMercato({ conditionId: M2, mid: 0.50, tick: 0.01, minSize: 50, bandaCents: 4.5 });
+    // ⚠ LA CONTROPARTE DEV'ESSERE TROPPO CARA, o non si arriva mai all'uscita. Nella prima stesura di
+    // questo scenario il Livello 1 completava la coppia col taker (`merge-livello-1-piazzato`) e la
+    // gamba non restava MAI nuda: l'uscita non veniva proposta e l'attraversamento non poteva
+    // scattare. Non era un difetto del bot — era uno scenario che si risolveva da solo prima di
+    // arrivare al punto che voleva misurare.
+    // Si alza l'ask del NO sopra il tetto della coppia (101c − carico 48c = 53c): a 60c il Livello 1
+    // e il Livello 2 non possono comprare, e la posizione resta scoperta come nel caso vero.
+    m2.book.no.asks = [{ price: 0.60, size: 500 }];
+    m2.book.no.bestAsk = 0.60;
+    MERCATI_SIMULATI.add(M2.toLowerCase());
+    const r = await MO.placeManualOrder({ marketId: M2, book: 'yes', side: 'BUY', price: 0.48, size: 60,
+      userId: 'operator', inCoda: true }, depsRegole());
+    if (r.ok) {
+      const o = VENUE.ordiniVivi(M2).find((x) => x.side === 'BUY');
+      VENUE.riempi(o.orderId, 60);                       // posizione a carico 0,48
+      const reg2 = { merge: registroMem(), chiusura: registroChiusura() };
+      VENUE.avanza(60_000);
+      await AC.runAutoCloseCycle({ ...depsChiusura(reg2), marketIds: [M2] }).catch(() => {});
+      // ⚠ SI AVANZA A PASSI CON I CICLI IN MEZZO, non in un salto solo. Un `avanza(90 min)` fa scadere
+      // TUTTI gli ordini di GTD (1380 s = 23 min): al ciclo dopo non c'e' nessuna uscita a libro,
+      // quindi non c'e' il ramo `already-covered` che insegue il bid, e l'attraversamento non puo'
+      // scattare. E' come funziona la produzione — il ciclo gira ogni minuto e rinnova — e saltarlo
+      // avrebbe misurato uno stato che in produzione non esiste.
+      for (let k = 0; k < 9; k++) {
+        VENUE.avanza(10 * 60_000);
+        // ⚠ IL MID SI MUOVE DOPO CHE L'USCITA RIPOSA, e non prima. L'inseguimento del bid vive SOLO nel
+        // ramo `already-covered`/`uscita-da-abbassare`, cioe' quando un'uscita esiste gia' e va
+        // riprezzata: il PRIMO piazzamento e' una quotazione all'obiettivo e non insegue. Muovere il
+        // mid prima significa misurare il ramo che non insegue, e concludere «non attraversa» per la
+        // ragione sbagliata.
+        // Due tick, non uno: serve che il bid scenda AL pavimento (carico 48c − 1 tick = 47c).
+        if (k === 4) { VENUE.muoviMid(M2, -0.02); }
+        // `muoviMid` ricostruisce il book: l'ask caro va rimesso, o il Livello 1 torna a completare.
+        m2.book.no.asks = [{ price: 0.60, size: 500 }]; m2.book.no.bestAsk = 0.60;
+        await AC.runAutoCloseCycle({ ...depsChiusura(reg2), marketIds: [M2] }).catch(() => {});
+      }
+      passo('scenario ATTRAVERSAMENTO: bid al pavimento', { bid: VENUE.mercato(M2).book.yes.bestBid });
+    } else passo('scenario attraversamento non avviato', { gate: r.gate });
+  }
+
+  // ② LA DEROGA SOTTO IL MINIMO. Serve una posizione PICCOLA — sotto `minSize` — che l'uscita provi a
+  //    vendere. E' il residuo da 1,82 share del 16 agosto, quello che chiudeva tutte le vie insieme.
+  {
+    const M3 = '0x' + 'c3'.repeat(32);
+    const m3 = VENUE.creaMercato({ conditionId: M3, mid: 0.50, tick: 0.01, minSize: 50, bandaCents: 4.5 });
+    MERCATI_SIMULATI.add(M3.toLowerCase());
+    // La posizione si crea direttamente: un ordine da 1,82 share sarebbe rifiutato in APERTURA dal
+    // minimo premiante, ed e' giusto cosi' — il residuo nasce da un fill parziale, non da un ordine.
+    VENUE.posizioni.set(m3.tokenId, { size: 1.82, costoTotale: 1.82 * 0.48, nascondiPerCicli: 0 });
+    const reg3 = { merge: registroMem(), chiusura: registroChiusura() };
+    VENUE.avanza(60_000);
+    await AC.runAutoCloseCycle({ ...depsChiusura(reg3), marketIds: [M3] }).catch(() => {});
+    VENUE.avanza(90 * 60_000);
+    await AC.runAutoCloseCycle({ ...depsChiusura(reg3), marketIds: [M3] }).catch(() => {});
+    passo('scenario DEROGA SOTTO IL MINIMO: posizione da 1,82 share (minSize 50)',
+      { restaInPosizione: (VENUE.posizioni.get(m3.tokenId) || {}).size || 0 });
+  }
+
   // ════════════════════════════════════════════════════════════════════════════════════════════════
   // IL VERDETTO
   // ════════════════════════════════════════════════════════════════════════════════════════════════
