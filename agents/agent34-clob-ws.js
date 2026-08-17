@@ -62,6 +62,14 @@ const WATCHLIST_FILE = path.join(DATA_DIR, 'liquidity-rewards.json'); // agent24
 // Lo stesso percorso che leggono manual-order/market-clock/operator-board: una definizione sola
 // (`lib/maker/percorsi-feed`), o lettore e scrittore possono divergere in silenzio.
 const PERCORSI_FEED = require('../lib/maker/percorsi-feed');
+
+// ── I PERCORSI PRIMA DI TUTTO — 17 agosto 2026 ─────────────────────────────────────────────────────
+// Se `data/`, la directory di servizio o un file di servizio gia' esistente non sono utilizzabili da
+// QUESTO processo, ci si ferma qui e lo si dice. Non e' prudenza generica: il 17 agosto nove file di
+// `/tmp` erano di un altro utente, gli scrittori prendevano EACCES e **i lettori continuavano a leggere
+// la copia vecchia, che da quel momento non invecchiava piu'**. Un processo «online» che decide su una
+// fotografia ferma e' peggio di un processo caduto. Dettagli in `lib/safety/percorsi-critici.js`.
+require('../lib/safety/percorsi-critici').verificaOMuori('agent34-clob-ws');
 // ⚠ LO SCRITTORE PASSA DALLA STESSA DEFINIZIONE DEI LETTORI (`lib/maker/percorsi-feed`): tenere qui
 // un letterale mentre i quattro lettori lo importano e' il reperto D1 — due nomi per lo stesso file,
 // che un giorno divergono e nessuno lo dice. Il valore di difetto e' identico a prima.

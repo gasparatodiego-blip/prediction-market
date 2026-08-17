@@ -179,6 +179,14 @@ const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit'
 const killSwitch = require('../lib/safety/kill-switch');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
+// ── I PERCORSI PRIMA DI TUTTO — 17 agosto 2026 ─────────────────────────────────────────────────────
+// Se `data/`, la directory di servizio o un file di servizio gia' esistente non sono utilizzabili da
+// QUESTO processo, ci si ferma qui e lo si dice. Non e' prudenza generica: il 17 agosto nove file di
+// `/tmp` erano di un altro utente, gli scrittori prendevano EACCES e **i lettori continuavano a leggere
+// la copia vecchia, che da quel momento non invecchiava piu'**. Un processo «online» che decide su una
+// fotografia ferma e' peggio di un processo caduto. Dettagli in `lib/safety/percorsi-critici.js`.
+require('../lib/safety/percorsi-critici').verificaOMuori('agent40-manual-reprice');
+
 const HEARTBEATS = fileRuntime('agent-heartbeats.json');
 // ── IL BATTITO CHE IL GUARDIANO DEVE SORVEGLIARE ────────────────────────────────────────────────────
 // Questo processo possiede gli ordini della corsia manuale: li piazza, li riprezza, li rinnova, li

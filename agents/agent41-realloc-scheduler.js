@@ -182,6 +182,14 @@ const COER = require('../lib/maker/coerenza-soglie');
 const SBLOCCO = require('../lib/maker/sblocco-progressivo');
 // Il tetto per ORDINE arriva da dove è già dichiarato una volta sola: non nasce una settima copia qui.
 const { liveMinOrderCapUsd } = require('../lib/rewards/concentration');
+
+// ── I PERCORSI PRIMA DI TUTTO — 17 agosto 2026 ─────────────────────────────────────────────────────
+// Se `data/`, la directory di servizio o un file di servizio gia' esistente non sono utilizzabili da
+// QUESTO processo, ci si ferma qui e lo si dice. Non e' prudenza generica: il 17 agosto nove file di
+// `/tmp` erano di un altro utente, gli scrittori prendevano EACCES e **i lettori continuavano a leggere
+// la copia vecchia, che da quel momento non invecchiava piu'**. Un processo «online» che decide su una
+// fotografia ferma e' peggio di un processo caduto. Dettagli in `lib/safety/percorsi-critici.js`.
+require('../lib/safety/percorsi-critici').verificaOMuori('agent41-realloc-scheduler');
 const CO = { liveMinOrderCapUsd };
 
 // ── LO STATO DELLA DIAGNOSI DEL CAPITALE FERMO ────────────────────────────────────────────────────

@@ -186,9 +186,19 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
     // `lastRepriceAt` su `data/maker-auto-reprice-state.json`, e il giro dopo li rilegge per decidere
     // anti-churn e tetto orario. Due corse di fila sullo stesso mercato non erano quindi la stessa corsa:
     // e' una delle cause del banco che dava due risultati diversi sullo stesso codice.
+    // ⚠ `maker-allocated-capital.json` E' L'UNDICESIMO, ED E' STATO AGGIUNTO IL 17 AGOSTO 2026. E' la
+    // fotografia dei tetti per mercato, cioe' la MEMORIA DI UN PIANO PRECEDENTE esattamente come i dieci
+    // qui sopra — ed era l'unica memoria di quel tipo a sopravvivere all'«accensione da zero».
+    // Conseguenza misurata confrontando due snapshot di `data/`: con 2 mercati in fotografia il giro
+    // esercitava `saltato-prezzo-non-piazzabile` e `saltato-tetto-saturo`, con 3 esercitava invece
+    // `saltato-tetto-non-leggibile` — 16 forme dinamiche contro 15, sullo stesso codice. Il giro
+    // arrivava in fondo in entrambi i casi (18/18), ma **il conteggio delle regole non era confrontabile
+    // fra due giorni diversi**, e un conteggio che cambia da solo non e' una misura: e' rumore che
+    // qualcuno prima o poi legge come regressione.
     for (const f of ['realloc-ultimo-piano.json', 'maker-auto-reprice-state.json', 'realloc-pools.json',
       'modalita-chiusura.json', 'attesa-merge.json', 'residui-scoperti.json', 'da-ripianificare.json',
-      'quarantena-venue.json', 'presidio-posizioni.json', 'idempotenza-ordini.json']) {
+      'quarantena-venue.json', 'presidio-posizioni.json', 'idempotenza-ordini.json',
+      'maker-allocated-capital.json']) {
       try { require('fs').unlinkSync(path.join(ROOT, 'data', f)); } catch { /* gia' assente */ }
     }
     const snap = await A40.snapshotPosizioniTask().catch((e) => ({ errore: e.message }));
@@ -595,92 +605,160 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
   }
 
   // ══ PASSO 13 · GAMBA MORTA: RIPRISTINO ENTRO UN CICLO ═══════════════════════════════════════════
-  // `riconciliaCopertura` → `ripristinaGamba`, in servizio da stamattina e mai esercitato su un mercato
-  // vero. Il passo arriva all'esecuzione quando la gamba mancante E' TORNATA A LIBRO.
+  // `riconciliaCopertura` → `ripristinaGamba` → `coppia-simmetrica`. Il passo arriva in fondo quando la
+  // coppia e' TORNATA A LIBRO, simmetrica e sotto il tetto per mercato.
   //
-  // ⚠ SI UCCIDE UNA GAMBA SU UN MERCATO CHE STA NEL PIANO SALVATO, e non su uno nuovo: la prima stesura
-  // creava un mercato apposta e il ripristino rispondeva — correttamente — «nessuna riga nel piano salvato
-  // per questo mercato: si dichiara e NON si ricalcola» (§5-bis p.171, e' una delle tre cose che quel
-  // presidio NON fa di proposito). Lo scenario misurava un rifiuto giusto e lo chiamava fallimento.
+  // ═══ IL SOGGETTO SE LO COSTRUISCE, E QUESTA E' LA CORREZIONE DEL 17 AGOSTO 2026 ══════════════════
+  // Fino a ieri il passo prendeva `candidati13[0]`, cioe' **il primo mercato coperto sui due lati** che
+  // trovava iterando gli ordini vivi. Quell'ordine dipende da tutto quello che e' successo prima —
+  // `data/` compreso — e con lo snapshot del 17 agosto sera pescava **M6, il mercato del passo 12 «il
+  // merge che FALLISCE»**: posizione aperta, macchina di chiusura in corso, un `SELL 40×0,52` a libro e
+  // NESSUNA riga nel piano salvato. Il ripristino rispondeva correttamente «nessuna riga nel piano
+  // salvato per questo mercato: si dichiara e NON si ricalcola» (§5-bis p.171, una delle tre cose che
+  // quel presidio NON fa di proposito), e lo scenario chiamava fallimento un rifiuto giusto.
+  //
+  // ⚠ E IL «18 SU 18» DI IERI ERA VERO PER QUELLO SNAPSHOT DI `data/`, NON PER IL CODICE: misurato
+  // rigiocando lo stesso passo sul commit precedente — cadeva IDENTICO, stesso conteggio. E' la classe
+  // «test che fotografa lo stato invece della proprieta'» (§5.3), la quarta volta in questo repo.
+  //
+  // ⚠ E FILTRARE I CANDIDATI NON BASTAVA, provato: togliendo i mercati con posizione e con chiusura in
+  // corso restava comunque **solo M6**, perche' a quel punto del giro e' l'unico coperto sui due lati.
+  // Un filtro che lascia un candidato solo non e' una scelta: e' lo stesso pescaggio con piu' righe.
+  //
+  // LA CURA E' LA STESSA DEI PASSI 14-17: **il passo si costruisce il proprio mercato e lo apre dal
+  // percorso di produzione**. Azzera il venue, riporta la selezione e il piano allo stato vuoto, crea UN
+  // mercato pulito e lascia che sia `controlloCapitaleFermo()` ad aprirci sopra la coppia — cosi' la
+  // riga nel piano c'e' perche' l'ha scritta il pianificatore vero, non perche' l'abbiamo messa noi.
+  // Da qui in poi il passo non dipende ne' da `data/` ne' dai passi precedenti.
   if (!bloccato) {
-    // Il mercato con piu' gambe vive: e' uno che il percorso di produzione ha aperto, quindi ha una riga
-    // nel piano. Si sceglie dai FATTI del venue, non da un id deciso a priori.
-    const perMercato = new Map();
-    for (const o of VENUE.ordiniVivi()) perMercato.set(o.marketId, (perMercato.get(o.marketId) || []).concat([o]));
-    // ⚠ SI SCEGLIE UN MERCATO COPERTO SUI DUE LATI e si uccide TUTTO UN LATO. La prima stesura uccideva
-    // un ordine solo e misurava «gambe dopo > gambe prima»: il mercato scelto aveva un DOPPIONE, la
-    // riconciliazione l'ha rimosso — cosa giusta — e il conteggio e' SCESO da 3 a 2 mentre la copertura
-    // era perfetta. Il criterio non e' quante gambe ci sono: e' se i DUE LATI sono coperti.
+    const M13 = `0x${'13'.repeat(32)}`;
+    VENUE.azzera('passo 13 · il soggetto se lo costruisce');
+    // Lo stato che deciderebbe al posto nostro: selezione e piano tornano vuoti, come al passo 1. Senza,
+    // il mini-ciclo sceglierebbe fra i mercati dei passi precedenti — che non esistono piu' al venue.
+    for (const id of (ARC.readAutoRepriceConfig({}).enabledMarketIds || [])) {
+      ARC.setAutoReprice({ scope: 'market', marketId: id, enabled: false, by: 'banco', reason: 'passo 13' });
+    }
+    SEL.scriviStato({ ...SELM.statoVuoto(), attiva: true }, { by: 'banco', reason: 'passo 13' });
+    for (const f of ['realloc-ultimo-piano.json', 'maker-auto-reprice-state.json', 'modalita-chiusura.json',
+      'attesa-merge.json', 'residui-scoperti.json', 'da-ripianificare.json', 'quarantena-venue.json']) {
+      try { fs.unlinkSync(path.join(ROOT, 'data', f)); } catch { /* gia' assente */ }
+    }
+    VENUE.creaMercato({ conditionId: M13, mid: 0.40, tick: 0.01, minSize: 20, bandaCents: 4.5,
+      oreAllaScadenza: 60, question: 'banco · gamba morta' });
+    BOT.impostaBot({ enabled: true, by: 'banco', reason: 'passo 13' });
+
+    // ⚠ SERVONO TUTTI E DUE I CICLI, E L'ORDINE NON E' INDIFFERENTE — misurato il 17 agosto.
+    // `ripristinaGamba` pretende una riga nel PIANO SALVATO (`realloc-ultimo-piano.json`), e quel file
+    // lo scrive **solo il ciclo pesante**: `pianoLeggero` del mini-ciclo dichiara di non scriverlo
+    // («un piano calcolato su sei ore di storico non deve poter sostituire la memoria di uno calcolato
+    // su quarantotto», agent41:703). Aprendo la coppia col solo `controlloCapitaleFermo` il passo
+    // otteneva due gambe a libro e ZERO righe nel piano, quindi il ripristino rispondeva — di nuovo
+    // correttamente — «nessuna riga nel piano salvato». Era la stessa diagnosi di prima con un'altra
+    // causa: non il soggetto sbagliato, ma la MEMORIA mancante.
+    // Quindi: prima `giro()`, che calcola il piano da 6 h e lo SALVA; poi il trigger, che apre.
+    let pesante = null;
+    try { pesante = await A41.giro('banco · passo 13'); }
+    catch (e) { pesante = { errore: e.message }; }
+    let apertura = null;
+    try { apertura = await A41.controlloCapitaleFermo({ forzatoDa: 'banco · passo 13' }); }
+    catch (e) { apertura = { errore: e.message }; }
     const lati = (id) => {
       const o = VENUE.ordiniVivi(id); const m = VENUE.mercato(id);
       return { yes: o.filter((x) => x.tokenId === m.tokenId).length, no: o.filter((x) => x.tokenId === m.tokenIdNo).length };
     };
-    const candidati13 = [...perMercato.keys()].filter((id) => { const l = lati(id); return l.yes > 0 && l.no > 0; });
-    const idScelto = candidati13[0] || null;
-    const gambePrima = idScelto ? VENUE.ordiniVivi(idScelto) : [];
-    const latiPrima = idScelto ? lati(idScelto) : null;
-    if (idScelto) {
-      const m = VENUE.mercato(idScelto);
-      for (const o of VENUE.ordiniVivi(idScelto)) if (o.tokenId === m.tokenIdNo) VENUE.cancelOrder(o.orderId);
-    }
-    const latiDopoMorte = idScelto ? lati(idScelto) : null;
-    const gambeDopoMorte = idScelto ? VENUE.ordiniVivi(idScelto).length : 0;
-    VENUE.avanza(120_000);
-    let ric = null;
-    try { ric = await A41.riconciliaCopertura(); } catch (e) { ric = { errore: e.message }; }
-    const gambeDopoRipristino = idScelto ? VENUE.ordiniVivi(idScelto).length : 0;
-    const giornale13 = fs.existsSync(path.join(ROOT, 'data', 'realloc-scheduler.jsonl'))
-      ? fs.readFileSync(path.join(ROOT, 'data', 'realloc-scheduler.jsonl'), 'utf8').trim().split('\n').slice(-30)
-        .map((l) => { try { return JSON.parse(l); } catch { return {}; } }).filter((x) => x.tipo === 'ripristino-gamba')
-      : [];
-    // I NUMERI DELL'ASIMMETRIA: senza, «sfonda il tetto» non dice DI QUANTO ne' PERCHE'.
-    const vivi13 = idScelto ? VENUE.ordiniVivi(idScelto) : [];
+    const latiPrima = lati(M13);
+    const gambePrima = VENUE.ordiniVivi(M13);
     const rigaPiano = (() => {
       try {
         const pl = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'realloc-ultimo-piano.json'), 'utf8'));
-        return (pl.righe || []).find((r) => String(r.marketId || '').toLowerCase() === idScelto) || null;
+        return (pl.righe || []).find((r) => String(r.marketId || '').toLowerCase() === M13) || null;
       } catch { return null; }
     })();
-    // ⚠ IL CRITERIO E' LA COPPIA, NON LA GAMBA — 17 agosto 2026, decisione dell'operatore. Fino a ieri
-    // qui bastava «il lato NO e' tornato a libro»: e' un criterio che si accontenta di un ripristino
-    // ASIMMETRICO, cioe' esattamente lo stato che sfondava il tetto. Adesso si pretendono tre cose
-    // insieme — il lato e' tornato, le due size sono UGUALI, e il totale sta sotto il tetto per mercato.
-    const TETTO13 = require(path.join(ROOT, 'lib/rewards/concentration')).MARKET_CAP_FIXED_USD;
-    const coppia13 = (() => {
-      if (!idScelto) return null;
-      const m = VENUE.mercato(idScelto);
-      const o = VENUE.ordiniVivi(idScelto);
-      const y = o.filter((x) => x.tokenId === m.tokenId);
-      const n = o.filter((x) => x.tokenId === m.tokenIdNo);
-      if (y.length !== 1 || n.length !== 1) return { simmetrica: false, motivo: `${y.length} gamba/e YES e ${n.length} NO: non e' una coppia` };
-      const tot = +(y[0].size * y[0].price + n[0].size * n[0].price).toFixed(4);
-      return { simmetrica: Math.abs(y[0].size - n[0].size) <= 0.011, sizeYes: y[0].size, sizeNo: n[0].size,
-        prezzoYes: y[0].price, prezzoNo: n[0].price, totaleUsd: tot, tettoUsd: TETTO13, sottoIlTetto: tot <= TETTO13 + 1e-6 };
-    })();
-    passo('13 · gamba morta → la COPPIA ricostruita, simmetrica e sotto il tetto', {
-      ok: idScelto != null && latiDopoMorte && latiDopoMorte.no === 0 && lati(idScelto).no > 0
-        && !!(coppia13 && coppia13.simmetrica && coppia13.sottoIlTetto),
-      coppiaDopoIlRipristino: coppia13,
-      mercato: idScelto ? idScelto.slice(0, 12) : '(nessun mercato coperto sui due lati)',
-      latiPrima, latiDopoLaMorte: latiDopoMorte, latiDopoIlRipristino: idScelto ? lati(idScelto) : null,
-      gambePrima: gambePrima.length, dopoLaMorte: gambeDopoMorte, dopoIlRipristino: gambeDopoRipristino,
-      esitiRipristino: giornale13.slice(-3).map((x) => `${x.esito}${x.mancanti ? ` (${x.mancanti.length} mancanti)` : ''}`),
-      motiviRipristino: giornale13.slice(-2).map((x) => String(x.motivo || '').slice(0, 200)),
-      ordiniARiposoOra: vivi13.map((o) => `${o.side} ${o.tokenId.slice(0, 8)} ${o.size}×${o.price} = $${(o.size * o.price).toFixed(2)}`),
-      rigaDelPiano: rigaPiano ? { capitaleUsd: rigaPiano.capitalUsd ?? rigaPiano.capitale ?? null,
-        size: rigaPiano.size ?? null, pYes: rigaPiano.priceYes ?? rigaPiano.pYes ?? null, pNo: rigaPiano.priceNo ?? rigaPiano.pNo ?? null } : null,
-      erroreCopertura: ric && ric.errore ? ric.errore : null,
-    });
-    if (!(idScelto != null && latiDopoMorte && latiDopoMorte.no === 0 && lati(idScelto).no > 0
-      && coppia13 && coppia13.simmetrica && coppia13.sottoIlTetto)) {
-      annota('passo 13', idScelto == null ? 'nessun mercato coperto sui due lati da cui uccidere un lato'
-        : (lati(idScelto).no === 0
-          ? `il lato NO ucciso non e' tornato a libro (lati dopo il ripristino: ${JSON.stringify(lati(idScelto))})`
-          : `il lato e' tornato ma la coppia non e' simmetrica o sfonda il tetto: ${JSON.stringify(coppia13)}`),
-      'agents/agent41-realloc-scheduler.js (riconciliaCopertura → ripristinaGamba → coppia-simmetrica) + lib/maker/coppia-simmetrica.js');
+
+    // ⚠ SE LA COPPIA NON NASCE, IL PASSO NON PROSEGUE: uccidere un lato che non c'e' e poi osservare che
+    // non torna misurerebbe l'apertura, non il ripristino — e lo chiamerebbe passo 13.
+    if (latiPrima.yes === 0 || latiPrima.no === 0) {
+      passo('13 · gamba morta → la COPPIA ricostruita, simmetrica e sotto il tetto', {
+        ok: false, mercato: M13.slice(0, 12), latiPrima,
+        pesanteEsito: pesante && (pesante.azione || pesante.errore || 'nessun esito'),
+        aperturaEsito: apertura && (apertura.esito || apertura.errore || 'nessun esito'),
+        aperturaMotivo: String((apertura && (apertura.motivo || apertura.errore)) || '').slice(0, 240),
+        rigaDelPiano: rigaPiano ? 'presente' : null,
+        nota: 'la coppia non e\' nata: il passo NON uccide un lato inesistente',
+      });
+      annota('passo 13', `la coppia non e' nata sul mercato del passo (${JSON.stringify(latiPrima)}): non si uccide un lato che non c'e'`,
+        'agents/agent41-realloc-scheduler.js (controlloCapitaleFermo → miniCiclo)');
+    } else {
+      // ⚠ SI UCCIDE TUTTO UN LATO, non un ordine solo. La prima stesura ne uccideva uno e misurava
+      // «gambe dopo > gambe prima»: se il mercato aveva un DOPPIONE la riconciliazione lo rimuoveva —
+      // cosa giusta — e il conteggio SCENDEVA mentre la copertura era perfetta. Il criterio non e'
+      // quante gambe ci sono: e' se i DUE LATI sono coperti.
+      const m = VENUE.mercato(M13);
+      for (const o of VENUE.ordiniVivi(M13)) if (o.tokenId === m.tokenIdNo) VENUE.cancelOrder(o.orderId);
+      const latiDopoMorte = lati(M13);
+      const gambeDopoMorte = VENUE.ordiniVivi(M13).length;
+
+      // ⚠ IL GIORNALE SI LEGGE DALL'OFFSET, non con `slice(-3)`: gli ultimi tre record possono venire da
+      // un passo precedente, e allora «rimessa» racconterebbe un ripristino che non e' questo. Era il
+      // secondo difetto di questo passo, ed e' la stessa lezione della lettura stantia del referto.
+      const fileGiornale41 = path.join(ROOT, 'data', 'realloc-scheduler.jsonl');
+      const offset41 = (() => {
+        try { return fs.readFileSync(fileGiornale41, 'utf8').split('\n').length; } catch { return 0; }
+      })();
+
+      VENUE.avanza(120_000);
+      let ric = null;
+      try { ric = await A41.riconciliaCopertura(); } catch (e) { ric = { errore: e.message }; }
+      const gambeDopoRipristino = VENUE.ordiniVivi(M13).length;
+      const giornale13 = (() => {
+        try {
+          return fs.readFileSync(fileGiornale41, 'utf8').split('\n').slice(offset41 - 1)
+            .map((l) => { try { return JSON.parse(l); } catch { return {}; } })
+            .filter((x) => x.tipo === 'ripristino-gamba');
+        } catch { return []; }
+      })();
+      const vivi13 = VENUE.ordiniVivi(M13);
+
+      // ⚠ IL CRITERIO E' LA COPPIA, NON LA GAMBA — 17 agosto 2026, decisione dell'operatore. Fino a ieri
+      // bastava «il lato NO e' tornato a libro»: e' un criterio che si accontenta di un ripristino
+      // ASIMMETRICO, cioe' esattamente lo stato che sfondava il tetto. Adesso si pretendono tre cose
+      // insieme — il lato e' tornato, le due size sono UGUALI, e il totale sta sotto il tetto per mercato.
+      const TETTO13 = require(path.join(ROOT, 'lib/rewards/concentration')).MARKET_CAP_FIXED_USD;
+      const coppia13 = (() => {
+        const mm = VENUE.mercato(M13);
+        const o = VENUE.ordiniVivi(M13);
+        const y = o.filter((x) => x.tokenId === mm.tokenId);
+        const n = o.filter((x) => x.tokenId === mm.tokenIdNo);
+        if (y.length !== 1 || n.length !== 1) return { simmetrica: false, motivo: `${y.length} gamba/e YES e ${n.length} NO: non e' una coppia` };
+        const tot = +(y[0].size * y[0].price + n[0].size * n[0].price).toFixed(4);
+        return { simmetrica: Math.abs(y[0].size - n[0].size) <= 0.011, sizeYes: y[0].size, sizeNo: n[0].size,
+          prezzoYes: y[0].price, prezzoNo: n[0].price, totaleUsd: tot, tettoUsd: TETTO13, sottoIlTetto: tot <= TETTO13 + 1e-6 };
+      })();
+      const verde = latiDopoMorte.no === 0 && lati(M13).no > 0
+        && !!(coppia13 && coppia13.simmetrica && coppia13.sottoIlTetto);
+      passo('13 · gamba morta → la COPPIA ricostruita, simmetrica e sotto il tetto', {
+        ok: verde,
+        coppiaDopoIlRipristino: coppia13,
+        mercato: M13.slice(0, 12),
+        // Il soggetto e' COSTRUITO, e va detto: chi rilegge deve sapere che non e' stato pescato.
+        soggetto: 'costruito dal passo e aperto da controlloCapitaleFermo — indipendente da data/',
+        latiPrima, latiDopoLaMorte: latiDopoMorte, latiDopoIlRipristino: lati(M13),
+        gambePrima: gambePrima.length, dopoLaMorte: gambeDopoMorte, dopoIlRipristino: gambeDopoRipristino,
+        esitiRipristino: giornale13.map((x) => `${x.esito}${x.mancanti ? ` (${x.mancanti.length} mancanti)` : ''}`),
+        motiviRipristino: giornale13.map((x) => String(x.motivo || '').slice(0, 200)),
+        ordiniARiposoOra: vivi13.map((o) => `${o.side} ${o.tokenId.slice(0, 8)} ${o.size}×${o.price} = $${(o.size * o.price).toFixed(2)}`),
+        rigaDelPiano: rigaPiano ? { capitaleUsd: rigaPiano.capitalUsd ?? rigaPiano.capitale ?? null,
+          size: rigaPiano.size ?? null, pYes: rigaPiano.priceYes ?? rigaPiano.pYes ?? null, pNo: rigaPiano.priceNo ?? rigaPiano.pNo ?? null } : null,
+        erroreCopertura: ric && ric.errore ? ric.errore : null,
+      });
+      if (!verde) {
+        annota('passo 13', lati(M13).no === 0
+          ? `il lato NO ucciso non e' tornato a libro (lati dopo il ripristino: ${JSON.stringify(lati(M13))})`
+          : `il lato e' tornato ma la coppia non e' simmetrica o sfonda il tetto: ${JSON.stringify(coppia13)}`,
+        'agents/agent41-realloc-scheduler.js (riconciliaCopertura → ripristinaGamba → coppia-simmetrica) + lib/maker/coppia-simmetrica.js');
+      }
     }
   }
-
   // ══ PASSO 14 · POSIZIONE SPARITA SENZA UN NOSTRO ORDINE: ALLARME ════════════════════════════════
   // ⚠ Da qui in giu' la guardia NON e' `!bloccato` ma `!bloccato`: i passi 14-17 costruiscono ognuno il
   // proprio mercato e non dipendono dal 13. Se il 13 e' stato ANNOTATO il giro prosegue.

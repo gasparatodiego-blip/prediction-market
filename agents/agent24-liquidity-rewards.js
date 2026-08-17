@@ -52,6 +52,14 @@ const STARTUP_DELAY_MS  = 8_000;
 // lettore avrebbe prodotto la peggiore delle due situazioni — due percorsi per lo stesso file, che
 // divergono in silenzio (il reperto D1). `DATA_DIR` e' la definizione unica di `lib/safety/store.js`.
 const { DATA_DIR }      = require('../lib/safety/store');
+
+// ── I PERCORSI PRIMA DI TUTTO — 17 agosto 2026 ─────────────────────────────────────────────────────
+// Se `data/`, la directory di servizio o un file di servizio gia' esistente non sono utilizzabili da
+// QUESTO processo, ci si ferma qui e lo si dice. Non e' prudenza generica: il 17 agosto nove file di
+// `/tmp` erano di un altro utente, gli scrittori prendevano EACCES e **i lettori continuavano a leggere
+// la copia vecchia, che da quel momento non invecchiava piu'**. Un processo «online» che decide su una
+// fotografia ferma e' peggio di un processo caduto. Dettagli in `lib/safety/percorsi-critici.js`.
+require('../lib/safety/percorsi-critici').verificaOMuori('agent24-liquidity-rewards');
 const OUTPUT_FILE       = path.join(DATA_DIR, 'liquidity-rewards.json');
 const MAX_RPS           = 1.5;
 const CAPITAL_LEVELS    = [500, 5_000, 50_000];
