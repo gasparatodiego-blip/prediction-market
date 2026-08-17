@@ -28,7 +28,7 @@
       "Bash(node*agent40-manual-reprice*)",
       "Bash(*/api/maker/arm*)",
       "Bash(*/api/maker/disarm*)",
-      "Edit(//root/rewards-bot/data/maker-arming.json)",
+      "Edit(//home/bot/bot/data/maker-arming.json)",
       "Bash(*MAKER_PLACEMENT*)",
       "Bash(*MANUAL_ORDER_PLACEMENT*)",
       "Bash(*MAKER_MODE=live*)",
@@ -43,7 +43,7 @@
       "Bash(*pm2 start*)",
       "Bash(*pm2 startOrRestart*)",
 
-      "Edit(//root/rewards-bot/data/maker-bot-enabled.json)",
+      "Edit(//home/bot/bot/data/maker-bot-enabled.json)",
       "Bash(*> *bot-enabled*)",
       "Bash(*>*bot-enabled*.json)",
       "Bash(*tee*bot-enabled*)",
@@ -70,7 +70,7 @@
       "Bash(*node*api/maker/bot*)",
       "Bash(*> *api/maker/bot*)",
 
-      "Edit(//root/rewards-bot/data/safety-kill-switch.json)",
+      "Edit(//home/bot/bot/data/safety-kill-switch.json)",
       "Bash(*> *safety-kill*)",
       "Bash(*>*safety-kill*.json)",
       "Bash(*tee*safety-kill*)",
@@ -103,7 +103,7 @@
       "Bash(*node*/api/maker/kill*)",
       "Bash(*> */api/maker/kill*)",
 
-      "Edit(//root/rewards-bot/data/guardian-baseline.json)",
+      "Edit(//home/bot/bot/data/guardian-baseline.json)",
       "Bash(*> *guardian-baseline*)",
       "Bash(*>*guardian-baseline*.json)",
       "Bash(*tee*guardian-baseline*)",
@@ -123,7 +123,7 @@
       "Bash(*git checkout*guardian-baseline*)",
       "Bash(*git restore*guardian-baseline*)",
       "Bash(*git reset*guardian-baseline*)",
-      "Edit(//root/rewards-bot/data/guardian-state.json)",
+      "Edit(//home/bot/bot/data/guardian-state.json)",
       "Bash(*> *guardian-state*)",
       "Bash(*>*guardian-state*.json)",
       "Bash(*tee*guardian-state*)",
@@ -144,7 +144,7 @@
       "Bash(*git restore*guardian-state*)",
       "Bash(*git reset*guardian-state*)",
 
-      "Edit(//root/rewards-bot/data/maker-manual-mode.json)",
+      "Edit(//home/bot/bot/data/maker-manual-mode.json)",
       "Bash(*> *maker-manual-mode*)",
       "Bash(*>*maker-manual-mode*.json)",
       "Bash(*tee*maker-manual-mode*)",
@@ -184,10 +184,10 @@
       "Bash(*git restore*maker-arming*)",
       "Bash(*git reset*maker-arming*)",
 
-      "Edit(//root/rewards-bot/.env)",
-      "Edit(//root/rewards-bot/.env.*)",
-      "Edit(//root/rewards-bot/agents/ecosystem.config.js)",
-      "Bash(*> /root/rewards-bot/.env*)"
+      "Edit(//home/bot/bot/.env)",
+      "Edit(//home/bot/bot/.env.*)",
+      "Edit(//home/bot/bot/agents/ecosystem.config.js)",
+      "Bash(*> /home/bot/bot/.env*)"
     ]
   },
   "hooks": {
@@ -197,7 +197,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node /root/rewards-bot/.claude/hooks/blocca-piazzamento.js",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/blocca-piazzamento.js\"",
             "timeout": 15,
             "statusMessage": "controllo piazzamento reale…"
           }

@@ -35,6 +35,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 // ── IL CARICATORE DI `.env` — stesso blocco di agent40/41/43, e per la stessa ragione (§5.3):
 // un riavvio del DEMONE pm2 risorge da un dump pulito, e senza questo il saldo non si leggerebbe.
@@ -56,7 +57,13 @@ const OSS = require('../lib/osservatore/campionamento');
 const RADICE = path.join(__dirname, '..');
 const DATA = path.join(RADICE, 'data');
 const DIR = path.join(DATA, 'osservatore');
-const LOG_GUARDIANO = '/root/.pm2/logs/agent43-guardian-out.log';
+// ⚠ LA HOME DI pm2 SI LEGGE, NON SI CABLA (17 agosto 2026, migrazione root → bot). Era
+// `/root/.pm2/logs/...`: dopo il cambio di utente il file non e' nemmeno apribile, e `codaNuova`
+// restituisce stringa vuota — cioe' «il guardiano non ha detto niente», che e' indistinguibile da «il
+// guardiano sta bene». `PM2_HOME` e' la variabile che pm2 stesso esporta ai figli; la home dell'utente
+// e' il ripiego, ed e' quella che pm2 usa quando `PM2_HOME` non e' impostata.
+const CASA_PM2 = process.env.PM2_HOME || path.join(os.homedir(), '.pm2');
+const LOG_GUARDIANO = path.join(CASA_PM2, 'logs', 'agent43-guardian-out.log');
 const GIORNALE_MAKER = path.join(DATA, 'polymarket-maker-audit.jsonl');
 
 const log = (...a) => console.log(new Date().toISOString(), '[agent45-osservatore]', ...a);

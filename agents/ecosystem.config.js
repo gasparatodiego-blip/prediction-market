@@ -97,41 +97,59 @@
 // agent35 lo scarta dopo 30 minuti — correttamente — e il freno torna cieco.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// I PERCORSI SI DERIVANO, NON SI CABLANO — 17 agosto 2026, dopo la migrazione da `root` a `bot`
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// Fino a oggi ogni blocco portava `cwd: '/root/prediction-market'` e `HOME: CASA`, undici volte
+// ciascuno. Quando la copia di lavoro e' passata a `/home/bot/bot` e l'utente da `root` a `bot`, pm2 ha
+// smesso di trovare gli agent: `cwd` puntava a una directory che l'utente nuovo non puo' nemmeno
+// leggere. E `HOME: CASA` e' il gemello silenzioso dello stesso difetto — un processo con HOME
+// illeggibile non fallisce subito, fallisce dove nessuno guarda (`os.homedir()`, cache, log).
+//
+// ⚠ NON SI SOSTITUISCE UN LETTERALE CON UN ALTRO LETTERALE: `RADICE` e' la copia che sta eseguendo
+// QUESTO file (`__dirname/..`), quindi il config non puo' piu' puntare a un repo diverso da quello da
+// cui e' stato letto — che e' esattamente il difetto che ha appena morso. `CASA` e' la home
+// dell'utente che fa girare pm2, letta a runtime.
+const path = require('path');
+const os   = require('os');
+const RADICE = path.resolve(__dirname, '..');
+const CASA   = os.homedir();
+
 module.exports = {
   apps: [
     {
       name:          'agent27-news-guard',
       script:        './agents/agent27-news-guard.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       restart_delay: 30000,
       max_restarts:  20,
       max_memory_restart: '150M',   // small: RSS text + a per-market news cache
       watch:         false,
       autorestart:   true,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           { NODE_ENV: 'production', HOME: CASA },
     },
     {
       name:          'agent24-liquidity-rewards',
       script:        './agents/agent24-liquidity-rewards.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       restart_delay: 60000,
       max_restarts:  20,
       watch:         false,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           { NODE_ENV: 'production', HOME: CASA },
     },
     {
       name:          'agent-monitor',
       script:        './agents/agent-monitor.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       restart_delay: 10000,
       max_restarts:  20,
       watch:         false,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           { NODE_ENV: 'production', HOME: CASA },
     },
     {
       name:          'agent34-clob-ws',
       script:        './agents/agent34-clob-ws.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       restart_delay: 15000,
       max_restarts:  20,
       // Small + bounded: one WS connection, ≤120 subscribed assets, in-memory books
@@ -141,12 +159,12 @@ module.exports = {
       max_memory_restart: '200M',
       watch:         false,
       autorestart:   true,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           { NODE_ENV: 'production', HOME: CASA },
     },
     {
       name:          'agent40-manual-reprice',
       script:        './agents/agent40-manual-reprice.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       restart_delay: 15000,
       max_restarts:  20,
       // The BAND-EXIT WATCHER for HAND-PLACED orders. Replaces the fixed ~180s GTD expiry on manual
@@ -237,7 +255,7 @@ module.exports = {
       // COME SI DISARMA: si CANCELLANO queste righe e si riavvia dal file. Le assenze sono fail-closed
       // per costruzione — MAKER_MODE assente non e' in LIVE_MODES ⇒ rifiuto; MAKER_PLACEMENT assente ⇒
       // placement='dry-run'. Togliere e' piu' sicuro che scrivere, ed e' voluto.
-      env:           { NODE_ENV: 'production', HOME: '/root', MAKER_FUNDING_APPROVED: 'true',
+      env:           { NODE_ENV: 'production', HOME: CASA, MAKER_FUNDING_APPROVED: 'true',
         // ══ MANUAL_ORDER_PLACEMENT — DICHIARATA QUI DAL 17 AGOSTO 2026 ═════════════════════════════
         //
         // IL FATTO CHE HA PRODOTTO QUESTA RIGA. Il 16 agosto alle 19:22:53 agent40 e' stato riavviato
@@ -302,7 +320,7 @@ module.exports = {
     {
       name:          'agent38-tape-watchdog',
       script:        './agents/agent38-tape-watchdog.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       restart_delay: 15000,
       max_restarts:  20,
       // Continuity watchdog for the rewards TRADE-TAPE + MID-HISTORY journals (Jul-25 45h collection).
@@ -314,12 +332,12 @@ module.exports = {
       max_memory_restart: '150M',
       watch:         false,
       autorestart:   true,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           { NODE_ENV: 'production', HOME: CASA },
     },
     {
       name:          'agent41-realloc-scheduler',
       script:        './agents/agent41-realloc-scheduler.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       restart_delay: 30000,
       max_restarts:  20,
       // IL RIALLOCATORE PERIODICO. Ogni 6 ore chiede al VENUE (non alla cache locale) se i mercati in
@@ -356,7 +374,7 @@ module.exports = {
       watch:         false,
       autorestart:   true,
       env:           {
-        NODE_ENV: 'production', HOME: '/root',
+        NODE_ENV: 'production', HOME: CASA,
         REALLOC_SCHEDULER_ENABLED: '1',   // ← fa esistere il processo; NON gli fa piazzare niente (vedi sopra).
         // ── DICHIARATA, NON PIÙ SOLO EREDITATA (4 agosto 2026) ────────────────────────────────────
         // Qui la fragilità è REALE, a differenza del caso di agent40: agent41 NON ha il caricatore di
@@ -469,7 +487,7 @@ module.exports = {
     {
       name:          'agent42-watch-makers',
       script:        './agents/agent42-watch-makers.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       restart_delay: 20000,
       max_restarts:  20,
       // IL MONITOR DEI 21 MAKER DI RIFERIMENTO. Segue l'attività pubblica dei 21 wallet del manuale v2
@@ -497,12 +515,12 @@ module.exports = {
       max_memory_restart: '250M',
       watch:         false,
       autorestart:   true,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           { NODE_ENV: 'production', HOME: CASA },
     },
     {
       name:          'agent43-guardian',
       script:        './agents/agent43-guardian.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       restart_delay: 20000,
       max_restarts:  20,
       // IL GUARDIANO DELLE PERDITE ECONOMICHE. Sorveglia il CAPITALE, non i processi.
@@ -548,12 +566,12 @@ module.exports = {
       max_memory_restart: '200M',
       watch:         false,
       autorestart:   true,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           { NODE_ENV: 'production', HOME: CASA },
     },
     {
       name:          'agent44-audit-scoperta',
       script:        './agents/agent44-audit-scoperta.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       // ── L'AUDIT DI SCOPERTA. TROVA, ARCHIVIA, ESCE. ──────────────────────────────────────────────
       // Legge il codice del bot una volta al giorno cercando i pattern di rischio che in questo
       // progetto hanno già prodotto guasti veri (costanti dello stesso concetto con valori diversi,
@@ -600,12 +618,12 @@ module.exports = {
       // anteporgli `nice`/`ionice`. È l'agente ad abbassarsi da solo alla prima riga di lavoro
       // (`os.setPriority` + `ionice -c 3` sul proprio pid), il che è anche più robusto — vale comunque
       // lo si lanci, anche a mano.
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           { NODE_ENV: 'production', HOME: CASA },
     },
     {
       name:          'agent45-osservatore',
       script:        './agents/agent45-osservatore.js',
-      cwd:           '/root/prediction-market',
+      cwd:           RADICE,
       // ── L'OSSERVATORE MUTO. CAMPIONA, SCRIVE, NIENT'ALTRO. ──────────────────────────────────────
       // Un campione ogni 60 s in data/osservatore/: ordini a riposo, mercati coperti, posizioni,
       // saldo, PnL del guardiano, stato degli interruttori. Piu' un giornale in italiano con gli
@@ -630,7 +648,7 @@ module.exports = {
       // giornale maker la legge in modo incrementale, con un tetto di 8 MB per giro.
       max_memory_restart: '150M',
       watch:         false,
-      env:           { NODE_ENV: 'production', HOME: '/root' },
+      env:           { NODE_ENV: 'production', HOME: CASA },
     },
   ],
 };

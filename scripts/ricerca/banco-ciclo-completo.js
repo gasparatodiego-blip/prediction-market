@@ -53,7 +53,26 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const VIVO = '/root/bot';                 // il path che pm2 esegue (`/root/prediction-market` e' un symlink)
+
+// ⚠ IL REPO VIVO SI CHIEDE A GIT, NON SI CABLA (17 agosto 2026, migrazione root → bot). Era
+// `const VIVO = '/root/bot'`, e dopo lo spostamento della copia di lavoro il cancello non confrontava
+// piu' niente: `diff -rq` su una directory illeggibile finisce nel `catch` e produce `out = ''`, cioe'
+// ZERO differenze — il banco sarebbe partito dichiarando «codice identico a quello vivo» senza aver
+// letto un byte del codice vivo. Un cancello che si apre quando non riesce a guardare e' peggio di
+// nessun cancello, ed e' lo stesso difetto che questo file corregge nel paragrafo sopra.
+// Il worktree principale e' la PRIMA voce di `git worktree list` (garantito da git), e questo file gira
+// sempre dentro un worktree dello stesso repo: la domanda ha una risposta esatta, non un default.
+function repoVivo() {
+  const forzato = (process.env.BANCO_REPO_VIVO || '').trim();
+  if (forzato) return path.resolve(forzato);
+  let out;
+  try { out = execFileSync('git', ['-C', ROOT, 'worktree', 'list', '--porcelain'], { encoding: 'utf8' }); }
+  catch (e) { throw new Error(`il banco non riesce a chiedere a git dove sia il repo vivo (${e && e.message}). Si passa BANCO_REPO_VIVO=<path>.`); }
+  const m = out.match(/^worktree (.+)$/m);
+  if (!m) throw new Error('git non elenca nessun worktree: impossibile stabilire quale sia il repo vivo.');
+  return path.resolve(m[1].trim());
+}
+const VIVO = repoVivo();
 const VERBOSO = process.argv.includes('--verboso');
 const OUT = path.join(ROOT, 'data', 'ricerca', 'banco-ciclo-completo.json');
 const DIR_FEED = path.join(ROOT, 'data', 'banco-feed');
@@ -64,7 +83,7 @@ const DIR_FEED = path.join(ROOT, 'data', 'banco-feed');
 function verificaIdentitaDelCodice() {
   if (path.resolve(ROOT) === path.resolve(VIVO)) {
     throw new Error(`il banco NON gira su ${VIVO}: scriverebbe nello stato del bot vero (piano, tetti, allowlist, selezione, giornale). `
-      + 'Si crea un worktree allo stesso commit — `git worktree add -f /root/bot-banco HEAD` — con `data/` copiato, e si lancia da la\'.');
+      + `Si crea un worktree allo stesso commit — \`git worktree add -f ${VIVO}-banco HEAD\` — con \`data/\` copiato, e si lancia da la'.`);
   }
   const sha = (dove) => { try { return execFileSync('git', ['-C', dove, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); } catch { return null; } };
   const qui = sha(ROOT); const vivo = sha(VIVO);
@@ -73,16 +92,29 @@ function verificaIdentitaDelCodice() {
   // `/root/bot` (che e' il codice VIVO, non quello del commit), e due sha diversi non implicano codice
   // diverso (un `rsync` dei tre alberi li rende identici a sha diverso). Lo sha resta DICHIARATO perche'
   // serve a chi rilegge il referto; a decidere sono i byte.
+  // ⚠ `diff` HA TRE ESITI, NON DUE, E IL TERZO APRIVA IL CANCELLO (17 agosto 2026). Uscita 0 = identici,
+  // 1 = differenze (e stanno su stdout), **≥2 = non ce l'ha fatta** — directory assente, permesso negato.
+  // Il `catch` unico prendeva `e.stdout`, che nel caso 2 e' VUOTO: zero differenze, cancello aperto,
+  // banco partito senza aver letto un byte del codice vivo. E' esattamente quello che sarebbe successo
+  // stamattina, con `/root/bot` illeggibile dall'utente nuovo. Ora l'errore di `diff` e' un errore.
   const diversi = [];
   for (const d of ['lib', 'agents', 'scripts']) {
     let out = '';
     try { out = execFileSync('diff', ['-rq', path.join(VIVO, d), path.join(ROOT, d)], { encoding: 'utf8' }); }
-    catch (e) { out = String(e.stdout || ''); }
+    catch (e) {
+      const stato = e && typeof e.status === 'number' ? e.status : null;
+      if (stato !== 1) {
+        throw new Error(`il banco non riesce a CONFRONTARE il proprio codice con quello vivo (${VIVO}/${d}): `
+          + `diff uscito ${stato === null ? 'senza stato' : stato} — ${String((e && e.stderr) || (e && e.message) || '').trim()}. `
+          + 'Non si prosegue: un confronto che non riesce non e\' un confronto riuscito.');
+      }
+      out = String(e.stdout || '');
+    }
     for (const riga of out.split('\n').filter(Boolean)) diversi.push(riga);
   }
   if (diversi.length) {
     throw new Error(`il codice del worktree e quello vivo DIFFERISCONO (${diversi.length} voci):\n  ${diversi.slice(0, 8).join('\n  ')}\n`
-      + 'Committa in /root/bot e rifai `git -C /root/bot-banco checkout <sha>`, oppure copia i file. Il banco non prova codice che non e\' quello vivo.');
+      + `Committa in ${VIVO} e rifai \`git -C ${ROOT} checkout <sha>\`, oppure copia i file. Il banco non prova codice che non e' quello vivo.`);
   }
   return { commitWorktree: qui, commitVivo: vivo, alberiConfrontati: ['lib', 'agents', 'scripts'],
     identiciPerByte: true };

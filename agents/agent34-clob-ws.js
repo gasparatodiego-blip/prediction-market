@@ -52,7 +52,12 @@ const { estRewardForgone } = require('../lib/news-guard/action');
 const { raggioBandaCents } = require('../lib/banda-premiante');
 
 // ── config ──
-const WATCHLIST_FILE = '/root/prediction-market/data/liquidity-rewards.json'; // agent24 output
+// ⚠ ANCORATO AL PACKAGE ROOT (17 agosto 2026, migrazione root → bot): era
+// `/root/prediction-market/data/...`, e dopo lo spostamento della copia di lavoro `readJsonSafe`
+// restituiva `null` — cioe' watchlist vuota, nessuna sottoscrizione, e nessun errore. Stessa
+// definizione di `lib/safety/store.js`, importata.
+const { DATA_DIR } = require('../lib/safety/store');
+const WATCHLIST_FILE = path.join(DATA_DIR, 'liquidity-rewards.json'); // agent24 output
 // Lo stesso percorso che leggono manual-order/market-clock/operator-board: una definizione sola
 // (`lib/maker/percorsi-feed`), o lettore e scrittore possono divergere in silenzio.
 const PERCORSI_FEED = require('../lib/maker/percorsi-feed');
@@ -140,7 +145,7 @@ const UA = 'edgeradar-agent34-clob-ws/1.0 (read-only)';
 // never the level count (the level count is the feature): 45s→75s → 38.7 + 1.9 ≈ 40.6 MB/day, ~19% under
 // the 50 MB/day cap. 75s is still 4× finer than the 5-min continuous-coverage outage threshold (agent39),
 // so raising it does not fragment the net-rerun window.
-const MID_HISTORY_DIR = '/root/prediction-market/data';
+const MID_HISTORY_DIR = DATA_DIR;   // v. WATCHLIST_FILE: ancorato al package root, non cablato
 const MID_HISTORY_INTERVAL_MS = Number(process.env.MID_HISTORY_INTERVAL_MS || 75_000);
 const MID_HISTORY_RETENTION_DAYS = 14;
 
@@ -152,7 +157,7 @@ const MID_HISTORY_RETENTION_DAYS = 14;
 // buffer a day), daily rotation, 14-day retention by filename. This is the OBSERVED tape that replaces the
 // 45s-sampled fill inference. Read-only: no order path, agent35 stays disarmed. Rate is ~a few/min across
 // the universe (measured), so bytes/day is tiny — trades are never sampled, they are the ground truth.
-const TRADE_TAPE_DIR = '/root/prediction-market/data';
+const TRADE_TAPE_DIR = DATA_DIR;    // idem
 const TRADE_TAPE_RETENTION_DAYS = 14;
 
 const log = (...a) => console.log(new Date().toISOString(), '[agent34]', ...a);
