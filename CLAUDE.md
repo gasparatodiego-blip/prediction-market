@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **17 agosto 2026** (§4.6, §4.13, §5.1, §5.2, §5-bis p.169-171).
+Ultima verifica contro codice/stato reali: **17 agosto 2026, 11:0xZ** (§4.1, §4.6, §4.8, §4.13, §5.1, §5.2, §5-bis p.173-175) — perimetro live-min e ambiente letti da `/proc/<pid>/environ`.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -21,14 +21,16 @@ Ultima verifica contro codice/stato reali: **17 agosto 2026** (§4.6, §4.13, §
 > `planFromCollection` è una funzione). pm2 **7.0.3** installato; PostgreSQL **16** con database e
 > utente `rewardsbot`, **14 tabelle** applicate da `prisma migrate deploy`; `.env` creato (gitignored,
 > `chmod 600`) con i segreti generati a caso e **cinque TODO vuoti** che li deve fornire l'operatore.
-> **STATO AL 16 AGOSTO 2026 ore 09:0xZ, LETTO DAI PROCESSI VIVI** (`/proc/<pid>/environ`) e non dai file:
-> **`MAKER_MODE=off`** · `MAKER_ADAPTER_DRYRUN=true` · **`MAKER_PLACEMENT` vuota** · freno di agent41
-> **inserito** ⇒ **quattro cinture indipendenti, nessun ordine può partire** · KILL spento ·
-> AVVIA **ACCESO** (15/08 12:54, `by: cli/avvia`) · interruttore riprezzo **ACCESO** (16/08 08:52:23Z,
-> `by: operatore · chat`) · selezione automatica **accesa** con **3 mercati** scelti alle 08:38:56Z.
-> **⚠ `MAKER_MODE` NEL `.env` DICE `live-min` ED È INERTE**: pm2 tiene la propria copia dell'ambiente e i
-> caricatori `.env` degli agent scrivono solo le chiavi **assenti**, quindi `off` vince. Per armare non
-> basta il `.env`: serve dichiararlo in `agents/ecosystem.config.js` e riavviare **dal file**.
+> **STATO AL 17 AGOSTO 2026 ore 11:0xZ, LETTO DAI PROCESSI VIVI** (`/proc/216725`, `/proc/216726`) e
+> non dai file: **`MAKER_MODE=off`** · `MAKER_ADAPTER_DRYRUN=true` · **`MAKER_PLACEMENT` vuota** ·
+> `MANUAL_ORDER_PLACEMENT=dry-run` · freno di agent41 **inserito** ⇒ **cinque cinture indipendenti,
+> nessun ordine può partire** · KILL spento · **FERMA** (16/08 18:47:16Z, `by: cli/ferma`) ·
+> interruttore riprezzo acceso ma **allowlist VUOTA** · selezione automatica **SPENTA** (17/08 10:59Z) ·
+> **perimetro live-min = 1 mercato**, ed è la posizione residua di Hong Kong che entra dall'unione di
+> §4.8, non un opt-in (§5.2 p.40). Zero ordini a libro.
+> **⚠ `MAKER_MODE` NEL `.env` È STATO NEUTRALIZZATO** (`off`), ma la regola resta: pm2 tiene la propria
+> copia dell'ambiente e i caricatori `.env` scrivono solo le chiavi **assenti**. Per armare non basta il
+> `.env` — serve dichiararlo in `agents/ecosystem.config.js` e riavviare **dal file**.
 > **Il giro di prova è CONFIGURATO e NON ARMATO.**
 > **LA RIDUZIONE**: 568 file su 1.267 **spostati** — mai cancellati — in `/root/bot/_archivio`, che
 > conserva i percorsi (`mv _archivio/<p> <p>` riporta indietro; `INDICE-SPOSTATI.json` è l'elenco).
@@ -60,16 +62,11 @@ Ultima verifica contro codice/stato reali: **17 agosto 2026** (§4.6, §4.13, §
 
 ---
 
-## 🟢 STATO OPERATIVO — 13 agosto 2026, 22:08 UTC (verificato sui file, non assunto)
+## 🟢 STATO OPERATIVO — vedi il riquadro qui sopra (17 agosto 2026, 11:0xZ, letto dai processi vivi)
 
-| | |
-|---|---|
-| **KILL** | **spento** (`killed:false`) |
-| **AVVIA/FERMA** | 🟢 **AVVIA** dal 13/08 **12:29:11Z**, `by: operatore · tab Mercati` |
-| **Guardiano perdite** | **in servizio, mai scattato dal riavvio**: `data/guardian-state.json` **assente** (l'assenza *è* lo stato sano). Riferimento **v2 a massimo mobile** $2.169,77 (22:02:45Z) |
-| Capitale | **$2.169,77** = saldo $2.004,34 + posizioni $165,43 |
-| **Riavviati alle 21:41Z** | `agent43` (9) · `agent24` (19) · `agent34` (28) · `agent40` (100) · `dashboard` (14) ⇒ in servizio orizzonte 0,50, tetto $61,25, banda corretta, riferimento a massimo mobile + soglia assoluta derivata al 5% |
-| **NON riavviato** | `agent41-realloc-scheduler` — fermo al **restart 78** delle 12:09:01Z. Vedi §5.1 |
+Capitale all'ultima lettura di agent41: **$1.497,04**. Guardiano perdite in servizio,
+`data/guardian-state.json` assente (l'assenza *è* lo stato sano). Una sola posizione residua: Hong Kong
+`0xe9b3e28d`, 6 share a carico 0,50, **non chiudibile** (sotto il `min_incentive_size` di 20, §5.2 p.1).
 
 > ## 🔻 IL GRADINO 6 È DISARMATO — decisione dell'operatore, 13 agosto 2026, 22:0x UTC
 > `SBLOCCO_GRADINO6_ARMATO='0'` nell'`env` di agent41. **Non è un difetto e non è una svista**: il
@@ -559,9 +556,10 @@ onesta, non se ne inventa uno. **Trovato dal selfcheck del riprezzo**, non dal r
 soglie da `.env` rilette a ogni chiamata; un valore che non si capisce viene **scartato** in favore del
 difetto — un `.env` sbagliato non può spegnere una protezione). La chiamano quattro moduli.
 
-**Mid stantio**: oltre **20 s** di cecità l'ordine si **cancella** (`mid-stantio.js`, env con clamp
-`[5 s, 120 s]`). L'orologio si azzera **solo su una lettura buona**, e una cancellazione fallita NON lo
-azzera. Tre cause distinte in audit — `cecita-timeout-{mid-stantio|nessun-libro|eta-ignota}` — perché
+**Mid stantio**: oltre **120 s** di cecità l'ordine si **cancella** (`mid-stantio.js`, env con clamp
+`[5 s, 120 s]`; **20 → 120 il 16 agosto 2026** — cancellava a 20 s ciò che `decideReprice` non era
+disposto a riprezzare prima di 60 s, cioè distruggeva ordini che nessuno stava per correggere).
+L'orologio si azzera **solo su una lettura buona**, e una cancellazione fallita NON lo azzera. Tre cause distinte in audit — `cecita-timeout-{mid-stantio|nessun-libro|eta-ignota}` — perché
 l'azione è la stessa ma la diagnosi no.
 
 **Cadenza di reprice adattiva per mercato** (`cadenza-adattiva.js`): l'escursione del mid su 15 minuti
@@ -781,6 +779,15 @@ grande del piano di prova (62,5 share): **$0,63**.
 > Test: `presa-di-profitto-scatta.test.js`, 33 asserzioni **sullo SCATTO**, attraverso il
 > `decideClose` vero, con la prova di **disgiunzione** dalla scala d'urgenza su 241 scatti.
 
+**⚠ E LA SCALA DEVE ARRIVARE AL PREZZO, non al permesso** (§5-bis p.138, corretto il 16 agosto 2026 con
+la misura: **una sola occorrenza di `urgenzaLivello` in cinque ore** su una posizione aperta). Due cause,
+entrambe corrette: ① il ramo **`already-covered`** di `decideClose` **ritornava prima di ricalcolare il
+prezzo** — l'uscita si piazzava una volta, al gradino di quel momento, e non scendeva mai più; ② **
+`planExit` produce un PAVIMENTO, non un prezzo**: al gradino 2 concedeva 19¢ e l'uscita restava a 20¢
+sopra un book 16/18. Adesso `already-covered` ricalcola e, dal gradino 1 in su, l'uscita **insegue il
+miglior ask** fermandosi al pavimento — la scala dice quanto si può perdere, il book dove si viene presi,
+**vince il più stretto**. Riduce e basta (solo se il prezzo nuovo è più basso di un tick).
+
 **La resa dopo 60 minuti** (`urgenza-scoperto.js`): gradino 1 a **30 min** (uscita fino al carico),
 gradino 2 a **60 min** (era 120) ⇒ chiusura **peggiorativa** entro il tetto, gradino 3 a 240 min ⇒
 anomalia grave. La concessione massima è **1 tick** (era 2) **e mai oltre il 5% del carico**, il più
@@ -877,6 +884,25 @@ uno snapshot locale degli ordini a riposo** (esiste solo per le posizioni). La m
 coperta indirettamente: un ordine su un mercato disabilitato muore per GTD entro 23 minuti o si riempie,
 e allora la posizione entra nell'unione entro un giro di snapshot (≤ 60 s). Coprirla direttamente
 richiede uno snapshot degli ordini, cioè un file, uno scrittore e una regola di freschezza.
+
+> **⚲ IL PERNO `MAKER_LIVE_MIN_MARKET` RESTRINGE, NON AGGIUNGE — 17 agosto 2026, decisione dell'operatore.**
+> `perno impostato ⇒ il perimetro live-min È il perno, e nient'altro`; perno assente ⇒ è la lista
+> dell'operatore, come prima. **Perché**: «un mercato solo» non era esprimibile — il gate riceve
+> `liveMinMarketIds`, cioè l'unione qui sopra, e **l'unione non si può svuotare finché una posizione
+> esiste**. Misurato: svuotando la allowlist il perimetro restava **2**, non 1 né 0.
+> **⚠ È MONOTONO PER COSTRUZIONE** (`{perno} ⊆ {perno} ∪ lista`): non esiste configurazione in cui
+> faccia passare un ordine che prima passava. Provato **esaustivamente su 80 combinazioni**.
+> **⚠ CIÒ CHE SOSPENDE, e va saputo prima di armare**: con un perno attivo un mercato con posizione
+> **non riceve più il BUY di completamento coppia** — cioè §5 p.62 vale solo per il perno. Può ancora
+> essere **USCITO**: l'eccezione di riduzione è valutata *prima* dei rifiuti e passa dal token, non dal
+> mercato. Chi vuole quel BUY toglie il perno; non c'è una terza via.
+> **⚠ UNA SOLA ARITMETICA**: `adapter.perimetroLiveMin`, importata dal gate, dal pannello
+> (`manual-order`) e da `scripts/cli/mercati.js`. Erano **tre copie** e divergevano già: il pannello
+> contava il piano mentre mostrava l'unione, e la CLI stampava gli abilitati — cioè un perimetro **più
+> stretto di quello vero**, sbagliando nella direzione che rassicura.
+> **⚠ IL PERNO VIVE NEL PROCESSO**: `node scripts/cli/mercati.js` risponde a «quanti mercati il codice
+> può toccare» leggendolo da `/proc/<pid>/environ`, non dal `.env`, e dichiara la divergenza fra i due
+> processi che decidono un prezzo. Cambiarlo richiede il riavvio **dal file** e **insieme** (§5.1).
 
 **⚠ E due filtri con lo STESSO predicato in fila sono una trappola** (§5 p.55): la soppressione per
 profondità viveva in agent24 *e* in `buildCombined`, e l'eccezione «un mercato con capitale dentro non
@@ -1011,7 +1037,7 @@ test lo asserisce); il cablaggio sta in `agent41` e passa dalle **stesse** funzi
 
 | | |
 |---|---|
-| **vincoli** (16/08) | `rewardsMinSize ≤ 50` · **scadenza ≥ 168 h** (7 g) e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo** · **max 3 ATTIVI** · **3 categorie diverse** · **composizione 1 scaglione «basso» (minSize ≤ 20) + 2 «alto» (≤ 50)** |
+| **vincoli** (16/08, sera) | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo** · **max 3 ATTIVI** · **composizione 1 scaglione «basso» (minSize ≤ 20) + 2 «alto» (≤ 50)**. ⚠ **168 → 24 h**: fra 48 e 168 h il board è VUOTO (168/96/48 danno piano identico e vuoto, 24 h sblocca 27 ammissibili). ⚠ **Il vincolo delle 3 CATEGORIE è stato TOLTO**: 23 dei 26 ammissibili sono `elections`, quindi la diversificazione teneva due slot sui mercati **peggiori** — netto −$0,111/g e +$0,026/g contro +$10,64/g escluso |
 | **interruttore** | `data/selezione-mercati.json`, `scripts/cli/selezione.js {stato\|prova\|accendi\|spegni}`. Difetto **SPENTA**; file illeggibile ⇒ **spenta**. **ACCESA dal 15/08** |
 | **quando gira** | a ogni ciclo 6 h **e** a ogni controllo del capitale fermo (120 s), **prima** del piano — e prima di `decidiTrigger`, così un mercato che scade esce anche nei giri in cui il trigger non scatta |
 | **classifica** | `levels[<capitale minimo>].grossRewardDay`, cioè la stima che **il board ha già calcolato** con la formula del venue → ripiego `rateOrdinamento` → `rewardsDailyRate`. **Non** il montepremi (§5 p.132). Pareggio rotto sul `conditionId`: due giri sullo stesso board danno la stessa risposta |
@@ -1054,11 +1080,12 @@ test lo asserisce); il cablaggio sta in `agent41` e passa dalle **stesse** funzi
 > riguarda l'insieme e la risposta è non agire, qui riguarda un mercato e è già una ragione per starne fuori.
 > **⚠ NON ACCENDE NIENTE**: servono ancora, indipendentemente, l'interruttore generale del riprezzo,
 > AVVIA, il KILL spento e `MAKER_MODE` a mano nel `.env`. Decide **su quali** mercati, mai **se**.
-> **⚠ E IL FILTRO METEO OGGI TOGLIE ZERO RIGHE** (misurato sul board del 15/08): il vincolo delle 48 h
-> le aveva già tolte tutte. Resta esplicito perché un meteo settimanale passerebbe le 48 h, e una regola
-> che vale «per conseguenza» smette di valere il giorno in cui la conseguenza cambia.
-> **⚠ 168 h NON È UN NUMERO SCELTO A OCCHIO**: sul board vivo le scadenze ammissibili sono **50 h** e
-> poi **1.826 h**, e fra le due non cade niente — la soglia sta nel **vuoto**, come in §5-bis p.140.
+> **⚠ IL FILTRO METEO ADESSO TOGLIE RIGHE DAVVERO**: col vincolo a 168 h ne toglieva zero — le aveva già
+> tolte la scadenza — e con 24 h ne toglie **17** (board del 17/08, contate da
+> `scripts/ricerca/scelta-mercato-giro-controllato.js`, che applica le stesse soglie). È il caso per cui una regola
+> che vale «per conseguenza» va scritta esplicitamente: la conseguenza è cambiata, e la regola no.
+> **⚠ La selezione ordina e spodesta col NETTO del knapsack** (iniettato, non il lordo a $500), con
+> **isteresi `max($0,50/g, 25%)`**: non spodesta chi ha ordini vivi o una gamba in attesa.
 > **⚠ UNO SCAGLIONE VUOTO NON SI RIEMPIE COL VICINO**: se manca un candidato «basso» il posto resta
 > **non assegnato e dichiarato** (`postiNonAssegnati`, `scartatiPerComposizione`) invece di essere
 > preso da un «alto» — sostituire porterebbe il capitale da $147 a $183,75, cioè cambierebbe in
@@ -1134,23 +1161,18 @@ resta una riga nel registro di §5-bis.
 > vivi-ma-non-definiti (`scripts/cli/_comune.flottaViva`). Nessuna riga di questo file va creduta su
 > uno stato che un comando può leggere.
 
-> **🟢 ESEGUITI IL 17 AGOSTO 2026 alle 04:59Z** (`pm2 restart agents/ecosystem.config.js --only
-> agent40-manual-reprice,agent41-realloc-scheduler`), su istruzione dell'operatore in chat. Verificato
-> **prima** che `ecosystem.config.js` non dichiarasse nessuna cintura per quei due processi, e **dopo**
-> su `/proc/174332` e `/proc/174326`: `MAKER_MODE=off`, `MAKER_PLACEMENT` vuota, dryrun `true`,
-> `MANUAL_ORDER_PLACEMENT` assente, freno **inserito**. Portano la presa di profitto (§5-bis p.169) e
-> l'esenzione di profondità sui rinnovi.
-> **🔴 PENDENTE DAL 17 AGOSTO: `agent41` di nuovo**, per il ripristino delle gambe (§4.13, §5-bis
-> p.171). Il bot è FERMO e `riconciliaCopertura` è comunque a valle del cancello `botAttivo()`, quindi
-> non è urgente. **Testo storico del riavvio precedente, per il comando:** Portano la configurazione del giro di prova: `MAKER_AUTO_REPRICE_POLL_MS: '1000'` (nuova su
-> agent40) e il commento riscritto della manopola su agent41. **Comando**:
-> `pm2 restart agents/ecosystem.config.js --only agent40-manual-reprice` e idem per
-> `agent41-realloc-scheduler` — **`--update-env` non basta**, non rilegge l'ecosystem (§5.2 p.2).
-> **Non eseguiti**: §2 regola 2 chiede la conferma in chat, ogni volta. **⚠ Sono i due processi che
-> decidono un prezzo: si riavviano insieme o i prezzi divergono** (vedi il riquadro sotto).
-> **⚠ Le modifiche a `lib/` sono già in servizio senza riavvio** solo per `allocator.js` (processo
-> figlio); tutto il resto — banda, tetti, uscita a 101¢, margine dal bordo, fill parziale, rotazione —
-> **vive nei processi** e aspetta il riavvio. Finché non si riavvia, il bot in memoria è quello di ieri.
+> **🟢 NESSUN RIAVVIO PENDENTE — verificato il 17 agosto 2026, 11:0xZ.** `agent40` (pid **216725**) e
+> `agent41` (pid **216726**) sono partiti alle **10:04:37Z**, cioè **dopo** `a6b31bb` (05:39:26Z): il
+> ripristino delle gambe, la presa di profitto e l'esenzione di profondità sui rinnovi sono **in
+> servizio**. Letto da `/proc/<pid>/environ`, non dal `.env`: `MAKER_MODE=off` · `MAKER_PLACEMENT` vuota
+> · `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT=dry-run` (agent40) · `MAKER_LIVE_MIN_MARKET`
+> vuota · `REALLOC_SCHEDULER_DRY_RUN` assente ⇒ freno di agent41 **inserito** (fail-closed).
+> **⚠ IL COMANDO, quando servirà**: `pm2 restart agents/ecosystem.config.js --only
+> agent40-manual-reprice,agent41-realloc-scheduler` — **`--update-env` non basta**, non rilegge
+> l'ecosystem (§5.2 p.2). Si chiede in chat ogni volta (§2 regola 2), e **si riavviano INSIEME**: sono i
+> due processi che decidono un prezzo, e separati fanno divergere i prezzi.
+> **⚠ Le modifiche a `lib/` entrano in servizio senza riavvio SOLO per `allocator.js`** (processo
+> figlio): tutto il resto vive nei processi.
 
 **⚠ Il resto di questa sezione riguarda `/root/rewards-bot`.** Il `dashboard` non esiste più in
 nessuna delle due copie.
@@ -1183,9 +1205,22 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
 > **Chiuse oggi, e scese a una riga** (diagnosi integrale in §5-bis e in `git log`):
 > **p.15/16 guardiano k=2 + letture distinte** → §5-bis p.141 e p.145 · **p.17 registro residui senza
 > consumatore** → p.148 · **p.18 tetto per ordine sul riposizionamento scoperto** → p.147 ·
+> **p.21 «cancellazioni continue» = ciclo di riprezzo** → NO, misurato: vita mediana di un ordine
+> **18,2 min**, `band-exit` è una VALUTAZIONE (3.622 giudizi «fuori banda», **zero** cancellazioni) e
+> 3.898 dei 4.874 eventi sono macchina di CHIUSURA ·
 > **p.28 i due commenti a 110¢ in `auto-close.js`** → corretti il 16/08 nello stesso commit che porta
 > il tetto unico a 101¢ (§5-bis p.165), il reperto D7 non esiste più.
 
+40. **🟡 IL PERIMETRO È 1, MA È UNA CONSEGUENZA E NON UNA DICHIARAZIONE — 17 agosto 2026.**
+   Selezione automatica **spenta**, allowlist **vuota**, perno `MAKER_LIVE_MIN_MARKET` **vuoto** su
+   entrambi i processi (letto da `/proc`): il perimetro live-min vale **1**, ed è
+   `0xe9b3e28d` — la posizione residua di Hong Kong, che entra dall'unione di §4.8. Su di lei passa solo
+   un SELL entro il posseduto, e 6 share sono **sotto il minimo del venue** ⇒ perimetro **quotabile
+   zero**. **⚠ Quell'1 non è stabile**: se la posizione si chiude diventa 0 (`live-min-market-unset`),
+   se ne nasce un'altra torna 1 **su un mercato diverso**. Il perno è ciò che lo rende **stabile e
+   nominato**, e vive nel processo: scriverlo richiede `agents/ecosystem.config.js` + riavvio **dal
+   file e insieme** dei due processi che decidono un prezzo (§2 regola 2 ⇒ conferma in chat).
+   **Non impostato**: è un atto di armamento, e §6 chiede l'opzione più prudente.
 38. **🔴 IL RIPREZZO CANCELLA E NON RIPIAZZA: 197 MINUTI DI GAMBA SINGOLA IL 16 AGOSTO — APERTO.**
    È il **capofila misurato** (`data/ricerca/gambe-16-agosto.md`): **il 68,1 % dei minuti di gamba
    singola** della giornata — 160,8 da `nozionale-mercato-oltre-tetto` e 36,2 da `doppione-identico`,
@@ -1214,17 +1249,14 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
    `modalita-chiusura.test.js` asserisce ora il comportamento vero e lo dichiara. **Non toccato**: è
    una decisione di rischio dell'operatore.
 31. **🟡 LA MANOPOLA DELLA DISTANZA RESTA A 0,95 — ORA È UNA SCELTA, NON UNA DERIVA (16 agosto 2026).**
-   `agents/ecosystem.config.js` porta `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95'` su **entrambi** i
-   processi che decidono un prezzo (agent40, agent41). Era arrivata lì da una sessione non committata
-   e costava **il 99,6% del punteggio** (0,95 ⇒ 4,27¢ su banda 4,5¢ ⇒ S 0,0025 contro 0,605 a 1,0¢).
-   **Oggi la manopola non decide più il punto d'arrivo**: il **margine dal bordo** di §4.1 riporta
-   l'ordine a `max(1 tick, 0,22 × v)` dentro la banda, e sul piano di prova misurato l'ordine cade a
-   **3,4-3,5¢ dal mid con S ≈ 0,05**, cioè venti volte il bordo nudo. L'operatore ha chiesto
-   esplicitamente il **bordo esterno**: 0,95 è il modo di chiederlo, il margine è il modo di renderlo
-   sostenibile. **La metà «test» di questa voce è chiusa**: `distanza-2c.test.js` distingue ora
-   `VALORE = '0.444'` (l'aritmetica) da `VALORE_IN_SERVIZIO = '0.95'` (ciò che l'ecosystem dichiara), e
-   il rosso è sparito. **⚠ Resta vero che cambiarla richiede il riavvio COORDINATO dei due processi**
-   (§5.1): si usa `node scripts/cli/distanza.js`, che li scrive tutti insieme o nessuno.
+   `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95'` su **entrambi** i processi che decidono un prezzo. Da
+   sola costerebbe il 99,6% del punteggio (4,27¢ su banda 4,5¢ ⇒ S 0,0025 contro 0,605 a 1,0¢), ma **non
+   decide più il punto d'arrivo**: il margine dal bordo di §4.1 riporta l'ordine a 3,4-3,5¢ dal mid con
+   S ≈ 0,05, venti volte il bordo nudo. L'operatore ha chiesto il **bordo esterno**: 0,95 è il modo di
+   chiederlo, il margine è il modo di renderlo sostenibile. **La metà «test» è chiusa**
+   (`distanza-2c.test.js` distingue `VALORE = '0.444'` dall'aritmetica e `VALORE_IN_SERVIZIO = '0.95'`).
+   **⚠ Cambiarla richiede il riavvio COORDINATO dei due processi** (§5.1): `node scripts/cli/distanza.js`,
+   che li scrive tutti insieme o nessuno.
 34. **🟡 IL MARGINE DAL BORDO NON È DICHIARATO NELL'ECOSYSTEM, ED È VOLUTO (16 agosto 2026).**
    `MAKER_DISTANZA_MARGINE_BORDO_TICK` e `…_FRAZIONE_V` esistono come env ma **non sono scritte in
    `agents/ecosystem.config.js`**: entrambi i processi prendono lo stesso difetto dal codice, quindi un
@@ -1237,13 +1269,12 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
    in gestione contemporaneamente** su book veri — la misura di §5-bis p.162 dice che il **32,1%** dei
    fill si chiude completando la coppia in **28,6 min** mediani, ma su un campione di altri wallet e
    con la nostra size ancora da osservare. **Va guardato al primo giro vivo, prima di alzare il $600.**
-36. **🟡 `npm run build` FALLISCE, E LA CAUSA È PREESISTENTE: MANCA `lucide-react` (16 agosto 2026).**
-   `app/components/ui/Redacted.tsx` importa `lucide-react`, che **non è in `package.json` né in
-   `node_modules`** — è caduto con la riduzione della copia. Il build stampa
-   `✓ Compiled successfully` e muore dopo, nel **type-check**: tutto il JS compila, e nessuna delle
-   modifiche di oggi è coinvolta. **Non installato**: aggiungere una dipendenza a un repo ridotto è una
-   decisione dell'operatore, e su questa copia il `dashboard` non è più nella flotta (§banner in testa),
-   quindi il build di Next non serve a nessun processo vivo. Verifica usata al suo posto: la suite
+36. **🟡 `npm run build` FALLISCE, CAUSA PREESISTENTE: manca `lucide-react` (16 agosto 2026).**
+   `app/components/ui/Redacted.tsx` lo importa e non è né in `package.json` né in `node_modules` — è
+   caduto con la riduzione della copia. Il build stampa `✓ Compiled successfully` e muore **dopo**, nel
+   type-check: tutto il JS compila. **Non installato**: aggiungere una dipendenza a un repo ridotto è
+   una decisione dell'operatore, e su questa copia il `dashboard` non è più nella flotta, quindi il
+   build di Next non serve a nessun processo vivo. Verifica al suo posto: la suite
    (`node scripts/ricerca/suite-rossi.js <nome>`) e i 5 selfcheck.
 37. **🟡 TRE TEST SONO ROSSI PERCHÉ $150 STA SOTTO `3 × TETTO PER MERCATO` — voluto, 16 agosto 2026.**
    `maxOpenNotionalUsd` a $150 contro `3 × $61,25 = $183,75` rende **false** un'invariante che tre test
@@ -1274,28 +1305,22 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
    **disarmata al gradino 6**, quindi non ha prodotto danno. **Non corretta**: sta dentro la scala di
    sblocco, che è fuori dal perimetro chiesto in questa sessione, e va corretta con la sua misura.
 26. **🟡 `end-of-scale` NON è stata stretta a [0,10 · 0,90] — misurato, 13 agosto 2026.**
-   La proposta era allineare la nostra soglia ([0,03 · 0,97]) al punto dove il venue rompe `Q_min`.
-   **⚠ MA QUELLA PROTEZIONE ESISTE GIÀ ED È PIÙ PRECISA**: `motore-unico.latoSingolo` deriva la
-   frazione da `qMin` (`MID_MIN_UN_LATO = 0,10`, `MID_MAX_UN_LATO = 0,90`) e **cancella** un lato solo
-   fuori banda — 48 volte in produzione. Stringere `end-of-scale` impedirebbe di quotare a DUE lati
-   dove il venue paga normalmente: toglierebbe reward senza aggiungere protezione.
-   **Costo misurato**: 11 mercati nella fascia contesa, 5 utilizzabili per **$666/g** di montepremi;
-   nel piano dei migliori sono 4 mercati per **$62,33/g (17,8%)**, e i rimpiazzi valgono $4,28/g.
-   `data/ricerca/fine-scala-1090.json`. **Non applicata**, anche perché l'orizzonte si è appena mosso
-   e due leve insieme rendono illeggibili le 24 ore di dati che l'operatore ha chiesto.
+   La protezione esiste già ed è **più precisa**: `motore-unico.latoSingolo` deriva la frazione da `qMin`
+   (`MID_MIN_UN_LATO = 0,10`, `MID_MAX_UN_LATO = 0,90`) e **cancella** un lato solo fuori banda — 48 volte
+   in produzione. Stringere `end-of-scale` toglierebbe reward dove il venue paga normalmente, **senza
+   aggiungere protezione**. Costo misurato: 11 mercati nella fascia contesa, 4 nel piano dei migliori per
+   **$62,33/g (17,8%)**; rimpiazzi $4,28/g. `data/ricerca/fine-scala-1090.json`. **Non applicata.**
 
 22. **🟡 IL PIANO SI SVUOTA, E LA CAUSA MISURATA NON È IL FILTRO DI PROFONDITÀ** (13 agosto 2026;
-   `data/ricerca/sintesi-profondita.md`, script `scripts/ricerca/taratura-profondita.js`).
-   **Il cancello che decide è `pavimentoPremiante(minSize) > tetto per mercato`**, non la profondità:
-   sul board delle 20:17 toglieva **56 mercati su 102** contro i 5 della profondità.
-   **⚠ CONFERMATO SUL BOARD DELLE 22:0x, a capitale $2.149,88 e tetto $61,25**
-   (`data/ricerca/piano-con-distanza-2c.json`): dei **131 candidati, 57 escono per `min-size`** —
-   orizzonte 18, profondità 12, `netto-negativo` 8 — e il piano impiega **$1,34-1,39k su $2,15k**, cioè
-   **il 35-38% resta fermo**. La leva è **più capitale o un tetto più alto** (§4.2, §5-bis p.117/p.132),
-   e alzare il tetto **taglia** i mercati raggiungibili: è la tensione già scritta in §4.2.
-   ⚠ Il «superstiti 2 contro 16 minimi» del log di agent41 è reale ma riguarda il **piano ristretto**
-   (ramo `onlyMarketIds`), calcolato sui soli mercati già in gestione — non sul board. **Perché il
-   ristretto scenda a 2 NON è misurabile dallo stato salvato**: è la lacuna di §5.2 p.10.
+   `data/ricerca/sintesi-profondita.md`, `scripts/ricerca/taratura-profondita.js`).
+   **Il cancello che decide è `pavimentoPremiante(minSize) > tetto per mercato`**: sul board delle 20:17
+   toglieva **56 mercati su 102** contro i 5 della profondità. Confermato alle 22:0x a capitale $2.149,88
+   e tetto $61,25 (`data/ricerca/piano-con-distanza-2c.json`): dei **131 candidati, 57 escono per
+   `min-size`** — orizzonte 18, profondità 12, `netto-negativo` 8 — e il piano impiega $1,34-1,39k su
+   $2,15k, cioè **il 35-38% resta fermo**. La leva è **più capitale**, non un tetto più alto: alzarlo
+   TAGLIA i mercati raggiungibili (§4.2, §5-bis p.117/p.132).
+   ⚠ Il «superstiti 2 contro 16 minimi» del log di agent41 riguarda il **piano ristretto** (ramo
+   `onlyMarketIds`), non il board; perché scenda a 2 **non è misurabile dallo stato salvato** (§5.2 p.10).
 1. **I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA — buco strutturale, §5-bis p.123.**
    **$26,30** in cinque residui che nessun percorso può chiudere. Proposta scritta, **non implementata**
    perché è capitale: è una decisione dell'operatore.
@@ -1321,11 +1346,6 @@ agent40 (+ il dashboard, finché è nella flotta di quella copia).
 
 13. **La soglia sulla derivata per la sentinella È misurabile, ed è l'85%** (§5-bis p.140). Non
    implementata: questa era una sessione di sola diagnosi.
-21. **⚑ LE «CANCELLAZIONI CONTINUE» NON SONO UN CICLO DI RIPREZZO — chiusa il 13 agosto 2026.** Vita degli
-   ordini n=995: mediana **18,2 min**, sotto i 60 s solo l'1,0% ⇒ un ordine mediano è campionato ~18 volte.
-   Dei 4.874 eventi di cancellazione solo 979 portano un `orderId` (1,06 per ordine); gli altri 3.898 sono
-   macchina di **chiusura**. `band-exit` è una VALUTAZIONE: su 3.622 giudizi «fuori banda» **ZERO**
-   cancellazioni (§5-bis p.155).
 19. **🟡 LA CADENZA ADATTATIVA È SOTTO-RISOLTA — sola misura, costo piccolo.** agent40 classifica
    **99,6%** delle osservazioni come «lenta» con escursione 0,00 tick/ora ⇒ polling a 10.000 ms.
    `leggiFinestraTutti` su 15 min vede `rangeMid = 0` sul **48,8%** dei mercati (`mid-history` campiona
@@ -1409,6 +1429,24 @@ e nei commit citati nei sorgenti.
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
 
 
+**175** · IL PERNO `MAKER_LIVE_MIN_MARKET` RESTRINGE INVECE DI AGGIUNGERE, E IL PERIMETRO SI LEGGE DAI
+PROCESSI VIVI — 17 agosto 2026. Regola per intero in §4.8; tre copie della stessa aritmetica ridotte a
+`adapter.perimetroLiveMin`. Test `perno-restringe.test.js`, 34 asserzioni, monotonia esaustiva su 80
+combinazioni.
+
+
+**174** · I DUE PRESIDI DI agent40 NON DIPENDONO PIÙ DAGLI AVANZI — 17 agosto 2026. `VENUE.azzera()` +
+ricarica di agent40 da `require.cache` (la memoria di modulo era il terzo avanzo, e `nostriInvii` di una
+fase precedente SPEGNEVA l'allarme). I due esiti si cercano solo nelle righe scritte dopo il reset; il
+banco esce **1** se una verifica cade. Le tre verifiche sanno cadere, provato su copie (NEG A / NEG B).
+
+
+**173** · LE SEI FIXTURE DEL BANCO, PROVATE PER SOTTRAZIONE — 17 agosto 2026. `prova-fixture-banco.js`
+rimette ogni difetto uno alla volta: **18 delle 20 regole statiche che scattano oggi** si spegnevano per
+UNA sola di quelle fixture, e tutte e 17 le dinamiche. Nessuna delle 60 rosse del gruppo 2 era vittima
+di una fixture. Lavora su copie: i file tracciati non si aprono mai in scrittura.
+
+
 **171** · LA COPERTURA CONTINUA RIMETTE LA GAMBA A LIBRO, CON UN RAFFREDDAMENTO — 17 agosto 2026
 
 
@@ -1455,38 +1493,11 @@ in `git log` e in `data/ricerca/`.
 **165** · UN SOLO TETTO DI COPPIA, 101¢, E LA RESA A 60 MINUTI — decisione dell'operatore, 16 agosto 2026
 
 
-**164 · IL TETTO PER ORDINE ERA «METÀ MERCATO» E RIFIUTAVA LA GAMBA CARA; IL BORDO DELLA BANDA ERA
-NUDO — 16 agosto 2026.** Due correzioni che nascono dalla stessa domanda dell'operatore («$147 al
-pavimento premiante, ordini al bordo esterno») e che senza misura sarebbero passate per configurazione.
-**① IL TETTO.** `LIVE_MIN_ORDER_CAP_USD = tetto/2 + $5 = $35,63` è la gamba giusta **solo a mid 0,49**.
-A mid 0,90 la gamba cara vale il 92% del capitale del mercato: il precontrollo atomico di §5 p.115
-vedeva una gamba oltre il tetto e abbandonava la coppia **intera** — `coppia-non-atomica`, **prima
-causa di perdita di gambe**, 84 gambe e $1.276,13 in 24 h (§5 p.129-130). Adesso il tetto è
-`tetto × PREZZO_MASSIMO_QUOTABILE / COSTO_COPPIA + $5 = $65,63`, cioè dimensionato sulla **gamba
-peggiore quotabile**. `finestraMid` ricalcolava la derivazione vecchia (copia D1) e ora **importa**:
-la finestra passa da `[0,43 · 0,57]` a `[0,01 · 0,99]`, cioè smette di essere un cancello.
-**⚠ La premessa dell'operatore era inesatta e va detto**: `data/safety-risk-limits.json` **c'era**, con
-`maxOrderNotionalUsd: 1000`; scriverci $80 da solo non avrebbe cambiato niente, perché la cintura che
-mordeva era la derivata. Scritto $80 come chiesto ⇒ **tetto effettivo `min($80, $65,63) = $65,63`**.
-**② IL BORDO.** `bordiConMargine` in `distanza-obiettivo.js`: `max(1 tick, 0,22 × v)` dentro il bordo.
-**Il difetto l'ha trovato l'anteprima, non il ragionamento**: un margine in **tick** è adattivo alla
-griglia, non al mercato — su un mercato a tick 0,1¢ (Ballon d'Or) un tick è il 2,2% della banda e
-l'ordine restava a 4,4¢ dal mid con **S = 0,0011**. 0,22 è esattamente un tick sulla banda modale
-(1,0¢ / 4,5¢), quindi il margine vale gli stessi centesimi su qualunque griglia.
-**È anche la risposta all'oscillazione che l'operatore ha chiesto di risolvere**: uscita a
-`v + hysteresisTicks`, **rientro a `v − margine`** — uno Schmitt trigger. `hysteresisTicks` e
-`confirmSamples` **non sono stati toccati**, come chiesto: cambia *dove* si rientra, non *quando* si
-esce. Misurato sulla formula del venue: **S 0,0123 al bordo nudo contro 0,1111 un tick dentro, 9×**.
-**⚠ Il margine non può mai superare il prezzo di coda** (`Math.min` col prezzo che «mai primo sul
-libro» ha già scelto, con `margineCeduto` dichiarato) e bordi incrociati ⇒ margine non applicato.
-**⚠ E UN SECONDO DIFETTO, trovato dal selfcheck del riprezzo e non dal ragionamento**: su banda ±1,5¢
-con tick 1,0¢ il margine portava il bersaglio da 0,52 a **0,53, che È il mid** — il margine difendeva
-il bordo sostituendolo col centro. Cura: `FRAZIONE_MASSIMA_DEL_RAGGIO = 0,5`, costante di sorgente e
-**senza env** (un margine che può diventare il mid è un rischio di fill, e i rischi non si aprono con
-una variabile d'ambiente). Su una banda più stretta di due tick il margine vale **zero**, e il bordo
-torna nudo.
-Test: `distanza-obiettivo.test.js` blocco ③-bis (58 asserzioni, con la proprietà «margine ≤ metà
-banda» provata su sei griglie), più i tre che passavano `bordiConMargine` senza banda.
+**164** · IL TETTO PER ORDINE ERA «METÀ MERCATO» E RIFIUTAVA LA GAMBA CARA ($35,63 → $65,63, causa a
+monte di `coppia-non-atomica`); IL BORDO DELLA BANDA ERA NUDO (`bordiConMargine`, `max(1 tick, 0,22·v)`,
+Schmitt trigger, tetto a metà banda) — 16 agosto 2026. **Le due regole per intero in §4.2 e §4.1**;
+`distanza-obiettivo.test.js` blocco ③-bis, 58 asserzioni.
+
 
 **163** · GLI «EFFICIENTI» DENTRO I 65: CAPITALE PICCOLO E TRADING IN PARI — sola ricerca, 15 agosto 2026
 
@@ -1532,22 +1543,10 @@ banda» provata su sei griglie), più i tre che passavano `bordiConMargine` senz
 **123** · I RESIDUI SOTTO IL MINIMO — BUCO STRUTTURALE APERTO, non implementato
 
 
-**138 · LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA — ⚠ LA DIAGNOSI DI QUESTA VOCE ERA SBAGLIATA,
-corretta il 16 agosto 2026 con la misura.** Qui c'era scritto che «l'orologio si azzera a ogni nuovo
-ingresso in modalità chiusura». **NON È VERO, e chi riapre non deve rifare quella diagnosi**: il
-16 agosto una posizione su FL-27 è rimasta aperta **cinque ore**, e `data/modalita-chiusura.json`
-portava `da: 15:20:41Z` — l'istante esatto del fill — per tutte e cinque, con la dep `chiusura`
-cablata correttamente in agent40. L'ancora non si era mai mossa.
-**LE DUE CAUSE VERE**, trovate contando `urgenzaLivello` nel giornale (**una sola occorrenza in
-cinque ore**): ① il ramo **`already-covered`** di `decideClose` **ritorna prima di ricalcolare il
-prezzo** — l'uscita si piazza una volta, al gradino di quel momento, e non scende mai più; ② **
-`planExit` produce un PAVIMENTO, non un prezzo**: al gradino 2 concedeva 19¢ e l'uscita restava a
-20¢ sopra un book 16/18. Il permesso c'era, il prezzo no, e nessuno consumava il pavimento.
-**Corretto**: `already-covered` ricalcola e, dal gradino 1 in su, l'uscita **insegue il miglior ask**
-fermandosi al pavimento — la scala dice quanto si può perdere, il book dove si viene presi, vince il
-più stretto. Riduce e basta (solo se il prezzo nuovo è più basso di un tick), e `peggiorativa` segue
-il prezzo finale. Test `uscita-scende-con-la-scala.test.js`: 16 asserzioni che esercitano ogni
-gradino **fino allo scatto sul prezzo**, non fino alla condizione.
+**138** · LA SCALA DI URGENZA SUL TEMPO DI SCOPERTURA — ⚠ **la diagnosi di questa voce era sbagliata**,
+corretta il 16 agosto: l'orologio NON si azzerava (`data/modalita-chiusura.json` portava l'istante esatto
+del fill per tutte e cinque le ore). Le due cause vere sono in §4.6, e chi riapre non deve rifare quella
+diagnosi. Test `uscita-scende-con-la-scala.test.js`, 16 asserzioni fino allo scatto sul prezzo.
 
 
 **152** · IL BORDO DELLA BANDA NON CONVIENE — ⚠ NUMERI CORRETTI DA §5-bis p.155
@@ -1785,7 +1784,13 @@ Regole di manutenzione:
   mappa.** Una voce chiusa scende a una riga nel registro, mantenendo il suo numero originale — i
   commenti nei sorgenti citano «§5 punto N» e quel riferimento deve restare risolvibile. La storia
   integrale non va copiata qui: sta in `git log` e nei commit citati nei sorgenti.
-- **⚠ AL 17 AGOSTO 2026 IL FILE È A ~148k SU 150k: il margine è ~1,8k, cioè una voce.** Chi aggiunge
+- **⚠ AL 17 AGOSTO 2026 IL FILE È A ~147,2k CARATTERI SU 150k** (≈150,2k **byte**: il tetto è in
+  caratteri, e `wc -c` conta byte — su questo file la differenza vale ~3k, cioè una voce intera. Si
+  misura con `python3 -c "print(len(open('CLAUDE.md',encoding='utf-8').read()))"`, non con `wc -c`).
+  Il tetto era già stato sfondato (151,3k) e la compattazione è avvenuta nella STESSA sessione: §5-bis
+  p.138 e p.164 scese a una riga (le regole vivono per intero in §4.6, §4.1, §4.2), §5.2 p.21 chiusa,
+  p.22/p.26/p.31/p.36 strette, e il riquadro del giro di prova ridotto alle sole regole che non sono
+  scritte altrove. Chi aggiunge
   qualcosa comprima **prima** — i candidati sono le voci di §5.2 già marcate 🟢 o «⚑ misura chiusa»,
   che per regola scendono a una riga in §5-bis.
 - **Il tetto è 150k caratteri.** Superarlo significa che il file non entra più nel contesto di una
@@ -1793,39 +1798,28 @@ Regole di manutenzione:
   sessione** — non si rimanda.
 - **§2 non si tocca** senza istruzione esplicita dell'utente in chat.
 - Aggiorna la data di «ultima verifica» in cima quando rivedi §3/§4.
-- Il file va **committato e pushato** insieme al lavoro che lo ha reso obsoleto, non dopo.> ## 🔁 IL GIRO DI PROVA È ARMATO, E LA PRIMA GIORNATA HA INSEGNATO TRE COSE — 16 agosto 2026
-> **ARMATO**: `MAKER_MODE=live-min` · `MAKER_PLACEMENT=send` · `MAKER_ADAPTER_DRYRUN` vuota · freno di
-> agent41 disinserito · **`MANUAL_ORDER_PLACEMENT=send`** — ed è **la quinta cintura, non un doppione**:
-> governa la CORSIA MANUALE (`manual-order.js:250`, «Deliberately NOT MAKER_PLACEMENT»), che è la strada
-> da cui il bot piazza davvero (`source: manual-ui`). Con le altre quattro già tolte, i `postOrder`
-> uscivano `dry-run-validated` — costruiti, passati da tutti i gate, fermati prima della POST.
-> **PRIMI ORDINI VERI alle 10:46:42Z**, due gambe su FL-27, `status:"live"`.
-> **⚠ TRE DIFETTI TROVATI IN PRODUZIONE, TUTTI MIEI, E VALE PIÙ LA CLASSE DEL SINGOLO CASO:**
-> **① LA CORSA DEL RIPREZZO** — due `manual-replace` a 3 s sullo stesso `orderId` ⇒ due ordini identici
-> a libro, due volte in un'ora. L'anti-churn **era già ancorato al mercato**: non ha protetto perché
-> `readAutoRepriceState` legge a inizio ciclo e scrive alla fine. Corsa lettura/scrittura, non di chiave.
-> Cura: `lib/maker/lock-mercato.js`, lock per `conditionId` sull'intera sequenza cancel+place, rilasciato
-> in un `finally` (il giro esce da venti `continue`), TTL **20 s** che dichiara lo stato **incoerente**.
-> **② UN RICONCILIATORE CHE AGISCE SULL'ANELLO CHE OSSERVA NON SI FERMA PIÙ.** Avevo fatto chiamare
-> `controlloCapitaleFermo` a ogni giro scoperto: **799 ricostruzioni del piano consecutive**, agent41 da
-> 9 a 14 riavvii, e — peggio — un **quarto mercato** aggiunto alla allowlist, perché quel trigger abilita
-> ciò che il PIANO sceglie e il piano non conosce i tre slot. Ora dichiara e basta.
+- Il file va **committato e pushato** insieme al lavoro che lo ha reso obsoleto, non dopo.> ## 🔁 IL GIRO DI PROVA DEL 16 AGOSTO — disarmato la sera, e le tre lezioni che restano
+> **Oggi il bot è FERMO e disarmato** (stato in §5.1). Qui resta solo ciò che vale ancora come regola;
+> il racconto della giornata è in `git log` e in §5-bis p.173.
+> **LA QUINTA CINTURA È `MANUAL_ORDER_PLACEMENT`, E NON È UN DOPPIONE**: governa la CORSIA MANUALE
+> (`manual-order.js:250`, «Deliberately NOT MAKER_PLACEMENT»), che è la strada da cui il bot piazza
+> davvero (`source: manual-ui`). Con le altre quattro già tolte i `postOrder` uscivano
+> `dry-run-validated` — costruiti, passati da tutti i gate, fermati prima della POST. Per armare
+> servono **tutte e cinque**.
+> **① IL LUCCHETTO PER MERCATO** (`lib/maker/lock-mercato.js`): due `manual-replace` a 3 s sullo stesso
+> `orderId` hanno prodotto due ordini identici a libro, due volte in un'ora. L'anti-churn era già
+> ancorato al mercato e non ha protetto, perché `readAutoRepriceState` legge a inizio ciclo e scrive
+> alla fine: **corsa lettura/scrittura, non di chiave**. Il lock copre l'intera sequenza cancel+place,
+> si rilascia in un `finally` (il giro esce da venti `continue`) e ha **TTL 20 s**, oltre il quale
+> dichiara lo stato **incoerente** invece di fingere di averlo tenuto.
+> **② UN RICONCILIATORE CHE AGISCE SULL'ANELLO CHE OSSERVA NON SI FERMA PIÙ.** `controlloCapitaleFermo`
+> chiamato a ogni giro scoperto: **799 ricostruzioni del piano consecutive**, agent41 da 9 a 14 riavvii,
+> e un **quarto mercato** in allowlist — quel trigger abilita ciò che il PIANO sceglie, e il piano non
+> conosce i tre slot. La frequenza del ciclo diventa la frequenza dell'azione.
 > **③ UN LOCK CORRETTO PUÒ ESSERE PEGGIO DEL DIFETTO SE LA CADENZA È SBAGLIATA.** Con `POLL_MS=1000` i
 > cicli si sovrappongono quasi sempre: **789 `riprezzo-in-corso` e ZERO `manual-replace` in 22 minuti**,
-> 3 ordini morti di GTD senza rinnovo. Riportato a **5000 ms** — l'event-driven resta (`cadenza-adattiva`
-> valuta appena il feed pubblica); 5000 è il PAVIMENTO DI RIPOSO, non il tetto alla reattività.
-> **LE ALTRE DECISIONI DELLA GIORNATA**: orizzonte minimo **168 → 24 h** (fra 48 e 168 h il board è
-> vuoto: 168/96/48 danno piano identico e VUOTO, 24 h sblocca 27 ammissibili) · **vincolo delle tre
-> categorie TOLTO** (23 dei 26 ammissibili sono `elections`: la diversificazione teneva due slot sui
-> mercati **peggiori**, netto −$0,111/g e +$0,026/g contro +$10,64/g escluso) · **selezione ordinata per
-> NETTO del knapsack** iniettato, non per lordo a $500 · **riclassificazione** con isteresi
-> `max($0,50/g, 25%)`, che non spodesta chi ha ordini vivi o una gamba in attesa · **tetto per mercato
-> anche sul nozionale A RIPOSO** (`nozionale-mercato-oltre-tetto`) e **divieto di doppioni** al
-> piazzamento · `maxOpenNotionalUsd` **600 → 150** con le chiusure esentate per prova ·
-> **mid stantio 20 → 120 s**: cancellava a 20 s ciò che `decideReprice` non era disposto a riprezzare
-> prima di 60 s.
-> **⚠ APERTO**: la allowlist ha **4 mercati** contro i 3 della selezione — il trigger a capitale fermo
-> abilita fuori dagli slot. `0x776841ce` è stato sostituito da `0xf2b0c93903a1` ma è rimasto abilitato.
-
-
-
+> 3 ordini morti di GTD senza rinnovo. **5000 ms** è il PAVIMENTO DI RIPOSO, non il tetto alla
+> reattività: l'event-driven resta (`cadenza-adattiva` valuta appena il feed pubblica).
+> **Gli altri due presidi nati quel giorno**: **tetto per mercato anche sul nozionale A RIPOSO**
+> (`nozionale-mercato-oltre-tetto`) e **divieto di doppioni** al piazzamento — entrambi dentro
+> `placeManualOrder`, ed è la causa di §5.2 p.38.

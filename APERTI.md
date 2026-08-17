@@ -1,4 +1,4 @@
-# Cosa resta aperto — aggiornato il 17 agosto 2026
+# Cosa resta aperto — aggiornato il 17 agosto 2026, 11:0xZ
 
 Scritto perché una sessione nuova possa riprendere **senza rileggere tutto**. In ordine di quanto
 costa se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
@@ -62,8 +62,8 @@ azzerata su `coperto` **osservato**. **Contenimento provato: 50 tentativi su 720
 Le tre cose che non fa: non è una seconda strada verso il venue (piano salvato → `gambeDiUnaRiga` →
 `piazzaCoppia`), **non ricostruisce il piano**, **non abilita niente**. E una che fa: scrive sempre a
 verbale, anche quando non tenta.
-⚠ **NON È IN SERVIZIO**: agent41 gira col codice di prima e va riavviato. Il bot è FERMO e
-`riconciliaCopertura` è comunque a valle di `botAttivo()`.
+🟢 **È IN SERVIZIO dal 17 agosto**: agent41 (pid 216726) è partito alle **10:04:37Z**, cioè dopo
+`a6b31bb` (05:39:26Z). Nessun riavvio pendente.
 ⚠ **Non è mai stata esercitata su un mercato vero.** 28 asserzioni sullo SCATTO, ma il primo giro vivo
 è la prova che conta.
 
@@ -138,6 +138,9 @@ processi sono armati — verificato oggi: `.env` diceva `MAKER_PLACEMENT=` vuota
 
 **Cura**: leggere `/proc/<pid>/environ` dei pid da `pm2 jlist`, come fa già `_comune.flottaViva`, e
 **dichiarare la divergenza** col `.env` invece di nasconderla.
+🟢 **Fatto per `mercati.js` il 17 agosto** (`14b662d`): il perimetro live-min si legge dai processi
+vivi, dichiara la divergenza fra i due processi e quella col `.env`. **`stato.js` resta da fare**, ed è
+lo stesso schema — c'è già `C.envDiProcesso(pid)`.
 
 ---
 
@@ -177,7 +180,7 @@ vero**: il bot è fermo da prima che ne arrivasse uno.
 
 ---
 
-## 7 · 🔬 IL BANCO DEL CICLO COMPLETO — 37 regole su 91 arrivano a scattare
+## 7 · 🔬 IL BANCO DEL CICLO COMPLETO — 37 regole su 91 arrivano a scattare (20 statiche + 17 dinamiche)
 
 `node scripts/ricerca/banco-scenari.js` fa girare **il bot vero** — auto-close, auto-reprice,
 manual-order, motore-unico, tutti i gate e i tetti — contro un venue simulato. Il seam è l'**adapter
@@ -225,32 +228,53 @@ DIPENDE un ramo, non se sia raggiungibile. Per questo il gruppo 1 è corto e ogn
 `file:riga` — la verifica costa una lettura. Si rigenera con
 `node scripts/ricerca/classifica-regole-rosse.js`.
 
-### I SEI difetti del banco trovati finora — un banco che mente è peggio di nessun banco
+### I SEI difetti del banco — 🟢 CORRETTI, e dal 17 agosto **PROVATI PER SOTTRAZIONE** (`84bf188`)
 
-Tutti della stessa classe: **una fixture sbagliata che si maschera da regola morta**. Ogni volta il
-sintomo puntava al posto sbagliato, e ogni volta la correzione è annotata nel sorgente.
+Tutti della stessa classe: **una fixture sbagliata che si maschera da regola morta**. Erano già
+corretti e annotati nel sorgente; quello che mancava era la prova che le correzioni **portino peso** —
+un commento che dice «corretto» è il reperto D7. `node scripts/ricerca/prova-fixture-banco.js` rimette
+ogni difetto uno alla volta, su **copie** (i file tracciati non si aprono mai in scrittura), e conta
+cosa torna rosso.
 
-1. **`maxSpread` scritto `rewardsMaxSpread`** — regole `readable:false`, OGNI ordine morto a
-   `rules-unreadable`: il banco misurava il proprio fixture.
-2. **`isManual` che tornava un booleano** invece di `{manual, readable}` — il ciclo usciva al primo
-   gate a `manual-mode-unreadable`.
-3. **`require.cache` su un percorso INESISTENTE** (`adapter_vero`) — `require()` risolve il percorso
-   PRIMA di consultare la cache, e il fallimento arrivava travestito da `gate: adapter-threw`.
-4. **`global.enabled` invece di `globalEnabled`** — il ciclo di riprezzo usciva a `disabled-global`
-   **senza guardare un solo mercato**: 18 cicli che sembravano girare e non giravano.
-5. **L'estrattore dell'inventario prendeva ogni stringa su una riga `outcome:`** — compresi
-   l'operando di un confronto (`rp.action === 'rimpiazza'`, che è un'AZIONE) e il ripiego dentro un
-   template (`reject-${gate || 'place'}`). Tre regole inesistenti in una lista da leggere a mano.
-   ⚠ E prima ancora **non vedeva gli `outcome` dentro un ternario**: due regole vere non erano
-   nemmeno inventariate — il banco non poteva dichiararle né rosse né verdi.
-6. **`expiresAtMs` non esposto dagli ordini simulati** — `scaduto-senza-rinnovo` lo legge e usciva a
-   `continue`: la regola risultava rossa per un campo mancante nella fixture.
+| difetto rimesso | inventario | statiche | dinamiche |
+|---|---|---|---|
+| baseline | 91 | **20** | **17** |
+| 1 · `maxSpread` scritto `rewardsMaxSpread` | 91 | 6 (−14) | 5 (−15) |
+| 2 · `isManual` che torna un booleano | 91 | 8 (−12) | 2 (−15) |
+| 3 · `require.cache` su un percorso inesistente | 91 | 8 (−13) | 7 (−11) |
+| 4 · `global.enabled` invece di `globalEnabled` | 91 | 16 (−4) | 16 (−1) |
+| 5a · estrattore ancorato al solo letterale | **50** | 15 (−5) | 22 |
+| 5b · estrattore senza sanificazione | **102** | 20 | 17 |
+| 6 · `expiresAtMs` non esposto | 91 | 19 (−1) | 17 |
 
-⚠ E una **regressione vera** presa dal banco, che vale più delle sei: i due presidi di agent40 avevano
-smesso di scattare **senza che nulla nel bot fosse cambiato**. Si appoggiavano alle posizioni lasciate
-dalle fasi precedenti, e quando il merge ha smesso di fallire — cioè quando il banco è diventato più
-FEDELE — le posizioni sparivano prima. **Uno scenario che dipende dagli avanzi di quello prima non è
-uno scenario.**
+**Delle 20 regole statiche che scattano oggi, 18 si spegnevano per UNA sola di queste sei fixture** — e
+tutte e 17 le dinamiche. Le due che nessuna tocca: `trigger` e `posizione-uscita-senza-nostro-ordine`.
+Il più costoso è `maxSpread` (29 regole su 37); il meno, `expiresAtMs` (1) — ed è quella che il
+16 agosto è costata 12 ordini (`scaduto-senza-rinnovo`).
+Il punto 5 ha **due metà opposte** e la prova le separa: ancorato al letterale l'inventario scende a
+**50** (41 regole vere invisibili), senza sanificazione sale a **102** (11 regole che non esistono,
+rosse per costruzione). Sbagliano il **denominatore** in direzioni opposte.
+**Nessuna delle 60 del gruppo 2 era rossa per una fixture**: la classificazione è stata generata dopo
+le correzioni. L'unica regola del gruppo 2 che un difetto fa scattare è `error`, e scatta perché il
+banco si rompe.
+
+### 🟢 LA REGRESSIONE VERA — CHIUSA il 17 agosto (`b55b199`)
+
+I due presidi di agent40 avevano smesso di scattare **senza che nulla nel bot fosse cambiato**. Gli
+avanzi da cui dipendevano erano **tre**, in tre posti diversi, e il mercato proprio ne copriva uno:
+① le **posizioni** del venue · ② la **memoria di modulo** di agent40 (`posizioniPrecedenti`,
+`statoSorveglianza`, e `nostriInvii` — un invio di una fase precedente ancora in finestra **spiega** la
+sparizione e **spegne** l'allarme) · ③ gli **ordini vivi**, che si riempiono da soli.
+
+`VENUE.azzera()` copre ① e ③ e **dichiara cosa ha buttato** (oggi zero: lo slate era pulito **per
+caso**). ② si copre **ricaricando agent40 da `require.cache`**, senza aggiungere al codice di
+produzione una funzione di reset che in produzione non serve a nessuno. I due esiti si cercano **solo
+nelle righe scritte dopo l'azzeramento**, o il banco direbbe verde misurando avanzi.
+**Il banco ora esce con codice 1 se una verifica cade**: il conteggio delle regole non rileva questa
+classe — 20 su 91 resta 20 su 91 se una regola cade e un'altra nasce.
+**Le tre verifiche sanno cadere, provato su copie**: NEG A (via la posizione seminata) ⇒ cadono la 2 e
+la 3; NEG B (`registraNostroInvio` sul token prima della sparizione, cioè l'avanzo ricreato) ⇒ cade
+**solo** la 3. NEG B è la forma esatta della regressione, e la verifica la vede.
 
 ---
 
@@ -278,9 +302,16 @@ vero. Il banco dice che, dato un venue che si comporta così, il nostro codice f
 fare. L'altra metà è il mercato, e si compra solo così.
 
 **Le tre condizioni che porrei prima di armare**, e sono le cose che oggi non so:
-1. **un mercato solo per davvero** — il pin `MAKER_LIVE_MIN_MARKET` **aggiunge** un'entrata, non
-   restringe (`adapter.js:289`), e la allowlist ne porta già 4 più quelli con posizione. Servono tre
-   scritture: selezione automatica spenta, allowlist svuotata, pin come cintura;
+1. 🟢 **un mercato solo per davvero — FATTO il 17 agosto** (`14b662d`). Le tre scritture: selezione
+   automatica **spenta**, allowlist **svuotata**, e il perno `MAKER_LIVE_MIN_MARKET` che ora
+   **RESTRINGE** invece di aggiungere (`perno impostato ⇒ il perimetro È il perno`, monotono per
+   costruzione, provato esaustivamente su 80 combinazioni). Perimetro letto da `/proc`: **1**.
+   ⚠ **Ma quell'1 è una conseguenza, non una dichiarazione**: è `0xe9b3e28d`, la posizione residua che
+   entra dall'unione di §4.8 — se si chiude diventa 0, se ne nasce un'altra torna 1 su un mercato
+   diverso. Per il giro controllato serve **impostare il perno** al mercato scelto, e il perno vive nel
+   processo: `agents/ecosystem.config.js` + riavvio **dal file e insieme** dei due processi (§2 reg. 2).
+   ⚠ **E il perno sospende §5 p.62 per tutto ciò che non è il perno**: un mercato con posizione non
+   riceve più il BUY di completamento coppia, può solo essere USCITO;
 2. **`riconciliaCopertura` e il ripristino delle gambe non sono mai stati esercitati su un fill vero**
    — il banco li fa scattare, il mercato no;
 3. **l'attraversamento è il permesso più pericoloso** e non è mai arrivato al venue vero. Il primo
@@ -293,34 +324,34 @@ guardando.
 
 ---
 
-## Stato del sistema — riverificato il 17 agosto 2026, 05:0xZ, DOPO il riavvio di agent40 e agent41
+## Stato del sistema — riverificato il 17 agosto 2026, 11:0xZ, dai processi vivi
 
-**Bot FERMO e disarmato.** `AVVIA: false` (dal 16/08 18:47:16Z, `cli/ferma`) · `MAKER_MODE=off` ·
-`MAKER_PLACEMENT` vuota · `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT` **assente** · KILL
-spento · freno agent41 **INSERITO** (fail-closed: `REALLOC_SCHEDULER_DRY_RUN` assente) — letto da
-`/proc/<pid>/environ` dei pid **174332** e **174326**, non dal `.env`. **Zero ordini a libro.**
+**Bot FERMO e disarmato.** `AVVIA: false` (dal 16/08 18:47:16Z, `cli/ferma`) · KILL spento · e sui due
+processi che decidono un prezzo — **agent40 pid 216725**, **agent41 pid 216726**, partiti entrambi alle
+**10:04:37Z** — letto da `/proc/<pid>/environ` e non dal `.env`:
+`MAKER_MODE=off` · `MAKER_PLACEMENT` vuota · `MAKER_ADAPTER_DRYRUN=true` ·
+`MANUAL_ORDER_PLACEMENT=dry-run` (agent40) · `MAKER_LIVE_MIN_MARKET` **vuota** ·
+`REALLOC_SCHEDULER_DRY_RUN` assente ⇒ freno agent41 **INSERITO** (fail-closed).
+**Zero ordini a libro.**
 
-**⚠ Il riavvio dal file NON ha riarmato niente, ed è stato verificato PRIMA di eseguirlo**:
-`agents/ecosystem.config.js` non dichiara nessuna delle cinque cinture per quei due processi (porta
-solo `MAKER_AUTO_REPRICE_POLL_MS`, `SBLOCCO_GRADINO6_ARMATO`, `REALLOC_SCHEDULER_ENABLED` e la
-manopola della distanza), e il `.env` è neutralizzato. Le due sorgenti concordavano su `off` prima
-del riavvio, e i processi vivi lo confermano dopo.
+**⚠ Il codice in memoria è quello di stamattina, non quello di ieri**: i due processi sono partiti
+**dopo** `a6b31bb` (05:39:26Z), quindi portano il ripristino delle gambe, la presa di profitto e
+l'esenzione di profondità sui rinnovi. **Nessun riavvio pendente.**
 
-**⚠ La allowlist ha 4 mercati contro i 3 della selezione** — `0x33ec826f37` è quello in più. È lo
-stesso disallineamento segnato ieri (allora era `0x776841ce`): il trigger a capitale fermo abilita
-fuori dagli slot. Resta **aperto**.
+**Il perimetro dei mercati — 🟢 chiuso il disallineamento di ieri.** Selezione automatica **SPENTA**
+(17/08 10:59Z), allowlist **VUOTA** (tolti `0x33ec826f`, `0xbbf84b08`, `0xe9e713e3`).
+`node scripts/cli/mercati.js` legge il perimetro dai processi vivi: **1 mercato** su entrambi.
+⚠ Quell'1 è `0xe9b3e28d`, la posizione residua, che entra dall'unione di §4.8: **non un opt-in**, e su
+di lei nessun ordine è comunque piazzabile. Il perimetro **quotabile** è **zero**.
 
-⚠ **Anche il `.env` è stato neutralizzato** (`MAKER_MODE=off`, `MANUAL_ORDER_PLACEMENT` vuota): con
-l'ecosystem pulito sarebbe stato lui a riarmare al primo riavvio, ed è gitignored, quindi non lo dice
-nessuno.
+**Posizione residua: UNA sola** (snapshot fresco, 11 s):
+- Hong Kong `0xe9b3e28d` — 6 share a carico 0,50, valore zero, **−$3,00**. **Non chiudibile**: sotto il
+  `min_incentive_size` di 20, nessun ordine valido è piazzabile (§5.2 p.1).
+- ⚠ **FL-02 `0x33ec826f` NON C'È PIÙ**: la coppia completa è stata fusa o risolta. Qui era segnata come
+  residua alle 05:0xZ, e alle 11:0xZ lo snapshot non la elenca.
 
-**Posizioni residue** (nessuna direzionale):
-- FL-02 `0x33ec826f` — **coppia completa** a 101¢, 57,1 share per lato. Vale $1,00/share alla
-  risoluzione ⇒ **−$0,57 già determinati**. Non liquidare: due spread per recuperare 1¢.
-- Hong Kong `0xe9b3e28d` — 6 share a carico 0,50, valore zero, **−$3,00**. **Non chiudibile**: sotto
-  il `min_incentive_size` di 20, nessun ordine valido è piazzabile (§5.2 p.1).
-
-**P&L delle operazioni di oggi: ≈ −$3,41** · premi incassati: **$0,00**.
+⚠ **Il `.env` è neutralizzato** (`MAKER_MODE=off`, `MANUAL_ORDER_PLACEMENT` vuota): con l'ecosystem
+pulito sarebbe stato lui a riarmare al primo riavvio, ed è gitignored, quindi non lo dice nessuno.
 
 **Il pulsante rosso è stato provato su un caso vero**: `node scripts/panic-cancel-all.js
 --solo-cancella` ha cancellato 2 ordini su 2, zero alla rilettura.
@@ -339,11 +370,16 @@ Poi, in quest'ordine:
 pm2 jlist | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{for(const p of JSON.parse(s))if(/agent4[01]/.test(p.name))console.log(p.name,p.pid)})"
 tr '\0' '\n' < /proc/<pid>/environ | grep -E '^(MAKER_MODE|MAKER_PLACEMENT|MANUAL_ORDER_PLACEMENT|MAKER_ADAPTER_DRYRUN)='
 
-# 2 · IL BANCO: 37 su 91 devono restare 37, e nessuna che scattava deve aver smesso
+# 2 · IL BANCO: 20 statiche + 17 dinamiche su 91 devono restare tali, e le 3 verifiche del reset
+#     devono essere verdi (il banco esce 1 se una cade)
 node scripts/ricerca/banco-scenari.js
 node scripts/ricerca/classifica-regole-rosse.js
+node scripts/ricerca/prova-fixture-banco.js    # le sei fixture portano ancora peso?
 
-# 3 · LA SUITE: 202 test, 189 verdi, 12 rossi NOTI — si confrontano i NOMI, non il conteggio
+# 2-bis · QUANTI MERCATI IL CODICE PUÒ TOCCARE, dai processi vivi
+node scripts/cli/mercati.js
+
+# 3 · LA SUITE: 203 test, 190 verdi, 12 rossi NOTI — si confrontano i NOMI, non il conteggio
 node scripts/ricerca/suite-rossi.js <nome-sessione>
 
 # 4 · LE CHIAVI E LE APPROVAZIONI — sola lettura, nessuna transazione
