@@ -65,7 +65,10 @@ function phase2() {
 
   // COLLECTABLE denominator: coverage header uses Polymarket-only, and stays fail-honest.
   try {
-    const man = JSON.parse(fs.readFileSync('/root/prediction-market/data/mid-history-coverage.json'));
+    // ⚠ ANCORATO AL PACKAGE ROOT (17 agosto 2026, migrazione root → bot). Era un letterale, e il
+    // `catch` qui sotto lo trasformava in «manifest non ancora presente — riavvio di agent34 pendente»:
+    // il selfcheck saltava tre asserzioni dichiarando una causa che non era quella.
+    const man = JSON.parse(fs.readFileSync(require('path').join(require('../lib/safety/store').DATA_DIR, 'mid-history-coverage.json')));
     console.log(`  manifest: collectable universe (universeMarketCount)=${man.universeMarketCount} · full=${man.universeMarketCountFull} · kalshiExcluded=${man.kalshiExcludedCount}`);
     ok('denominator excludes Kalshi (collectable < full)', man.universeMarketCount != null && man.universeMarketCountFull != null && man.universeMarketCount < man.universeMarketCountFull);
     const h = coverageHeader({ coveredMarketCount: man.subscribedMarketCount, universeMarketCount: man.universeMarketCount });

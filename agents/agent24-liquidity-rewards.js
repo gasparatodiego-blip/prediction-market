@@ -33,6 +33,7 @@ require('../lib/safety/carica-env').caricaEnv({
 'use strict';
 
 const fs    = require('fs');
+const path  = require('path');
 const https = require('https');
 const { scoreBook, estimateCapitalLevelRange } = require('../lib/rewardScore');
 const { categoryFromText } = require('../lib/category');
@@ -46,7 +47,12 @@ const { raggioBandaPrezzo } = require('../lib/banda-premiante');
 // ── Config ────────────────────────────────────────────────────────────────────
 const SCAN_INTERVAL_MS  = 15 * 60_000;
 const STARTUP_DELAY_MS  = 8_000;
-const OUTPUT_FILE       = '/root/prediction-market/data/liquidity-rewards.json';
+// ⚠ LO SCRITTORE E IL LETTORE DEVONO ANCORARSI ALLO STESSO PUNTO (17 agosto 2026, migrazione root →
+// bot). Questo e' il file che `lib/rewards-normalize` legge come `POLY_FILE`: correggere solo il
+// lettore avrebbe prodotto la peggiore delle due situazioni — due percorsi per lo stesso file, che
+// divergono in silenzio (il reperto D1). `DATA_DIR` e' la definizione unica di `lib/safety/store.js`.
+const { DATA_DIR }      = require('../lib/safety/store');
+const OUTPUT_FILE       = path.join(DATA_DIR, 'liquidity-rewards.json');
 const MAX_RPS           = 1.5;
 const CAPITAL_LEVELS    = [500, 5_000, 50_000];
 const SANITY_CAP_PCT    = 2.0;   // %/day → THIN BOOK flag per level. Mirrors lib/reward-gating.ts REWARD_SANITY_CAP_PCT — keep in sync (this is a plain Node script, can't import the .ts file).

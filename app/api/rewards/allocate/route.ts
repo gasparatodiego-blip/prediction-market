@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execFile } from 'child_process';
+import path from 'path';
+// Il package root, risolto una volta sola e da un punto solo: v. `PERCORSO_ALLOCATOR` piu' sotto.
+import { DATA_DIR } from '@/lib/safety/store';
 // THE POSITION CEILING IS DERIVED HERE, AND ONLY HERE. The planner has just computed how much capital
 // each market gets; the fill strategy needs exactly that number as its per-side inventory ceiling. It is
 // recorded as a derived snapshot — there is no control anywhere that lets an operator type it.
@@ -41,7 +44,16 @@ export const dynamic = 'force-dynamic';
 // one the placement engine enforces at quoting time (motore-unico Regola 5) — read from the same module
 // (lib/rewards/concentration.js) so the paths cannot drift. Fixed since 9 Aug 2026: when capital grows
 // the system spreads over MORE markets instead of sizing up each one.
-const RUNNER = 'process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection({ capital: Number(process.argv[1]), horizonFilter: process.argv[2] === "1", maxPerMarketUsd: process.argv[3] === "" ? null : Number(process.argv[3]) })))';
+// ⚠ IL PERCORSO DELL'ALLOCATORE SI DERIVA (17 agosto 2026, migrazione root → bot). Era
+// `/root/prediction-market/lib/rewards/allocator`, cablato dentro la stringa del runner: dopo lo
+// spostamento il figlio sarebbe morto con MODULE_NOT_FOUND, e la rotta avrebbe risposto «allocator
+// output not JSON». E' la STESSA correzione gia' fatta su agent41 (§5-bis, `PERCORSO_ALLOCATOR`):
+// un percorso assoluto fa caricare al figlio il codice di QUEL repo, qualunque repo esegua il padre.
+// `DATA_DIR` e' il package root risolto saltando le directory di build — l'unico ancoraggio che
+// funziona anche da dentro il bundle di Next, dove `__dirname` e' `.next/server/...`.
+const REPO_ROOT = path.dirname(DATA_DIR);
+const PERCORSO_ALLOCATOR = path.join(REPO_ROOT, 'lib', 'rewards', 'allocator');
+const RUNNER = 'process.stdout.write(JSON.stringify(require(' + JSON.stringify(PERCORSO_ALLOCATOR) + ').planFromCollection({ capital: Number(process.argv[1]), horizonFilter: process.argv[2] === "1", maxPerMarketUsd: process.argv[3] === "" ? null : Number(process.argv[3]) })))';
 const RESULT_TTL_MS = 180_000; // 3 min — the plan auto-refreshes at this cadence; recompute costs ~19s, so a fresh plan every 3 min is live-enough while the per-row data age ticks locally every 15s
 const SPAWN_TIMEOUT_MS = 90_000; // planFromCollection scores the universe + builds per-tick fill curves
 const MAX_BUFFER = 24 * 1024 * 1024;
