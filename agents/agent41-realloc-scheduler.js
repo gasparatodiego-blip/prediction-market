@@ -84,7 +84,7 @@ const { runReallocCycle, INTERVAL_MS } = require('../lib/maker/realloc-cycle');
 const { runAllocationReset } = require('../lib/maker/allocation-reset');
 const { runBulkAllocation } = require('../lib/maker/bulk-allocate');
 const { diagnoseExposure } = require('../lib/maker/manual-reset');
-const { listManualOrders, cancelManualOrder, placeManualOrder, resolveCaps, OPERATOR_USER } = require('../lib/maker/manual-order');
+const { listManualOrders, cancelManualOrder, placeManualOrder, replaceManualOrder, resolveCaps, OPERATOR_USER } = require('../lib/maker/manual-order');
 const { readUsage } = require('../lib/safety/usage');
 const { readAutoRepriceConfig, setAutoReprice } = require('../lib/maker/auto-reprice-config');
 const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
@@ -158,6 +158,9 @@ const { gambeDiUnaRiga } = require('../lib/rewards/plan-to-orders');
 // Il ripristino della gamba mancante (17 agosto 2026): decisione PURA nel modulo, esecuzione qui
 // attraverso `piazzaCoppia`. Il lucchetto e' lo STESSO di `auto-reprice`, non una seconda serratura.
 const RIP = require('../lib/maker/ripristino-gambe');
+// ⚠ E DAL 17 AGOSTO SERA IL RIPRISTINO RICOSTRUISCE LA COPPIA, NON LA GAMBA: una sola funzione decide la
+// size di ENTRAMBE nello stesso istante (§4.13, `coppia-simmetrica`). Decisione dell'operatore.
+const COPS = require('../lib/maker/coppia-simmetrica');
 const LOCK = require('../lib/maker/lock-mercato');
 const { capPerMarketUsd, mercatiNecessari, MARKET_CAP_FIXED_USD } = require('../lib/rewards/concentration');
 const TRIG = require('../lib/maker/trigger-capitale-fermo');
@@ -1342,6 +1345,23 @@ const _ripristino = new Map();        // conditionId → {ultimoTentativo, falli
 // sceglie, e il piano non conosce i tre slot: e' cosi' che nacque il quarto mercato in allowlist. Qui
 // si itera `sel.idsAttivi`, cioe' mercati che la selezione ha GIA' scelto e che qualcuno ha GIA'
 // preparato. Nessuna scrittura su allowlist, gestione manuale, uscita automatica o catalogo.
+// ⚠ SI RICOSTRUISCE LA COPPIA, NON LA GAMBA — 17 agosto 2026, decisione dell'operatore.
+//
+// Il passo 13 del banco si fermava qui: `$28,00` a riposo (87,5 share) + `$39,17` di gamba nuova (62,2
+// share) = `$67,17` contro un tetto di `$61,25`. **La causa non era il tetto: era l'asimmetria.** Una
+// coppia simmetrica costa per costruzione esattamente il capitale della riga, quindi non lo puo'
+// sfondare — le due size divergono perche' `gambeDiUnaRiga` calcola `Q = capitale/(p_yes+p_no)` e la
+// gamba superstite porta addosso la size dell'ISTANTE in cui fu piazzata, con `p_yes+p_no` di allora.
+//
+// ⚠ E LA DIAGNOSI CHE AVEVO SCRITTO PRIMA ERA SBAGLIATA: «il riprezzo ricalcola la size». Non lo fa —
+// `auto-reprice` passa `size: order.size` a `replaceManualOrder`, in undici punti. Il difetto era piu'
+// generale e piu' semplice: nessuno riportava la gamba VIVA alla size di oggi.
+//
+// La cura sta in `coppia-simmetrica.dimensionaCoppia`: una size per tutte e due, `min(piano, tetto,
+// gamba viva)`, mai piu' grande di quella viva. E l'ordine delle due azioni e' parte della cura —
+// **prima si riduce, poi si piazza** — perche' il gate somma il nozionale a riposo: piazzare per primo
+// incontrerebbe ancora il tetto vecchio. Se la riduzione fallisce NON si piazza: due gambe asimmetriche
+// sono peggio di una gamba sola.
 async function ripristinaGamba({ id, v, riga, ora, deps }) {
   // ⚠ IL CAMPO E' `id`, NON `conditionId` — e questa riga l'ha sbagliato alla prima stesura, cioe' la
   // quinta occorrenza della classe «nome sbagliato ⇒ valore di difetto che nessuno ha chiesto»
@@ -1366,18 +1386,73 @@ async function ripristinaGamba({ id, v, riga, ora, deps }) {
     tokenIdYes: v.tokenIdYes, tokenIdNo: v.tokenIdNo });
   if (!sel.righe.length) return { tentato: false, motivo: sel.motivo };
 
+  // ── LA SIZE DELLA COPPIA, DECISA UNA VOLTA SOLA PER TUTTE E DUE LE GAMBE ────────────────────────
+  // ⚠ IL TETTO INIETTATO E' `MARKET_CAP_FIXED_USD` E NON `capPerMarketUsd(capitale)`, ed e' voluto: qui
+  // non si sta pianificando, si sta dimostrando che l'ordine che stiamo per mandare NON verra' rifiutato.
+  // Il gate che rifiuta (`valutaNozionaleMercato`, manual-order.js:827) confronta contro la costante, e
+  // proporre contro un tetto diverso da quello che giudica e' la divergenza di §5-bis p.126: si
+  // proporrebbe l'impossibile. Il vincolo del capitale e' gia' dentro `riga.capital`, cioe' in `qPiano`.
+  const ordiniQui = (Array.isArray(deps.ordiniVivi) ? deps.ordiniVivi : [])
+    .filter((o) => String((o && (o.marketId || o.conditionId)) || '').trim().toLowerCase() === id);
+  const dim = COPS.dimensionaCoppia({ gambe: g.rows, ordiniVivi: ordiniQui,
+    tokenIdYes: v.tokenIdYes, tokenIdNo: v.tokenIdNo,
+    tettoUsd: MARKET_CAP_FIXED_USD, minSizeShares: riga.minSizeShares });
+  if (!dim.ok) return { tentato: false, motivo: `coppia non dimensionabile: ${dim.motivo}`, dimensione: dim };
+  // ⚠ LE DUE LETTURE DEVONO CONCORDARE, e se non concordano non si agisce. `gambeDaMandare` decide QUALI
+  // lati mandare partendo da `v.mancanti` (il giudizio di copertura); `dimensionaCoppia` guarda gli ordini
+  // vivi per conto proprio. Sono due osservazioni della stessa cosa: se dicono lati diversi, una delle due
+  // e' vecchia — e piazzare sulla base di quella sbagliata e' esattamente il doppione che si sta togliendo.
+  const latiDaMandare = [...new Set(sel.righe.map((r) => String(r.book)))].sort().join('+');
+  const latiSenzaGamba = [...new Set(dim.daPiazzare.map((r) => String(r.book)))].sort().join('+');
+  if (latiDaMandare !== latiSenzaGamba) {
+    return { tentato: false, dimensione: dim,
+      motivo: `le due letture non concordano su quali lati manchino (copertura: ${latiDaMandare || 'nessuno'}, ordini vivi: ${latiSenzaGamba || 'nessuno'}): non si piazza su una lettura vecchia` };
+  }
+  const righeDaPiazzare = sel.righe.map((r) => ({ ...r, size: dim.size }));
+
   // ⚠ IL LUCCHETTO SI PRENDE PER TUTTA LA SEQUENZA e si rilascia in un `finally`: e' la stessa
   // disciplina del riprezzo (§ lock-mercato), e serve perche' fra il giudizio di copertura e l'invio
   // passa una chiamata di rete, cioe' la finestra in cui agent40 potrebbe riprezzare la gamba viva.
+  // ⚠ E ADESSO SERVE DI PIU': dentro il lucchetto ci stanno DUE azioni (riduci, poi piazza), e fra le due
+  // c'e' l'istante in cui la coppia e' piu' piccola del piano. Un riprezzo che entrasse in quella finestra
+  // rimetterebbe la gamba viva alla size di prima e l'asimmetria tornerebbe.
   if (!LOCK.prendi(id, { da: 'ripristino-gambe', ora }).preso) {
-    return { tentato: false, motivo: 'lucchetto non ottenuto fra il giudizio e l\'invio' };
+    return { tentato: false, motivo: 'lucchetto non ottenuto fra il giudizio e l\'invio', dimensione: dim };
   }
   let ref = null;
+  const ridotte = [];
   try {
+    // ── ① PRIMA SI RIDUCE LA GAMBA VIVA ───────────────────────────────────────────────────────────
+    // Il prezzo si RICOPIA da quello che l'ordine ha adesso: decidere il prezzo e' mestiere del motore,
+    // e `replaceManualOrder` rifa' comunque banda e «mai primo sul libro» — se il prezzo non e' piu'
+    // conforme rifiuta con `oldCancelled:false`, cioe' lascia l'ordine dov'era.
+    const riprezza = deps.riprezza || replaceManualOrder;
+    for (const r of dim.ridimensionamenti) {
+      let rr = null;
+      try {
+        rr = await riprezza({ orderId: r.orderId, marketId: id, book: r.book, side: 'BUY',
+          price: r.price, size: dim.size, userId: OPERATOR_USER, source: 'ripristino-coppia' }, {});
+      } catch (e) { rr = { ok: false, reason: e && e.message ? e.message : String(e) }; }
+      ridotte.push({ orderId: r.orderId, book: r.book, daSize: r.daSize, aSize: dim.size,
+        riuscito: !!(rr && rr.ok), gate: (rr && rr.gate) || null, reason: (rr && rr.reason) || null });
+      if (!(rr && rr.ok)) {
+        // ⚠ SI ESCE SENZA PIAZZARE. La coppia resterebbe asimmetrica e sopra il tetto: la gamba nuova
+        // verrebbe rifiutata dal gate (nel migliore dei casi) o accettata su un totale che nessuno ha
+        // autorizzato. Una gamba sola e' uno stato che il bot sa gestire; due asimmetriche no.
+        ref = { ok: false, placed: 0, reason: `riduzione della gamba viva non riuscita (${(rr && rr.gate) || 'senza gate'}): non si piazza la gamba nuova`, results: [] };
+        return { tentato: true, riuscito: false, messe: 0, righe: righeDaPiazzare.length,
+          gate: [(rr && rr.gate) || 'riduzione-non-riuscita'], motiviRifiuto: [(rr && rr.reason) || ''].filter(Boolean),
+          dimensione: dim, ridotte,
+          motivo: `coppia NON ricostruita: la riduzione della gamba viva da ${r.daSize} a ${dim.size} share e' stata rifiutata`
+            + ` (${(rr && rr.gate) || 'senza gate'}) — non si piazza la gamba nuova, o la coppia resterebbe asimmetrica`,
+          referto: ref };
+      }
+    }
+    // ── ② POI SI PIAZZA LA GAMBA MANCANTE, alla stessa size ───────────────────────────────────────
     const piazza = deps.piazza || piazzaCoppia;
     let diag = { readable: false };
     try { diag = readUsage({ userId: OPERATOR_USER }); } catch { diag = { readable: false }; }
-    ref = await piazza(sel.righe, diag);
+    ref = await piazza(righeDaPiazzare, diag);
   } catch (e) {
     ref = { ok: false, reason: e && e.message ? e.message : String(e), placed: 0 };
   } finally {
@@ -1399,9 +1474,12 @@ async function ripristinaGamba({ id, v, riga, ora, deps }) {
     : [];
   const gate = [...new Set(rifiuti.map((x) => String((x && (x.gate || x.outcome)) || '')).filter(Boolean))];
   const motiviRifiuto = [...new Set(rifiuti.map((x) => String((x && x.reason) || '')).filter(Boolean))].slice(0, 3);
-  return { tentato: true, riuscito: messe > 0, messe, righe: sel.righe.length,
-    gate, motiviRifiuto,
-    motivo: messe > 0 ? `${messe} gamba/e rimessa/e a libro`
+  return { tentato: true, riuscito: messe > 0, messe, righe: righeDaPiazzare.length,
+    gate, motiviRifiuto, dimensione: dim, ridotte,
+    motivo: messe > 0
+      ? `coppia ricostruita: ${messe} gamba/e a ${dim.size} share`
+        + `${ridotte.length ? ` dopo aver ridotto la gamba viva (${ridotte.map((x) => `${x.daSize}→${x.aSize}`).join(', ')})` : ''}`
+        + ` — $${dim.totaleUsd.toFixed(2)} sul tetto di $${MARKET_CAP_FIXED_USD.toFixed(2)} (vincolo: ${dim.vincolo})`
       : `nessuna gamba piazzata — ${gate.length ? `gate: ${gate.join(', ')}` : ((ref && ref.reason) || 'rifiutata senza gate dichiarato')}`
         + `${motiviRifiuto.length ? ` · ${motiviRifiuto[0].slice(0, 160)}` : ''}`,
     referto: ref };
@@ -1486,11 +1564,22 @@ async function riconciliaCopertura(deps = {}) {
       r = await ripristinaGamba({
         id,
         v: { ...v, tokenIdYes: riga && riga.tokenId, tokenIdNo: riga && riga.tokenIdNo },
-        riga: rigaDi(id), ora, deps,
+        riga: rigaDi(id), ora,
+        // ⚠ GLI ORDINI VIVI SI PASSANO, NON SI RILEGGONO. Sono gli STESSI su cui `valutaCopertura` ha
+        // appena giudicato: una seconda lettura potrebbe divergere, e la divergenza qui deciderebbe la
+        // size di una coppia — cioe' sarebbe capitale deciso su due fotografie diverse.
+        deps: { ...deps, ordiniVivi: ordini },
       });
       esito.ripristini.push({ id, ...r, referto: undefined });
       scrivi({ tipo: 'ripristino-gamba', esito: r.tentato ? (r.riuscito ? 'rimessa' : 'rifiutata') : 'non-tentato',
         marketId: id, mancanti: v.mancanti, messe: r.messe || 0, gate: r.gate || null, motiviRifiuto: r.motiviRifiuto || null, motivo: r.motivo,
+        // La coppia decisa e le riduzioni eseguite finiscono a verbale: senza, «rimessa» non dice a che
+        // size, e la simmetria — che e' la proprieta' che questa correzione difende — non e' verificabile
+        // sul giornale ma solo ricostruendola dagli ordini del venue.
+        coppia: r.dimensione ? { size: r.dimensione.size, vincolo: r.dimensione.vincolo,
+          totaleUsd: r.dimensione.totaleUsd, qPiano: r.dimensione.qPiano, qTetto: r.dimensione.qTetto,
+          qViva: r.dimensione.qViva } : null,
+        ridotte: (r.ridotte && r.ridotte.length) ? r.ridotte : null,
         fallimentiConsecutivi: (_ripristino.get(id) || {}).fallimenti || 0 });
       annuncia('log', `ripristino ${id.slice(0, 12)}…: ${r.motivo}`);
     }
@@ -3202,6 +3291,11 @@ module.exports = { giro, controlloCapitaleFermo, leggiVenue, leggiSaldo, prossim
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
   selezionaMercati, rilasciaDallaSelezione, selezioneAttiva, restringiAllaSelezione, leggiBoardReward, posizioniPerSelezione,
   riconciliaAllowlist, scadenzeFuoriPerimetro, riconciliaCopertura, presidioPosizioniVecchie,
+  // ⚠ `ripristinaGamba` e' esportata per essere PROVATA SUL CABLAGGIO e non solo sulla decisione:
+  // `riconciliaCopertura` scrive nel giornale vero (`scrivi` non e' iniettabile), mentre questa funzione
+  // non scrive niente e accetta tutte le dep. E' la lezione di §5-bis p.181: le tre difese inerti del
+  // 17 agosto avevano test verdi perche' provavano la decisione e non chi la collega.
+  ripristinaGamba,
   autodiagnosiPeriodica, eseguiGradino, messaggioFeedRiseminato, nozionalePiazzato,
   LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,

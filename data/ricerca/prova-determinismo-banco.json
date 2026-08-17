@@ -1,11 +1,11 @@
 {
- "generatoIl": "2026-08-17T14:44:50.245Z",
+ "generatoIl": "2026-08-17T16:17:36.092Z",
  "corse": 10,
  "firmeDistinte": 1,
  "deterministico": true,
  "dettaglio": [
   {
-   "sha": "1d47b26591b85b6b",
+   "sha": "61f5582e56f75903",
    "volte": 10
   }
  ],
@@ -27,9 +27,10 @@
    "10 · la scala d'urgenza arriva all'uscita ESEGUITA|true",
    "11 · il take-profit ESEGUE contro il bid|true",
    "12 · il merge che FALLISCE lascia un'anomalia dichiarata|true",
-   "13 · gamba morta → ripristino entro un ciclo|false",
+   "13 · gamba morta → la COPPIA ricostruita, simmetrica e sotto il tetto|true",
    "14 · posizione sparita senza un nostro ordine → ALLARME|true",
    "15 · feed muto · avgPrice assente · rifiuto post-only|true",
+   "15-bis · il carico di ripiego arriva al SECONDO livello (fill totale)|true",
    "16 · la scadenza toglie il mercato dal perimetro|true",
    "17 · kill a −$100: CANCELLA gli ordini e mette FERMA|true"
   ],
@@ -47,7 +48,6 @@
    "modalita-chiusura-residuo-non-fillato-cancellato",
    "modalita-chiusura-sorella-rimandata-dal-capitale",
    "non-misurabile",
-   "partial",
    "posizione-mai-valutata",
    "posizione-uscita-senza-nostro-ordine",
    "reject-venue",
@@ -67,7 +67,6 @@
    "mid-stantio-cancellato-mid-stantio",
    "modalita-chiusura-sorella-da-ridimensionare-cancellato",
    "ok",
-   "reject-nozionale-mercato-oltre-tetto",
    "reject-venue-rules",
    "rimasuglio-controparte-aggressiva-reject-venue-rules",
    "rimasuglio-rimanenza-reject-venue-rules",

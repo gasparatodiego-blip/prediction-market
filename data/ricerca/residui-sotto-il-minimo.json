@@ -1,0 +1,136 @@
+{
+ "generatoIl": "2026-08-17T16:06:11.797Z",
+ "boardGeneratoIl": "2026-08-17T16:03:09.175Z",
+ "tetti": {
+  "perMercatoUsd": 61.25,
+  "perOrdineUsd": 65.63,
+  "perOrdineSeIlCapitaleNonSiLeggeUsd": 29.25,
+  "orizzonteMinimoGiorni": 0.5
+ },
+ "casoPeggiore": {
+  "inAssoluto": {
+   "conditionId": "0x5db999fad322cea2914535aae5517060c3f80ad6d8c0231cde2124a434d16846",
+   "question": "Will the U.S. invade Iran before 2027?",
+   "minSize": 200,
+   "mid": 0.165,
+   "prezzoLatoCaro": 0.835,
+   "sizeMassimaResidua": 199.99,
+   "bloccatoUsd": 61.25,
+   "limitatoDa": "tetto-per-mercato",
+   "ammissibileAllaSelezione": false,
+   "finanziabileAlTetto": false
+  },
+  "suMercatiRAGGIUNGIBILI": {
+   "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+   "question": "Will 1 Fed rate cut happen in 2026?",
+   "minSize": 50,
+   "mid": 0.095,
+   "prezzoLatoCaro": 0.905,
+   "sizeMassimaResidua": 49.99,
+   "bloccatoUsd": 45.24,
+   "limitatoDa": "minSize×prezzo",
+   "ammissibileAllaSelezione": true,
+   "finanziabileAlTetto": true
+  },
+  "perScaglione": [
+   {
+    "conditionId": "0x9eb891d9cfff83fd2aa3f3f2c2b0c79f1c0de00662b06ee3b727b649e9ddea36",
+    "question": "Will the Democratic Party win the TX-18 House ",
+    "minSize": 20,
+    "mid": 0.9725,
+    "prezzoLatoCaro": 0.9725,
+    "sizeMassimaResidua": 19.99,
+    "bloccatoUsd": 19.44,
+    "limitatoDa": "minSize×prezzo",
+    "ammissibileAllaSelezione": true,
+    "finanziabileAlTetto": true
+   },
+   {
+    "conditionId": "0xb73f32c2884c65f5dae192c33bef3f7ce3faeec4ad313d2d3a6ad62ea2c95caf",
+    "question": "Will Alexander Vindman be the Democratic nomin",
+    "minSize": 50,
+    "mid": 0.936,
+    "prezzoLatoCaro": 0.936,
+    "sizeMassimaResidua": 49.99,
+    "bloccatoUsd": 46.79,
+    "limitatoDa": "minSize×prezzo",
+    "ammissibileAllaSelezione": false,
+    "finanziabileAlTetto": true
+   },
+   {
+    "conditionId": "0x3849e1d62e0807801913d3e2427e8caf3cc6dd1c8ef42d8d5c08c6f9c449dc5e",
+    "question": "Will OpenAI not IPO by December 31, 2026?",
+    "minSize": 100,
+    "mid": 0.805,
+    "prezzoLatoCaro": 0.805,
+    "sizeMassimaResidua": 99.99,
+    "bloccatoUsd": 61.25,
+    "limitatoDa": "tetto-per-mercato",
+    "ammissibileAllaSelezione": false,
+    "finanziabileAlTetto": false
+   },
+   {
+    "conditionId": "0x5db999fad322cea2914535aae5517060c3f80ad6d8c0231cde2124a434d16846",
+    "question": "Will the U.S. invade Iran before 2027?",
+    "minSize": 200,
+    "mid": 0.165,
+    "prezzoLatoCaro": 0.835,
+    "sizeMassimaResidua": 199.99,
+    "bloccatoUsd": 61.25,
+    "limitatoDa": "tetto-per-mercato",
+    "ammissibileAllaSelezione": false,
+    "finanziabileAlTetto": false
+   }
+  ],
+  "mercatiEsaminati": 144,
+  "mercatiRaggiungibili": 37
+ },
+ "bloccatoAdesso": {
+  "posizioni": [
+   {
+    "conditionId": "0xe9b3e28d9cec225de730d73474af946f9115af100e5abd0d9213e77381badd9f",
+    "tokenId": "89617251866126791096261429566910147208205048560151251291377425693225986046037",
+    "size": 6,
+    "prezzo": 0.5,
+    "valoreUsd": 3
+   }
+  ],
+  "totaleUsd": 3,
+  "registroResiduiPresente": true,
+  "vociNelRegistro": 1
+ },
+ "strade": [
+  {
+   "nome": "riscatto on-chain dopo la risoluzione",
+   "esiste": true,
+   "minimoDiSize": "NESSUNO — `redeemPosition` non passa dal libro",
+   "cablata": true,
+   "quando": "quando `payoutDenominator(conditionId) > 0` letto ON-CHAIN (non «il mercato e' chiuso»)",
+   "limite": "restituisce $1/share al lato VINCENTE e $0 al perdente: recupera il capitale solo se il residuo ha vinto"
+  },
+  {
+   "nome": "merge on-chain della coppia",
+   "esiste": true,
+   "minimoDiSize": "NESSUNO",
+   "cablata": true,
+   "quando": "quando la coppia e' completa (`mancaAllaCoppia <= 0`)",
+   "limite": "inapplicabile al caso bloccato: se il residuo sta su UN lato solo la coppia non e' completa"
+  },
+  {
+   "nome": "vendere il residuo a libro",
+   "esiste": true,
+   "minimoDiSize": "minSize del venue (20/50/100/200)",
+   "cablata": true,
+   "quando": "mai, sotto il minimo",
+   "limite": "E' la strada chiusa: il venue rifiuta l'ordine"
+  },
+  {
+   "nome": "accumulare fino a tornare piazzabile",
+   "esiste": true,
+   "minimoDiSize": "minSize",
+   "cablata": true,
+   "quando": "quando la size accumulata su quel mercato/lato torna >= minSize",
+   "limite": "richiede un ALTRO fill sullo stesso lato dello stesso mercato: non e' una via d'uscita, e' un'attesa"
+  }
+ ]
+}

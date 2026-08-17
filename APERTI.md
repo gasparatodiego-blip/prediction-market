@@ -9,9 +9,15 @@ costa se non si ripara. Lo stato del sistema al momento della chiusura è in fon
 
 | | |
 |---|---|
-| **passi del giro completo che arrivano in fondo** | **16 su 17** — si ferma il **13** (ripristino della gamba morta) |
-| **regole che scattano** | **22 statiche + 17 dinamiche su 91**, col cablaggio di produzione |
+| **passi del giro completo che arrivano in fondo** | **18 su 18** (i 17 + il 15-bis) — nessuno bloccato, nessuno annotato |
+| **regole che scattano** | **21 statiche + 16 dinamiche su 91**, col cablaggio di produzione |
 | **regole rosse perché il pezzo NON ESISTE** | **ZERO**, e non è un'ipotesi: misurato cercando i chiamanti |
+| **determinismo** | **10 corse su 10**, una firma sola (`61f5582e56f75903`) |
+
+⚠ **Il conteggio è SCESO da 22+17 a 21+16, ed è la conseguenza voluta della cura del passo 13**: sparisce
+`reject-nozionale-mercato-oltre-tetto` (non c'è più il rifiuto) e sparisce `partial` di `bulk-allocate` (non
+c'è più un bulk parzialmente rifiutato). Meno regole esercitate perché ci sono meno rifiuti da esercitare —
+non una copertura peggiore.
 
 ⚠ **Il vecchio «37 su 91» è stato buttato**, e va ricordato perché: quel banco non chiamava
 `agent40.closeTask()` — ricablava `runAutoCloseCycle` da sé, con **17 dep contro le 20** che la
@@ -68,57 +74,144 @@ lontano farebbe sembrare al figlio che lo storico seminato dal banco sia nel fut
 
 ---
 
-## 1 · 🔴 IL PASSO 13 — LA COPPIA NON SI PUÒ RICOSTRUIRE, E NON È IL TETTO
+## 1 · 🟢 CHIUSO — IL PASSO 13 RICOSTRUISCE LA COPPIA, NON LA GAMBA
 
-Il ripristino della gamba morta **scatta, tenta, e viene rifiutato**:
+**Il passo 13 arriva in fondo**, e il criterio non è più «il lato è tornato a libro» (che si accontentava
+di un ripristino asimmetrico, cioè dello stato che sfondava il tetto) ma **tre cose insieme**:
 
 ```
-gate: nozionale-mercato-oltre-tetto
-gamba YES superstite  87,5 × $0,32 = $28,00 · gamba NO da rimettere $39,17
-totale $67,17 contro il tetto $61,25   ⇒   SFORO $5,92 (9,7%)
+lati dopo il ripristino : {yes:1, no:1}
+coppia                  : 61,2 × $0,32  +  61,2 × $0,64  =  $58,75   ≤  $61,25
+simmetrica              : sì (le due size coincidono)
+la gamba viva è SCESA   : 87,5 → 61,2   (prima si riduce, poi si piazza)
 ```
 
-**La causa è l'ASIMMETRIA delle size** (87,5 contro 62,2), non il tetto: una coppia simmetrica costa per
-costruzione esattamente il capitale del mercato (`Q = C/(p_yes+p_no)` ⇒ `Q·(p_yes+p_no) = C`) e non può
-sfondare. Le due gambe divergono perché **il riprezzo ricalcola la size della gamba viva** mentre il
-ripristino dimensiona quella mancante sul piano corrente: due sizing diversi sulla stessa coppia.
+**⚠ LA MIA DIAGNOSI PRECEDENTE ERA SBAGLIATA, e va detto perché cambiava la cura.** Qui c'era scritto «il
+riprezzo ricalcola la size della gamba viva»: **non lo fa** — `auto-reprice` passa `size: order.size` a
+`replaceManualOrder`, in undici punti, verificato. La causa vera è più semplice e più generale:
+`gambeDiUnaRiga` calcola `Q = capitale/(p_yes + p_no)`, cioè due gambe simmetriche **nell'istante in cui le
+costruisce**; la gamba superstite porta addosso la size dell'istante in cui *fu piazzata*, e quando il mid
+si muove `p_yes + p_no` cambia. 87,5 e 62,2 sono la **stessa formula a due istanti diversi** (la coppia
+costava $0,675 allora e $0,95 adesso). Nessuno riportava la gamba viva alla size di oggi.
 
-**Quale tetto servirebbe** (`scripts/ricerca/tetto-per-ricostruire-la-coppia.js`, board vero, 36
-ammissibili): per **questa** coppia **$83,13 = 1,36×**; **limite superiore** sul board **$641,36 = 10,47×**
-(mid 0,0955), mediana **$245 = 4×**. Rendere la ricostruzione *sempre* possibile costerebbe un tetto
-**dieci volte** l'attuale.
+**La cura** (`lib/maker/coppia-simmetrica.js`, puro): una sola funzione decide la size di **entrambe**,
+`Q = min(Q_piano, Q_tetto, Q_gamba_viva)`, e ognuno dei tre vincoli può solo **ridurre**.
+- **`Q_gamba_viva`** rende il modulo **monotono**: la gamba viva si può solo rimpicciolire. Far crescere un
+  ordine a riposo per «pareggiare» sarebbe aggiungere esposizione per ragioni di simmetria.
+- **`Q_tetto`** si calcola sui prezzi **veri** di ciò che resterà a libro (quello dell'ordine vivo per chi
+  sopravvive, quello del piano per chi nasce): col prezzo di piano per entrambe si proporrebbe un totale
+  che poi il gate rifiuterebbe.
+- **sotto il minimo premiante non si ricostruisce**, e il tetto **non** si allarga: è l'unico esito in cui
+  il modulo dice «no» invece di dire «più piccolo».
 
-**La cura, e non è il tetto**: ricostruire la **COPPIA** e non la gamba — cancellare la superstite e
-ripiazzare entrambe a `Q = tetto/(p_yes+p_no)` — oppure non cambiare la size nel riprezzo. Non fatta:
-tocca il percorso che piazza e va fatta con la sua misura.
+**L'ordine delle due azioni è parte della cura**: `nozionale-mercato-oltre-tetto` somma il nozionale a
+riposo, quindi **prima si riduce, poi si piazza** — e se la riduzione fallisce **non si piazza**, perché due
+gambe asimmetriche sono peggio di una gamba sola. Il tetto **non è stato toccato**: resta $61,25.
+
+**Il tetto che sarebbe servito, e che non è stato usato** (`tetto-per-ricostruire-la-coppia.js`): $83,13
+(1,36×) per quella coppia, fino a **$641,36 (10,47×)** nel caso peggiore sul board. Restano a verbale come
+misura del costo di *non* fare la cura, non come proposta.
+
+**Prove**: `coppia-simmetrica.js` selfcheck **30 asserzioni** (monotonia su 100 size, invariante del tetto
+su 425 combinazioni) · `coppia-simmetrica-scatta.test.js` **21 asserzioni** sul CABLAGGIO, attraverso
+`agent41.ripristinaGamba` vera, con la sequenza delle chiamate misurata · banco passo 13 verde, **10 corse
+su 10** con la stessa firma.
+
+**⚠ Due regole del banco non scattano più, ed è la conseguenza voluta**: `reject-nozionale-mercato-oltre-tetto`
+(non c'è più il rifiuto) e `partial` di `bulk-allocate` (non c'è più un bulk parzialmente rifiutato). Il
+conteggio scende da 22+17 a **21+16**: meno regole esercitate perché ci sono meno rifiuti da esercitare.
+
+---
+
+## 2 · 🟢 CHIUSO — `carico-di-ripiego` ARRIVA AL SECONDO LIVELLO
+
+`deps.ultimoNostroPrezzo` non era cablata — **settima** occorrenza di «dep non cablata ⇒ valore di difetto
+che nessuno ha chiesto». Ora `closeTask` la passa, e il prezzo viene dal **giornale**
+(`lib/maker/ultimo-nostro-prezzo.js`, lettura incrementale) e non dalla memoria di processo: un carico che
+sparisce al riavvio è un'uscita che sparisce al riavvio.
+
+Contano solo gli invii **accettati** (`outcome: 'sent'`) e solo i **BUY**. Per poterlo fare,
+`manual-replace` ha ricevuto il campo **`side`** nel proprio record: senza, un rimpiazzo era
+indistinguibile fra acquisto e vendita, e **un record senza `side` viene saltato** invece di essere
+interpretato.
+
+**La prova è nel giro** (passo **15-bis**, fill TOTALE, `avgPrice` nascosto): il giornale porta
+`carico-di-ripiego` con **`fonte: 'ultimo-ordine-nostro'`** e carico **$0,38**, che è il prezzo davvero
+mandato al venue — e il modulo interrogato da fuori dà lo stesso numero. ⚠ Non basta che esca
+`carico-di-ripiego`: il passo 15 lo produce già col primo livello, quindi si pretende **la fonte**.
+
+**⚠ E lo scenario del banco si accende PRIMA del fill**: `VENUE.riempi` fotografa
+`avgPriceNascostoPerCicli` nel momento in cui crea la posizione, quindi accenderlo dopo non nasconde
+niente. La prima stesura del passo dichiarava rossa una difesa cablata.
 
 ---
 
-## 2 · 🟡 `carico-di-ripiego` HA DUE LIVELLI E SOLO IL PRIMO È RAGGIUNGIBILE
+## 3 · 🟢 CHIUSO — `stato.js` LEGGE LE CINTURE DAI PROCESSI VIVI
 
-Il primo è `residuo-a-libro` (il prezzo di un nostro ordine ancora a riposo sullo stesso token). Il secondo
-legge `deps.ultimoNostroPrezzo` e **nessuno passa quella dep**: `closeTask` non la cabla. Quindi con un
-fill **totale** — nessun residuo a libro — non c'è nessun ripiego e l'uscita esce a `skip-no-entry-price`.
-È un ripiego di un ripiego: va fatto con la sua misura, non a occhio.
+`lib/maker/cinture-armamento.js` (puro) risponde sullo stato delle cinque cinture **per un ambiente
+qualunque**, e `stato.js` gli passa `/proc/<pid>/environ` dei processi che decidono un prezzo. Il `.env`
+si mostra ancora, ma dichiarato per quello che è: **cosa entrerebbe al prossimo riavvio dal file**, con la
+divergenza segnalata. E se due processi portano cinture diverse, lo dice in rosso.
+
+Perché un modulo e non un `if`: `stato.js` non può importare `manual-order` né l'adapter — il suo
+§PERIMETRO cammina `require.cache` e cade se ha caricato una superficie che sa piazzare. Verificato: il
+perimetro resta pulito.
+
+**Due delle cinque sono importate davvero** — il freno di agent41 da `freno-prova.statoFreno`, e
+`MANUAL_ORDER_PLACEMENT` è definita nel modulo nuovo e `manual-order` la **importa** (stessa funzione, non
+una copia). **Le altre tre sono uno specchio dell'adapter, e lo specchio è provato**:
+`cinture-armamento.test.js` (24 asserzioni) importa l'adapter vero e confronta i verdetti.
+
+**Lo specchio ha trovato due divergenze mie, nella direzione che costa**: normalizzavo `MAKER_MODE` con
+`trim().toLowerCase()`, quindi su `'LIVE'` o `'live '` dichiaravo la cintura **APERTA** mentre
+`config.loadMakerConfig` risolve quei valori a `off` (cintura inserita); e leggevo `MAKER_ADAPTER_DRYRUN`
+insensibile alle maiuscole, quindi su `'TRUE'` l'avrei dichiarata **inserita** mentre `envBool` fa
+`v === 'true'` — cioè avrei dichiarato sicura una configurazione che non lo è. **Uno specchio deve essere
+esatto, non ragionevole.**
+
+Terza scoperta, dallo stesso confronto: `evaluatePlacementGate` ha gate che **non** sono cinture
+dell'operatore (`kill`, `venue-allowlist`, `limit-*`, `v2-sdk-*`, `funding-approval`). Quindi
+`puoPiazzare` dice che **le cinque sono aperte**, non che l'ordine passerebbe — ed è scritto nel modulo.
 
 ---
 
-## 3 · 🟡 `tre-fix-sicurezza.test.js` È UN TIMEOUT, NON UNA REGRESSIONE
+## 4 · 🟢 CHIUSO — I RESIDUI SOTTO IL MINIMO: QUANTO, E CHE COSA SI PUÒ FARE
 
-Dura **48-50 s** contro il limite di **60 s** della suite (`suite-rossi.js:25`), quindi entra ed esce dalla
-lista dei rossi a seconda del carico. Misurato **prima** delle modifiche di oggi 49,98 s, **dopo** 48,42 s:
-non l'hanno rallentato loro. Passa 2 corse su 3 lanciato a mano. Va reso più veloce o il limite va alzato, e
-la scelta è una decisione: **un test che scade è indistinguibile da un test che fallisce.**
+`scripts/ricerca/residui-sotto-il-minimo.js`, sul board vero (144 mercati, 37 raggiungibili).
 
----
+**Il caso peggiore su UN mercato**: `(minSize − 0,01) × prezzo_del_lato_caro`, con il tetto per ordine
+($65,63) e quello per mercato ($61,25) sopra.
 
-## 4 · `stato.js` legge le cinture dal `.env`
+| minSize | caso peggiore | |
+|---|---|---|
+| 20 | **$19,44** | 19,99 × $0,9725 |
+| 50 | **$46,79** | 49,99 × $0,936 |
+| 100 · 200 | $61,25 | il pavimento premiante li esclude: **il bot non entra** |
 
-**Costo**: una decisione sbagliata nel momento peggiore. In emergenza direbbe «sei fermo» mentre i processi
-sono armati. 🟢 **Fatto per `mercati.js`**: il perimetro live-min si legge da `/proc/<pid>/environ` e
-dichiara la divergenza col `.env`. **`stato.js` resta da fare**, stesso schema, c'è già `C.envDiProcesso`.
+⇒ **sui mercati che il bot può davvero aprire il peggio è $46,79 su un mercato solo**, e il peggiore
+misurato in concreto è $45,24 («Will 1 Fed rate cut happen in 2026?», minSize 50). **Bloccato adesso:
+$3,00** — i 6 share di Hong Kong.
 
----
+**⚠ Si conta su UN LATO SOLO, e non è una semplificazione**: un residuo su *entrambi* i lati è una coppia
+parziale, e una coppia si **fonde on-chain** — `mergePosition` non ha minimi di size. Quel caso non è
+bloccato.
+
+**Che cosa si può fare davvero** — verificato sul codice, non proposto:
+
+| strada | minimo di size | cablata | limite |
+|---|---|---|---|
+| **riscatto on-chain dopo la risoluzione** | **nessuno** | **sì** (agent40 → `riscatto-automatico`) | rende $1/share al lato vincente, $0 al perdente |
+| merge della coppia | nessuno | sì | inapplicabile: il residuo sta su un lato solo |
+| vendere a libro | minSize del venue | sì | **è la strada chiusa**: il venue rifiuta |
+| accumulare fino al minimo | minSize | sì | serve un ALTRO fill sullo stesso lato: è un'attesa, non un'uscita |
+
+**La risposta, quindi: la via d'uscita esiste già e non passa dal libro.** Il riscatto automatico non ha
+minimi di size, ed è cablato dal 17 agosto (§5 p.131). Il costo vero **non è il capitale — è il tempo**: al
+massimo $46,79 per mercato immobilizzati fino alla risoluzione, più il rischio direzionale su una gamba
+nuda che può valere $0. Ciò che *resta* aperto non è una via d'uscita mancante: è che il residuo nasca —
+e questo si riduce solo non facendo fill parziali, cioè con size più piccole o mercati più profondi.
+**Non c'è niente da implementare qui**, e per questo il punto scende dal 🔴 al 🟢.
+
 
 ## 5 · `git push` bloccato — 70 commit solo locali
 
@@ -139,20 +232,26 @@ Causa preesistente: `app/components/ui/Redacted.tsx` lo importa e non è in `pac
 
 ---
 
-## 7 · 🟡 I RESIDUI SOTTO IL MINIMO NON HANNO UNA VIA D'USCITA
+## 7 · 🟡 CHE IL RESIDUO NASCA — quello che resta davvero aperto
 
-Buco strutturale, §5.2 p.1. La posizione di Hong Kong (6 share a carico 0,50) è l'esempio vivo: sotto
-`min_incentive_size` 20 nessun ordine valido è piazzabile, quindi non è capitale perso — è **capitale
-irraggiungibile fino alla risoluzione**. La proposta (riscattarli via `redeemPositions`) è scritta e non
-implementata: è capitale, ed è una decisione dell'operatore.
+Il punto **4** chiude la domanda «che cosa si può fare»: la via d'uscita esiste (riscatto on-chain, nessun
+minimo di size) e il caso peggiore su un mercato è **$46,79**. Quello che resta aperto è a monte: **evitare
+che il residuo nasca**, cioè non prendere fill parziali che lascino meno di `min_incentive_size`. Le leve
+sono la size (più piccola ⇒ più mercati) e la profondità del mercato, non un meccanismo nuovo di uscita.
+Nessuna misura, nessuna decisione chiesta: è la voce da cui ripartire se un giorno i residui diventassero
+molti invece di uno.
 
 ---
 
-## LE 69 REGOLE CHE NON SCATTANO, DIVISE PER CAUSA
+## LE 70 REGOLE CHE NON SCATTANO, DIVISE PER CAUSA
 
 `node scripts/ricerca/perche-non-scattano.js` — e le due categorie chiedono cose diverse:
 
-### A · IL GIRO NON CI È ARRIVATO — **65**
+⚠ **Erano 69 e sono 70**: la cura del passo 13 ha *togliato* `reject-nozionale-mercato-oltre-tetto` e
+`partial` dai rifiuti esercitati, e il passo 15-bis ha *aggiunto* `carico-di-ripiego` al secondo livello (già
+contato fra le scattate come esito). La spartizione fra A e B non cambia.
+
+### A · IL GIRO NON CI È ARRIVATO — **66**
 
 **39 dei passi 8-17** (il pezzo c'è, ha un chiamante, serve uno scenario):
 
@@ -170,7 +269,7 @@ malformati, esiti ambigui.
 
 | regola | file:riga | perché |
 |---|---|---|
-| **nessuna** | — | **ZERO regole rosse perché il pezzo non esiste** — misurato: per tutte e 69 il chiamante c'è |
+| **nessuna** | — | **ZERO regole rosse perché il pezzo non esiste** — misurato: per tutte e 70 il chiamante c'è |
 | `skip-cancel-non-collegato` | `lib/maker/auto-reprice.js:1830` | scatta solo se `deps.cancelOrder` non è una funzione: sarebbe un difetto NOSTRO |
 | `merge-esito-mancante` | `lib/maker/auto-close.js:1999` | il rilevatore dell'obbligo di esito rimasto aperto, idem |
 | `dry-run-validated` | `lib/maker/auto-close.js:2718` | ramo della modalità dry-run, e il banco invia sempre |
@@ -199,6 +298,12 @@ per famiglia di parole. Ogni voce del referto porta `file:riga`.
 | §5.2 p.38: il gate del nozionale mancava dai precontrolli del riprezzo | `e3dcfb0` |
 | `ripristino-gamba \| rifiutata` non diceva quale gate l'aveva rifiutata | `e3dcfb0` |
 | **tre difese INERTI** (sotto) | `e3dcfb0` |
+| il quadro, e le 69 regole divise per causa | `8f8b77c` · `25ee064` |
+| **il passo 13**: due funzioni dimensionavano la stessa coppia in due istanti diversi ⇒ asimmetria ⇒ sforo | *(questo commit)* |
+| `carico-di-ripiego`: il secondo livello non aveva chi gli passasse `ultimoNostroPrezzo` — **settima** «dep non cablata» | *(questo commit)* |
+| `manual-replace` non scriveva `side`: il giornale non distingueva un rimpiazzo BUY da uno SELL | *(questo commit)* |
+| `stato.js` leggeva le cinture dal `.env` invece che da `/proc`, e mi aveva già mentito una volta | *(questo commit)* |
+| lo specchio delle cinture normalizzava `MAKER_MODE`/`DRYRUN` e divergeva dall'adapter su `'LIVE'` e `'TRUE'` | *(questo commit)* |
 
 **Le tre difese inerti, e sono la lezione della giornata:**
 

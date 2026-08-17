@@ -169,6 +169,8 @@ const nostriInvii = [];           // gli invii recenti, in memoria: la finestra 
 // Su disco servirebbe uno scrittore, una rotazione e una regola di freschezza per un dato che vive
 // dieci minuti.
 const { readAutoCloseConfig } = require('../lib/maker/auto-close-config');
+// Il secondo livello del carico di ripiego (§5.2 p.41): il prezzo dell'ultimo nostro BUY, dal giornale.
+const { prezzoUltimoNostroBuy } = require('../lib/maker/ultimo-nostro-prezzo');
 const { placeManualOrder } = require('../lib/maker/manual-order');
 const { resolveFunder, venueAccountAddress } = require('../lib/venues/polymarket-clob-maker/funder');
 const { isManualMarket } = require('../lib/maker/manual-mode');
@@ -1265,6 +1267,15 @@ async function closeTask() {
       // sempre null e il Livello 1 non era nemmeno valutabile — si cadeva al Livello 2 a prescindere dal
       // prezzo vero del secondo lato. Vedi CLAUDE.md §5 punto 27.
       readDepth: (marketId) => resolveMarketDepth(marketId),
+      // ── IL SECONDO LIVELLO DEL CARICO DI RIPIEGO — 17 agosto 2026 sera, §5.2 p.41 ───────────────
+      // `caricoDaUsare` ha tre livelli e il terzo era IRRAGGIUNGIBILE: `auto-close.js:2105` legge
+      // `deps.ultimoNostroPrezzo` e qui non veniva passata, quindi con un fill TOTALE — nessun residuo
+      // a libro, cioe' nessun dato per il livello ② — l'uscita cadeva a `skip-no-entry-price`. Settima
+      // occorrenza della classe «dep non cablata» di §5.3, e la stessa forma di `readDepth` due righe
+      // sopra: il codice che decide era scritto e provato, quello che lo collega no.
+      // Il prezzo viene dal GIORNALE (durevole) e non dalla memoria di processo: un carico che sparisce
+      // al riavvio e' un'uscita che sparisce al riavvio.
+      ultimoNostroPrezzo: ({ marketId, book }) => prezzoUltimoNostroBuy({ marketId, book }),
       // Il timbro della valutazione: lo consuma `sorveglianzaTask`, che gira fuori di qui.
       segnaValutazione: ({ marketId, tokenId }) => {
         statoSorveglianza = SORV.registraValutazione(statoSorveglianza,

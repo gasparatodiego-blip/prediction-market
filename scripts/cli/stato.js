@@ -6,7 +6,7 @@
 //
 // ═══ COSA MOSTRA, E CON QUALE FIDUCIA ════════════════════════════════════════════════════════════
 // Ogni riga dichiara da dove viene, perché non sono tutte della stessa qualità:
-//   · MAKER_MODE, dry-run, placement          ← `.env`, letto adesso
+//   · le cinque cinture d'armamento           ← `/proc/<pid>/environ` dei PROCESSI VIVI, non il `.env`
 //   · KILL, AVVIA/FERMA, mercati, manopola    ← i file sotto `data/` e `ecosystem.config.js`,
 //                                               attraverso gli STESSI moduli degli agent
 //   · ordini a riposo                         ← RICOSTRUITI dal giornale, e l'età è dichiarata
@@ -33,27 +33,82 @@ const ARC = require('../../lib/maker/auto-reprice-config');
 const D = require('../../lib/maker/distanza-obiettivo');
 const RL = require('../../lib/safety/risk-limits');
 const VP = require('../../lib/safety/venue-positions-snapshot');
+// Le cinture: puro, e per questo importabile senza violare il §PERIMETRO in fondo.
+const CIN = require('../../lib/maker/cinture-armamento');
 
 const riga = (etichetta, valore, nota) =>
   console.log('  ' + String(etichetta).padEnd(26) + valore + (nota ? '  ' + C.col.spento(nota) : ''));
 
-// ── 1 · LA SCALA DI ATTIVAZIONE (dal .env) ──────────────────────────────────────────────────────
-C.titolo('MODALITÀ — dal .env, e solo a mano da lì');
+// ── 1 · LE CINQUE CINTURE, LETTE DAI PROCESSI VIVI ──────────────────────────────────────────────
+// ⚠ QUI SI LEGGEVA IL `.env`, E MI HA MENTITO UNA VOLTA (17 agosto 2026). Il file diceva
+// `MAKER_PLACEMENT` vuota mentre `/proc/<pid>/environ` dei processi vivi diceva `send`: pm2 tiene la
+// propria copia dell'ambiente, e i due divergono a ogni riavvio fatto senza ripartire dal file (§5.1,
+// §5.2 p.2). **Il file dice cosa e' stato scritto; il processo dice cosa sta usando** — e prima di armare
+// conta solo il secondo.
+//
+// L'aritmetica sta in `lib/maker/cinture-armamento` (puro, importabile senza violare il §PERIMETRO qui
+// sotto), dove `MANUAL_ORDER_PLACEMENT` e il freno di agent41 sono la FONTE e le altre tre sono uno
+// specchio dell'adapter provato da `cinture-armamento.test.js`.
+//
+// ⚠ IL `.env` SI MOSTRA ANCORA, ma dichiarato per quello che e': cosa entrerebbe al PROSSIMO riavvio dal
+// file. Toglierlo del tutto renderebbe invisibile una divergenza che e' proprio quella da sorvegliare.
+C.titolo('CINTURE — dai processi vivi (/proc), non dal .env');
 {
-  const env = C.leggiEnvFile();
-  if (!env.presente) console.log('  ' + C.col.rosso('.env ASSENTE') + C.col.spento('  — nessuna credenziale, nessun database: la catena non parte'));
-  const modo = String(process.env.MAKER_MODE || 'off').toLowerCase();
-  const vivo = modo === 'live' || modo === 'live-min';
-  riga('MAKER_MODE', vivo ? C.col.rosso(modo.toUpperCase()) : C.col.verde(modo), vivo ? '⚠ modalità VIVA: il venue è raggiungibile' : 'non può raggiungere il venue');
-  const dry = String(process.env.MAKER_ADAPTER_DRYRUN || '').toLowerCase() === 'true';
-  riga('MAKER_ADAPTER_DRYRUN', dry ? C.col.verde('true') : C.col.giallo(process.env.MAKER_ADAPTER_DRYRUN || '(vuota)'),
-    dry ? 'cintura indipendente: ombra forzata qualunque sia il modo' : 'la cintura NON è inserita');
-  const send = String(process.env.MAKER_PLACEMENT || '').trim() === 'send';
-  riga('MAKER_PLACEMENT', send ? C.col.rosso('send') : C.col.verde(process.env.MAKER_PLACEMENT || '(vuota ⇒ dry-run)'),
-    send ? '⚠ la POST /order parte davvero' : 'costruisce, firma, fa validare — non invia');
-  const fund = String(process.env.MAKER_FUNDING_APPROVED || '').toLowerCase() === 'true';
-  riga('MAKER_FUNDING_APPROVED', fund ? C.col.giallo('true') : C.col.spento('(vuota)'),
-    fund ? 'attestato: il gate di piazzamento non rifiuta più per questo' : 'il gate di piazzamento rifiuta');
+  const env0 = C.leggiEnvFile();
+  if (!env0.presente) console.log('  ' + C.col.rosso('.env ASSENTE') + C.col.spento('  — nessuna credenziale, nessun database: la catena non parte'));
+  const flotta = C.flottaViva();
+  const piazzano = C.processiCheDecidonoUnPrezzo().map((a) => a.name);
+  if (!flotta.leggibile) {
+    console.log('  ' + C.col.giallo(`pm2 non leggibile (${flotta.error})`) + C.col.spento('  ⇒ non so cosa stiano usando i processi, e «non lo so» non e\' «disarmato»'));
+  }
+  const letture = [];
+  for (const nome of piazzano) {
+    const v = flotta.per.get(nome);
+    const amb = v && v.pid ? C.envDiProcesso(v.pid) : null;
+    if (!amb) {
+      console.log('  ' + C.col.giallo('?') + ' ' + nome + C.col.spento(`  ambiente non leggibile${v ? ` (pid ${v.pid || '—'}, ${v.stato})` : ' (non in pm2)'} ⇒ non lo so`));
+      continue;
+    }
+    const st = CIN.statoCinture(amb);
+    letture.push({ nome, pid: v.pid, st });
+    const testa = st.puoPiazzare
+      ? C.col.rosso(`${nome} (pid ${v.pid}): TUTTE E CINQUE APERTE`)
+      : C.col.verde(`${nome} (pid ${v.pid}): ${st.inserite}/5 inserite`);
+    console.log('\n  ' + C.col.grassetto(testa));
+    for (const c of st.cinture) {
+      const val = c.valore === null ? '(assente)' : (c.valore === '' ? '(vuota)' : c.valore);
+      console.log('    ' + (c.inserita ? C.col.verde('▪ inserita') : C.col.rosso('▫ APERTA  '))
+        + '  ' + String(c.nome).padEnd(26) + C.col.spento(String(val).slice(0, 22).padEnd(22))
+        + C.col.spento(c.cosaGoverna));
+    }
+    if (st.attestazioneFinanziamento.attestata) {
+      console.log('    ' + C.col.giallo('▫ APERTA  ') + '  ' + 'MAKER_FUNDING_APPROVED'.padEnd(26)
+        + C.col.spento('true'.padEnd(22)) + C.col.spento('attestazione, NON una delle cinque: il gate non rifiuta piu\' per questo'));
+    }
+  }
+  // ⚠ DUE PROCESSI CHE DECIDONO UN PREZZO CON CINTURE DIVERSE SONO DUE BOT DIVERSI. Va detto, non
+  // lasciato dedurre confrontando due elenchi a occhio — e' la classe di §5.1 (riavvio scoordinato).
+  if (letture.length > 1) {
+    const impronta = (x) => x.st.cinture.map((c) => `${c.nome}=${c.inserita ? 'I' : 'A'}`).join(',');
+    const distinte = new Set(letture.map(impronta));
+    if (distinte.size > 1) {
+      console.log('\n  ' + C.col.rosso('⚠ LE CINTURE DIVERGONO fra i processi che decidono un prezzo: si riavviano DAL FILE e INSIEME (§5.1).'));
+    } else {
+      console.log('\n  ' + C.col.spento(`i ${letture.length} processi che decidono un prezzo portano le STESSE cinture.`));
+    }
+  }
+  // ── E COSA ENTREREBBE AL PROSSIMO RIAVVIO DAL FILE ────────────────────────────────────────────
+  {
+    const dalFile = CIN.statoCinture(env0.valori || {});
+    const diverse = [];
+    for (const l of letture) {
+      for (let k = 0; k < dalFile.cinture.length; k += 1) {
+        if (dalFile.cinture[k].inserita !== l.st.cinture[k].inserita) diverse.push(`${l.nome}:${dalFile.cinture[k].nome}`);
+      }
+    }
+    console.log('\n  ' + C.col.spento(`.env (cosa entrerebbe al prossimo riavvio DAL FILE): ${dalFile.inserite}/5 inserite`)
+      + (diverse.length ? '  ' + C.col.giallo(`⚠ DIVERGE dai processi su: ${[...new Set(diverse)].join(', ')}`) : C.col.spento('  — coerente con i processi vivi')));
+  }
 }
 
 // ── 2 · I DUE INTERRUTTORI ──────────────────────────────────────────────────────────────────────
@@ -85,8 +140,14 @@ C.titolo('MERCATI');
     riga('mercati attivi', attivi.length ? C.col.ciano(String(attivi.length)) : C.col.spento('0'),
       attivi.length ? '' : 'in live-min l\'adapter rifiuterebbe: live-min-market-unset');
     for (const id of attivi) console.log('    ' + C.col.verde('●') + ' ' + id);
-    const perno = String(process.env.MAKER_LIVE_MIN_MARKET || '').trim();
-    if (perno) console.log('    ' + C.col.ciano('⚲') + ' ' + perno + C.col.spento('   (perno MAKER_LIVE_MIN_MARKET, dal .env)'));
+    // ⚠ IL PERNO SI LEGGE DAI PROCESSI, come le cinture: dal `.env` diceva un'altra cosa. Il perimetro
+    // vero, con l'unione di §4.8 applicata, lo stampa `node scripts/cli/mercati.js`.
+    for (const nome of C.processiCheDecidonoUnPrezzo().map((a) => a.name)) {
+      const v = C.flottaViva().per.get(nome);
+      const amb = v && v.pid ? C.envDiProcesso(v.pid) : null;
+      const perno = amb ? (CIN.statoCinture(amb).perno) : null;
+      if (perno) console.log('    ' + C.col.ciano('⚲') + ' ' + perno + C.col.spento(`   (perno di ${nome}, da /proc — RESTRINGE il perimetro a uno solo)`));
+    }
   }
 }
 

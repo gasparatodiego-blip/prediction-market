@@ -641,8 +641,26 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
         return (pl.righe || []).find((r) => String(r.marketId || '').toLowerCase() === idScelto) || null;
       } catch { return null; }
     })();
-    passo('13 · gamba morta → ripristino entro un ciclo', {
-      ok: idScelto != null && latiDopoMorte && latiDopoMorte.no === 0 && lati(idScelto).no > 0,
+    // ⚠ IL CRITERIO E' LA COPPIA, NON LA GAMBA — 17 agosto 2026, decisione dell'operatore. Fino a ieri
+    // qui bastava «il lato NO e' tornato a libro»: e' un criterio che si accontenta di un ripristino
+    // ASIMMETRICO, cioe' esattamente lo stato che sfondava il tetto. Adesso si pretendono tre cose
+    // insieme — il lato e' tornato, le due size sono UGUALI, e il totale sta sotto il tetto per mercato.
+    const TETTO13 = require(path.join(ROOT, 'lib/rewards/concentration')).MARKET_CAP_FIXED_USD;
+    const coppia13 = (() => {
+      if (!idScelto) return null;
+      const m = VENUE.mercato(idScelto);
+      const o = VENUE.ordiniVivi(idScelto);
+      const y = o.filter((x) => x.tokenId === m.tokenId);
+      const n = o.filter((x) => x.tokenId === m.tokenIdNo);
+      if (y.length !== 1 || n.length !== 1) return { simmetrica: false, motivo: `${y.length} gamba/e YES e ${n.length} NO: non e' una coppia` };
+      const tot = +(y[0].size * y[0].price + n[0].size * n[0].price).toFixed(4);
+      return { simmetrica: Math.abs(y[0].size - n[0].size) <= 0.011, sizeYes: y[0].size, sizeNo: n[0].size,
+        prezzoYes: y[0].price, prezzoNo: n[0].price, totaleUsd: tot, tettoUsd: TETTO13, sottoIlTetto: tot <= TETTO13 + 1e-6 };
+    })();
+    passo('13 · gamba morta → la COPPIA ricostruita, simmetrica e sotto il tetto', {
+      ok: idScelto != null && latiDopoMorte && latiDopoMorte.no === 0 && lati(idScelto).no > 0
+        && !!(coppia13 && coppia13.simmetrica && coppia13.sottoIlTetto),
+      coppiaDopoIlRipristino: coppia13,
       mercato: idScelto ? idScelto.slice(0, 12) : '(nessun mercato coperto sui due lati)',
       latiPrima, latiDopoLaMorte: latiDopoMorte, latiDopoIlRipristino: idScelto ? lati(idScelto) : null,
       gambePrima: gambePrima.length, dopoLaMorte: gambeDopoMorte, dopoIlRipristino: gambeDopoRipristino,
@@ -653,10 +671,13 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
         size: rigaPiano.size ?? null, pYes: rigaPiano.priceYes ?? rigaPiano.pYes ?? null, pNo: rigaPiano.priceNo ?? rigaPiano.pNo ?? null } : null,
       erroreCopertura: ric && ric.errore ? ric.errore : null,
     });
-    if (!(idScelto != null && latiDopoMorte && latiDopoMorte.no === 0 && lati(idScelto).no > 0)) {
+    if (!(idScelto != null && latiDopoMorte && latiDopoMorte.no === 0 && lati(idScelto).no > 0
+      && coppia13 && coppia13.simmetrica && coppia13.sottoIlTetto)) {
       annota('passo 13', idScelto == null ? 'nessun mercato coperto sui due lati da cui uccidere un lato'
-        : `il lato NO ucciso non e' tornato a libro (lati dopo il ripristino: ${JSON.stringify(lati(idScelto))})`,
-      'agents/agent41-realloc-scheduler.js (riconciliaCopertura → ripristinaGamba) + lib/maker/ripristino-gambe.js');
+        : (lati(idScelto).no === 0
+          ? `il lato NO ucciso non e' tornato a libro (lati dopo il ripristino: ${JSON.stringify(lati(idScelto))})`
+          : `il lato e' tornato ma la coppia non e' simmetrica o sfonda il tetto: ${JSON.stringify(coppia13)}`),
+      'agents/agent41-realloc-scheduler.js (riconciliaCopertura → ripristinaGamba → coppia-simmetrica) + lib/maker/coppia-simmetrica.js');
     }
   }
 
@@ -766,6 +787,62 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
     if (!(rifiutiPostOnly > 0 && dopo15.some((o) => /carico-di-ripiego/.test(o)) && dopo15.some((o) => /stantio|cecita/.test(o)))) {
       annota('passo 15', `manca uno dei tre: post-only ${rifiutiPostOnly}, carico-di-ripiego ${dopo15.filter((o) => /carico-di-ripiego/.test(o)).length}, cecita ${[...new Set(dopo15.filter((o) => /stantio|cecita/.test(o)))].join('/') || 0}`,
         'lib/maker/mid-stantio.js · lib/maker/carico-di-ripiego (auto-close) · il rifiuto post-only e\' del venue');
+    }
+  }
+
+  // ══ PASSO 15-bis · IL SECONDO LIVELLO DEL CARICO DI RIPIEGO, CON UN FILL TOTALE ═════════════════
+  // §5.2 p.41, chiusa la sera del 17 agosto. Il passo 15 prova il livello ① (`residuo-a-libro`) e per
+  // farlo deve usare un fill PARZIALE. Il livello ② (`ultimo-ordine-nostro`) e' il caso opposto — fill
+  // TOTALE, niente a libro, `avgPrice` non pubblicato — e non era raggiungibile perche' nessuno passava
+  // `deps.ultimoNostroPrezzo`. Adesso `closeTask` la cabla su `ultimo-nostro-prezzo`, che legge il
+  // GIORNALE, e questo passo lo dimostra sull'unica cosa che conta: la FONTE dichiarata a verbale.
+  //
+  // ⚠ NON BASTA CHE ESCA `carico-di-ripiego`: il passo 15 lo produce gia' col livello ①. Si pretende
+  // `fonte: 'ultimo-ordine-nostro'`, cioe' il livello che prima non poteva scattare.
+  if (!bloccato) {
+    const M9b = `0x${'cb'.repeat(32)}`;
+    const m9b = VENUE.creaMercato({ conditionId: M9b, mid: 0.40, tick: 0.01, minSize: 20, bandaCents: 4.5,
+      oreAllaScadenza: 60, question: 'banco · carico di ripiego, secondo livello' });
+    MM.setManualMode({ marketId: M9b, manual: true, by: 'banco', reason: 'passo 15-bis' });
+    ARC.setAutoReprice({ scope: 'market', marketId: M9b, enabled: true, by: 'banco', reason: 'passo 15-bis' });
+    ACC.setAutoClose({ scope: 'market', marketId: M9b, enabled: true, by: 'banco', reason: 'passo 15-bis' });
+    const daQui15b = codaGiornale().length;
+    // ⚠ LO SCENARIO SI ACCENDE PRIMA DEL FILL, NON PRIMA DEL CICLO, e la prima stesura sbagliava proprio
+    // qui: `VENUE.riempi` fotografa `avgPriceNascostoPerCicli` NEL MOMENTO in cui crea la posizione
+    // (`banco-ciclo-completo.js:414`), quindi accenderlo dopo il fill non nasconde niente — il venue
+    // pubblicava il carico e il ripiego non serviva. Il passo dichiarava rossa una difesa cablata.
+    VENUE.scenari.avgPriceNascostoPerCicli = 3;
+    const r15b = await MO.placeManualOrder({ marketId: M9b, book: 'yes', side: 'BUY', price: 0.38, size: 40,
+      userId: 'operator', inCoda: true }, {}).catch((e) => ({ ok: false, reason: e.message }));
+    const g15b = VENUE.ordiniVivi(M9b).find((o) => o.side === 'BUY' && o.tokenId === m9b.tokenId);
+    // ⚠ IL PREZZO CHE SI ASPETTA E' QUELLO DELL'ORDINE VERO, non lo 0,38 chiesto: `inCoda` lo sposta un
+    // tick dietro al miglior prezzo altrui, e il giornale registra il prezzo MANDATO. Leggerlo dal venue
+    // invece di scriverlo a mano e' la differenza fra provare il cablaggio e provare la propria aritmetica.
+    const prezzoMandato = g15b ? g15b.price : null;
+    if (g15b) VENUE.riempi(g15b.orderId, g15b.size);        // TOTALE: a libro non resta niente
+    const restaALibro = VENUE.ordiniVivi(M9b).length;
+    VENUE.avanza(60_000);
+    await A40.closeTask().catch(() => {});
+    VENUE.scenari.avgPriceNascostoPerCicli = 0;
+    const righe15b = codaGiornale().slice(daQui15b).filter((x) => String(x.outcome) === 'carico-di-ripiego');
+    const secondoLivello = righe15b.filter((x) => x.observed && x.observed.fonte === 'ultimo-ordine-nostro');
+    passo('15-bis · il carico di ripiego arriva al SECONDO livello (fill totale)', {
+      ok: secondoLivello.length > 0,
+      piazzato: r15b.ok, gate: r15b.gate || null,
+      prezzoMandatoAlVenue: prezzoMandato,
+      ordiniRestatiALibro: restaALibro,
+      posizioneAperta: Number((VENUE.posizioni.get(m9b.tokenId) || {}).size || 0),
+      fontiViste: [...new Set(righe15b.map((x) => x.observed && x.observed.fonte))],
+      caricoDichiarato: secondoLivello.map((x) => x.observed && x.observed.carico),
+      // La prova indipendente: il modulo, interrogato da fuori, deve dare lo stesso prezzo.
+      dalGiornale: (() => {
+        try { return require(path.join(ROOT, 'lib/maker/ultimo-nostro-prezzo')).prezzoUltimoNostroBuy({ marketId: M9b, book: 'yes' }); }
+        catch (e) { return `errore: ${e.message}`; }
+      })(),
+    });
+    if (!secondoLivello.length) {
+      annota('passo 15-bis', `nessun \`carico-di-ripiego\` con fonte \`ultimo-ordine-nostro\` (fonti viste: ${[...new Set(righe15b.map((x) => x.observed && x.observed.fonte))].join(', ') || 'nessuna'})`,
+        'agents/agent40-manual-reprice.js (closeTask → ultimoNostroPrezzo) + lib/maker/ultimo-nostro-prezzo.js');
     }
   }
 
