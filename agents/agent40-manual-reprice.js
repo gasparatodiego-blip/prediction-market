@@ -52,6 +52,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { fileRuntime } = require('../lib/percorsi-runtime');
 
 // ── Load .env (pm2 does not auto-load project env files) — read-only, never printed, never committed ──
 for (const envFile of ['.env.local', '.env']) {
@@ -178,7 +179,7 @@ const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit'
 const killSwitch = require('../lib/safety/kill-switch');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 
-const HEARTBEATS = '/tmp/agent-heartbeats.json';
+const HEARTBEATS = fileRuntime('agent-heartbeats.json');
 // ── IL BATTITO CHE IL GUARDIANO DEVE SORVEGLIARE ────────────────────────────────────────────────────
 // Questo processo possiede gli ordini della corsia manuale: li piazza, li riprezza, li rinnova, li
 // cancella. Fino al 6 agosto 2026 non aveva un battito che qualcuno guardasse — scriveva solo quello di
@@ -195,7 +196,7 @@ const HEARTBEATS = '/tmp/agent-heartbeats.json';
 const MANUAL_HB_FILE = path.join(__dirname, '..', 'data', 'manual-reprice-heartbeat.json');
 // Lo stato vivo del tracking, per la dashboard. Un motore che piazza da solo deve poter rispondere
 // «cosa stai facendo adesso» senza che si debbano leggere i log di un processo.
-const TRACKING_STATE_FILE = '/tmp/maker-mm-tracking-state.json';
+const TRACKING_STATE_FILE = fileRuntime('maker-mm-tracking-state.json');
 const log = (...a) => console.log(new Date().toISOString(), '[agent40-manual-reprice]', ...a);
 
 // The breach counter lives HERE, in process memory, deliberately. "N consecutive observations" is a

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import fs from 'fs';
+// La directory di servizio, per UTENTE: v. lib/percorsi-runtime.js (migrazione root → bot).
+import { fileRuntime } from '@/lib/percorsi-runtime';
 import { z } from 'zod';
 import { readTrackingConfig, setTracking, LIMITS, SIDES, activeSides } from '@/lib/maker/mm-tracking-config';
 import { planQuotes } from '@/lib/maker/mm-quote-math';
@@ -34,7 +36,7 @@ export const dynamic = 'force-dynamic';
  * POST → accende/spegne. Con `cancelOrders:true` allo spegnimento, cancella anche gli ordini a riposo.
  */
 
-const STATE_FILE = '/tmp/maker-mm-tracking-state.json';
+const STATE_FILE = fileRuntime('maker-mm-tracking-state.json');
 
 const bodySchema = z.object({
   marketId: z.string().trim().min(1).max(200),

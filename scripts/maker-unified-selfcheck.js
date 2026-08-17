@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { fileRuntime } = require('../lib/percorsi-runtime');
 const assert = require('assert');
 
 const { computeWorthIt, MIN_PAYOUT_USD } = require('../lib/maker/worth-it');
@@ -566,7 +567,7 @@ ok('inventory-manager has no require/fetch/http/adapter/order/clob — it decide
 // ── 4 · CROSS-CHECK against a REAL feed row, if the snapshot is present ─────────────────────────────
 console.log('\n4. cross-check against the live feed snapshot (skipped when absent)');
 try {
-  const snap = JSON.parse(fs.readFileSync('/tmp/liquidity-rewards.json', 'utf8'));
+  const snap = JSON.parse(fs.readFileSync(fileRuntime('liquidity-rewards.json'), 'utf8'));
   const row = snap.markets.find((x) => /Kamala Harris win the 2028 Democratic/i.test(x.title || ''));
   if (row) {
     const pr = computePriceRow({ rewardScore: row.rewardScore, tick: 0.01, totalSizeUsd: 100, offsetCents: 1, market: row });

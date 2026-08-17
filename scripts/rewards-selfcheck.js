@@ -6,6 +6,7 @@
 // Run: node scripts/rewards-selfcheck.js
 const assert = require('assert');
 const fs = require('fs');
+const { fileRuntime } = require('../lib/percorsi-runtime');
 const { sortRows } = require('../lib/rewards-filter');
 
 let passed = 0;
@@ -39,7 +40,7 @@ function phase1() {
 
   // Live feed: count how many real rows the floor demotes, and assert none has a null pot demoted.
   try {
-    const feed = JSON.parse(fs.readFileSync('/tmp/liquidity-rewards.json')).markets
+    const feed = JSON.parse(fs.readFileSync(fileRuntime('liquidity-rewards.json'))).markets
       .filter((m) => m.venue === 'polymarket' && m.rewardScore && m.rewardScore.poolDay != null);
     const belowFloor = feed.filter((m) => m.rewardScore.poolDay < POT_FLOOR).length;
     const nullPot = feed.filter((m) => m.rewardScore.poolDay == null).length;
@@ -85,8 +86,8 @@ function phase3() {
   const { quadraticUserShare } = require('../lib/rewardScore');
   const ROW_STALE_MS = 35 * 60_000;
   let live = null, scan = null;
-  try { live = JSON.parse(fs.readFileSync('/tmp/clob-live-books.json')); } catch {}
-  try { scan = JSON.parse(fs.readFileSync('/tmp/liquidity-rewards.json')); } catch {}
+  try { live = JSON.parse(fs.readFileSync(fileRuntime('clob-live-books.json'))); } catch {}
+  try { scan = JSON.parse(fs.readFileSync(fileRuntime('liquidity-rewards.json'))); } catch {}
   const obsById = {};
   for (const [id, mk] of Object.entries((live && live.markets) || {})) if (mk && mk.rewardObs) obsById[id] = mk.rewardObs;
   const covered = Object.keys(obsById);

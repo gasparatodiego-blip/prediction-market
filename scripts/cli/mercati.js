@@ -22,6 +22,7 @@
 // mano nel `.env`. Un mercato in lista con il bot fermo non produce nessun ordine.
 
 const fs = require('fs');
+const { fileRuntime } = require('../../lib/percorsi-runtime');
 const C = require('./_comune');
 const ARC = require('../../lib/maker/auto-reprice-config');
 
@@ -106,7 +107,7 @@ function perimetroVero(cfg) {
   // sorgente vera. Se un giorno tornasse a esistere con un perno diverso, la riga qui sotto lo dice
   // invece di far leggere un perimetro che non e' quello applicato.
   try {
-    const st = JSON.parse(fs.readFileSync('/tmp/maker-state.json', 'utf8'));
+    const st = JSON.parse(fs.readFileSync(fileRuntime('maker-state.json'), 'utf8'));
     const pm = st && st.config && typeof st.config.liveMinMarket === 'string' ? st.config.liveMinMarket.trim().toLowerCase() : '';
     if (pm && !perni.has(pm)) console.log('    ' + C.col.rosso(`⚠ /tmp/maker-state.json pubblica un perno DIVERSO (${pm}): la corsia manuale userebbe quello, non l'env di /proc.`));
   } catch { /* assente e' lo stato atteso: il motore che lo scriveva non esiste piu' */ }

@@ -67,6 +67,7 @@ require('../lib/safety/carica-env').caricaEnv({
 
 const fs   = require('fs');
 const path = require('path');
+const { fileRuntime } = require('../lib/percorsi-runtime');
 
 // WATCH21_DATA_DIR esiste per UNA ragione: la prova di comportamento (scripts/watch-makers-selfcheck.js)
 // deve poter far girare le funzioni vere su una directory usa-e-getta. In produzione non è impostata e
@@ -78,7 +79,7 @@ const F_EVENTI  = path.join(DATA_DIR, 'maker-21-eventi.jsonl');
 const F_STATO   = path.join(DATA_DIR, 'maker-21-stato.json');
 const F_STATS   = path.join(DATA_DIR, 'maker-21-statistiche.json');
 const F_GAMMA   = path.join(DATA_DIR, 'maker-21-gamma-cache.json');
-const HB_FILE   = '/tmp/agent-heartbeats.json';
+const HB_FILE   = fileRuntime('agent-heartbeats.json');
 const HB_KEY    = 'agent42-watch-makers';
 
 const DATA_API = 'https://data-api.polymarket.com';

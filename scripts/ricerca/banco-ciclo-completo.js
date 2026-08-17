@@ -128,11 +128,19 @@ const IDENTITA = verificaIdentitaDelCodice();
 // corsia manuale e' la strada da cui il bot piazza davvero, e con `dry-run` gli ordini vengono costruiti,
 // firmati e SCARTATI prima di raggiungere l'adapter — cioe' il banco non proverebbe nessun gate a valle.
 // Qui l'adapter e' sostituito e le credenziali non esistono: la POST non ha dove andare.
+// ⚠ E DAL 17 AGOSTO 2026 SERVONO ANCHE `MAKER_MODE` E `MAKER_ADAPTER_DRYRUN`, e la ragione e' una BUONA
+// notizia: prima non servivano perche' erano INERTI sulla corsia manuale — `buildPlacementAdapter`
+// cablava `mode:'live-min'` e non passava `dryRun`. Ora le legge davvero, quindi il banco deve
+// dichiararle come chiunque altro. Il fatto che questa riga sia dovuta cambiare E' la prova che la
+// correzione morde: se il banco avesse continuato a piazzare con `MAKER_MODE=off`, la cintura sarebbe
+// ancora finta.
+// ⚠ APRIRLE QUI NON ARMA NIENTE: l'adapter e' sostituito, le credenziali non esistono nel worktree, e
+// la POST non ha dove andare. La stessa ragione per cui `MANUAL_ORDER_PLACEMENT=send` sta qui sotto.
 process.env.MANUAL_ORDER_PLACEMENT = 'send';
-process.env.MAKER_MODE = 'off';              // il gate live-min vive nella corsia manuale, che forza 'live-min' da se'
-process.env.MAKER_PLACEMENT = '';
-process.env.MAKER_ADAPTER_DRYRUN = '';
-process.env.MAKER_FUNDING_APPROVED = '';
+process.env.MAKER_MODE = 'live-min';
+// `MAKER_PLACEMENT` non si azzera piu': non esiste piu' (17 agosto 2026, non aveva chiamanti).
+process.env.MAKER_ADAPTER_DRYRUN = 'false';
+process.env.MAKER_FUNDING_APPROVED = 'true';
 process.env.MAKER_LIVE_MIN_MARKET = '';
 fs.mkdirSync(DIR_FEED, { recursive: true });
 process.env.MAKER_FEED_BOOKS_FILE = path.join(DIR_FEED, 'clob-live-books.json');
@@ -588,20 +596,50 @@ function adapterSimulato(opts = {}) {
     try { return require(path.join(ROOT, 'lib/maker/auto-reprice-config')).readAutoRepriceConfig({}).liveMinMarketIds || []; }
     catch { return []; }
   };
+  // ⚠ IL BANCO ERA PIU' PERMISSIVO DEL VENUE SULLE CINTURE, ED E' LA STESSA CLASSE DI DIFETTO CHE IL
+  // BANCO ESISTE PER TROVARE — 17 agosto 2026. Qui c'era scritto `mode: opts.mode || 'live-min'`,
+  // `dryRun: false`, `placement: 'send'`: tre valori CABLATI che ignoravano quello che il chiamante
+  // aveva chiesto. Conseguenza misurata: `prova-cinture.js` apriva le cinture una alla volta e l'ordine
+  // partiva SEMPRE — non perche' le cinture fossero inerti in produzione (lo erano, ed e' stato
+  // corretto), ma perche' il seam non le poteva nemmeno esprimere. **Un banco che non sa rifiutare non
+  // sa dire che la difesa funziona**, ed e' il gemello esatto del difetto delle tre difese inerti
+  // (§5-bis p.181): li' il test iniettava una fixture inventata, qui il banco iniettava un adapter
+  // inventato.
+  //
+  // Adesso il seam e' SOLO la rete: modo, ombra forzata e `placement` sono quelli che il chiamante ha
+  // passato, e i gate sono le funzioni VERE dell'adapter, nello stesso ordine.
+  const modo = ADAPTER_VERO.LIVE_MODES.includes(opts.mode) || opts.mode === 'paper' ? opts.mode : 'off';
+  const dryRun = opts.dryRun === true;
+  const placement = (typeof opts.placement === 'string' ? opts.placement.trim() : '') === 'send' ? 'send' : 'dry-run';
   return {
-    kind: 'maker', mode: opts.mode || 'live-min', dryRun: false, canWrite: true,
-    placement: 'send', liveMinCapUsd: opts.liveMinCapUsd, liveMinMarket: opts.liveMinMarket || '',
+    kind: 'maker', mode: modo, dryRun, canWrite: !dryRun && ADAPTER_VERO.LIVE_MODES.includes(modo),
+    placement, liveMinCapUsd: opts.liveMinCapUsd, liveMinMarket: opts.liveMinMarket || '',
     orderTtlSeconds: opts.orderTtlSeconds,
     get allowedMarketIds() { return leggiAllowlist(); },
     async postOrder(s) {
-      // I GATE VERI DELL'ADAPTER PRIMA DI ACCETTARE: un banco che facesse passare un ordine che in
-      // produzione l'adapter rifiuta mentirebbe nella direzione peggiore.
-      const g = ADAPTER_VERO.evaluateLiveMinMarketGate({ mode: 'live-min', liveMinMarket: opts.liveMinMarket,
+      // ① IL GATE DI PIAZZAMENTO VERO — modo, ombra forzata, attestazione, SDK. E' quello che le cinture
+      //    dell'operatore attraversano, e senza di lui `MAKER_MODE` e `MAKER_ADAPTER_DRYRUN` non hanno
+      //    nessun posto dove mordere dentro il banco.
+      const gp = ADAPTER_VERO.evaluatePlacementGate({ mode: modo, dryRun, fundingApproved: opts.fundingApproved === true,
+        sdk: ADAPTER_VERO.v2SdkStatus() });
+      if (!gp.allow) {
+        audit({ op: 'postOrder', outcome: gp.gate, requested: s, reason: gp.reason });
+        return { ok: false, gate: gp.gate, reason: gp.reason };
+      }
+      // ② I GATE VERI DELL'ADAPTER PRIMA DI ACCETTARE: un banco che facesse passare un ordine che in
+      //    produzione l'adapter rifiuta mentirebbe nella direzione peggiore.
+      const g = ADAPTER_VERO.evaluateLiveMinMarketGate({ mode: modo, liveMinMarket: opts.liveMinMarket,
         allowedMarketIds: leggiAllowlist(), marketId: s.marketId, side: s.side, size: s.size,
         heldSize: (VENUE.posizioni.get(s.tokenId) || {}).size });
       if (!g.allow) {
         audit({ op: 'postOrder', outcome: g.gate, requested: s, reason: g.reason });
         return { ok: false, gate: g.gate, reason: g.reason };
+      }
+      // ③ L'ULTIMO `if` PRIMA DELLA POST, nella stessa posizione dell'originale (`adapter.js:923`):
+      //    non e' un rifiuto, e' un ordine costruito e fermato. La forma della risposta e' quella vera.
+      if (placement !== 'send') {
+        audit({ op: 'postOrder', outcome: 'dry-run-validated', requested: s, reason: 'placement=dry-run: costruito e non inviato' });
+        return { ok: true, sent: false, dryRun: true, placement, wouldSend: s };
       }
       const r = VENUE.postOrder(s);
       audit({ op: 'postOrder', outcome: r.ok ? 'ok' : `reject-${r.gate || 'venue'}`,

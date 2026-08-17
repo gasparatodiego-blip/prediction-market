@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import fs from 'fs';
+// La directory di servizio, per UTENTE: v. lib/percorsi-runtime.js (migrazione root → bot).
+import { fileRuntime } from '@/lib/percorsi-runtime';
 // Sola lettura. Questo modulo espone `fetchMarketByConditionId`, che fa una GET verso Gamma e basta:
 // non costruisce, non firma e non piazza nulla. Nessun import qui raggiunge l'adattatore di piazzamento.
 import { fetchMarketByConditionId, isConditionId } from '@/lib/maker/market-search';
@@ -50,7 +52,7 @@ export const dynamic = 'force-dynamic';
  * Gated dal middleware come tutto /api/maker (ADMIN_ACCESS_SECRET).
  */
 
-const LIVE_BOOKS_FILE = '/tmp/clob-live-books.json';
+const LIVE_BOOKS_FILE = fileRuntime('clob-live-books.json');
 // Quanti livelli per lato. Il pannello ne chiede 5 (il requisito), il tetto è quello che agent34 scrive
 // davvero nel suo snapshot: chiederne di più non li farebbe comparire, quindi non si finge di poterlo.
 const DEFAULT_LEVELS = 5;

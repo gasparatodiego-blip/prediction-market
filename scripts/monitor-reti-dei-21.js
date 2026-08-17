@@ -40,10 +40,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const { fileRuntime } = require('../lib/percorsi-runtime');
 
 const RADICE = path.resolve(__dirname, '..');
-const BOARD = '/tmp/liquidity-rewards.json';
-const BOOKS = '/tmp/clob-live-books.json';
+const BOARD = fileRuntime('liquidity-rewards.json');
+const BOOKS = fileRuntime('clob-live-books.json');
 const STATO_21 = path.join(RADICE, 'data', 'maker-21-stato.json');
 const STAT_21 = path.join(RADICE, 'data', 'maker-21-statistiche.json');
 

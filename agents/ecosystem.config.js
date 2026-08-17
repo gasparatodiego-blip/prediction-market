@@ -237,11 +237,19 @@ module.exports = {
       // secondo su dati già in memoria: nessuna chiamata al venue nasce da una valutazione che dice no.
       //
       // ══ LE TRE CINTURE DI ARMAMENTO — SCRITTE IL 16 AGOSTO 2026, NON ANCORA IN SERVIZIO ═══════════
-      // ⚠ QUESTE TRE RIGHE ARMANO IL PIAZZAMENTO DI ORDINI VERI CON CAPITALE REALE. Sono inerti finche'
-      // il processo non viene riavviato DAL FILE (`pm2 restart agents/ecosystem.config.js --only …`):
-      // pm2 tiene la propria copia dell'ambiente, un `pm2 restart <nome>` non rilegge questo file, e
-      // l'autorestart da crash riusa l'ambiente in memoria. Al 16/08 i processi vivi portano ancora
-      // MAKER_MODE=off, MAKER_PLACEMENT vuota e MAKER_ADAPTER_DRYRUN=true.
+      // ⚠ LE CINTURE SONO QUATTRO DAL 17 AGOSTO 2026, E TUTTE E QUATTRO MORDONO SULLA STRADA CHE PIAZZA.
+      // `MAKER_PLACEMENT` e' stata TOLTA dal codice: non aveva chiamanti (l'unico costruttore
+      // dell'adapter passa sempre `placement` esplicito), quindi si contava senza fermare niente.
+      // `MAKER_MODE` e `MAKER_ADAPTER_DRYRUN` erano inerti sulla corsia manuale e ora ci arrivano:
+      // `buildPlacementAdapter` le legge da `lib/maker/cinture-armamento` invece di cablare
+      // `mode:'live-min'` e di non passare `dryRun`.
+      // Restano: MAKER_MODE · MAKER_ADAPTER_DRYRUN · MANUAL_ORDER_PLACEMENT · il freno di agent41.
+      //
+      // ⚠ QUALUNQUE RIGA CHE APRA UNA CINTURA ARMA IL PIAZZAMENTO DI ORDINI VERI CON CAPITALE REALE.
+      // Sono inerti finche' il processo non viene riavviato DAL FILE
+      // (`pm2 restart agents/ecosystem.config.js --only …`): pm2 tiene la propria copia dell'ambiente,
+      // un `pm2 restart <nome>` non rilegge questo file, e l'autorestart da crash riusa l'ambiente in
+      // memoria. Al 17/08 i processi vivi portano MAKER_MODE=off e MAKER_ADAPTER_DRYRUN=true.
       //
       // PERCHE' STANNO QUI E NON NEL `.env`. Il `.env` le contiene gia' (`MAKER_MODE=live-min`), ed e'
       // INERTE: il caricatore `.env` di questi agent scrive solo le chiavi ASSENTI da `process.env`, e
@@ -253,8 +261,8 @@ module.exports = {
       // per GTD in 23 minuti mentre le sorelle restano a libro. Vedi §5.1 di CLAUDE.md.
       //
       // COME SI DISARMA: si CANCELLANO queste righe e si riavvia dal file. Le assenze sono fail-closed
-      // per costruzione — MAKER_MODE assente non e' in LIVE_MODES ⇒ rifiuto; MAKER_PLACEMENT assente ⇒
-      // placement='dry-run'. Togliere e' piu' sicuro che scrivere, ed e' voluto.
+      // per costruzione — MAKER_MODE assente non e' in LIVE_MODES ⇒ rifiuto; MANUAL_ORDER_PLACEMENT
+      // assente ⇒ 'dry-run'. Togliere e' piu' sicuro che scrivere, ed e' voluto.
       env:           { NODE_ENV: 'production', HOME: CASA, MAKER_FUNDING_APPROVED: 'true',
         // ══ MANUAL_ORDER_PLACEMENT — DICHIARATA QUI DAL 17 AGOSTO 2026 ═════════════════════════════
         //
@@ -304,14 +312,15 @@ module.exports = {
         // scoperto molto prima che gli ordini invecchino.
         MAKER_MID_STANTIO_TIMEOUT_MS: '120000',
         MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95',
-        // MAKER_MODE — TOLTA A FINE SESSIONE 16/08/2026: assente ⇒ non e' in LIVE_MODES ⇒ rifiuto.
-        // MAKER_ADAPTER_DRYRUN — TOLTA: assente ⇒ il .env impone true ⇒ canWrite false.
-        // MAKER_PLACEMENT — TOLTA: assente ⇒ placement 'dry-run'.
-        // ⚠ LA QUINTA CINTURA, E NON E' UN DOPPIONE DI `MAKER_PLACEMENT` — 16 agosto 2026.
-        // `MAKER_PLACEMENT` governa l'ADAPTER; questa governa la CORSIA MANUALE
-        // (`lib/maker/manual-order.js:250`, «Deliberately NOT MAKER_PLACEMENT»), che e' la strada da cui
-        // il bot piazza davvero: i suoi record portano `source: manual-ui`.
-        // MISURATO il 16/08 alle 10:32:53 con le altre quattro cinture gia' tolte: due `postOrder` con
+        // MAKER_MODE — NON DICHIARATA: assente ⇒ non e' in LIVE_MODES ⇒ rifiuto `maker-mode`. Dal
+        //   17/08 questo rifiuto arriva anche alla CORSIA MANUALE, che prima cablava `mode:'live-min'`.
+        // MAKER_ADAPTER_DRYRUN — NON DICHIARATA: assente qui, il `.env` impone `true` ⇒ ombra forzata.
+        //   Dal 17/08 `buildPlacementAdapter` la passa davvero all'adapter: prima non la leggeva nessuno
+        //   su questo percorso, perche' `createMakerAdapter` fa `opts.dryRun === true` senza ripiego.
+        // ⚠ MANUAL_ORDER_PLACEMENT E' LA CINTURA PIU' A VALLE, ed e' l'unica dichiarata qui — nella
+        // posizione INSERITA. Governa la CORSIA MANUALE, che e' la strada da cui il bot piazza davvero
+        // (i record portano `source: manual-ui`); e' l'ultimo `if` prima della POST (`adapter.js:923`).
+        // MISURATO il 16/08 alle 10:32:53 con le altre cinture gia' tolte: due invii con
         // `outcome: dry-run-validated`, cioe' ordini costruiti, passati da TUTTI i gate e fermati
         // nell'istante prima della POST — `execution-audit.jsonl` a 0 byte, zero ordini al venue.
         // Qualunque valore diverso dalla stringa esatta `send` resta dry-run.
@@ -458,30 +467,28 @@ module.exports = {
         // Sono inerti finche' agent41 non viene riavviato DAL FILE
         // (`pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler`): pm2 tiene la
         // propria copia dell'ambiente, `pm2 restart <nome>` non rilegge questo file, e l'autorestart da
-        // crash riusa l'ambiente in memoria. Al 16/08 il processo vivo porta ancora MAKER_MODE=off,
-        // MAKER_PLACEMENT vuota, MAKER_ADAPTER_DRYRUN=true e il freno INSERITO.
+        // crash riusa l'ambiente in memoria. Al 17/08 il processo vivo porta MAKER_MODE=off,
+        // MAKER_ADAPTER_DRYRUN=true e il freno INSERITO.
         //
         // ⚠ VANNO ARMATE INSIEME A QUELLE DI agent40. Sono i due processi che decidono un prezzo:
         // armare solo questo produce un bot che apre e non rinnova — le gambe muoiono per GTD in 23
         // minuti mentre le sorelle restano a libro. Vedi §5.1 di CLAUDE.md.
         //
-        // ⚠ `REALLOC_SCHEDULER_DRY_RUN: '0'` E' LA QUARTA CINTURA, ED E' SOLO DI QUESTO PROCESSO.
+        // ⚠ `REALLOC_SCHEDULER_DRY_RUN: '0'` E' LA CINTURA DI QUESTO PROCESSO, E SOLO DI QUESTO.
         // Il freno di prova (`lib/maker/freno-prova`) e' FAIL-CLOSED: assente ⇒ INSERITO. Scrivere '0'
         // e' l'unico modo di disinserirlo, e per questo non basta cancellare una riga per disarmarlo —
         // basta cancellarla per RIARMARLO. La direzione e' voluta: dimenticarsi di una riga rende il
         // bot piu' sicuro, mai meno.
         //
-        // COME SI DISARMA TUTTO: si cancellano queste quattro righe (e le tre di agent40) e si riavvia
-        // dal file. Ogni assenza e' fail-closed per costruzione.
-        // MAKER_MODE — TOLTA A FINE SESSIONE 16/08/2026.
-        // MAKER_ADAPTER_DRYRUN — TOLTA.
-        // MAKER_PLACEMENT — TOLTA.
-        // REALLOC_SCHEDULER_DRY_RUN — TOLTA: assente ⇒ freno di prova INSERITO (fail-closed).
-        // ⚠ LA QUINTA CINTURA — vedi il blocco gemello di agent40. E' QUESTO il processo che apre, e
-        // quindi e' questa la riga che fa partire gli ordini veri: `bulk-allocate` di agent41 passa da
-        // `lib/maker/manual-order`, non dall'adapter, e legge `MANUAL_ORDER_PLACEMENT` e non
-        // `MAKER_PLACEMENT`. Con le altre quattro gia' tolte, era l'unica cosa fra il piano e il venue.
-        // MANUAL_ORDER_PLACEMENT — TOLTA: assente ⇒ la corsia manuale resta dry-run.
+        // COME SI DISARMA TUTTO: si cancellano queste righe (e quelle di agent40) e si riavvia dal
+        // file. Ogni assenza e' fail-closed per costruzione. NESSUNA e' dichiarata qui:
+        // MAKER_MODE — assente ⇒ non e' uno stadio vivo ⇒ rifiuto `maker-mode`, corsia manuale inclusa.
+        // MAKER_ADAPTER_DRYRUN — assente qui, `true` dal `.env` ⇒ ombra forzata.
+        // REALLOC_SCHEDULER_DRY_RUN — assente ⇒ freno di prova INSERITO (fail-closed).
+        // MANUAL_ORDER_PLACEMENT — assente ⇒ la corsia manuale resta dry-run.
+        // ⚠ E' QUESTO il processo che APRE: `bulk-allocate` di agent41 e' «un ciclo su
+        // `placeManualOrder`, nient'altro», quindi arriva alla stessa porta di agent40 e incontra le
+        // stesse quattro cinture. Non esiste una seconda strada verso il venue.
       },
     },
     {

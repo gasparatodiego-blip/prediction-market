@@ -25,6 +25,7 @@
 
 const fs    = require('fs');
 const path  = require('path');
+const { fileRuntime } = require('../lib/percorsi-runtime');
 const { httpPost: _sharedPost } = require('../lib/httpGet');
 
 // ── News-guard signal + action pipeline (all DISARMED / shadow by default) ──────
@@ -119,10 +120,10 @@ async function getPlacements() {
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const SNAPSHOT_FILE   = '/tmp/liquidity-rewards.json';
-const OUT_FILE        = '/tmp/news-guard.json';
-const STATE_FILE      = '/tmp/news-guard-state.json';   // dedupe/cooldown + per-market news cache
-const HB_FILE         = '/tmp/agent-heartbeats.json';
+const SNAPSHOT_FILE   = fileRuntime('liquidity-rewards.json');
+const OUT_FILE        = fileRuntime('news-guard.json');
+const STATE_FILE      = fileRuntime('news-guard-state.json');   // dedupe/cooldown + per-market news cache
+const HB_FILE         = fileRuntime('agent-heartbeats.json');
 const SCAN_INTERVAL_MS = 10 * 60_000;
 const STARTUP_DELAY_MS = 12_000;
 // Query-providers (google-news, bluesky) cost one HTTP call per market entity, so we issue TARGETED

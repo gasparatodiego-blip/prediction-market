@@ -60,6 +60,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { fileRuntime } = require('../lib/percorsi-runtime');
 // ── IL CARICATORE DI `.env` — PERCHÉ UN RIAVVIO AUTOMATICO NON DEVE ROMPERE NIENTE ──────────────────
 // Stesso blocco di agent40 e agent41, e per la stessa ragione. Un riavvio automatico di pm2 (crash,
 // OOM) riparte con la descrizione in memoria del demone, che le variabili ce le ha. Ma un riavvio del
@@ -151,7 +152,7 @@ function leggiSoglie() {
 const POLL_MS = Number(process.env.GUARDIAN_POLL_MS || 30_000);
 const BASELINE_FILE = path.join(DATA_DIR, 'guardian-baseline.json');
 const STATE_FILE = path.join(DATA_DIR, 'guardian-state.json');
-const HEARTBEATS = '/tmp/agent-heartbeats.json';
+const HEARTBEATS = fileRuntime('agent-heartbeats.json');
 
 const log = (...a) => console.log(new Date().toISOString(), '[agent43-guardian]', ...a);
 

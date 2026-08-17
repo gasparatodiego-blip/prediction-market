@@ -67,8 +67,10 @@ async function venueTick(tokenId) {
 // Pick the smallest-notional liquid candidate: a market where minSize × band-edge-price < HARD_USD_CAP and
 // a LIVE book exists (so post-only + cancel are tested against a real book).
 function pickMarket() {
-  const feed = readJson('/tmp/liquidity-rewards.json');
-  const live = (readJson('/tmp/clob-live-books.json') || {}).markets || {};
+  // v. `lib/percorsi-runtime.js`: directory di servizio per UTENTE, non `/tmp` condiviso.
+  const { fileRuntime } = require('../lib/percorsi-runtime');
+  const feed = readJson(fileRuntime('liquidity-rewards.json'));
+  const live = (readJson(fileRuntime('clob-live-books.json')) || {}).markets || {};
   const out = [];
   for (const m of (feed && feed.markets) || []) {
     const rs = m.rewardScore; if (!rs) continue;

@@ -15,6 +15,7 @@
 
 const fs    = require('fs');
 const path  = require('path');
+const { fileRuntime } = require('../lib/percorsi-runtime');
 const http  = require('http');
 const https = require('https');
 const { execFile } = require('child_process');
@@ -37,8 +38,8 @@ for (const envFile of ['.env.local', '.env']) {
 
 const TG_TOKEN    = process.env.TELEGRAM_BOT_TOKEN;
 const TG_CHAT     = process.env.TELEGRAM_CHAT_ID;
-const HB_FILE     = '/tmp/agent-heartbeats.json';
-const STATUS_OUT  = '/tmp/monitor-status.json';
+const HB_FILE     = fileRuntime('agent-heartbeats.json');
+const STATUS_OUT  = fileRuntime('monitor-status.json');
 const INTERVAL_MS = 2 * 60 * 1000;
 
 // Floor so a fast-cycle agent still gets caught reasonably quickly even at

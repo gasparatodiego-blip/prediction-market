@@ -4,6 +4,6 @@
  "riconosciuto": false,
  "motivo": "REALLOC_SCHEDULER_DRY_RUN assente: freno INSERITO (fail-closed). Per piazzare serve REALLOC_SCHEDULER_DRY_RUN=0",
  "agente": "agent41-realloc-scheduler",
- "pid": 153654,
- "atIso": "2026-08-16T19:22:53.036Z"
+ "pid": 284299,
+ "atIso": "2026-08-17T18:26:45.794Z"
 }

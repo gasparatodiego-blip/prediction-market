@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import fs from 'fs';
+// La directory di servizio, per UTENTE: v. lib/percorsi-runtime.js (migrazione root → bot).
+import { fileRuntime } from '@/lib/percorsi-runtime';
 import { prisma } from '@/lib/prisma';
 import { getMakerSelection, saveMakerSelection } from '@/lib/maker/selection';
 import { resolveMakerUniverse } from '@/lib/maker/universe';
@@ -9,7 +11,7 @@ import { resolveAdminServiceUserId } from '@/lib/admin-service-account';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const FILE = '/tmp/liquidity-rewards.json';
+const FILE = fileRuntime('liquidity-rewards.json');
 
 function rawMarkets(): any[] {
   try {

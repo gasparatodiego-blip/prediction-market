@@ -34,6 +34,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { fileRuntime } = require('../lib/percorsi-runtime');
 const { execFile } = require('child_process');
 const { httpPost: _httpPost } = require('../lib/httpGet');
 
@@ -49,9 +50,9 @@ for (const envFile of ['.env.local', '.env']) {
 }
 
 const DATA_DIR   = path.join(__dirname, '..', 'data');
-const HB_FILE    = '/tmp/agent-heartbeats.json';
+const HB_FILE    = fileRuntime('agent-heartbeats.json');
 const HB_KEY     = 'agent38-tape-watchdog';
-const STATE_FILE = '/tmp/tape-watchdog-state.json';
+const STATE_FILE = fileRuntime('tape-watchdog-state.json');
 
 // ── thresholds (all overridable via env; defaults justified from the OBSERVED cadences) ──
 // mid-history writes every 45s (agent34 MID_HISTORY_INTERVAL_MS). 4 missed writes = unambiguous stall.

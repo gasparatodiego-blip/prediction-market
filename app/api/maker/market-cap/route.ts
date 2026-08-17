@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import fs from 'fs';
+// La directory di servizio, per UTENTE: v. lib/percorsi-runtime.js (migrazione root → bot).
+import { fileRuntime } from '@/lib/percorsi-runtime';
 import { getMarketCap, setMarketCap, clearMarketCap, MAX_CAP_USD } from '@/lib/maker/market-caps-store';
 
 export const runtime = 'nodejs';
@@ -35,7 +37,7 @@ export const dynamic = 'force-dynamic';
  */
 function railFallbackUsd(): number | null {
   try {
-    const st = JSON.parse(fs.readFileSync('/tmp/maker-state.json', 'utf8'));
+    const st = JSON.parse(fs.readFileSync(fileRuntime('maker-state.json'), 'utf8'));
     const v = st?.config?.rails?.perMarketNotionalCapUsd;
     return typeof v === 'number' && Number.isFinite(v) ? v : null;
   } catch {

@@ -6,7 +6,7 @@
 //
 // ═══ COSA MOSTRA, E CON QUALE FIDUCIA ════════════════════════════════════════════════════════════
 // Ogni riga dichiara da dove viene, perché non sono tutte della stessa qualità:
-//   · le cinque cinture d'armamento           ← `/proc/<pid>/environ` dei PROCESSI VIVI, non il `.env`
+//   · le cinture d'armamento (oggi QUATTRO)   ← `/proc/<pid>/environ` dei PROCESSI VIVI, non il `.env`
 //   · KILL, AVVIA/FERMA, mercati, manopola    ← i file sotto `data/` e `ecosystem.config.js`,
 //                                               attraverso gli STESSI moduli degli agent
 //   · ordini a riposo                         ← RICOSTRUITI dal giornale, e l'età è dichiarata
@@ -73,7 +73,9 @@ C.titolo('CINTURE — dai processi vivi (/proc), non dal .env');
     letture.push({ nome, pid: v.pid, st });
     const testa = st.puoPiazzare
       ? C.col.rosso(`${nome} (pid ${v.pid}): TUTTE E CINQUE APERTE`)
-      : C.col.verde(`${nome} (pid ${v.pid}): ${st.inserite}/5 inserite`);
+      // ⚠ IL DENOMINATORE SI DERIVA: era `/5` cablato, e il 17 agosto le cinture sono diventate quattro.
+      // Un conteggio scritto a mano accanto a uno calcolato e' il reperto D1 nella sua forma piu' banale.
+      : C.col.verde(`${nome} (pid ${v.pid}): ${st.inserite}/${st.cinture.length} inserite`);
     console.log('\n  ' + C.col.grassetto(testa));
     for (const c of st.cinture) {
       const val = c.valore === null ? '(assente)' : (c.valore === '' ? '(vuota)' : c.valore);
@@ -83,7 +85,7 @@ C.titolo('CINTURE — dai processi vivi (/proc), non dal .env');
     }
     if (st.attestazioneFinanziamento.attestata) {
       console.log('    ' + C.col.giallo('▫ APERTA  ') + '  ' + 'MAKER_FUNDING_APPROVED'.padEnd(26)
-        + C.col.spento('true'.padEnd(22)) + C.col.spento('attestazione, NON una delle cinque: il gate non rifiuta piu\' per questo'));
+        + C.col.spento('true'.padEnd(22)) + C.col.spento('attestazione, NON una delle cinture: il gate non rifiuta piu\' per questo'));
     }
   }
   // ⚠ DUE PROCESSI CHE DECIDONO UN PREZZO CON CINTURE DIVERSE SONO DUE BOT DIVERSI. Va detto, non
@@ -106,7 +108,7 @@ C.titolo('CINTURE — dai processi vivi (/proc), non dal .env');
         if (dalFile.cinture[k].inserita !== l.st.cinture[k].inserita) diverse.push(`${l.nome}:${dalFile.cinture[k].nome}`);
       }
     }
-    console.log('\n  ' + C.col.spento(`.env (cosa entrerebbe al prossimo riavvio DAL FILE): ${dalFile.inserite}/5 inserite`)
+    console.log('\n  ' + C.col.spento(`.env (cosa entrerebbe al prossimo riavvio DAL FILE): ${dalFile.inserite}/${dalFile.cinture.length} inserite`)
       + (diverse.length ? '  ' + C.col.giallo(`⚠ DIVERGE dai processi su: ${[...new Set(diverse)].join(', ')}`) : C.col.spento('  — coerente con i processi vivi')));
   }
 }

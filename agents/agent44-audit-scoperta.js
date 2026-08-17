@@ -221,7 +221,7 @@ async function passataTest(foto) {
   const files = [...foto.keys()].filter((f) => /\.test\.js$/.test(f)).sort();
   // L'ambiente dei figli: senza le variabili che aprono la porta al venue.
   const env = { ...process.env, MAKER_MODE: 'off' };
-  for (const k of ['MANUAL_ORDER_PLACEMENT', 'MAKER_PLACEMENT', 'MAKER_FUNDING_APPROVED']) delete env[k];
+  for (const k of ['MANUAL_ORDER_PLACEMENT', 'MAKER_FUNDING_APPROVED']) delete env[k];
   const prima = impronteStato();
   const rossi = [], nonEseguiti = [], nonEseguibili = [];
   const fineBudget = Date.now() + BUDGET_TEST_MS;

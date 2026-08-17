@@ -69,7 +69,7 @@ const impronte = () => new Map(STATO_SENSIBILE.map((k) => {
 (async () => {
   const files = trovaTest(ROOT).sort();
   const env = { ...process.env, MAKER_MODE: 'off' };
-  for (const k of ['MANUAL_ORDER_PLACEMENT', 'MAKER_PLACEMENT', 'MAKER_FUNDING_APPROVED']) delete env[k];
+  for (const k of ['MANUAL_ORDER_PLACEMENT', 'MAKER_FUNDING_APPROVED']) delete env[k];
   const prima = impronte();
   const rossi = [], nonParte = [];
   let verdi = 0;

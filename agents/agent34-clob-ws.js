@@ -39,6 +39,7 @@ require('../lib/safety/carica-env').caricaEnv({
 
 const fs = require('fs');
 const path = require('path');
+const { fileRuntime } = require('../lib/percorsi-runtime');
 const { ClobWsClient } = require('../lib/clob-ws/client');
 const { LiveBookStore } = require('../lib/clob-ws/live-book');
 const { httpGet } = require('../lib/httpGet');
@@ -65,7 +66,7 @@ const PERCORSI_FEED = require('../lib/maker/percorsi-feed');
 // un letterale mentre i quattro lettori lo importano e' il reperto D1 — due nomi per lo stesso file,
 // che un giorno divergono e nessuno lo dice. Il valore di difetto e' identico a prima.
 const OUT_FILE       = PERCORSI_FEED.fileBookVivi();
-const HB_FILE        = '/tmp/agent-heartbeats.json';
+const HB_FILE        = fileRuntime('agent-heartbeats.json');
 // Self-describing COVERAGE manifest for the mid-history journal. The journal only covers the markets
 // agent34 subscribes to (a subset of the rewards universe), so a backtest must state that. This records
 // the universe size AT COLLECTION TIME (not a later drifting feed read) so the mandated coverage header

@@ -12,9 +12,11 @@
 //
 // THREE INDEPENDENT REASONS NOTHING CAN REACH THE VENUE HERE:
 //   1. placement is hard-coded to 'dry-run', and the adapter's dry-run branch returns BEFORE POST /order.
-//   2. this script ASSERTS adapter.placement === 'dry-run' at startup and exits non-zero otherwise, so
-//      an env var (MAKER_PLACEMENT=send) cannot silently arm it — opts beat env, and the assert re-proves it.
-//   3. MAKER_PLACEMENT is explicitly deleted from this process's env before the adapter is built.
+//   2. this script ASSERTS adapter.placement === 'dry-run' at startup and exits non-zero otherwise.
+//   3. dal 17 agosto 2026 NON ESISTE PIU' un'env che possa armare il placement dell'adapter: il
+//      ripiego su `MAKER_PLACEMENT` e' stato tolto (non aveva chiamanti), quindi un `placement` non
+//      passato esplicitamente vale 'dry-run'. La ragione 3 non e' piu' una cancellazione difensiva:
+//      e' una proprieta' del codice.
 //
 // fundingApproved is set TRUE here, and that is a test-only attestation: without it the gate chain
 // refuses before the order is ever built, and there would be nothing to show. It grants no ability to
@@ -39,8 +41,7 @@ const path = require('path');
   }
 })();
 
-// Belt 3: no env value may arm the venue path in this process.
-delete process.env.MAKER_PLACEMENT;
+// Belt 3: nessuna env puo' piu' armare il placement — il ripiego e' stato tolto dall'adapter.
 
 const { createMakerAdapter } = require('../lib/venues/polymarket-clob-maker/adapter');
 const { makerLiveProviders } = require('../lib/maker/live-providers');
@@ -48,8 +49,12 @@ const { planQuotes } = require('../lib/maker/quote-plan');
 const { readMarketInventory } = require('../lib/maker/inventory-read');
 const { httpGet } = require('../lib/httpGet');
 
-const BOOKS = '/tmp/clob-live-books.json';
-const REWARDS = '/tmp/liquidity-rewards.json';
+// La directory di servizio, per UTENTE: v. `lib/percorsi-runtime.js` (migrazione root → bot). Qui conta
+// il doppio, perche' leggere la copia vecchia di un altro utente significherebbe scegliere un mercato e
+// un prezzo su una fotografia che nessuno sta piu' aggiornando.
+const { fileRuntime } = require('../lib/percorsi-runtime');
+const BOOKS = fileRuntime('clob-live-books.json');
+const REWARDS = fileRuntime('liquidity-rewards.json');
 const MARKET = process.env.MAKER_LIVE_MIN_MARKET;
 const CAP_USD = Number(process.env.MAKER_LIVE_MIN_CAP_USD || 30);
 const TTL = Number(process.env.MAKER_ORDER_TTL_SECONDS || 180);
