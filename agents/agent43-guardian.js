@@ -85,6 +85,17 @@ const { cancelAllOrders } = require('../lib/maker/cancel-all');
 const { buildCancelCredsProviders } = require('../lib/maker/cancel-creds-provider');
 const { costruisciCancellazione, registraCancellazioneDiEmergenza } = require('../lib/maker/cancellazione-di-emergenza');
 const { impostaBot, statoBot } = require('../lib/maker/bot-enabled');
+// ── IL SECONDO SCATTO: LA PERDITA GIORNALIERA REALIZZATA (17 agosto 2026) ─────────────────────────
+// Decisione dell'operatore: «il kill a -$100 deve CANCELLARE gli ordini a libro, non solo rifiutare i
+// nuovi. Oggi e' un gate di piazzamento e non e' un kill.» Aveva ragione: `maxDailyLossUsd` viveva solo
+// dentro `evaluateLimits`, cioe' scattava quando si valutava un ORDINE — a libro pieno e senza ordini in
+// arrivo non succedeva niente. La soglia e il numero si IMPORTANO dalle stesse due funzioni che il gate
+// di piazzamento usa: due idee di «perdita giornaliera» che divergono sarebbero il reperto D1 su una
+// decisione di rischio.
+const { valutaPerditaGiornaliera } = require('../lib/maker/kill-perdita-giornaliera');
+const { resolveLimits } = require('../lib/safety/risk-limits');
+const { readUsage } = require('../lib/safety/usage');
+const UTENTE_OPERATORE = process.env.MAKER_OPERATOR_USER || 'operator';
 const { leggiSaldoUsd } = require('../lib/maker/saldo-cache');
 const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
@@ -253,6 +264,37 @@ async function poll(deps = {}) {
     void tolto;
   }
 
+  // ══ IL SECONDO SCATTO: LA PERDITA REALIZZATA DI OGGI ═══════════════════════════════════════════
+  // Sta QUI, prima della lettura del venue, per una ragione precisa: la perdita realizzata si legge dal
+  // REGISTRO DEI FILL, quindi e' conoscibile anche quando il venue non risponde — ed e' proprio la
+  // giornata in cui il venue fa i capricci quella in cui non si vuole restare a libro pieno.
+  // Non e' un secondo interruttore: e' un secondo INGRESSO alla stessa azione (spazzata + FERMA), che
+  // resta scritta una volta sola piu' sotto.
+  const perdita = (() => {
+    try {
+      const lim = (deps.resolveLimits || resolveLimits)({ userId: UTENTE_OPERATORE });
+      const uso = (deps.readUsage || readUsage)({ userId: UTENTE_OPERATORE, now });
+      return valutaPerditaGiornaliera({ perditaRealizzataUsd: uso ? uso.realisedDailyPnlUsd : null,
+        sogliaUsd: lim && lim.readable !== false ? lim.maxDailyLossUsd : null });
+    } catch (e) {
+      // ⚠ Un'eccezione qui NON deve poter cancellare niente e non deve fermare il giro del drawdown:
+      // si dichiara e si prosegue col guardiano di sempre.
+      return { scatta: false, leggibile: false, perditaUsd: null, sogliaUsd: null,
+        motivo: `perdita giornaliera non valutabile (${e && e.message ? e.message : String(e)}): non si cancella al buio` };
+    }
+  })();
+  if (perdita.scatta) {
+    log(`SCATTO PER PERDITA GIORNALIERA: ${perdita.motivo}`);
+    const esito = await spazzaEFerma({
+      motivo: perdita.motivo,
+      causa: 'perdita-giornaliera',
+      dettagli: { perditaRealizzataUsd: perdita.perditaUsd, sogliaUsd: perdita.sogliaUsd },
+      now, stateFile, scrivi, deps,
+    });
+    return { azione: 'scattato-perdita-giornaliera', ...esito,
+      perditaRealizzataUsd: perdita.perditaUsd, sogliaUsd: perdita.sogliaUsd, motivo: perdita.motivo };
+  }
+
   if (!capitale) capitale = await capitaleOra(deps);
 
   // ── IL BASELINE ───────────────────────────────────────────────────────────────────────────────────
@@ -355,6 +397,30 @@ async function poll(deps = {}) {
   // Lo scatto consuma il contatore: se l'operatore riarma, si riparte da zero conferme.
   if (deps.statoConferme === undefined) statoConferme = null;
 
+  const esito = await spazzaEFerma({
+    motivo: decisione.motivo, causa: 'drawdown',
+    dettagli: { pnl, capitale, baseline, soglie, soglieSuperate: decisione.soglieSuperate },
+    now, stateFile, scrivi, deps,
+  });
+  return { azione: 'scattato', pnlUsd: pnl.pnlUsd, pnlPct: pnl.pnlPct, soglieSuperate: decisione.soglieSuperate, ...esito };
+}
+
+// ══ L'AZIONE, SCRITTA UNA VOLTA SOLA ═══════════════════════════════════════════════════════════════
+// Spazzata degli ordini a riposo → FERMA → referto → latch. Estratta il 17 agosto 2026 quando alla
+// perdita giornaliera realizzata e' stato dato il suo ingresso: due ingressi alla stessa azione, non due
+// azioni. Ricopiarla avrebbe prodotto due spazzate che un giorno divergono su cosa cancellano, e questa
+// e' l'unica funzione del repo che puo' togliere TUTTI gli ordini da TUTTI i venue.
+//
+// ⚠ L'ORDINE DEI QUATTRO PASSI NON E' CASUALE, ed era gia' scritto: FERMA va DOPO la cancellazione,
+// perche' se il flag non si scrive gli ordini sono comunque via — l'ordine inverso lascerebbe il bot
+// fermo col libro pieno, che e' lo stato peggiore dei due. E il latch si scrive per ULTIMO ma sempre:
+// anche se tutto il resto e' fallito, questo giro e' avvenuto e non va ripetuto in automatico.
+async function spazzaEFerma({ motivo, causa, dettagli = {}, now, stateFile, scrivi, deps = {} }) {
+  const pnl = dettagli.pnl || null;
+  const capitale = dettagli.capitale || null;
+  const baseline = dettagli.baseline || null;
+  const soglie = dettagli.soglie || null;
+
   let results = [];
   try {
     const credsProviders = await (deps.buildCancelCredsProviders || buildCancelCredsProviders)();
@@ -364,23 +430,22 @@ async function poll(deps = {}) {
     results = [{ venue: 'polymarket', ok: false, error: (e && e.message) || String(e), cancelled: 0 }];
   }
 
-  // ── FERMA ─────────────────────────────────────────────────────────────────────────────────────────
-  // DOPO la cancellazione: se il flag non si scrivesse, gli ordini sono comunque già via — l'ordine
-  // inverso lascerebbe il bot fermo con il libro ancora pieno, che è lo stato peggiore dei due.
   let botFermato = { ok: false, motivo: 'non tentato' };
   try {
     botFermato = (deps.impostaBot || impostaBot)({
       enabled: false, by: 'agent43-guardian',
-      reason: `perdita oltre soglia: ${decisione.motivo}`,
+      reason: `${causa === 'perdita-giornaliera' ? 'perdita giornaliera realizzata' : 'perdita oltre soglia'}: ${motivo}`,
     });
-    log(botFermato.ok ? `bot messo su FERMA (era ${botFermato.prima ? 'AVVIATO' : 'già fermo'})` : `FERMA NON scritto: ${botFermato.motivo}`);
+    log(botFermato.ok ? `bot messo su FERMA (era ${botFermato.prima ? 'AVVIATO' : 'gia\' fermo'})` : `FERMA NON scritto: ${botFermato.motivo}`);
   } catch (e) { botFermato = { ok: false, motivo: e.message }; log('FERMA non scritto:', e.message); }
 
-  // ── IL REFERTO ────────────────────────────────────────────────────────────────────────────────────
   const base = costruisciCancellazione({ at: now, stalenessSec: null, thresholdSec: null, results, ambito: 'tutto' });
+  // ⚠ Il referto del drawdown vuole pnl/capitale/baseline; quello della perdita giornaliera non li ha e
+  // non li inventa. `costruisciEventoGuardian` li accetta nulli e il referto lo DICHIARA nella causa.
   const evento = costruisciEventoGuardian({
     base, at: now, pnl, capitale, baseline,
-    soglieSuperate: decisione.soglieSuperate, sogliaPct: soglie.pct, sogliaAbs: soglie.abs,
+    soglieSuperate: dettagli.soglieSuperate || [causa],
+    sogliaPct: soglie ? soglie.pct : null, sogliaAbs: soglie ? soglie.abs : (dettagli.sogliaUsd ?? null),
     botFermato: botFermato.ok === true,
   });
   try {
@@ -389,22 +454,24 @@ async function poll(deps = {}) {
     else log(`referto depositato: ${evento.ordiniCancellati} ordini su ${evento.mercatiToccati} mercati, reason=${evento.reason}`);
   } catch (e) { log('referto NON depositato:', e.message); }
 
-  // La latch, scritta per ultima ma sempre scritta: anche se tutto il resto è fallito, questo giro è
-  // avvenuto e non va ripetuto in automatico.
   try {
     scrivi(stateFile, {
       v: 1, scattato: true, at: now, atIso: new Date(now).toISOString(),
-      reason: 'guardian-auto-kill', pnlUsd: pnl.pnlUsd, pnlPct: pnl.pnlPct,
-      baselineUsd: baseline.baselineUsd, totaleUsd: capitale.totaleUsd,
-      soglieSuperate: decisione.soglieSuperate, ordiniCancellati: evento.ordiniCancellati,
+      reason: 'guardian-auto-kill', causa: causa || 'drawdown',
+      pnlUsd: pnl ? pnl.pnlUsd : null, pnlPct: pnl ? pnl.pnlPct : null,
+      baselineUsd: baseline ? baseline.baselineUsd : null,
+      totaleUsd: capitale ? capitale.totaleUsd : null,
+      perditaRealizzataUsd: dettagli.perditaRealizzataUsd ?? null,
+      sogliaPerditaGiornalieraUsd: dettagli.sogliaUsd ?? null,
+      soglieSuperate: dettagli.soglieSuperate || [causa],
+      ordiniCancellati: evento.ordiniCancellati,
       mercati: evento.venues.flatMap((v) => (v.markets || []).map((m) => m.market)).filter(Boolean),
       botFermato: botFermato.ok === true,
       comeRiarmare: 'cancella questo file a mano, poi premi AVVIA sulla dashboard. Nessun riarmo automatico.',
     });
   } catch (e) { log('latch NON scritta:', e.message); }
 
-  return { azione: 'scattato', pnlUsd: pnl.pnlUsd, pnlPct: pnl.pnlPct, soglieSuperate: decisione.soglieSuperate,
-    ordiniCancellati: evento.ordiniCancellati, results, evento, botFermato };
+  return { ordiniCancellati: evento.ordiniCancellati, results, evento, botFermato };
 }
 
 async function loop() {
