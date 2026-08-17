@@ -1134,6 +1134,7 @@ function copiaRegoleNelRipiego({ marketId }, by) {
 // mini-ciclo e della fase 3 del reset; chi esce passa da `setAutoReprice`, la stessa funzione del
 // ciclo delle sei ore. Una seconda strada sarebbe una seconda verita' sullo stesso file.
 const SELM = require('../lib/maker/selezione-mercati');
+const SCAD = require('../lib/maker/scadenza-fuori-perimetro');
 const SELS = require('../lib/maker/selezione-stato');
 const BOARD_REWARD = path.join(DATA_DIR_A41, 'liquidity-rewards.json');
 
@@ -1560,6 +1561,59 @@ async function riconciliaAllowlist(deps = {}) {
     annuncia('log', `allowlist: ${k.slice(0, 12)}… era abilitato fuori dalla selezione ⇒ spento`);
   }
   return { ok: true, motivo: null, spenti, dentro: dentro.size };
+}
+
+// ══ LA SCADENZA TOGLIE IL MERCATO DAL PERIMETRO DA SOLA — 17 agosto 2026 ═══════════════════════════
+// Decisione dell'operatore: «la scadenza del mercato deve togliere il mercato dal perimetro da sola,
+// senza aspettare il ciclo da 6 h». Prima lo facevano due percorsi e nessuno bastava: la SELEZIONE, che
+// esclude sotto le 24 h ma solo quando e' accesa (oggi e' spenta), e il ciclo da 6 ORE, che al piu' lo
+// toglie dal PIANO — e sei ore sono la cadenza sbagliata per una scadenza.
+// La decisione e' PURA (`lib/maker/scadenza-fuori-perimetro`): qui c'e' solo il cablaggio, e le tre
+// letture arrivano dalle stesse funzioni che gia' esistono — nessuna terza fonte di verita'.
+// ⚠ GIRA ANCHE A SELEZIONE SPENTA, ed e' il punto: `riconciliaAllowlist` si astiene quando la selezione
+// non e' attiva (giustamente: deriva DA lei), quindi senza questa funzione il caso di oggi non era
+// coperto da nessuno.
+async function scadenzeFuoriPerimetro(deps = {}) {
+  const cfg = (() => { try { return (deps.leggiConfig || readAutoRepriceConfig)(); } catch { return null; } })();
+  if (!cfg || cfg.readable === false) return { ok: false, motivo: 'allowlist non leggibile: nessun rilascio', rilasciati: [] };
+  const abilitati = Object.entries(cfg.markets || {}).filter(([, m]) => m && m.enabled === true).map(([k]) => k);
+  if (!abilitati.length) return { ok: true, motivo: 'nessun mercato abilitato', rilasciati: [] };
+
+  // Le posizioni e gli ordini: `null` quando NON si leggono, mai una lista vuota (il modulo puro si
+  // astiene, e la differenza fra le due cose e' tutta la sicurezza di questa funzione).
+  const pos = deps.conPosizione !== undefined ? deps.conPosizione : (() => {
+    const p = posizioniPerSelezione(); return p && p.leggibile ? p.ids : null;
+  })();
+  const ord = deps.conOrdiniVivi !== undefined ? deps.conOrdiniVivi : await (async () => {
+    const o = await mercatiConOrdiniVivi(deps); return o && o.leggibile ? o.ids : null;
+  })();
+
+  const v = SCAD.valutaScadenze({
+    abilitati, ora: deps.ora || Date.now(),
+    conPosizione: pos, conOrdiniVivi: ord,
+    // La scadenza dal BOARD riconciliato: la stessa funzione che usa la verifica dei mercati, quindi
+    // pianificatore, verifica e questo rilascio parlano dello stesso istante per costruzione.
+    scadenzaMs: deps.scadenzaMs || ((id) => { const iso = scadenzaDalBoard(id, null); const t = Date.parse(iso || ''); return Number.isFinite(t) ? t : null; }),
+    chiuso: deps.chiuso || null,
+  });
+
+  const rilasciati = [];
+  for (const c of v.daRilasciare) {
+    const r = await (deps.rilascia || rilasciaDallaSelezione)({ marketId: c.id, motivo: 'scaduto' });
+    rilasciati.push({ id: c.id, oreResidue: c.oreResidue, spento: !!(r && r.ok), error: (r && r.error) || null });
+    scrivi({ tipo: 'scadenza-fuori-perimetro', esito: (r && r.ok) ? 'rilasciato' : 'rilascio-fallito',
+      marketId: c.id, oreResidue: c.oreResidue, chiusoAlVenue: c.chiusoAlVenue, motivo: c.motivo });
+    annuncia('log', `perimetro: ${c.id.slice(0, 12)}… ${c.motivo}`);
+  }
+  // ⚠ SI SCRIVE A VERBALE ANCHE QUANDO NON SI RILASCIA NIENTE, e non e' rumore: senza questa riga
+  // «nessun mercato scaduto» e «non ho potuto guardare» sarebbero lo stesso silenzio. E' la lezione di
+  // §5-bis p.171 (un presidio che non lascia traccia non e' verificabile).
+  if (!v.daRilasciare.length) {
+    scrivi({ tipo: 'scadenza-fuori-perimetro', esito: v.motivo ? 'astenuta' : 'niente-da-rilasciare',
+      motivo: v.motivo || `${v.tenuti.length} mercato/i abilitati, tutti sopra il pavimento di ${v.oreMinime} h o con qualcosa da gestire`,
+      tenuti: v.tenuti.slice(0, 8) });
+  }
+  return { ok: true, motivo: v.motivo, rilasciati, tenuti: v.tenuti.length, oreMinime: v.oreMinime };
 }
 
 // ══ IL PRESIDIO: NESSUNA POSIZIONE DIREZIONALE OLTRE UN'ORA — 16 agosto 2026 ═══════════════════════
@@ -2015,6 +2069,43 @@ async function miniCiclo(decisione, deps = {}) {
     return a.righe;
   };
 
+  // ══ LE RIGHE AMMESSE: SELEZIONE **E POI** SOGLIE, IN UN PUNTO SOLO ═══════════════════════════════
+  // ⚠ IL DIFETTO CHE QUESTA FUNZIONE CHIUDE (17 agosto 2026, deciso dall'operatore). La selezione
+  // restringe il piano dentro `calcolaPianoFuoriProcesso` (:520), che e' l'unico punto da cui il piano
+  // nasce — ma il mini-ciclo NON ricalcola il piano nel caso comune: prende le righe dal piano SALVATO
+  // se e' fresco, e `PIANO_FRESCO_MAX_MS` vale SESSANTA MINUTI. Misurato sul sorgente: nel corpo di
+  // `miniCiclo` (righe 1845-2450) le occorrenze di `selezion`/`idsAttivi` erano ZERO. Quindi un mercato
+  // che uscisse dalla selezione — ruotato, scaduto, spodestato — restava piazzabile per un'ora dal piano
+  // salvato. E' la forma esatta del quarto mercato comparso in allowlist il 16 agosto.
+  //
+  // Si e' scelto di RIFARE L'INTERSEZIONE a ogni giro invece di invalidare il piano: invalidarlo
+  // costringerebbe a un ricalcolo da 13 secondi a ogni cambio di selezione, e un piano ancora buono per
+  // i mercati che restano verrebbe buttato per un mercato che e' uscito.
+  //
+  // ⚠ E STA INSIEME ALL'ADATTAMENTO ALLE SOGLIE PER UNA RAGIONE PRECISA: `adattaAlleSoglie` esiste
+  // perche' la prima stesura lo applicava al piano salvato e NON alla ricostruzione, che poi
+  // sovrascriveva le righe (§5 p.130 — la correzione era INERTE). Due filtri che devono valere su
+  // entrambe le fonti, tenuti in due funzioni, sono due occasioni di dimenticarne una: qui la fonte
+  // chiama UNA funzione e le prende entrambe.
+  const righeAmmesse = (righe, dove) => {
+    const sel = selezioneAttiva();
+    let dopoSelezione = righe || [];
+    if (sel.attiva) {
+      // `idsAttivi`, NON `ids`: un mercato in gestione sta chiudendo la sua posizione, e aprirci sopra
+      // rifarebbe l'esposizione che la scala d'uscita sta smontando. E' la stessa scelta di :520.
+      const scelti = new Set(sel.idsAttivi.map((x) => String(x).trim().toLowerCase()));
+      const prima = dopoSelezione.length;
+      dopoSelezione = dopoSelezione.filter((r) => scelti.has(String(r.marketId || '').trim().toLowerCase()));
+      if (prima !== dopoSelezione.length) {
+        referto.fuoriSelezione = { fonte: dove, prima, dopo: dopoSelezione.length,
+          tolti: prima - dopoSelezione.length, sceltiOra: [...scelti].length };
+        annuncia('log', `mini-ciclo: ${prima - dopoSelezione.length} riga/he del ${dove} TOLTE perche' fuori dalla selezione`
+          + ` (${[...scelti].length} mercati attivi adesso) — il piano salvato puo' avere fino a ${PIANO_FRESCO_MAX_MS / 60000} minuti`);
+      }
+    }
+    return adattaAlleSoglie(dopoSelezione, dove);
+  };
+
   let righeCandidate = [];
   let motivoPassate = null;
   const piano = leggiPiano();
@@ -2023,7 +2114,7 @@ async function miniCiclo(decisione, deps = {}) {
   let giro = { scelte: [], motivoStop: piano.ok ? null : (piano.motivo || 'nessun piano salvato') };
   let fonte = null;
   if (pianoFresco) {
-    righeCandidate = adattaAlleSoglie(piano.righe, 'piano salvato');
+    righeCandidate = righeAmmesse(piano.righe, 'piano salvato');
     giro = TRIG.pianificaGiro({ ...comuni, righe: righeCandidate, disponibileUsd: spendibileUsd });
     fonte = `piano salvato (${Math.round(etaPianoMs / 60000)} min)`;
   }
@@ -2092,7 +2183,7 @@ async function miniCiclo(decisione, deps = {}) {
               + ' il capitale resta liquido perche' + ' non c\'e\' dove metterlo, non perche\' non si e\' guardato' };
         }
       } else {
-        const fresche = adattaAlleSoglie(righeFresche, 'ricostruzione');
+        const fresche = righeAmmesse(righeFresche, 'ricostruzione');
         const giroFresco = TRIG.pianificaGiro({ ...comuni, righe: fresche, disponibileUsd: spendibileUsd });
         if (giroFresco.scelte.length >= giroPrima.scelte.length) {
           righeCandidate = fresche;
@@ -2757,6 +2848,11 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   // che ogni percorso di uscita debba ricordarsene. Vedi `riconciliaAllowlist`.
   try { await riconciliaAllowlist(); }
   catch (e) { annuncia('log', `allowlist non riconciliata: ${e.message}`); }
+  // ⚠ DOPO `riconciliaAllowlist` E INDIPENDENTE DA LEI: quella deriva dalla selezione e si astiene
+  // quando la selezione e' spenta; questa guarda solo la SCADENZA, quindi copre proprio il caso che
+  // l'altra non copre. Non solleva mai: un guasto qui lascia il perimetro com'era.
+  try { await scadenzeFuoriPerimetro(); }
+  catch (e) { annuncia('log', `scadenze non riconciliate nel perimetro: ${e.message}`); }
   let saldo = null;
   try { saldo = await leggiSaldo(); } catch (e) { saldo = { readable: false, error: e.message }; }
   const st = leggiStato();
@@ -3075,7 +3171,7 @@ if (require.main === module) main();
 module.exports = { giro, controlloCapitaleFermo, leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
   selezionaMercati, rilasciaDallaSelezione, selezioneAttiva, restringiAllaSelezione, leggiBoardReward, posizioniPerSelezione,
-  riconciliaAllowlist, riconciliaCopertura, presidioPosizioniVecchie,
+  riconciliaAllowlist, scadenzeFuoriPerimetro, riconciliaCopertura, presidioPosizioniVecchie,
   autodiagnosiPeriodica, eseguiGradino, messaggioFeedRiseminato, nozionalePiazzato,
   LOG_FILE, STATE_FILE, POOLS_FILE, ULTIMO_PIANO_FILE,
   FINESTRA_LEGGERA_ORE, PIANO_FRESCO_MAX_MS, AVVIO_CADENZA_MS,
