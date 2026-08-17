@@ -127,6 +127,19 @@ function passo(n, dettaglio = {}) {
   }
   return r;
 }
+// ⚠ DUE MODI DI DICHIARARE UN PASSO CHE NON ARRIVA IN FONDO, e la differenza e' una decisione
+// dell'operatore (17 agosto 2026): «se uno non arriva in fondo, annota file:riga e vai avanti col
+// successivo». `blocca` ferma il giro — si usa dove il passo dopo dipende da quello prima e proseguire
+// misurerebbe uno stato che in produzione non esiste. `annota` registra e lascia continuare: si usa dove i
+// passi sono INDIPENDENTI (14-17 costruiscono ognuno il proprio mercato), e li' fermarsi al primo
+// nasconderebbe gli altri tre.
+const annotati = [];
+function annota(dove, perche, riferimento) {
+  annotati.push({ dove, perche, riferimento });
+  console.log(`\n🟠 ${dove} NON ARRIVA IN FONDO (il giro prosegue)`);
+  console.log(`   perche': ${perche}`);
+  if (riferimento) console.log(`   dove:    ${riferimento}`);
+}
 function blocca(dove, perche, riferimento) {
   bloccato = { dove, perche, riferimento };
   console.log(`\n🔴 IL GIRO SI FERMA A: ${dove}`);
@@ -620,22 +633,36 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
       ? fs.readFileSync(path.join(ROOT, 'data', 'realloc-scheduler.jsonl'), 'utf8').trim().split('\n').slice(-30)
         .map((l) => { try { return JSON.parse(l); } catch { return {}; } }).filter((x) => x.tipo === 'ripristino-gamba')
       : [];
+    // I NUMERI DELL'ASIMMETRIA: senza, «sfonda il tetto» non dice DI QUANTO ne' PERCHE'.
+    const vivi13 = idScelto ? VENUE.ordiniVivi(idScelto) : [];
+    const rigaPiano = (() => {
+      try {
+        const pl = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'realloc-ultimo-piano.json'), 'utf8'));
+        return (pl.righe || []).find((r) => String(r.marketId || '').toLowerCase() === idScelto) || null;
+      } catch { return null; }
+    })();
     passo('13 · gamba morta → ripristino entro un ciclo', {
       ok: idScelto != null && latiDopoMorte && latiDopoMorte.no === 0 && lati(idScelto).no > 0,
       mercato: idScelto ? idScelto.slice(0, 12) : '(nessun mercato coperto sui due lati)',
       latiPrima, latiDopoLaMorte: latiDopoMorte, latiDopoIlRipristino: idScelto ? lati(idScelto) : null,
       gambePrima: gambePrima.length, dopoLaMorte: gambeDopoMorte, dopoIlRipristino: gambeDopoRipristino,
       esitiRipristino: giornale13.slice(-3).map((x) => `${x.esito}${x.mancanti ? ` (${x.mancanti.length} mancanti)` : ''}`),
+      motiviRipristino: giornale13.slice(-2).map((x) => String(x.motivo || '').slice(0, 200)),
+      ordiniARiposoOra: vivi13.map((o) => `${o.side} ${o.tokenId.slice(0, 8)} ${o.size}×${o.price} = $${(o.size * o.price).toFixed(2)}`),
+      rigaDelPiano: rigaPiano ? { capitaleUsd: rigaPiano.capitalUsd ?? rigaPiano.capitale ?? null,
+        size: rigaPiano.size ?? null, pYes: rigaPiano.priceYes ?? rigaPiano.pYes ?? null, pNo: rigaPiano.priceNo ?? rigaPiano.pNo ?? null } : null,
       erroreCopertura: ric && ric.errore ? ric.errore : null,
     });
     if (!(idScelto != null && latiDopoMorte && latiDopoMorte.no === 0 && lati(idScelto).no > 0)) {
-      blocca('passo 13', idScelto == null ? 'nessun mercato coperto sui due lati da cui uccidere un lato'
+      annota('passo 13', idScelto == null ? 'nessun mercato coperto sui due lati da cui uccidere un lato'
         : `il lato NO ucciso non e' tornato a libro (lati dopo il ripristino: ${JSON.stringify(lati(idScelto))})`,
       'agents/agent41-realloc-scheduler.js (riconciliaCopertura → ripristinaGamba) + lib/maker/ripristino-gambe.js');
     }
   }
 
   // ══ PASSO 14 · POSIZIONE SPARITA SENZA UN NOSTRO ORDINE: ALLARME ════════════════════════════════
+  // ⚠ Da qui in giu' la guardia NON e' `!bloccato` ma `!bloccato`: i passi 14-17 costruiscono ognuno il
+  // proprio mercato e non dipendono dal 13. Se il 13 e' stato ANNOTATO il giro prosegue.
   // ⚠ SU SLATE PULITO E CON agent40 RICARICATO: i due presidi vivono su memoria di modulo
   // (`posizioniPrecedenti`, `nostriInvii`), e un avanzo di una fase precedente SPEGNE l'allarme.
   if (!bloccato) {
@@ -663,7 +690,7 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
       esitiPresidi: dopo14.filter((o) => /posizione-/.test(String(o))),
     });
     if (!dopo14.includes('posizione-uscita-senza-nostro-ordine')) {
-      blocca('passo 14', 'la sparizione non nostra non ha prodotto l\'allarme',
+      annota('passo 14', 'la sparizione non nostra non ha prodotto l\'allarme',
         'agents/agent40-manual-reprice.js:1091 (sparizioneTask) + lib/maker/sparizioni-non-spiegate.js');
     }
   }
@@ -682,21 +709,43 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
 
     // ① RIFIUTO POST-ONLY: un BUY che incrocia l'ask viene RIFIUTATO dal venue, non eseguito.
     const primaRifiuti = VENUE.eventi.filter((e) => e.tipo === 'rifiuto-post-only').length;
-    await MO.placeManualOrder({ marketId: M9, book: 'yes', side: 'BUY', price: 0.44, size: 40,
-      userId: 'operator', inCoda: false, allowOutOfBand: true }, {}).catch(() => ({}));
+    // ⚠ SI ACCENDE LA CORSA, e non e' un trucco: un `post-only` ben calcolato puo' incrociare SOLO se il
+    // book si muove fra la lettura e la POST. Tutti i gate del bot esistono per non farlo capitare, quindi
+    // senza la corsa questo esito e' irraggiungibile per costruzione — e dichiararlo «rosso» sarebbe
+    // dichiarare rossa una difesa che funziona.
+    VENUE.scenari.muoviIlBookDurantePostOrder = true;
+    await MO.placeManualOrder({ marketId: M9, book: 'yes', side: 'BUY', price: 0.39, size: 40,
+      userId: 'operator', inCoda: true }, {}).catch(() => ({}));
+    VENUE.scenari.muoviIlBookDurantePostOrder = false;
+    VENUE.pubblicaFeed();
     const rifiutiPostOnly = VENUE.eventi.filter((e) => e.tipo === 'rifiuto-post-only').length - primaRifiuti;
 
-    // ② avgPrice NON PUBBLICATO: si riempie una gamba con il venue che nasconde il carico per un ciclo.
-    VENUE.scenari.avgPriceNascostoPerCicli = 2;
+    // ② avgPrice NON PUBBLICATO. ⚠ IL FILL DEVE ESSERE PARZIALE, e il perche' e' una scoperta di questo
+    // banco: `carico-di-ripiego` ha DUE livelli di ripiego, e solo il primo e' raggiungibile in
+    // produzione. Il primo e' `residuo-a-libro` — il prezzo di un nostro ordine ANCORA a riposo sullo
+    // stesso token; il secondo e' `ultimo-ordine-nostro`, che legge `deps.ultimoNostroPrezzo` — e
+    // NESSUNO PASSA QUELLA DEP (`closeTask` non la cabla). Con un fill TOTALE non resta niente a libro,
+    // nessuno dei due livelli ha un dato, e l'uscita esce a `skip-no-entry-price`: e' cio' che questo
+    // passo misurava alla prima stesura, accusando il carico di ripiego di non scattare.
+    VENUE.scenari.avgPriceNascostoPerCicli = 3;
     await MO.placeManualOrder({ marketId: M9, book: 'yes', side: 'BUY', price: 0.38, size: 40,
       userId: 'operator', inCoda: true }, {}).catch(() => ({}));
     const g15 = VENUE.ordiniVivi(M9).find((o) => o.side === 'BUY' && o.tokenId === m9.tokenId);
-    if (g15) VENUE.riempi(g15.orderId, g15.size);
+    const fillato15 = !!g15;
+    if (g15) VENUE.riempi(g15.orderId, g15.size * 0.5);   // METÀ: il residuo resta a libro
     VENUE.avanza(60_000);
     await A40.closeTask().catch(() => {});
     VENUE.scenari.avgPriceNascostoPerCicli = 0;
 
     // ③ FEED CHE TACE: il file del book non si aggiorna piu', il mid invecchia, gli ordini si cancellano.
+    // ⚠ SERVE UN ORDINE VIVO DURANTE IL SILENZIO: alla prima stesura il fill totale aveva svuotato il
+    // libro, e `mid-stantio` non aveva niente da cancellare. Adesso il residuo del fill parziale e' la',
+    // e se non bastasse se ne aggiunge uno sull'altro lato.
+    if (!VENUE.ordiniVivi(M9).length) {
+      await MO.placeManualOrder({ marketId: M9, book: 'no', side: 'BUY', price: 0.58, size: 40,
+        userId: 'operator', inCoda: true }, {}).catch(() => ({}));
+    }
+    const viviPrimaDelSilenzio = VENUE.ordiniVivi(M9).length;
     VENUE.scenari.feedTace = true;
     for (let k = 0; k < 4; k += 1) { VENUE.avanza(45 * 1000); await A40.cycle().catch(() => {}); }
     VENUE.scenari.feedTace = false;
@@ -707,12 +756,15 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
     passo('15 · feed muto · avgPrice assente · rifiuto post-only', {
       ok: rifiutiPostOnly > 0 && dopo15.some((o) => /carico-di-ripiego/.test(o)) && dopo15.some((o) => /stantio|cecita/.test(o)),
       rifiutiPostOnly,
+      tuttiGliEsiti: [...new Set(dopo15)].slice(0, 22),
       caricoDiRipiego: dopo15.filter((o) => /carico-di-ripiego/.test(o)).length,
       esitiCecita: [...new Set(dopo15.filter((o) => /stantio|cecita|mid-age/.test(o)))],
       cancellazioniTotaliAlVenue: cancellatiPerCecita,
+      gambaRiempita: fillato15, viviPrimaDelSilenzio, ordiniViviSuM9: VENUE.ordiniVivi(M9).length,
+      posizioneSuM9: Number((VENUE.posizioni.get(m9.tokenId) || {}).size || 0),
     });
     if (!(rifiutiPostOnly > 0 && dopo15.some((o) => /carico-di-ripiego/.test(o)) && dopo15.some((o) => /stantio|cecita/.test(o)))) {
-      blocca('passo 15', `manca uno dei tre: post-only ${rifiutiPostOnly}, carico-di-ripiego ${dopo15.filter((o) => /carico-di-ripiego/.test(o)).length}, cecita ${[...new Set(dopo15.filter((o) => /stantio|cecita/.test(o)))].join('/') || 0}`,
+      annota('passo 15', `manca uno dei tre: post-only ${rifiutiPostOnly}, carico-di-ripiego ${dopo15.filter((o) => /carico-di-ripiego/.test(o)).length}, cecita ${[...new Set(dopo15.filter((o) => /stantio|cecita/.test(o)))].join('/') || 0}`,
         'lib/maker/mid-stantio.js · lib/maker/carico-di-ripiego (auto-close) · il rifiuto post-only e\' del venue');
     }
   }
@@ -746,7 +798,7 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
       esitiMercatoChiuso: [...new Set(dopo16.filter((o) => /chius|closed|market/.test(o)))].slice(0, 6),
     });
     if (!(eraDentro && !restaDentro)) {
-      blocca('passo 16', `il mercato a 2 h dalla scadenza non e' uscito dal perimetro (${(sc && sc.motivo) || 'senza motivo'})`,
+      annota('passo 16', `il mercato a 2 h dalla scadenza non e' uscito dal perimetro (${(sc && sc.motivo) || 'senza motivo'})`,
         'lib/maker/scadenza-fuori-perimetro.js + agents/agent41-realloc-scheduler.js (scadenzeFuoriPerimetro)');
     }
   }
@@ -771,7 +823,12 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
     const ordiniPrimaDelKill = VENUE.ordiniVivi().length;
     const A43 = require(path.join(ROOT, 'agents/agent43-guardian'));
     const LIM = require(path.join(ROOT, 'lib/safety/risk-limits'));
-    const tetto = LIM.resolveLimits({ userId: 'operator' });
+    // ⚠ LA FORMA E' `{ok, limits:{...}}` — e questo banco l'ha sbagliata come l'aveva sbagliata il
+    // guardiano: `tetto.maxDailyLossUsd` era `undefined`, la perdita iniettata diventava `NaN`, e il passo
+    // 17 falliva per colpa dello SCENARIO mentre accusava il codice. Due volte la stessa forma sbagliata
+    // nello stesso pomeriggio: e' il caso da citare la prossima volta che un test inietta una fixture.
+    const limRis = LIM.resolveLimits({ userId: 'operator' });
+    const tetto = (limRis && limRis.limits) ? limRis.limits : limRis;
     let esito17 = null;
     try {
       esito17 = await A43.poll({
@@ -793,7 +850,7 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
       botFermo: botDopo.enabled === false, motivoFerma: botDopo.reason || null,
     });
     if (!(esito17 && esito17.azione === 'scattato-perdita-giornaliera' && ordiniDopoIlKill === 0 && botDopo.enabled === false)) {
-      blocca('passo 17', `il kill non ha cancellato e fermato: azione='${esito17 && (esito17.azione || esito17.errore)}', ordini ${ordiniPrimaDelKill}→${ordiniDopoIlKill}, bot ${botDopo.enabled ? 'AVVIATO' : 'fermo'}`,
+      annota('passo 17', `il kill non ha cancellato e fermato: azione='${esito17 && (esito17.azione || esito17.errore)}', ordini ${ordiniPrimaDelKill}→${ordiniDopoIlKill}, bot ${botDopo.enabled ? 'AVVIATO' : 'fermo'}`,
         'agents/agent43-guardian.js (poll → spazzaEFerma) + lib/maker/kill-perdita-giornaliera.js');
     }
   }
@@ -812,7 +869,7 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
 
   const referto = { generatoIl: new Date(BASE.DateNowVero()).toISOString(), durataMs: BASE.DateNowVero() - t0,
     identita: IDENTITA, cablaggio: 'produzione (A41.giro, A40.cycle, A40.closeTask)',
-    passi, bloccato,
+    passi, bloccato, annotati,
     righeGiornale: giornale.length, eventiVenue: VENUE.eventi.length,
     regoleInventariate: inv.statiche.size, regoleScattate: scattate.length, regoleMaiScattate: mai.length,
     formeDinamiche: inv.dinamiche.length, dinamicheConcretizzate: dinamicheScattate.length,
@@ -832,5 +889,10 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
   console.log(`  MAI SCATTATE              : ${mai.length}`);
   console.log(`  forme dinamiche concrete  : ${dinamicheScattate.length}`);
   console.log(`\nreferto → ${path.relative(ROOT, BASE.OUT)}`);
-  if (bloccato) { console.log(`\n🔴 GIRO INCOMPLETO: fermo a «${bloccato.dove}».`); process.exitCode = 1; }
+  if (annotati.length) {
+    console.log(`\n🟠 ${annotati.length} PASSO/I NON ARRIVANO IN FONDO (annotati, il giro e' proseguito):`);
+    for (const a of annotati) console.log(`   · ${a.dove}: ${a.perche}\n     ${a.riferimento || ''}`);
+  }
+  if (bloccato) console.log(`\n🔴 GIRO INTERROTTO: fermo a «${bloccato.dove}».`);
+  if (bloccato || annotati.length) process.exitCode = 1;
 })();

@@ -190,6 +190,7 @@ class VenueSimulato {
     this.ordini = new Map();
     this.posizioni = new Map();   // tokenId → {size, costoTotale, nascondiPerCicli}
     this.saldo = 500;
+    this.ultimaPubblicazione = OROLOGIO.ora;
     this.seq = 0;
     this.eventi = [];
     this.scenari = {
@@ -197,6 +198,12 @@ class VenueSimulato {
       avgPriceNascostoPerCicli: 0,
       mergeFallisce: false,
       feedTace: false,
+      // ⚠ LA CORSA FRA LA LETTURA DEL BOOK E LA POST, ed e' un fatto del venue, non uno scenario di
+      // comodo: il bot decide su una fotografia e l'ordine arriva un istante dopo. Con questo acceso il
+      // book si muove di UN TICK dentro `postOrder`, prima della valutazione — che e' l'unico modo in cui
+      // un `post-only` ben calcolato puo' finire per incrociare. Senza, `rifiuto-post-only` e'
+      // irraggiungibile per costruzione: tutti i gate del bot esistono per non farlo capitare.
+      muoviIlBookDurantePostOrder: false,
       saldoIlleggibile: false,
     };
   }
@@ -300,7 +307,11 @@ class VenueSimulato {
         levels: { bids: b.bids, asks: b.asks } });
       books.markets[m.conditionId] = { marketId: m.conditionId, conditionId: m.conditionId,
         tokenId: m.tokenId, tokenIdNo: m.tokenIdNo, mid: m.book.yes.scoringMid, updatedMs: OROLOGIO.ora,
-        ageMs: 0, live: true,
+        // ⚠ `ageMs` E' VERO, non zero: e' `ora − ultima pubblicazione`. Con `feedTace` acceso la
+        // fotografia non si aggiorna e questo numero CRESCE — che e' il solo modo in cui il mid puo'
+        // diventare stantio. Cablarlo a 0 rendeva `mid-stantio` irraggiungibile: il banco dichiarava
+        // muto il feed e il codice vedeva un mid appena nato.
+        ageMs: Math.max(0, OROLOGIO.ora - this.ultimaPubblicazione), live: true,
         maxSpread: m.bandaCents, tickSize: m.tick, minSize: m.minSize, negRisk: m.negRisk,
         bestBid: m.book.yes.bestBid, bestAsk: m.book.yes.bestAsk,
         yes: lato(m.book.yes), no: lato(m.book.no) };
@@ -322,6 +333,7 @@ class VenueSimulato {
         sides: { yes: { existing_depth_usd: 400 * m.book.yes.bestBid }, no: { existing_depth_usd: 400 * m.book.no.bestBid } },
         levels: { 500: { grossRewardDay: 10, netRewardDay: 8, share: 0.2 } } });
     }
+    this.ultimaPubblicazione = OROLOGIO.ora;
     fs.writeFileSync(process.env.MAKER_FEED_BOOKS_FILE, JSON.stringify(books));
     fs.writeFileSync(process.env.MAKER_FEED_BOARD_FILE, JSON.stringify(norm));
     // ⚠ E IL TERZO FILE: `data/liquidity-rewards.json`, che NON e' dirottabile da env ed e' quello che
@@ -336,6 +348,13 @@ class VenueSimulato {
   // ── IL PIAZZAMENTO ────────────────────────────────────────────────────────────────────────────
   postOrder(spec) {
     const m = [...this.mercati.values()].find((x) => x.tokenId === spec.tokenId || x.tokenIdNo === spec.tokenId);
+    // La corsa: il book si muove mentre l'ordine e' in volo.
+    if (m && this.scenari.muoviIlBookDurantePostOrder) {
+      // QUATTRO tick: con due, il prezzo che il motore ha ADATTATO restava sotto il nuovo ask e
+      // l'ordine passava. La corsa deve essere piu' larga dell'aggiustamento, o non e' una corsa.
+      this.aggiornaBook(m, Math.max(0.02, Math.min(0.98, m.mid - m.tick * 4)));
+      this.log('book-mosso-durante-post', { conditionId: m.conditionId, mid: m.mid });
+    }
     if (!m) return { ok: false, gate: 'venue', reason: 'token sconosciuto al venue simulato' };
     if (m.chiuso) return { ok: false, gate: 'venue', reason: 'market closed' };
     const lato = this.latoDi(m, spec.tokenId);

@@ -1088,7 +1088,12 @@ const PIANO_FRESCO_MAX_MS = Number(process.env.REALLOC_PIANO_FRESCO_MAX_MS || 60
 //
 // Sola lettura, e non solleva mai: un board illeggibile vale «nessuna riga», che a valle diventa
 // «nessuna copia di sicurezza» — annotato, mai indovinato.
-const BOARD_NORMALIZZATO = '/tmp/liquidity-rewards.json';
+// ⚠ IL QUINTO LETTORE DEL BOARD NORMALIZZATO, e il 17 agosto era l'unico rimasto col letterale: gli altri
+// quattro passano da `lib/maker/percorsi-feed` da stamattina. Conseguenza misurata dal banco al passo 16:
+// `scadenzaDalBoard` leggeva il file VERO di /tmp mentre tutto il resto leggeva la fotografia del banco,
+// quindi la scadenza del mercato «non era determinabile» e il rilascio dal perimetro non scattava mai.
+// Un percorso cablato in un punto solo su cinque e' una divergenza che aspetta di succedere.
+const BOARD_NORMALIZZATO = require('../lib/maker/percorsi-feed').fileBoardNormalizzato();
 
 function rigaBoardNormalizzata(marketId, file = BOARD_NORMALIZZATO) {
   const id = typeof marketId === 'string' ? marketId.trim().toLowerCase() : '';
@@ -1379,8 +1384,26 @@ async function ripristinaGamba({ id, v, riga, ora, deps }) {
     LOCK.rilascia(id);
   }
   const messe = Number(ref && ref.placed) || 0;
+  // ⚠ IL RIFIUTO PORTA LA SUA CAUSA, dal 17 agosto 2026. Prima il record diceva «nessuna gamba piazzata
+  // (rifiutata)» e nient'altro: il PERCHE' si leggeva solo incrociando il giornale maker, riga per riga,
+  // sull'istante giusto. Un presidio che dichiara il fallimento senza dichiararne la causa e' verificabile
+  // a meta' — ed e' proprio il caso in cui serve, perche' la causa decide la cura: un tetto che morde si
+  // corregge in un modo, un mercato non quotabile in un altro, una lettura mancante in un terzo.
+  // I gate arrivano da `runBulkAllocation`, che li elenca per riga rifiutata: si prendono quelli DISTINTI.
+  // ⚠ `ref.refused` E' UN CONTEGGIO, non una lista (`bulk-allocate.js:85`): la lista e' `ref.results`
+  // filtrata per `status`. La prima stesura leggeva `ref.refused` come array e otteneva sempre zero gate —
+  // cioe' aggiungeva un campo vuoto e sembrava averlo risolto. E' §5.3, «Number(null) === 0» nella sua
+  // versione con gli array.
+  const rifiuti = Array.isArray(ref && ref.results)
+    ? ref.results.filter((r) => r && (r.status === 'refused' || r.status === 'orphan' || r.status === 'rolled-back'))
+    : [];
+  const gate = [...new Set(rifiuti.map((x) => String((x && (x.gate || x.outcome)) || '')).filter(Boolean))];
+  const motiviRifiuto = [...new Set(rifiuti.map((x) => String((x && x.reason) || '')).filter(Boolean))].slice(0, 3);
   return { tentato: true, riuscito: messe > 0, messe, righe: sel.righe.length,
-    motivo: messe > 0 ? `${messe} gamba/e rimessa/e a libro` : `nessuna gamba piazzata (${(ref && ref.reason) || 'rifiutata'})`,
+    gate, motiviRifiuto,
+    motivo: messe > 0 ? `${messe} gamba/e rimessa/e a libro`
+      : `nessuna gamba piazzata — ${gate.length ? `gate: ${gate.join(', ')}` : ((ref && ref.reason) || 'rifiutata senza gate dichiarato')}`
+        + `${motiviRifiuto.length ? ` · ${motiviRifiuto[0].slice(0, 160)}` : ''}`,
     referto: ref };
 }
 
@@ -1467,7 +1490,7 @@ async function riconciliaCopertura(deps = {}) {
       });
       esito.ripristini.push({ id, ...r, referto: undefined });
       scrivi({ tipo: 'ripristino-gamba', esito: r.tentato ? (r.riuscito ? 'rimessa' : 'rifiutata') : 'non-tentato',
-        marketId: id, mancanti: v.mancanti, messe: r.messe || 0, motivo: r.motivo,
+        marketId: id, mancanti: v.mancanti, messe: r.messe || 0, gate: r.gate || null, motiviRifiuto: r.motiviRifiuto || null, motivo: r.motivo,
         fallimentiConsecutivi: (_ripristino.get(id) || {}).fallimenti || 0 });
       annuncia('log', `ripristino ${id.slice(0, 12)}…: ${r.motivo}`);
     }
@@ -1581,8 +1604,15 @@ async function scadenzeFuoriPerimetro(deps = {}) {
 
   // Le posizioni e gli ordini: `null` quando NON si leggono, mai una lista vuota (il modulo puro si
   // astiene, e la differenza fra le due cose e' tutta la sicurezza di questa funzione).
+  // ⚠ IL CAMPO E' `conditionIds`, NON `ids` — e la prima stesura scriveva `p.ids`, cioe' `undefined`,
+  // cioe' «posizioni non leggibili», cioe' NESSUN RILASCIO MAI. La funzione si asteneva sempre e lo
+  // dichiarava con un motivo credibile («una lettura mancante non e' un mercato vuoto»), quindi sembrava
+  // prudenza e invece era il presidio spento. SESTA occorrenza della classe «nome sbagliato ⇒ valore di
+  // difetto che nessuno ha chiesto» (§5.3), e l'ha presa il banco al passo 16 — non il test, che iniettava
+  // `conPosizione` e quindi non passava da questa riga.
   const pos = deps.conPosizione !== undefined ? deps.conPosizione : (() => {
-    const p = posizioniPerSelezione(); return p && p.leggibile ? p.ids : null;
+    const p = posizioniPerSelezione(deps.leggiPosizioni || undefined);
+    return p && p.leggibile ? p.conditionIds : null;
   })();
   const ord = deps.conOrdiniVivi !== undefined ? deps.conOrdiniVivi : await (async () => {
     const o = await mercatiConOrdiniVivi(deps); return o && o.leggibile ? o.ids : null;

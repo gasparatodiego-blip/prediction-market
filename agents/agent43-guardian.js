@@ -272,10 +272,17 @@ async function poll(deps = {}) {
   // resta scritta una volta sola piu' sotto.
   const perdita = (() => {
     try {
+      // ⚠ LA FORMA DI `resolveLimits` E' `{ok, limits:{...}}`, NON I LIMITI IN PIANO — e la prima
+      // stesura leggeva `lim.maxDailyLossUsd`, cioe' `undefined`, cioe' «soglia non leggibile», cioe'
+      // NON SI SCATTA MAI. Il kill che doveva cancellare era INERTE, e il suo test passava perche'
+      // iniettava una forma inventata da me (`{readable:true, maxDailyLossUsd:100}`): provava la
+      // DECISIONE e non il CABLAGGIO. E' la classe di §5.3 nella sua forma piu' costosa, e l'ha presa il
+      // banco al passo 17 — non la rilettura.
       const lim = (deps.resolveLimits || resolveLimits)({ userId: UTENTE_OPERATORE });
+      const limiti = (lim && lim.limits && typeof lim.limits === 'object') ? lim.limits : lim;
       const uso = (deps.readUsage || readUsage)({ userId: UTENTE_OPERATORE, now });
       return valutaPerditaGiornaliera({ perditaRealizzataUsd: uso ? uso.realisedDailyPnlUsd : null,
-        sogliaUsd: lim && lim.readable !== false ? lim.maxDailyLossUsd : null });
+        sogliaUsd: (lim && lim.ok === false) ? null : (limiti ? limiti.maxDailyLossUsd : null) });
     } catch (e) {
       // ⚠ Un'eccezione qui NON deve poter cancellare niente e non deve fermare il giro del drawdown:
       // si dichiara e si prosegue col guardiano di sempre.

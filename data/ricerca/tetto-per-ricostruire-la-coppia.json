@@ -1,0 +1,84 @@
+{
+ "generatoIl": "2026-08-17T14:32:33.926Z",
+ "boardGeneratoIl": "2026-08-17T14:32:26.892Z",
+ "tettoAttualeUsd": 61.25,
+ "casoMisuratoDalBanco": {
+  "sizeSuperstite": 87.5,
+  "pSuperstite": 0.32,
+  "pMancante": 0.63,
+  "aRiposoUsd": 28,
+  "gambaMancanteUsd": 39.17,
+  "totaleTentatoUsd": 67.17,
+  "sforoUsd": 5.92,
+  "sforoPercentualeDelTetto": 9.7,
+  "tettoPerRicostruireQuestaCoppiaUsd": 83.13,
+  "rapportoSulTettoAttuale": 1.36
+ },
+ "limiteSuperioreSulBoard": {
+  "mercatiAmmissibili": 36,
+  "peggiore": {
+   "conditionId": "0x4d5a3e6b6b517cc88182a42d4a5887790f3c0bdb050c3ada0f03d47616f64bd9",
+   "question": "Will Ken Welch win the St. Petersburg mayoral electi",
+   "minSize": 50,
+   "mid": 0.0955,
+   "pMin": 0.0955,
+   "sizeMassimaGambaSuperstite": 641.4,
+   "tettoNecessarioUsd": 641.36,
+   "rapportoSulTettoAttuale": 10.47
+  },
+  "mediana": 245,
+  "primi5": [
+   {
+    "conditionId": "0x4d5a3e6b6b517cc88182a42d4a5887790f3c0bdb050c3ada0f03d47616f64bd9",
+    "question": "Will Ken Welch win the St. Petersburg mayoral electi",
+    "minSize": 50,
+    "mid": 0.0955,
+    "pMin": 0.0955,
+    "sizeMassimaGambaSuperstite": 641.4,
+    "tettoNecessarioUsd": 641.36,
+    "rapportoSulTettoAttuale": 10.47
+   },
+   {
+    "conditionId": "0xf88334704e9781b78f3e4da3724d5db06083ad76ab32f66f16d92310e8f3c62a",
+    "question": "Will Jared Moskowitz be the FL-25 Democratic nominee",
+    "minSize": 50,
+    "mid": 0.9,
+    "pMin": 0.1,
+    "sizeMassimaGambaSuperstite": 612.5,
+    "tettoNecessarioUsd": 612.5,
+    "rapportoSulTettoAttuale": 10
+   },
+   {
+    "conditionId": "0x283d526b2eec1663627b607aea649c1eea2440cc532c683fc119857764665cf2",
+    "question": "Will Oliver Larkin be the FL-25 Democratic nominee?",
+    "minSize": 50,
+    "mid": 0.1,
+    "pMin": 0.1,
+    "sizeMassimaGambaSuperstite": 612.5,
+    "tettoNecessarioUsd": 612.5,
+    "rapportoSulTettoAttuale": 10
+   },
+   {
+    "conditionId": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+    "question": "Will 1 Fed rate cut happen in 2026?",
+    "minSize": 50,
+    "mid": 0.105,
+    "pMin": 0.105,
+    "sizeMassimaGambaSuperstite": 583.3,
+    "tettoNecessarioUsd": 583.33,
+    "rapportoSulTettoAttuale": 9.52
+   },
+   {
+    "conditionId": "0x732bdf1687a85c282d58cf89b38cd5d9d7e9e0e93fd0e9e7d102219d657efc30",
+    "question": "Will Dan Franzese be the FL-25 Republican nominee?",
+    "minSize": 50,
+    "mid": 0.105,
+    "pMin": 0.105,
+    "sizeMassimaGambaSuperstite": 583.3,
+    "tettoNecessarioUsd": 583.33,
+    "rapportoSulTettoAttuale": 9.52
+   }
+  ]
+ },
+ "conclusione": "nessuno di questi valori e' una proposta: alzare il tetto autorizzerebbe la size che l'asimmetria ha prodotto invece di correggerla. La cura sta a monte — ricostruire la COPPIA e non la gamba, o non cambiare la size nel riprezzo."
+}

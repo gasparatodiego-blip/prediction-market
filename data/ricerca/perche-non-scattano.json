@@ -1,13 +1,13 @@
 {
- "generatoIl": "2026-08-17T14:20:11.174Z",
+ "generatoIl": "2026-08-17T14:43:24.711Z",
  "inventarioStatico": 91,
- "scattate": 19,
- "dinamicheConcretizzate": 13,
- "rosseEsaminate": 72,
- "A_ilGiroNonCiEArrivato": 68,
+ "scattate": 22,
+ "dinamicheConcretizzate": 17,
+ "rosseEsaminate": 69,
+ "A_ilGiroNonCiEArrivato": 65,
  "B_nonPuoScattare": 4,
  "dettaglio": {
-  "A1_passi_8_17": 42,
+  "A1_passi_8_17": 39,
   "A2_eventiCheIlVenueSimulatoNonFa": 26,
   "B1_nessunChiamante": 0,
   "B2_rilevatoriDiDifettiNostri": 2,
@@ -21,14 +21,6 @@
    "funzione": "runAutoRepriceCycle",
    "chiamate": 1,
    "passo": 17
-  },
-  {
-   "regola": "carico-di-ripiego",
-   "file": "lib/maker/auto-close.js",
-   "riga": 2112,
-   "funzione": "runAutoCloseCycle",
-   "chiamate": 1,
-   "passo": 15
   },
   {
    "regola": "chiusura-forzata-pre-scadenza",
@@ -49,9 +41,9 @@
   {
    "regola": "coppia-oltre-il-tetto",
    "file": "lib/maker/manual-order.js",
-   "riga": 1117,
-   "funzione": "placeManualOrder",
-   "chiamate": 4,
+   "riga": 1212,
+   "funzione": null,
+   "chiamate": null,
    "passo": 17
   },
   {
@@ -105,17 +97,17 @@
   {
    "regola": "esenzione-tetto-chiusura",
    "file": "lib/maker/manual-order.js",
-   "riga": 1296,
-   "funzione": "placeManualOrder",
-   "chiamate": 4,
+   "riga": 1391,
+   "funzione": null,
+   "chiamate": null,
    "passo": 16
   },
   {
    "regola": "esenzione-tetto-chiusura-non-provata",
    "file": "lib/maker/manual-order.js",
-   "riga": 1296,
-   "funzione": "placeManualOrder",
-   "chiamate": 4,
+   "riga": 1391,
+   "funzione": null,
+   "chiamate": null,
    "passo": 16
   },
   {
@@ -223,28 +215,12 @@
    "passo": 16
   },
   {
-   "regola": "posizione-mai-valutata",
-   "file": "agents/agent40-manual-reprice.js",
-   "riga": 1161,
-   "funzione": "sorveglianzaTask",
-   "chiamate": 1,
-   "passo": 14
-  },
-  {
    "regola": "posizione-non-valutata",
    "file": "agents/agent40-manual-reprice.js",
    "riga": 1161,
    "funzione": "sorveglianzaTask",
    "chiamate": 1,
    "passo": 14
-  },
-  {
-   "regola": "posizione-uscita-senza-nostro-ordine",
-   "file": "agents/agent40-manual-reprice.js",
-   "riga": 1120,
-   "funzione": "sparizioneTask",
-   "chiamate": 1,
-   "passo": 10
   },
   {
    "regola": "registri-mercato-chiuso-errore",
@@ -265,9 +241,9 @@
   {
    "regola": "reject-cap-preflight",
    "file": "lib/maker/manual-order.js",
-   "riga": 1859,
-   "funzione": "replaceManualOrder",
-   "chiamate": 1,
+   "riga": 1889,
+   "funzione": null,
+   "chiamate": null,
    "passo": 17
   },
   {
@@ -387,7 +363,7 @@
   {
    "regola": "collasso-oltre-soglia",
    "file": "agents/agent41-realloc-scheduler.js",
-   "riga": 2690,
+   "riga": 2720,
    "funzione": "sorvegliaVuoto",
    "chiamate": 1,
    "passo": null
@@ -419,9 +395,9 @@
   {
    "regola": "gemella-cancellata-prima-del-nuovo",
    "file": "lib/maker/manual-order.js",
-   "riga": 1377,
-   "funzione": "placeManualOrder",
-   "chiamate": 4,
+   "riga": 1417,
+   "funzione": null,
+   "chiamate": null,
    "passo": null
   },
   {
@@ -459,7 +435,7 @@
   {
    "regola": "nessuna-azione-regola-di-rischio",
    "file": "agents/agent41-realloc-scheduler.js",
-   "riga": 2418,
+   "riga": 2448,
    "funzione": "miniCiclo",
    "chiamate": 1,
    "passo": null
@@ -467,9 +443,9 @@
   {
    "regola": "noop",
    "file": "lib/maker/manual-order.js",
-   "riga": 1660,
-   "funzione": "cancelManualOrder",
-   "chiamate": 8,
+   "riga": 1690,
+   "funzione": null,
+   "chiamate": null,
    "passo": null
   },
   {
@@ -515,17 +491,17 @@
   {
    "regola": "reject-idempotency-preflight",
    "file": "lib/maker/manual-order.js",
-   "riga": 1873,
-   "funzione": "replaceManualOrder",
-   "chiamate": 1,
+   "riga": 1903,
+   "funzione": null,
+   "chiamate": null,
    "passo": null
   },
   {
    "regola": "reject-venue-rules-preflight",
    "file": "lib/maker/manual-order.js",
-   "riga": 1835,
-   "funzione": "replaceManualOrder",
-   "chiamate": 1,
+   "riga": 1865,
+   "funzione": null,
+   "chiamate": null,
    "passo": null
   },
   {
@@ -547,7 +523,7 @@
   {
    "regola": "via-alternativa",
    "file": "agents/agent41-realloc-scheduler.js",
-   "riga": 2418,
+   "riga": 2448,
    "funzione": "miniCiclo",
    "chiamate": 1,
    "passo": null
@@ -555,7 +531,7 @@
   {
    "regola": "vuoto-oltre-soglia",
    "file": "agents/agent41-realloc-scheduler.js",
-   "riga": 2725,
+   "riga": 2755,
    "funzione": "sorvegliaVuoto",
    "chiamate": 1,
    "passo": null
