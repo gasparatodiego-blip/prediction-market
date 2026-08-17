@@ -538,6 +538,54 @@ const registroChiusura = () => { const m = new Map();
     passo('rinnovi: ciclo dopo la morte per GTD senza successore', { vivi: VENUE.ordiniVivi(M8).length });
   }
 
+  // ── FASE 11 · LE CONDIZIONI STRETTE DEL RIPREZZO ────────────────────────────────────────────────
+  // Le tre del gruppo 1 che dipendono da un BOOK particolare, non da uno stato nostro.
+  {
+    const scenarioRiprezzo = async (nome, cid, prepara, cancella) => {
+      const m = VENUE.creaMercato({ conditionId: cid, mid: 0.40, tick: 0.01, minSize: 50, bandaCents: 4.5 });
+      MERCATI_SIMULATI.add(cid.toLowerCase());
+      await MO.placeManualOrder({ marketId: cid, book: 'yes', side: 'BUY', price: 0.38, size: 60,
+        userId: 'operator', inCoda: true }, depsRegole());
+      const visti = new Map();
+      const giro = async () => AR.runAutoRepriceCycle({
+        now: () => VENUE.ora, configDeps: {}, ordiniVisti: visti,
+        killStatus: () => ({ effectivelyKilled: false, readable: true }),
+        listOrders: async () => ({ ok: true, orders: VENUE.ordiniVivi(cid) }),
+        resolveRules: () => regolePer(cid),
+        readVenue: async () => ({ readable: true, closed: false, acceptingOrders: true }),
+        readDepth: () => ({ readable: true, ageMs: 0, live: true,
+          yes: { bids: m.book.yes.bids, asks: m.book.yes.asks }, no: { bids: m.book.no.bids, asks: m.book.no.asks } }),
+        replaceOrder: async (spec) => MO.replaceManualOrder(spec, depsRegole()),
+        cancelOrder: cancella || (async (spec) => MO.cancelManualOrder(spec, 'banco')),
+        audit: (x) => GIORNALE.push(x),
+      }).catch(() => ({}));
+      await giro();
+      VENUE.avanza(120_000);
+      prepara(m);
+      await giro();
+      passo(`riprezzo: ${nome}`, { vivi: VENUE.ordiniVivi(cid).length });
+    };
+
+    // ① SOLI SUL LIBRO: senza concorrenti «mai primo sul libro» non ha un secondo livello dietro cui
+    //    mettersi, e la decisione diventa una cancellazione (`top-of-book`).
+    await scenarioRiprezzo('soli sul libro (top-of-book)', '0x' + 'c9'.repeat(32), (m) => {
+      m.book.yes.bids = []; m.book.no.bids = [];
+      m.book.yes.bestBid = null; m.book.no.bestBid = null;
+    });
+
+    // ② MID AGLI ESTREMI: fuori da [0,10 · 0,90] un lato solo matura ZERO e si cancella subito
+    //    (§4.1 regola 4, `latoSingolo`). E' una condizione del MERCATO, non nostra.
+    await scenarioRiprezzo('mid agli estremi (lato singolo a zero)', '0x' + 'da'.repeat(32), (m) => {
+      VENUE.aggiornaBook(m, 0.95);
+    });
+
+    // ③ UNA CANCELLAZIONE CHE FALLISCE: il venue rifiuta di togliere l'ordine. E' la condizione per cui
+    //    esistono i cinque precontrolli del riprezzo — si scopre solo provandola.
+    await scenarioRiprezzo('cancellazione rifiutata dal venue', '0x' + 'eb'.repeat(32), (m) => {
+      m.book.yes.bids = []; m.book.no.bids = [];
+    }, async () => ({ ok: false, reason: 'venue simulato: cancellazione rifiutata' }));
+  }
+
   // ════════════════════════════════════════════════════════════════════════════════════════════════
   // IL VERDETTO
   // ════════════════════════════════════════════════════════════════════════════════════════════════

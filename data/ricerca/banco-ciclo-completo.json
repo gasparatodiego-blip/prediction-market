@@ -1,8 +1,8 @@
 {
- "generatoIl": "2026-08-17T10:12:54.859Z",
- "durataMs": 8314,
- "eventiVenue": 69,
- "righeGiornale": 218,
+ "generatoIl": "2026-08-17T10:16:53.475Z",
+ "durataMs": 9465,
+ "eventiVenue": 72,
+ "righeGiornale": 232,
  "passi": [
   {
    "ora": "09:00:00",
@@ -156,11 +156,26 @@
    "ora": "22:12:40",
    "n": "rinnovi: ciclo dopo la morte per GTD senza successore",
    "vivi": 0
+  },
+  {
+   "ora": "22:14:40",
+   "n": "riprezzo: soli sul libro (top-of-book)",
+   "vivi": 1
+  },
+  {
+   "ora": "22:16:40",
+   "n": "riprezzo: mid agli estremi (lato singolo a zero)",
+   "vivi": 1
+  },
+  {
+   "ora": "22:18:40",
+   "n": "riprezzo: cancellazione rifiutata dal venue",
+   "vivi": 1
   }
  ],
  "regoleInventariate": 91,
- "regoleScattate": 19,
- "regoleMaiScattate": 72,
+ "regoleScattate": 20,
+ "regoleMaiScattate": 71,
  "formeDinamiche": 13,
  "dinamicheConcretizzate": 17,
  "scattate": [
@@ -170,6 +185,13 @@
     "lib/maker/auto-close.js"
    ],
    "volte": 2
+  },
+  {
+   "regola": "cancelled-lato-singolo-zero",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 1
   },
   {
    "regola": "carico-di-ripiego",
@@ -290,7 +312,7 @@
     "lib/maker/auto-reprice.js",
     "lib/maker/manual-order.js"
    ],
-   "volte": 40
+   "volte": 43
   },
   {
    "regola": "trigger",
@@ -327,13 +349,6 @@
    "regola": "applicata",
    "file": [
     "agents/agent41-realloc-scheduler.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "cancelled-lato-singolo-zero",
-   "file": [
-    "lib/maker/auto-reprice.js"
    ],
    "volte": 0
   },
@@ -834,7 +849,7 @@
  "eventiVenueRiassunti": [
   {
    "tipo": "ordine-nato",
-   "n": 25
+   "n": 28
   },
   {
    "tipo": "mid-mosso",

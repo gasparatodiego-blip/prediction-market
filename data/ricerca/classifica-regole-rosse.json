@@ -1,7 +1,7 @@
 {
- "generatoIl": "2026-08-17T10:13:04.904Z",
- "totaleRosse": 72,
- "gruppo1_sospette": 12,
+ "generatoIl": "2026-08-17T10:17:06.317Z",
+ "totaleRosse": 71,
+ "gruppo1_sospette": 11,
  "gruppo2_mancaScenario": 60,
  "nonTrovate": 0,
  "perFamiglia": [
@@ -31,11 +31,6 @@
   }
  ],
  "sospette": [
-  {
-   "regola": "cancelled-lato-singolo-zero",
-   "file": "lib/maker/auto-reprice.js",
-   "riga": 2213
-  },
   {
    "regola": "cancelled-top-of-book",
    "file": "lib/maker/auto-reprice.js",
