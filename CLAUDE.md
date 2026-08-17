@@ -3,7 +3,7 @@
 Questo file viene letto automaticamente all'avvio di ogni sessione Claude Code aperta da
 `/root/rewards-bot`. **Il contesto vive qui, non nel prompt.**
 
-Ultima verifica contro codice/stato reali: **17 agosto 2026, sera tardi** (§4.1, §4.6, §4.8, §4.13, §5.1, §5.2, §5-bis p.173-184) — ambiente dei tre processi letto da `/proc/<pid>/environ` DOPO il riavvio dal file. Il quadro del giro completo è in `APERTI.md`.
+Ultima verifica contro codice/stato reali: **17 agosto 2026, sera tardi** (§4.1, §4.6, §4.8, §4.13, §5.1, §5.2, §5-bis p.173-186) — ambiente dei tre processi letto da `/proc/<pid>/environ` DOPO il riavvio dal file. Il quadro del giro completo è in `APERTI.md`.
 
 > ⚠️ **QUESTO FILE È STATO COMPATTATO IL 13 AGOSTO 2026** (494k → ~110k) su istruzione dell'operatore.
 > Non è stata tolta nessuna regola, nessuna costante, nessuna trappola operativa e nessuna questione
@@ -21,10 +21,10 @@ Ultima verifica contro codice/stato reali: **17 agosto 2026, sera tardi** (§4.1
 > `planFromCollection` è una funzione). pm2 **7.0.3** installato; PostgreSQL **16** con database e
 > utente `rewardsbot`, **14 tabelle** applicate da `prisma migrate deploy`; `.env` creato (gitignored,
 > `chmod 600`) con i segreti generati a caso e **cinque TODO vuoti** che li deve fornire l'operatore.
-> **STATO AL 17 AGOSTO 2026 ore 11:0xZ, LETTO DAI PROCESSI VIVI** (`/proc/216725`, `/proc/216726`) e
-> non dai file: **`MAKER_MODE=off`** · `MAKER_ADAPTER_DRYRUN=true` · **`MAKER_PLACEMENT` vuota** ·
-> `MANUAL_ORDER_PLACEMENT=dry-run` · freno di agent41 **inserito** ⇒ **cinque cinture indipendenti,
-> nessun ordine può partire** · KILL spento · **FERMA** (16/08 18:47:16Z, `by: cli/ferma`) ·
+> **STATO AL 17 AGOSTO 2026 sera tardi, LETTO DAI PROCESSI VIVI** (`/proc/270521`, `/proc/270527`, riavviati
+> dal file) e non dai file: **`MAKER_MODE=off`** · `MAKER_ADAPTER_DRYRUN=true` · **`MAKER_PLACEMENT` vuota** ·
+> `MANUAL_ORDER_PLACEMENT=dry-run` · freno di agent41 **inserito** ⇒ **5/5 cinture inserite su entrambi**
+> (⚠ ma solo DUE mordono davvero: vedi §4.14) · KILL spento · **FERMA** (16/08 18:47:16Z, `by: cli/ferma`) ·
 > interruttore riprezzo acceso ma **allowlist VUOTA** · selezione automatica **SPENTA** (17/08 10:59Z) ·
 > **perimetro live-min = 1 mercato**, ed è la posizione residua di Hong Kong che entra dall'unione di
 > §4.8, non un opt-in (§5.2 p.40). Zero ordini a libro.
@@ -1042,52 +1042,42 @@ test lo asserisce); il cablaggio sta in `agent41` e passa dalle **stesse** funzi
 | **il piano si restringe** | `restringiAllaSelezione` in `calcolaPianoFuoriProcesso`, cioè il punto per cui **entrambi** i percorsi (6 h e mini-ciclo) sono coperti da una regola sola. **Interseca, non sostituisce**; intersezione vuota ⇒ vincolo **impossibile**, mai vincolo **assente** |
 
 > **🔄 LA ROTAZIONE ROVESCIA LA REGOLA DELLO SLOT — decisione dell'operatore, 16 agosto 2026.**
-> **Qui c'era scritto il contrario** («lo slot non si libera alla scadenza, ma alla chiusura»), e la
-> ragione di allora era buona: il tetto è sull'esposizione, e l'esposizione finisce con la posizione.
-> **L'operatore ha scelto l'altro lato dello scambio**: un mercato che riceve un fill — **totale o
-> parziale** — **esce dal conteggio dei 3 attivi** e **resta in gestione** fino a coppia chiusa o
-> mollata; contemporaneamente ne entra uno nuovo, al pavimento premiante, rispettando categorie e
-> scaglioni. Lo stato porta `inGestione` + `inGestioneDal`; gli ingressi in gestione e i rilasci sono
-> due liste dichiarate nel giornale (`entratiInGestione`, `liberati`).
-> **⚠ LA CONSEGUENZA VA DETTA PER INTERO: L'ESPOSIZIONE TOTALE NON È PIÙ LIMITATA A TRE MERCATI.**
-> Tre quotano mentre N completano. Ciò che la limita ora sono, in ordine: il **tetto per mercato**
-> ($61,25), il cap cumulativo di esposizione aperta (**$150** dal 16/08) e il **kill a $100** di perdita
-> giornaliera. Chi rialza uno di quei tre alza il rischio di questa regola, non di quella.
-> **⚠ IL CASO PEGGIORE ACCETTATO DALL'OPERATORE È ~$294** (16 agosto 2026, decisione in chat): 3 attivi
-> a $147 di ordini a riposo più una rotazione piena. **Non era il caso peggiore vero**: `inGestione` non
-> ha tetto, e l'unica cintura che morde è `maxOpenNotionalUsd`, che conta i **fill riconciliati** e
-> **ignora i $147 a riposo** ⇒ il soffitto era `$600 + $147 ≈ $747`. Per questo il cap è stato portato a
-> **$150**: `$147 a riposo + $150 riconciliati ≈ $297`, cioè la cifra chiesta.
+> Un mercato che riceve un fill — **totale o parziale** — **esce dal conteggio dei 3 attivi** e **resta in
+> gestione** fino a coppia chiusa o mollata; contemporaneamente ne entra uno nuovo, al pavimento premiante,
+> rispettando composizione e scaglioni. Lo stato porta `inGestione` + `inGestioneDal`; ingressi e rilasci
+> sono due liste nel giornale (`entratiInGestione`, `liberati`). *(Qui c'era scritto il contrario, e la
+> ragione di allora era buona: il tetto è sull'esposizione, e l'esposizione finisce con la posizione.)*
+> **⚠ LA CONSEGUENZA VA DETTA PER INTERO: L'ESPOSIZIONE TOTALE NON È PIÙ LIMITATA A TRE MERCATI.** Tre
+> quotano mentre N completano. Ciò che la limita ora è, in ordine: il **tetto per mercato** ($61,25), il cap
+> cumulativo di esposizione aperta (**$150**) e il **kill a $100** di perdita giornaliera. Chi rialza uno di
+> quei tre alza il rischio di questa regola, non di quella.
+> **⚠ IL CASO PEGGIORE ACCETTATO DALL'OPERATORE È ~$294** (16 agosto, in chat): 3 attivi a $147 di ordini a
+> riposo più una rotazione piena. **Non era il caso peggiore vero**: `inGestione` non ha tetto, e
+> `maxOpenNotionalUsd` conta i **fill riconciliati** e **ignora i $147 a riposo** ⇒ il soffitto era
+> `$600 + $147 ≈ $747`. Per questo il cap è sceso a **$150**: `$147 + $150 ≈ $297`, la cifra chiesta.
 > **⚠ MA IL TETTO SI APPLICA ANCHE AGLI ORDINI DI APERTURA, CHE POI NON CI ENTRANO**: il gate confronta
 > `openNotionalUsd + notional`, quindi la gamba più cara del piano ($54,38) smette di essere piazzabile
-> quando i fill riconciliati superano ~$95. **La rotazione si ferma da sola lì, non a $150** — è la
-> conseguenza voluta di un tetto stretto, e va saputa prima di leggerla come un guasto.
-> **⚠ E $150 STA SOTTO `3 × tetto per mercato` ($183,75)**: tre test lo dicono e sono **rossi apposta**,
-> vedi §5.2 p.37. Non sono stati ammorbiditi.
-> **⚠ UN MERCATO IN GESTIONE DEVE RESTARE ABILITATO AL RIPREZZO**: `restringiAllaSelezione` usa
-> `idsAttivi` (solo i non-in-gestione) per il **piano**, così il pianificatore non apre gambe nuove lì,
-> ma la lista del riprezzo tiene **tutti** gli id. Toglierlo farebbe morire la gamba sorella per GTD in
-> ≤ 23 minuti, cioè **prima** dei 30 che la scala d'uscita le concede.
-> **⚠ USCIRE DALLA LISTA SPEGNE L'INGRESSO, NON L'USCITA**: `rilasciaDallaSelezione` tocca
-> `setAutoReprice` e **niente altro** — non `setAutoClose`, non il tracking, nessuna cancellazione —
-> quindi la posizione resta gestita dalla regola di copertura di §4.8. Un rilascio che spegnesse anche
-> la via d'uscita ripeterebbe §5-bis p.44, e **due test lo verificano per assenza**.
-> **⚠ FAIL-CLOSED NEI DUE VERSI**: board illeggibile o posizioni non leggibili ⇒ **nessuna decisione**,
-> e soprattutto **nessuno esce** (un board che non si legge farebbe sembrare scaduto il mondo intero).
-> Ma una **singola** scadenza non determinabile **esclude quel mercato**, come in §4.4: lì l'ignoranza
-> riguarda l'insieme e la risposta è non agire, qui riguarda un mercato e è già una ragione per starne fuori.
-> **⚠ NON ACCENDE NIENTE**: servono ancora, indipendentemente, l'interruttore generale del riprezzo,
-> AVVIA, il KILL spento e `MAKER_MODE` a mano nel `.env`. Decide **su quali** mercati, mai **se**.
+> quando i fill riconciliati superano ~$95. **La rotazione si ferma da sola lì, non a $150.**
+> **⚠ E $150 STA SOTTO `3 × tetto per mercato` ($183,75)**: tre test lo dicono e sono **rossi apposta**
+> (§5.2 p.37). Non sono stati ammorbiditi.
+> **⚠ UN MERCATO IN GESTIONE DEVE RESTARE ABILITATO AL RIPREZZO**: `restringiAllaSelezione` usa `idsAttivi`
+> (solo i non-in-gestione) per il **piano**, ma la lista del riprezzo tiene **tutti** gli id. Toglierlo
+> farebbe morire la gamba sorella per GTD in ≤ 23 min, cioè **prima** dei 30 che la scala le concede.
+> **⚠ USCIRE DALLA LISTA SPEGNE L'INGRESSO, NON L'USCITA**: `rilasciaDallaSelezione` tocca `setAutoReprice`
+> e **niente altro** — la posizione resta gestita da §4.8. Due test lo verificano per assenza.
+> **⚠ FAIL-CLOSED NEI DUE VERSI**: board o posizioni illeggibili ⇒ nessuna decisione e **nessuno esce**; ma
+> una **singola** scadenza non determinabile **esclude quel mercato**, come in §4.4.
+> **⚠ NON ACCENDE NIENTE**: servono ancora, indipendentemente, l'interruttore del riprezzo, AVVIA, il KILL
+> spento e `MANUAL_ORDER_PLACEMENT` (§4.14). Decide **su quali** mercati, mai **se**.
 > **⚠ IL FILTRO METEO ADESSO TOGLIE RIGHE DAVVERO**: col vincolo a 168 h ne toglieva zero — le aveva già
-> tolte la scadenza — e con 24 h ne toglie **17** (board del 17/08, contate da
-> `scripts/ricerca/scelta-mercato-giro-controllato.js`, che applica le stesse soglie). È il caso per cui una regola
-> che vale «per conseguenza» va scritta esplicitamente: la conseguenza è cambiata, e la regola no.
-> **⚠ La selezione ordina e spodesta col NETTO del knapsack** (iniettato, non il lordo a $500), con
-> **isteresi `max($0,50/g, 25%)`**: non spodesta chi ha ordini vivi o una gamba in attesa.
-> **⚠ UNO SCAGLIONE VUOTO NON SI RIEMPIE COL VICINO**: se manca un candidato «basso» il posto resta
-> **non assegnato e dichiarato** (`postiNonAssegnati`, `scartatiPerComposizione`) invece di essere
-> preso da un «alto» — sostituire porterebbe il capitale da $147 a $183,75, cioè cambierebbe in
-> silenzio la cifra che l'operatore ha deciso.
+> tolte la scadenza — e con 24 h ne toglie **17**. È il caso per cui una regola che vale «per conseguenza»
+> va scritta esplicitamente: la conseguenza è cambiata, e la regola no.
+> **⚠ La selezione ordina e spodesta col NETTO del knapsack** (iniettato), con **isteresi
+> `max($0,50/g, 25%)`**: non spodesta chi ha ordini vivi o una gamba in attesa.
+> **⚠ UNO SCAGLIONE VUOTO NON SI RIEMPIE COL VICINO**: se manca un candidato «basso» il posto resta **non
+> assegnato e dichiarato** (`postiNonAssegnati`, `scartatiPerComposizione`) invece di essere preso da un
+> «alto» — sostituire porterebbe il capitale da $147 a $183,75, cioè cambierebbe in silenzio la cifra che
+> l'operatore ha deciso.
 
 > **🔁 LA COPERTURA CONTINUA RIMETTE LA GAMBA A LIBRO — §5-bis p.171, 17 agosto 2026.**
 > `copertura-gambe` decideva correttamente da giorni e `riconciliaCopertura` **dichiarava e basta**:
@@ -1171,6 +1161,34 @@ E `Number(riga.rewardsMinSize)` su un campo assente vale **0**, cioè `0 ≤ 20`
 si sa il pavimento premiante veniva dichiarato **il più finanziabile di tutti** — **ottava** occorrenza
 di §5.3, di nuovo trovata da una prova e non dal ragionamento.
 
+### 4.14 · Le cinque cinture: quante mordono DAVVERO (17 agosto 2026, sera tardi)
+
+> **🔴 SULLA STRADA DA CUI IL BOT PIAZZA NE MORDE UNA.** Verificato per grep e per esecuzione del gate,
+> non leggendo commenti — e sostituisce la frase «cinque cinture indipendenti» che era in cima a questo
+> file. **Non è un difetto scoperto: è una sovrastima della difesa, di un fattore due e mezzo.**
+> - **`createMakerAdapter` ha UN SOLO chiamante nel repo**: `manual-order.js:774`. Anche agent41 passa da
+>   lì — `runBulkAllocation` è «un ciclo su `placeManualOrder`, nient'altro» (`bulk-allocate.js:4`).
+> - quel chiamante **cabla `mode: 'live-min'` a mano** (`manual-order.js:775`) ⇒ **`MAKER_MODE` non gate
+>   la corsia manuale**: l'`off` che leggiamo su `/proc` non la ferma.
+> - **non passa `dryRun`** (`manual-order.js:1456-1462`) e l'adapter fa `dryRun = opts.dryRun === true`
+>   (`adapter.js:456`) ⇒ **`MAKER_ADAPTER_DRYRUN` non viene letta** su questo percorso.
+> - **`MAKER_PLACEMENT` non è usata** qui: il `placement` viene da `manualPlacement()`, cioè da
+>   `MANUAL_ORDER_PLACEMENT`. E `config.loadMakerConfig` — che leggerebbe le due e calcola `canWrite` —
+>   **non ha chiamanti** fuori dai commenti.
+>
+> **Prova eseguita**, con i valori esatti che `buildPlacementAdapter` produce:
+> `evaluatePlacementGate({mode:'live-min', dryRun:false, fundingApproved:true, sdk})` → **`allow: true`**.
+> L'unico `if` fra quel verdetto e la POST è `adapter.js:923`: `if (placement !== 'send')` ⇒
+> `dry-run-validated`.
+>
+> **⇒ Oggi il bot è fermo per DUE presidi**: `MANUAL_ORDER_PLACEMENT=dry-run` su agent40 e il **freno di
+> agent41** (assente ⇒ inserito, fail-closed). Le altre tre sono **inerti su ogni percorso di piazzamento
+> che esiste**. ⚠ **NON sono state toccate**: renderle efficaci vuol dire passarle a
+> `buildPlacementAdapter`, cioè modificare il percorso che piazza, e va fatto con la sua misura.
+> ⚠ E `stato.js` continua a dire **5/5 inserite**, che è vero: `puoPiazzare` significa «le cinque sono
+> aperte», non «l'ordine passerebbe» — la distinzione è scritta in `cinture-armamento.js`.
+> **La sequenza di armamento che ne consegue è in `APERTI.md`, con cosa si verifica dopo ogni passo.**
+
 ---
 
 ## 5 · QUESTIONI APERTE
@@ -1194,25 +1212,25 @@ resta una riga nel registro di §5-bis.
 > vivi-ma-non-definiti (`scripts/cli/_comune.flottaViva`). Nessuna riga di questo file va creduta su
 > uno stato che un comando può leggere.
 
-> **🔴 RIAVVIO PENDENTE — `agent40` e `agent41` portano il codice di prima delle modifiche della sera.**
-> I tre processi sono stati riavviati **dal file** il 17 agosto (pid **243867** / **243868** insieme,
-> `agent43` **243973** a parte) e portano tutto il lavoro del pomeriggio; **NON** portano il lavoro della
-> sera: la **coppia simmetrica** nel ripristino (agent41) e il **secondo livello del carico di ripiego**
-> (agent40). Il codice è in `main` e provato dal banco; per entrare in servizio serve
-> `pm2 restart agents/ecosystem.config.js --only agent40-manual-reprice,agent41-realloc-scheduler` —
-> **`--update-env` non basta** (§5.2 p.2) — e **si chiede in chat ogni volta** (§2 regola 2). **Si riavviano
-> INSIEME**: entrambi decidono un prezzo (§5.1, in fondo).
-> ⚠ Nel frattempo **niente è armato e niente è peggiorato**: senza riavvio vale il comportamento di prima,
-> cioè il ripristino asimmetrico che il tetto rifiuta — un rifiuto, non un ordine di troppo.
-> **⚠ VERIFICATO PRIMA E DOPO IL RIAVVIO DEL POMERIGGIO, e lo stato è IDENTICO**: `MAKER_MODE=off` ·
-> `MAKER_PLACEMENT` vuota · `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT=dry-run` (agent40) ·
-> `MAKER_LIVE_MIN_MARKET` vuota · `REALLOC_SCHEDULER_DRY_RUN` assente ⇒ freno di agent41 **inserito**.
-> **⚠ `ecosystem.config.js` DICHIARA DUE VARIABILI DELLA FAMIGLIA DELLE CINTURE**, e la frase «non ne
-> dichiara nessuna» era sbagliata: `MANUAL_ORDER_PLACEMENT: 'dry-run'` (inserita, di proposito) e
-> **`MAKER_FUNDING_APPROVED: 'true'`** su agent40/41, che è la posizione **aperta** di una variabile della
-> famiglia 1 — già `true` prima del riavvio, quindi il riavvio non ha armato niente.
+> **🟢 NESSUN RIAVVIO PENDENTE — 17 agosto 2026, sera tardi.** `agent40` (pid **270521**) e `agent41` (pid
+> **270527**) sono stati riavviati **dal file e insieme** su istruzione dell'operatore in chat, e portano
+> tutto: coppia simmetrica nel ripristino, secondo livello del carico di ripiego, perno che restringe, kill
+> a −$100 che cancella, intersezione della selezione a ogni mini-ciclo, rilascio per scadenza, residuo
+> cancellato sempre, sesto precontrollo del riprezzo. `agent43` resta al pid **243973** (riavviato nel
+> pomeriggio; il suo codice non è cambiato la sera).
+> **⚠ VERIFICATO PRIMA E DOPO, e lo stato è IDENTICO**: `MAKER_MODE=off` · `MAKER_PLACEMENT` vuota ·
+> `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT=dry-run` (agent40) · `MAKER_LIVE_MIN_MARKET` vuota ·
+> freno di agent41 **inserito** ⇒ **5/5 su entrambi**, identiche fra loro e coerenti col `.env`. Perimetro
+> **1** su entrambi, KILL spento, allowlist vuota, selezione spenta, **zero ordini a libro**.
+> **⚠ L'`ecosystem.config.js` NON dichiara nessuna cintura APERTA**: dichiara `MANUAL_ORDER_PLACEMENT:
+> 'dry-run'` (inserita, di proposito) su agent40 e `MAKER_FUNDING_APPROVED: 'true'` su entrambi — che non è
+> una delle cinque ma un'attestazione, cioè la posizione **aperta**, già `true` da prima. Le altre tre
+> arrivano dal `.env` (i caricatori scrivono solo le chiavi **assenti**) e il freno per **assenza**.
+> **⚠ Il comando, quando servirà**: `pm2 restart agents/ecosystem.config.js --only
+> agent40-manual-reprice,agent41-realloc-scheduler` — **`--update-env` non basta** (§5.2 p.2), si chiede in
+> chat ogni volta (§2 regola 2), e **si riavviano INSIEME**: entrambi decidono un prezzo.
 > **⚠ Le tre variabili del banco** (`MAKER_FEED_BOOKS_FILE`, `MAKER_FEED_BOARD_FILE`, `POLY_CLOB_BASE`)
-> **non sono dichiarate né nell'ecosystem né nel `.env`**: i processi vivi leggono `/tmp/clob-live-books.json`.
+> **non sono dichiarate** né nell'ecosystem né nel `.env`: i processi vivi leggono `/tmp/clob-live-books.json`.
 
 **⚠ Il resto di questa sezione riguarda `/root/rewards-bot`.** Il `dashboard` non esiste più in
 nessuna delle due copie.
@@ -1404,6 +1422,22 @@ e nei commit citati nei sorgenti.
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
 
 
+**186** · PER DOMANI: OLTRE 7 GIORNI NON C'È NIENTE DA QUOTARE A $147 — sola misura, 17 agosto sera.
+`scripts/ricerca/domani-i-cinque-e-il-conto.js`, board di 145 righe. **5 candidabili oltre 7 giorni**
+(l'imbuto: −51 pavimento premiante, −63 selezione, −26 orizzonte) e **tutti e cinque hanno lordo $0,00/g**,
+quota del montepremi 0,002-0,078 % contro 3.846-147.564 share altrui in banda ⇒ netto leggermente
+**negativo**. Il valore sta a **~1,3 giorni**: 11 dei 31 ammissibili hanno netto positivo, il migliore
+**$60/g** con concorrenza **zero**. ⚠ E il pianificatore lasciato libero sceglie **meteo a 0,78 giorni**
+($83,31/g), che la selezione esclude due volte: la differenza è il costo dei suoi vincoli, non del mercato.
+⚠ Il primo conto era sbagliato — filtravo su `candidate.horizon`, `undefined` per 31 candidati su 145, e
+usciva «zero candidabili»: un `Number(null)` travestito da misura. Quadro e conto in chiaro in `APERTI.md`.
+
+
+**185** · DELLE CINQUE CINTURE NE MORDE UNA — 17 agosto 2026, sera tardi. Regola per intero in **§4.14**;
+la sequenza di armamento che ne consegue è in `APERTI.md`. Trovata preparando quella sequenza, non da un
+guasto: `createMakerAdapter` ha un solo chiamante, che cabla `mode:'live-min'` e non passa `dryRun`.
+
+
 **184** · `stato.js` LEGGE LE CINTURE DAI PROCESSI VIVI, E LO SPECCHIO È PROVATO — 17 agosto 2026 sera.
 `lib/maker/cinture-armamento.js` (puro, importabile senza violare il §PERIMETRO di `stato.js`) risponde per
 **un ambiente qualunque**, e `stato.js` gli passa `/proc/<pid>/environ`; il `.env` resta come «cosa
@@ -1483,13 +1517,17 @@ rimette ogni difetto uno alla volta: **18 delle 20 regole statiche** si spegneva
 tutte e 17 le dinamiche. Nessuna delle 60 rosse del gruppo 2 era vittima di una fixture. Lavora su copie.
 
 
-**171** · LA COPERTURA CONTINUA RIMETTE LA GAMBA A LIBRO, CON UN RAFFREDDAMENTO — 17 agosto 2026
+**171** · LA COPERTURA CONTINUA RIMETTE LA GAMBA A LIBRO, CON UN RAFFREDDAMENTO — 17 agosto 2026. Regola
+per intero in §4.13; `riconciliaCopertura` dichiarava e non agiva, e il numero che governa il disegno è 720
+(i cicli al giorno). Contenimento provato: 50 tentativi su 720, fattore 14,4×.
 
 
 **170** · I SETTE TEST ROSSI, PIÙ UNO, PIÙ TRE SELFCHECK — 17 agosto 2026 (da 19 rossi a 12)
 
 
-**169** · LA PRESA DI PROFITTO DECIDE SUL BID CAMMINATO, MAI SUL MID — 17 agosto 2026
+**169** · LA PRESA DI PROFITTO DECIDE SUL BID CAMMINATO, MAI SUL MID — 17 agosto 2026. Regola per intero
+in §4.6. 283 campioni su 354 minuti: ZERO istanti offrivano un'uscita in guadagno; il «guadagno» era la
+differenza fra mid e bid. Un take-profit esisteva già (`marketAhead`) e non ha mai incassato niente.
 
 
 **172** · COSA È SUCCESSO ALLE GAMBE IL 16 AGOSTO — sola misura, 17 agosto 2026. 377 ordini, 8 mercati,
@@ -1679,77 +1717,77 @@ diagnosi. Test `uscita-scende-con-la-scala.test.js`, 16 asserzioni fino allo sca
 | 18 | La correzione del consumo di agent40 è in `main` ma non nel processo —  alle 12:07:06 UTC dell'8 agosto 2026 |
 | 19 | IL PRIMO AVVIO NON HA UN INNESCO, e nessuno dei due percorsi lo copre |
 | 20 | L'hook di piazzamento blocca anche il ciclo di agent41 lanciato a mano — ed è — , ma va saputo prima |
-| 21 | Il trigger a $50 non ha MAI funzionato —  in `main`, ASPETTA IL RIAVVIO DI agent41 |
+| 21 | Il trigger a $50 non ha MAI funzionato |
 | 22 | Tre cose che il fix ha scoperto — le prime due CHIUSE l'8 agosto sera, la terza no |
-| 23 | Il tetto di orizzonte non basta: l'universo eleggibile è zero —  l'8 agosto 2026 sera, ASPETTA IL RIAVVIO DI agent24 |
+| 23 | Il tetto di orizzonte non basta: l'universo eleggibile è zero —  l'8 agosto 2026 sera |
 | 24 | IL 10 AGOSTO ALLE 01:01:33Z IL RESET CANCELLA TUTTO, se il board non è aggiornato per allora |
 | 25 | La misura che ha fatto scattare tutto, tenuta come riferimento |
 | 26 | DUE POSIZIONI APERTE SENZA VIA D'USCITA —  alle 16:49:18Z dell'8 agosto 2026 |
 | 27 | I Livelli 1 e 2 non sono mai stati raggiunti —  alle 16:49:18Z dell'8 agosto 2026 |
-| 28 | IL RIAVVIO DI agent40 ARMA UN COMPORTAMENTO NUOVO SU CAPITALE REALE — ESEGUITO alle 16:49:18Z dell'8 agosto 2026 |
+| 28 | IL RIAVVIO DI agent40 ARMA UN COMPORTAMENTO NUOVO SU CAPITALE REALE |
 | 29 | IL LIVELLO 1 (TAKER) NON PUÒ ESEGUIRE, ed è una protezione che NON è stata toccata |
 | 30 | Verifica del gate fatta per test unitario, non sui dati vivi — e per una ragione buona |
 | 31 | I DUE MERCATI CON POSIZIONE APERTA SONO TORNATI NELLA ALLOWLIST — 17:05:30Z dell'8 agosto 2026, su richiesta esplicita dell'operatore |
-| 32 | SCHWARTZEL NON COMPLETA LA COPPIA: `closeTask` NON INIETTA `cancelOrder` —  in `main` l'8 agosto 2026 sera, ASPETTA IL RIAVVIO DI agent40 |
+| 32 | SCHWARTZEL NON COMPLETA LA COPPIA: `closeTask` NON INIETTA `cancelOrder` |
 | 33 | La stessa guardia, un ramo più in là: `null` non è una cancellazione riuscita |
-| 34 | TRE RIAVVII PENDENTI — ESEGUITI DALL'OPERATORE alle 18:30:52 / 18:31:02 / 18:31:16 UTC dell'8 agosto 2026 |
+| 34 | TRE RIAVVII PENDENTI |
 | 35 | Il 75,9% e non il 90%: il target non si raggiunge sempre, ed è il punto |
 | 36 | `REALLOC_PIANO_LEGGERO_ORE` è il primo parametro che governa quanta memoria consuma un figlio |
 | 37 | LA RICERCA SULLE CATEGORIE È FATTA, E RIBALTA LA LETTURA OVVIA |
-| 38 | LE OTTO FASI DELL'8 AGOSTO SERA — IN `main`, E ASPETTANO QUATTRO RIAVVII |
+| 38 | LE OTTO FASI DELL'8 AGOSTO SERA |
 | 39 | QUATTRO RIAVVII PENDENTI per le otto fasi |
 | 40 | I ROSSI NOTI SONO SCESI DA QUATTRO A TRE |
-| 41 | IL MINI-CICLO SCEGLIEVA MERCATI CHE POI NON POTEVA TOCCARE —  in `main` l'8 agosto 2026, ~21:30 UTC. ASPETTA IL RIAVVIO DI agent41, DA CONFERM |
-| 42 | UNA GAMBA CANCELLATA BRUCIAVA LA SUA CHIAVE PER SEMPRE —  in `main` l'8 agosto 2026, ~22:20 UTC. ASPETTA IL RIAVVIO, DA CONFERMARE DA DIEGO IN |
-| 43 | IL TETTO GIORNALIERO DI APERTURE È STATO RIMOSSO — 9 agosto 2026, ~02:40 UTC. ASPETTA IL RIAVVIO DI agent41 E DEL DASHBOARD, DA CONFERMARE DA DIEGO IN |
-| 44 | UN MERCATO CHE ESCE DAL BOARD PERDEVA LA GESTIONE —  in `main` il 9 agosto 2026, ~03:50 UTC. GLI 11 ORFANI SONO GIÀ SANATI E VERIFICATI SUI DA |
+| 41 | IL MINI-CICLO SCEGLIEVA MERCATI CHE POI NON POTEVA TOCCARE |
+| 42 | UNA GAMBA CANCELLATA BRUCIAVA LA SUA CHIAVE PER SEMPRE |
+| 43 | IL TETTO GIORNALIERO DI APERTURE È STATO RIMOSSO |
+| 44 | UN MERCATO CHE ESCE DAL BOARD PERDEVA LA GESTIONE |
 | 45 | IL MERGE ON-CHAIN È COLLEGATO AL FLUSSO — `CTF_RELAYER_ENABLED` RESTA `false`, IN ATTESA DI AUTORIZZAZIONE ESPLICITA DI DIEGO IN CHAT |
-| 46 | IL PERIODO DEL BOARD ERA 22,5 MINUTI, NON 15 —  in `main` il 9 agosto 2026, ~04:40 UTC. ASPETTA IL RIAVVIO DI agent24 E agent41, DA CONFERMARE |
-| 47 | IL RIPIEGO DELLE REGOLE COPRIVA UN PERCORSO SU DUE — ESTESO il 9 agosto 2026 |
-| 48 | LO SPLIT NON VA COLLEGATO, E LA MISURA È NETTA — deciso il 9 agosto 2026, nessun codice scritto |
-| 49 | `CTF_RELAYER_ENABLED = true` — ACCESO il 9 agosto 2026, ~04:30 UTC, su istruzione esplicita di Diego in chat. IN `main` E NEI PROCESSI |
-| 51 | LA SEQUENZA COMPLETA DEL LATO SCOPERTO — in `main` il 9 agosto 2026, ~05:45 UTC. ASPETTA IL RIAVVIO DI agent40 |
-| 52 | IL MERGE ON-CHAIN NON HA MAI FIRMATO: `deps.signerProvider` NON ERA CABLATO —  in `main` il 9 agosto 2026, ~07:05 UTC. ASPETTA IL RIAVVIO DI a |
-| 53 | I TETTI DI CAPITALE ERANO FERMI AL CAPITALE DI TRE ORE PRIMA, E IL 90% ERA IRRAGGIUNGIBILE PER COSTRUZIONE —  in `main` il 9 agosto 2026, ~07: |
-| 54 | LA REGOLA GENERALE DEL LATO SCOPERTO — decisa da Diego il 9 agosto 2026, in `main` alle ~08:05 UTC |
-| 55 | IL TETTO DELLA CATENA DI SOSTITUZIONI MURAVA UNA GAMBA VIVA —  in `main` il 9 agosto 2026, ~08:35 UTC. ASPETTA IL RIAVVIO di agent40 e agent41 |
+| 46 | IL PERIODO DEL BOARD ERA 22,5 MINUTI, NON 15 |
+| 47 | IL RIPIEGO DELLE REGOLE COPRIVA UN PERCORSO SU DUE |
+| 48 | LO SPLIT NON VA COLLEGATO, E LA MISURA È NETTA |
+| 49 | `CTF_RELAYER_ENABLED = true` |
+| 51 | LA SEQUENZA COMPLETA DEL LATO SCOPERTO |
+| 52 | IL MERGE ON-CHAIN NON HA MAI FIRMATO: `deps.signerProvider` NON ERA CABLATO |
+| 53 | I TETTI DI CAPITALE ERANO FERMI AL CAPITALE DI TRE ORE PRIMA, E IL 90% ERA IRRAGGIUNGIBILE PER COSTRUZIONE |
+| 54 | LA REGOLA GENERALE DEL LATO SCOPERTO |
+| 55 | IL TETTO DELLA CATENA DI SOSTITUZIONI MURAVA UNA GAMBA VIVA |
 | 56 | IL LIVELLO 3 USCIVA IN SILENZIO —  il 9 agosto 2026, stesso commit |
-| 57 | CINQUE MERCATI FINTI NEI DATI VIVI — rimossi il 9 agosto 2026 |
-| 58 | 🔴 IL CAPITALE ERA CONTATO DUE VOLTE — BUG DI SICUREZZA OPERATIVA, non estetico. Corretto in `main` il 9 agosto 2026, ~10:00 UTC. ASPETTA IL RIAVVIO d |
-| 59 | ⚠️ L'UNICA ECCEZIONE A «MAI PRIMI SUL LIBRO» — mirata, circoscritta, decisa da Diego il 9 agosto 2026. In `main` alle ~10:30 UTC. ASPETTA IL RIAVVIO d |
-| 60 | «PRIMO ASSOLUTO» SI MISURA SUL LIBRO, NON SULLA BANDA —  il 9 agosto 2026, ~11:00 UTC. ASPETTA IL RIAVVIO di agent40 |
-| 61 | IL BOT NON VEDEVA IL LIBRO DEI MERCATI IN CUI AVEVA DEI SOLDI —  il 9 agosto 2026, ~12:00 UTC. ASPETTA IL RIAVVIO di agent34 |
-| 62 | VISTI MA INTOCCABILI — la TERZA volta della stessa lacuna, il 9 agosto 2026, ~12:20 UTC. ASPETTA IL RIAVVIO di agent40 e agent41 |
-| 63 | 🧹 MAKER ARMING, agent35-maker E agent37-maker-watchdog SONO STATI RIMOSSI — 9 agosto 2026, ~14:00 UTC, su decisione esplicita di Diego. In `main`. DU |
-| 64 | IL TETTO DI CREDIBILITÀ ERA UN'ATTENUAZIONE E ORA È ANCHE UN CANCELLO — in `main` il 9 agosto 2026, ~17:45 UTC. ASPETTA IL RIAVVIO di agent41, DA CONF |
-| 65 | TETTO PER MERCATO FISSO A $130 E NESSUN LIMITE DI POSIZIONI — decisioni di Diego, in `main` il 9 agosto 2026, ~18:50 UTC. ASPETTA IL RIAVVIO di agent4 |
-| 66 | LA RISPOSTA AL FILL: QUATTRO CORREZIONI, E IL CABLAGGIO CHE LE RENDE EFFETTIVE — 9 agosto 2026, ~20:15 UTC. agent40 RIAVVIATO su autorizzazione di Die |
-| 67 | IL QUARTO PUNTO DEL TETTO: $25 PER ORDINE CONTRO $130 PER MERCATO —  e DEPLOYATO il 9 agosto 2026, ~21:04 UTC. TRE RIAVVII ESEGUITI su autoriz |
-| 68 | LA GAMBA ORFANA VENIVA RINNOVATA ALL'INFINITO —  in `main` il 9 agosto 2026, ~22:10 UTC. ASPETTA IL RIAVVIO di agent40, DA CONFERMARE DA DIEGO |
-| 69 | IL GATE live-min LEGGEVA LA LISTA STRETTA: L'UNIONE DEL PUNTO 62 NON ARRIVAVA AL PIAZZAMENTO —  in `main` il 9 agosto 2026, ~22:15 UTC. TRE PR |
-| 70 | IL GUARDIANO DELLE PERDITE È SCATTATO — 9 agosto 2026, 21:46:38 UTC. PRIMO SCATTO REALE |
-| 71 | IL REGISTRO DA 731 MB: LETTURA INCREMENTALE SU TUTTI I PUNTI NOTI — in `main` il 9 agosto 2026, ~23:00 UTC. agent40 (71) e agent41 (51) RIAVVIATI |
-| 72 | UN FILL VALEVA UNA VOLTA PER RIPIAZZAMENTO —  in `main` il 9 agosto 2026, ~23:25 UTC. agent40 (72) e agent41 (52) RIAVVIATI |
-| 73 | IL RIPREZZO È DIVENTATO ATOMICO NEL SENSO CHE CONTA: NON CANCELLA CIÒ CHE NON PUÒ RIPIAZZARE — in `main` l'11 agosto 2026, ~19:20 UTC. agent40 RIAVVIA |
-| 74 | VERIFICA COMPLETA E RIAVVIO PULITO DELLA FLOTTA — 11 agosto 2026, 20:21-20:50 UTC, su autorizzazione esplicita di Diego. Nessuna modifica di codice: s |
+| 57 | CINQUE MERCATI FINTI NEI DATI VIVI |
+| 58 | 🔴 IL CAPITALE ERA CONTATO DUE VOLTE — BUG DI SICUREZZA OPERATIVA, non estetico. Corretto in `main` il 9 agosto 2026, ~10:00 UTC |
+| 59 | ⚠️ L'UNICA ECCEZIONE A «MAI PRIMI SUL LIBRO» — mirata, circoscritta, decisa da Diego il 9 agosto 2026. In `main` alle ~10:30 UTC |
+| 60 | «PRIMO ASSOLUTO» SI MISURA SUL LIBRO, NON SULLA BANDA —  il 9 agosto 2026, ~11:00 UTC |
+| 61 | IL BOT NON VEDEVA IL LIBRO DEI MERCATI IN CUI AVEVA DEI SOLDI —  il 9 agosto 2026, ~12:00 UTC |
+| 62 | VISTI MA INTOCCABILI — la TERZA volta della stessa lacuna, il 9 agosto 2026, ~12:20 UTC |
+| 63 | 🧹 MAKER ARMING, agent35-maker E agent37-maker-watchdog SONO STATI RIMOSSI |
+| 64 | IL TETTO DI CREDIBILITÀ ERA UN'ATTENUAZIONE E ORA È ANCHE UN CANCELLO |
+| 65 | TETTO PER MERCATO FISSO A $130 E NESSUN LIMITE DI POSIZIONI |
+| 66 | LA RISPOSTA AL FILL: QUATTRO CORREZIONI, E IL CABLAGGIO CHE LE RENDE EFFETTIVE |
+| 67 | IL QUARTO PUNTO DEL TETTO: $25 PER ORDINE CONTRO $130 PER MERCATO —  e DEPLOYATO il 9 agosto 2026, ~21:04 UTC |
+| 68 | LA GAMBA ORFANA VENIVA RINNOVATA ALL'INFINITO |
+| 69 | IL GATE live-min LEGGEVA LA LISTA STRETTA: L'UNIONE DEL PUNTO 62 NON ARRIVAVA AL PIAZZAMENTO |
+| 70 | IL GUARDIANO DELLE PERDITE È SCATTATO |
+| 71 | IL REGISTRO DA 731 MB: LETTURA INCREMENTALE SU TUTTI I PUNTI NOTI |
+| 72 | UN FILL VALEVA UNA VOLTA PER RIPIAZZAMENTO |
+| 73 | IL RIPREZZO È DIVENTATO ATOMICO NEL SENSO CHE CONTA: NON CANCELLA CIÒ CHE NON PUÒ RIPIAZZARE |
+| 74 | VERIFICA COMPLETA E RIAVVIO PULITO DELLA FLOTTA |
 | 75 | I DUE LAVORI DELL'11 AGOSTO SERA, MAI DOCUMENTATI FIN QUI |
-| 76 | IL TETTO PER ORDINE NON RIGUARDA CHI CHIUDE, E UN TAKER NON MIRA AI PROPRI ORDINI — in `main` il 12 agosto 2026, ~09:00 UTC. agent40 e dashboard RIAVV |
-| 77 | LA CHIUSURA RIPROVA, LA SORELLA CRESCE, E UN MERCATO MORTO NON RESTA IN SEI REGISTRI — in `main` il 12 agosto 2026, ~09:30 UTC. agent40 RIAVVIATO |
-| 78 | IL PANNELLO NON DICHIARAVA I PROPRI ORDINI, E LA SELEZIONE ERA SCRITTA A MANO IN DUE PUNTI —  il 12 agosto 2026. ASPETTA IL RIAVVIO di agent40 |
-| 79 | `clobRewards` ASSENTE NON È `clobRewards` A ZERO — 12 agosto 2026. NESSUN RIAVVIO NECESSARIO per la ricerca; il dashboard serve il gate, quindi il suo |
-| 80 | `inCoda` E `priceAdjusted` ARRIVANO IN `execution-audit` E SUL PANNELLO — 12 agosto 2026. ASPETTA IL RIAVVIO del dashboard e di agent40 |
-| 81 | IL LATCH DEL GUARDIANO SCADE, E NON SI FIDA PIÙ DI SE STESSO — 12 agosto 2026. ASPETTA IL RIAVVIO di agent43 |
-| 82 | LA PULIZIA DEI REGISTRI NON DIPENDE PIÙ DA CHI ITERA COSA — 12 agosto 2026. ASPETTA IL RIAVVIO di agent40 |
-| 83 | UN 429 SU `/positions` NON FERMA PIÙ IL BOT — 12 agosto 2026. ASPETTA IL RIAVVIO di agent40 |
+| 76 | IL TETTO PER ORDINE NON RIGUARDA CHI CHIUDE, E UN TAKER NON MIRA AI PROPRI ORDINI |
+| 77 | LA CHIUSURA RIPROVA, LA SORELLA CRESCE, E UN MERCATO MORTO NON RESTA IN SEI REGISTRI |
+| 78 | IL PANNELLO NON DICHIARAVA I PROPRI ORDINI, E LA SELEZIONE ERA SCRITTA A MANO IN DUE PUNTI —  il 12 agosto 2026 |
+| 79 | `clobRewards` ASSENTE NON È `clobRewards` A ZERO |
+| 80 | `inCoda` E `priceAdjusted` ARRIVANO IN `execution-audit` E SUL PANNELLO |
+| 81 | IL LATCH DEL GUARDIANO SCADE, E NON SI FIDA PIÙ DI SE STESSO |
+| 82 | LA PULIZIA DEI REGISTRI NON DIPENDE PIÙ DA CHI ITERA COSA |
+| 83 | UN 429 SU `/positions` NON FERMA PIÙ IL BOT |
 | 84 | LA BASELINE DEI TEST È CAMBIATA: 7 ROSSI, NON PIÙ 8 |
-| 85 | LA CHIUSURA FORZATA A 3 ORE ESISTEVA E NON POTEVA SCATTARE — 12 agosto 2026 |
-| 86 | IL CONSUNTIVO REWARD SI RECUPERA A RITROSO — 12 agosto 2026 |
-| 87 | IL REGISTRO DEI REWARD INCASSATI — 12 agosto 2026 |
-| 88 | PERSISTENZA DOPO CRASH, PROVATA CON UN `kill -9` — 12 agosto 2026 |
-| 89 | SOLI SUL LATO: AL BORDO ESTERNO DELLA BANDA — 12 agosto 2026 |
-| 90 | LA QUOTABILITÀ È UN FILTRO A MONTE, E IL CAPITALE LIBERATO SI RIDISTRIBUISCE — 12 agosto 2026 |
+| 85 | LA CHIUSURA FORZATA A 3 ORE ESISTEVA E NON POTEVA SCATTARE |
+| 86 | IL CONSUNTIVO REWARD SI RECUPERA A RITROSO |
+| 87 | IL REGISTRO DEI REWARD INCASSATI |
+| 88 | PERSISTENZA DOPO CRASH, PROVATA CON UN `kill -9` |
+| 89 | SOLI SUL LATO: AL BORDO ESTERNO DELLA BANDA |
+| 90 | LA QUOTABILITÀ È UN FILTRO A MONTE, E IL CAPITALE LIBERATO SI RIDISTRIBUISCE |
 | 91 | ⚠ LA SCANSIONE DEI REGISTRI AVEVA ROTTO UN'INVARIANTE, e un test l'ha preso |
-| 92 | VOCE 1 · LA SOVRASTIMA DEL 465% È UN TASSO LETTO COME QUANTITÀ — sola diagnosi |
+| 92 | VOCE 1 · LA SOVRASTIMA DEL 465% È UN TASSO LETTO COME QUANTITÀ |
 | 93 | VOCE 3 · LE DUE CADENZE ERANO GIÀ A TERRA: VERIFICATE E BLOCCATE |
 | 94 | VOCE 4 · TRE CECITÀ DIVERSE SOTTO LO STESSO OROLOGIO |
 | 95 | VOCE 5 · VERIFICA DI TENUTA DEI BLOCCHI A+B: TRE PUNTI REGGONO, IL QUARTO AVEVA UNA LACUNA |
@@ -1762,21 +1800,21 @@ diagnosi. Test `uscita-scende-con-la-scala.test.js`, 16 asserzioni fino allo sca
 | 102 | UNA SOLA MISURA DI ORIZZONTE, E LO SCARTO A MONTE |
 | 103 | IL FRENO DI PROVA, CHE PRIMA NON ESISTEVA |
 | 104 | UNA SOLA VERITÀ SUL CAPITALE |
-| 105 | PERCHÉ IL MINI-CICLO NON PIAZZA — DIAGNOSI, NON —  |
+| 105 | PERCHÉ IL MINI-CICLO NON PIAZZA — DIAGNOSI, NON — |
 | 106 | IL LEDGER NETTATO, E `skipped` CHE NON SPARISCE PIÙ |
 | 107 | IL TETTO DERIVATO |
 | 108 | UNA SOLA FORMULA CAPITALE→SHARE |
 | 109 | LA COERENZA A VALLE, E UNA MISURA CHE CORREGGE UNA STIMA DI OGGI |
-| 110 | IL RAMO `skip` INGHIOTTIVA LA GERARCHIA, E LA DECISIONE USCIVA MUTA —  il 12 agosto 2026, ~19:00 UTC. agent40 RIAVVIATO |
+| 110 | IL RAMO `skip` INGHIOTTIVA LA GERARCHIA, E LA DECISIONE USCIVA MUTA —  il 12 agosto 2026, ~19:00 UTC |
 | 111 | PERCHÉ L'UTILIZZO ERA AL 7,5% — E NON È IL TETTO DERIVATO. Sola diagnosi, nessun codice |
-| 112 | OPZIONE B: IL TRONCAMENTO PROVATO RESTITUISCE L'ORA VERA — 12 agosto 2026, ~19:40 UTC. agent24 RIAVVIATO |
-| 113 | LA «FINESTRA DI MID» NON È UN CANCELLO — sola diagnosi, nessuna correzione |
-| 114 | I TETTI PER GIRO ALZATI, E IL TETTO ANTI-RUNAWAY CHE AFFAMAVA IL RINNOVO — 12 agosto 2026, ~21:40 UTC. Decisione dell'operatore: il capitale deve lavo |
-| 115 | IL PIAZZAMENTO DELLA COPPIA È ATOMICO IN PRECONTROLLO — 12 agosto 2026, ~21:55 UTC |
-| 116 | LA QUOTA 60/40 SULLA FINESTRA — implementata, ma la premessa era sbagliata (12 agosto 2026) |
-| 117 | `REWARD_MAX_CLOB_MARKETS` È GIÀ AL MASSIMO: 150 — sola diagnosi, nessuna modifica |
+| 112 | OPZIONE B: IL TRONCAMENTO PROVATO RESTITUISCE L'ORA VERA |
+| 113 | LA «FINESTRA DI MID» NON È UN CANCELLO |
+| 114 | I TETTI PER GIRO ALZATI, E IL TETTO ANTI-RUNAWAY CHE AFFAMAVA IL RINNOVO |
+| 115 | IL PIAZZAMENTO DELLA COPPIA È ATOMICO IN PRECONTROLLO |
+| 116 | LA QUOTA 60/40 SULLA FINESTRA |
+| 117 | `REWARD_MAX_CLOB_MARKETS` È GIÀ AL MASSIMO: 150 |
 | 118 | IL CAPITALE AL LAVORO: UN NUMERO, UN OBIETTIVO, E IL FERMO RIPARTITO IN DOLLARI |
-| 119 | L'ANELLO DEL FEED APERTO, E IL TURNOVER CHE NON SI CORREGGE DA LÌ — 13 agosto 2026, ~00:45 UTC |
+| 119 | L'ANELLO DEL FEED APERTO, E IL TURNOVER CHE NON SI CORREGGE DA LÌ |
 
 ---
 
@@ -1816,14 +1854,15 @@ Regole di manutenzione:
   mappa.** Una voce chiusa scende a una riga nel registro, mantenendo il suo numero originale — i
   commenti nei sorgenti citano «§5 punto N» e quel riferimento deve restare risolvibile. La storia
   integrale non va copiata qui: sta in `git log` e nei commit citati nei sorgenti.
-- **⚠ AL 17 AGOSTO 2026 (sera tardi) IL FILE È A ~149,9k CARATTERI SU 150k.** Chi aggiunge qualcosa DEVE
+- **⚠ AL 17 AGOSTO 2026 (sera tardi) IL FILE È A ~149,7k CARATTERI SU 150k.** Chi aggiunge qualcosa DEVE
   compattare **prima**, e i candidati sono le voci di §5.2 già marcate 🟢 o «misura chiusa», che per regola
   scendono a una riga in §5-bis. (≈152,9k **byte**: il tetto è in caratteri, e `wc -c` conta byte — qui la
   differenza vale ~3k, cioè una voce intera. Si misura con
   `python3 -c "print(len(open('CLAUDE.md',encoding='utf-8').read()))"`, non con `wc -c`.) Il tetto è stato
   sfondato tre volte e ogni volta la compattazione è avvenuta nella STESSA sessione: il 17 sera sono scese a
-  una riga §5-bis p.172-181, e sono state strette §5.1, §5.2 p.1/7/13/19/22/26/31/32/33/36/37/40 e il
-  riquadro della copia ridotta.
+  una riga §5-bis p.169-181, sono state strette §5.1, §4.6, §4.13, §5.2
+  p.1/7/13/19/22/26/31/32/33/36/37/40, il riquadro della copia ridotta, e la tabella 1-119 (che serve a
+  risolvere «§5 punto N»: bastano numero e titolo, non le code «ASPETTA IL RIAVVIO»).
 - **Il tetto è 150k caratteri.** Superarlo significa che il file non entra più nel contesto di una
   sessione, cioè che smette di fare il proprio mestiere. Se lo si supera, si compatta **nella stessa
   sessione** — non si rimanda.
