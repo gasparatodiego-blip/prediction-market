@@ -156,6 +156,12 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
     // avanzo del giro prima. E' la stessa lezione del reset dei due presidi: uno scenario che dipende
     // dagli avanzi di quello prima non e' uno scenario.
     SEL.scriviStato({ ...SELM.statoVuoto(), attiva: true }, { by: 'banco', reason: 'accensione da zero' });
+    // ⚠ E IL PIANO SALVATO VA VIA, o «accensione da zero» e' una bugia. Misurato il 17 agosto: i primi
+    // passaggi del passo 3 riuscivano perche' `data/realloc-ultimo-piano.json` conteneva ancora il piano
+    // di una corsa precedente — cioe' il banco stava riusando un avanzo, esattamente la classe di difetto
+    // che il reset dei due presidi esiste per non ripetere. Con il piano azzerato il mini-ciclo e'
+    // costretto a passare dal RICALCOLO, che e' il percorso vero di un bot appena accesso.
+    try { require('fs').unlinkSync(path.join(ROOT, 'data', 'realloc-ultimo-piano.json')); } catch { /* gia' assente */ }
     const snap = await A40.snapshotPosizioniTask().catch((e) => ({ errore: e.message }));
     const cfg = ARC.readAutoRepriceConfig({});
     passo('1 · accensione da zero', {

@@ -1,9 +1,9 @@
 {
- "generatoIl": "2026-08-17T12:59:49.247Z",
- "durataMs": 5494,
+ "generatoIl": "2026-08-17T13:28:46.713Z",
+ "durataMs": 5463,
  "identita": {
   "commitWorktree": "a640950a65d65c154e01d310e7643261ecf3323d",
-  "commitVivo": "0897e64e0c961b7f4798933024d301f84dd37bc9",
+  "commitVivo": "3eccec2213d3ad4b4162c8589521e4965f28bc09",
   "alberiConfrontati": [
    "lib",
    "agents",
@@ -15,7 +15,7 @@
  "passi": [
   {
    "n": 1,
-   "ora": "12:59:43",
+   "ora": "13:28:41",
    "titolo": "1 · accensione da zero",
    "ok": true,
    "buttatoDalReset": {
@@ -32,7 +32,7 @@
   },
   {
    "n": 2,
-   "ora": "12:59:43",
+   "ora": "13:28:41",
    "titolo": "2 · perimetro e capitale letti",
    "ok": true,
    "perimetro": 0,
@@ -42,7 +42,7 @@
   },
   {
    "n": 3,
-   "ora": "12:59:43",
+   "ora": "13:28:41",
    "titolo": "3a · il ciclo da 6 ore (A41.giro): MANTIENE, non apre",
    "ok": true,
    "azione": "nessuna",
@@ -54,7 +54,7 @@
   },
   {
    "n": 4,
-   "ora": "12:59:43",
+   "ora": "13:28:41",
    "titolo": "3 · due gambe a libro (A41.controlloCapitaleFermo → miniCiclo)",
    "ok": true,
    "motivoTrigger": "",
@@ -67,7 +67,7 @@
   },
   {
    "n": 5,
-   "ora": "12:59:43",
+   "ora": "13:28:41",
    "titolo": "4-sonda · l'adapter di sola lettura",
    "conStringa": 2,
    "conOggetto": 2,
@@ -75,7 +75,7 @@
   },
   {
    "n": 6,
-   "ora": "12:59:43",
+   "ora": "13:28:41",
    "titolo": "4-pre · cosa vede la corsia manuale (listManualOrders)",
    "ok": true,
    "ok_lettura": true,
@@ -99,7 +99,7 @@
   },
   {
    "n": 7,
-   "ora": "13:05:43",
+   "ora": "13:34:41",
    "titolo": "4 · il book si muove: riprezzamento (A40.cycle)",
    "ok": true,
    "midOra": "0.340",
@@ -112,17 +112,17 @@
     "sim-9@0.32"
    ],
    "rispostaDelCiclo": [
-    "{\"at\":\"2026-08-17T13:00:43.636Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.61,\"distanceC\":3,\"bandRadiusC\":4.5,\"marginC\":1.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-1\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.38,\"toPrice\":0.37,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,",
-    "{\"at\":\"2026-08-17T13:01:43.636Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.62,\"distanceC\":4,\"bandRadiusC\":4.5,\"marginC\":0.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-3\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.37,\"toPrice\":0.36,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,",
-    "{\"at\":\"2026-08-17T13:02:43.636Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.63,\"distanceC\":5,\"bandRadiusC\":4.5,\"marginC\":-0.5,\"midAgeSec\":0,\"gate\":\"hysteresis\",\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-4\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.36,\"toPrice\":0.35,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHo",
-    "{\"at\":\"2026-08-17T13:03:43.636Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":0,\"skipped\":1,\"repriced\":1,\"holds\":[],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-2\",\"action\":\"skip\",\"gate\":\"awaiting-confirmation\",\"reason\":\"out of band by 6.00¢ (band ±4.50¢), observation 1/2 — waiting for confirmation before moving a real order\",\"price\":0.58,\"targetPrice\":null,\"distanceC\":6,\"bandRadiusC\":4.5},{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-5\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.35,\"toPrice\":0.34,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":fal",
-    "{\"at\":\"2026-08-17T13:04:43.636Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":0,\"skipped\":0,\"repriced\":2,\"holds\":[],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-2\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.58,\"toPrice\":0.62,\"size\":61.2,\"book\":\"no\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":0,\"maxPerHour\":20,\"sent\":true,\"oldCancelled\":true,\"gate\":null,\"reason\":null,\"newOrderId\":\"sim-7\",\"newExpiry\":{\"ttlSeconds\":1380,\"orderType\":\"GTD\",\"autoReprice\":true,\"refreshMarginSeconds\":180,\"source\":\"auto-reprice\",\"reason\":\"auto-reprice is ACTIVE on this market — the order carries a 23-minute GTD expiry ",
-    "{\"at\":\"2026-08-17T13:05:43.636Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-7\",\"book\":\"no\",\"price\":0.63,\"scoringMid\":0.66,\"distanceC\":3,\"bandRadiusC\":4.5,\"marginC\":1.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-8\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.33,\"toPrice\":0.32,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,"
+    "{\"at\":\"2026-08-17T13:29:41.139Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.61,\"distanceC\":3,\"bandRadiusC\":4.5,\"marginC\":1.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-1\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.38,\"toPrice\":0.37,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,",
+    "{\"at\":\"2026-08-17T13:30:41.139Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.62,\"distanceC\":4,\"bandRadiusC\":4.5,\"marginC\":0.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-3\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.37,\"toPrice\":0.36,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,",
+    "{\"at\":\"2026-08-17T13:31:41.139Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-2\",\"book\":\"no\",\"price\":0.58,\"scoringMid\":0.63,\"distanceC\":5,\"bandRadiusC\":4.5,\"marginC\":-0.5,\"midAgeSec\":0,\"gate\":\"hysteresis\",\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-4\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.36,\"toPrice\":0.35,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHo",
+    "{\"at\":\"2026-08-17T13:32:41.139Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":0,\"skipped\":1,\"repriced\":1,\"holds\":[],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-2\",\"action\":\"skip\",\"gate\":\"awaiting-confirmation\",\"reason\":\"out of band by 6.00¢ (band ±4.50¢), observation 1/2 — waiting for confirmation before moving a real order\",\"price\":0.58,\"targetPrice\":null,\"distanceC\":6,\"bandRadiusC\":4.5},{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-5\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.35,\"toPrice\":0.34,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":fal",
+    "{\"at\":\"2026-08-17T13:33:41.139Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":0,\"skipped\":0,\"repriced\":2,\"holds\":[],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-2\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.58,\"toPrice\":0.62,\"size\":61.2,\"book\":\"no\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":0,\"maxPerHour\":20,\"sent\":true,\"oldCancelled\":true,\"gate\":null,\"reason\":null,\"newOrderId\":\"sim-7\",\"newExpiry\":{\"ttlSeconds\":1380,\"orderType\":\"GTD\",\"autoReprice\":true,\"refreshMarginSeconds\":180,\"source\":\"auto-reprice\",\"reason\":\"auto-reprice is ACTIVE on this market — the order carries a 23-minute GTD expiry ",
+    "{\"at\":\"2026-08-17T13:34:41.139Z\",\"ran\":true,\"gate\":null,\"reason\":null,\"markets\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"gate\":null,\"reason\":null,\"considered\":2,\"held\":1,\"skipped\":0,\"repriced\":1,\"holds\":[{\"orderId\":\"sim-7\",\"book\":\"no\",\"price\":0.63,\"scoringMid\":0.66,\"distanceC\":3,\"bandRadiusC\":4.5,\"marginC\":1.5,\"midAgeSec\":0,\"gate\":null,\"inseguimentoSoppresso\":false,\"inseguimentoPrezzo\":null,\"inseguimentoDistanzaC\":null,\"maiPrimoPrezzo\":null,\"maiPrimoDistanzaC\":null,\"bestOther\":null}],\"cadenzaMs\":1000,\"cadenzaClasse\":\"veloce\",\"preesistenti\":0}],\"actions\":[{\"marketId\":\"0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"orderId\":\"sim-8\",\"action\":\"reprice\",\"trigger\":\"band-exit\",\"ok\":true,\"fromPrice\":0.33,\"toPrice\":0.32,\"size\":61.2,\"book\":\"yes\",\"secondsToExpiry\":null,\"capExemptRenewal\":false,\"repricesThisHour\":null,\"maxPerHour\":null,"
    ]
   },
   {
    "n": 8,
-   "ora": "13:05:43",
+   "ora": "13:34:41",
    "titolo": "5 · fill totale su una gamba",
    "ok": true,
    "share": 61.2,
@@ -132,7 +132,7 @@
   },
   {
    "n": 9,
-   "ora": "13:06:43",
+   "ora": "13:35:41",
    "titolo": "6 · gamba opposta a libro entro il ciclo (A40.closeTask)",
    "ok": true,
    "ordiniPrima": 1,
@@ -143,7 +143,7 @@
   },
   {
    "n": 10,
-   "ora": "13:06:43",
+   "ora": "13:35:41",
    "titolo": "7-pre · chi visita closeTask",
    "uscitaAutomatica": [
     "0x71a296ae16844c65e3e65f89958177b74965386e2e46f5519b6c3e64e69ba0b2",
@@ -172,8 +172,8 @@
     "error": null,
     "record": {
      "manual": true,
-     "at": 1786971583636,
-     "atIso": "2026-08-17T12:59:43.636Z",
+     "at": 1786973321139,
+     "atIso": "2026-08-17T13:28:41.139Z",
      "by": "riallocatore · selezione automatica",
      "reason": "mercato scelto dalla selezione automatica"
     },
@@ -186,7 +186,7 @@
   },
   {
    "n": 11,
-   "ora": "13:07:43",
+   "ora": "13:36:41",
    "titolo": "7 · coppia completa → merge → incasso",
    "ok": true,
    "saldoPrima": 400.86,
@@ -198,7 +198,7 @@
   }
  ],
  "bloccato": null,
- "righeGiornale": 128,
+ "righeGiornale": 129,
  "eventiVenue": 32,
  "regoleInventariate": 91,
  "regoleScattate": 10,
@@ -348,20 +348,6 @@
    "regola": "collasso-oltre-soglia",
    "file": [
     "agents/agent41-realloc-scheduler.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "coppia-completa-residuo-cancellato",
-   "file": [
-    "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "coppia-completa-residuo-cancellazione-fallita",
-   "file": [
-    "lib/maker/auto-close.js"
    ],
    "volte": 0
   },
@@ -595,6 +581,20 @@
   },
   {
    "regola": "modalita-chiusura-regole-attive",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "modalita-chiusura-residuo-non-fillato-cancellato",
+   "file": [
+    "lib/maker/auto-close.js"
+   ],
+   "volte": 0
+  },
+  {
+   "regola": "modalita-chiusura-residuo-non-fillato-cancellazione-fallita",
    "file": [
     "lib/maker/auto-close.js"
    ],

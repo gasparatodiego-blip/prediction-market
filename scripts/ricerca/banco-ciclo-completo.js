@@ -194,7 +194,12 @@ class VenueSimulato {
     // coperti non e' «nessun mercato conviene», e' «dato mancante» — quindi `runReallocCycle` si ferma
     // con «un universo vuoto non e' un piano vuoto» (`realloc-cycle.js:282`). Misurato alla terza corsa.
     // Si semina la storia che agent34 avrebbe scritto: un campione ogni 75 s, come in produzione.
-    this.seminaStorico(m, 30);
+    // ⚠ QUANTA STORIA: il ricalcolo leggero del mini-ciclo guarda una finestra di 6 ORE
+    // (`FINESTRA_LEGGERA_ORE`), quella del ciclo pesante e' 48. Seminare 30 campioni (37 minuti) bastava
+    // al ciclo pesante e NON al leggero — misurato: il ciclo da 6 h trovava 1 mercato ammissibile e il
+    // mini-ciclo «nessun mercato ammissibile adesso», e il giro si fermava al passo 3. Si semina una
+    // finestra di OTTO ore, un campione ogni 75 s come agent34.
+    this.seminaStorico(m, Math.ceil((8 * 3600) / 75));
     return m;
   }
 
