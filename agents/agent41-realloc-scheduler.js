@@ -477,7 +477,19 @@ async function leggiSaldo() {
 // significare qualcosa. Le opzioni viaggiano su STDIN e non su argv: `onlyMarketIds` ed
 // `excludeMarketIds` sono liste di conditionId, e su argv sarebbero un problema di escaping e di
 // lunghezza massima che su stdin semplicemente non esiste.
-const RUNNER_PIANO = 'let b="";process.stdin.setEncoding("utf8");process.stdin.on("data",(d)=>{b+=d});process.stdin.on("end",()=>{try{const o=JSON.parse(b);process.stdout.write(JSON.stringify(require("/root/prediction-market/lib/rewards/allocator").planFromCollection(o)))}catch(e){process.stderr.write(String(e&&e.stack||e));process.exit(3)}});';
+// ⚠ IL PERCORSO DELL'ALLOCATORE E' RELATIVO A QUESTO FILE, NON PIU' ASSOLUTO (17 agosto 2026).
+// Era `require("/root/prediction-market/lib/rewards/allocator")`, e in produzione e' lo stesso file (il
+// symlink porta qui) — ma un percorso assoluto significa che il processo figlio del piano carica SEMPRE
+// il codice e i dati di quel repo, qualunque repo stia eseguendo il padre. Misurato: un banco che gira
+// in un worktree con un board simulato riceveva un piano calcolato sul board REALE — «l'allocatore ha
+// valutato 0 candidati su 483 mercati con storico», cioe' zero righe per il mercato del banco, che nel
+// board vero non esiste. Il ciclo da 6 ore non era esercitabile, e la causa era una stringa.
+// Si risolve da `__dirname`, che per un agent e' sempre quello vero (nessuna rotta importa un agent —
+// vedi `scripts/percorsi-dati.js`), quindi in produzione il file caricato e' identico a prima.
+const PERCORSO_ALLOCATOR = path.join(__dirname, '..', 'lib', 'rewards', 'allocator');
+const RUNNER_PIANO = 'let b="";process.stdin.setEncoding("utf8");process.stdin.on("data",(d)=>{b+=d});process.stdin.on("end",()=>{try{const o=JSON.parse(b);process.stdout.write(JSON.stringify(require('
+  + JSON.stringify(PERCORSO_ALLOCATOR)
+  + ').planFromCollection(o)))}catch(e){process.stderr.write(String(e&&e.stack||e));process.exit(3)}});';
 // Il piano misurato costa ~22s. 120s lascia margine per una macchina carica senza che un blocco vero
 // resti appeso: se scade, il ciclo tratta il piano come fallito, che è già un esito previsto.
 const PLAN_TIMEOUT_MS = 120_000;
@@ -3053,7 +3065,14 @@ if (require.main === module) main();
 // lo STATO che il bot legge (`require.cache`), non il cablaggio — cosi' il percorso provato e' quello
 // di produzione, riga per riga. Esportare non arma niente: dentro `giro` restano `statoBot()` e il
 // freno, riletti a ogni chiamata, e a bot FERMO il giro calcola e non tocca il venue.
-module.exports = { giro, leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
+// ⚠ `controlloCapitaleFermo` E' ESPORTATO PER LA STESSA RAGIONE DI `giro`, e la misura l'ha resa
+// necessaria: il banco ha provato ad aprire da zero con `giro()` e il ciclo ha risposto «tutti i
+// mercati in gestione sono ancora validi: NESSUNA AZIONE». Il ciclo da 6 ore MANTIENE
+// un'allocazione, non ne apre una (§5-bis 19, «il primo avvio non ha un innesco»): chi apre da zero
+// e' il trigger a capitale fermo, e la sua meta' che DECIDE — saldo sopra soglia, board fresco,
+// AVVIA, kill — vive qui e non in `miniCiclo`. Provare `miniCiclo` da solo vorrebbe dire
+// riscrivere quella decisione, cioe' provare una copia.
+module.exports = { giro, controlloCapitaleFermo, leggiVenue, leggiSaldo, prossimoRitardo, scriviUltimoPiano, leggiUltimoPiano,
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
   selezionaMercati, rilasciaDallaSelezione, selezioneAttiva, restringiAllaSelezione, leggiBoardReward, posizioniPerSelezione,
   riconciliaAllowlist, riconciliaCopertura, presidioPosizioniVecchie,

@@ -1450,8 +1450,16 @@ async function closeTask() {
           observed: { book: c.book, size: c.size, notionalUsd: c.notionalUsd, fallimentiPrecedenti: c.fallimenti } });
       } catch { /* il giornale non deve poter fermare il giro */ }
     }
+    // ⚠ IL REFERTO SI RESTITUISCE (17 agosto 2026), e non e' cosmetica: un ciclo che decide NIENTE su una
+    // coppia completa non lascia traccia — `for (const m of res.markets) if (m.gate && ...)` logga solo i
+    // gate, e un mercato senza gate e senza azioni e' silenzioso. Misurato sul banco: `closeTask()` gira
+    // con il mercato in scope, la gestione manuale attiva e le due gambe possedute, e produce zero righe
+    // di log e zero righe di giornale. Il chiamante non aveva modo di sapere COSA aveva deciso.
+    // Restituirlo non cambia nessun comportamento: `main()` ignora il valore, e nessun altro chiamava.
+    return res;
   } catch (e) {
     log('close task failed:', e && e.message ? e.message : String(e));
+    return { errore: e && e.message ? e.message : String(e) };
   }
 }
 
