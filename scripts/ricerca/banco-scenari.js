@@ -420,6 +420,124 @@ const registroChiusura = () => { const m = new Map();
         cicli: BASE.STATO_RIPREZZO.cycles });
   }
 
+  // ── FASE 10 · IL PAVIMENTO DI PROFONDITA' E IL TETTO ORARIO SUI RINNOVI ─────────────────────────
+  // ⚠ E' IL PUNTO IN CUI IL 16 AGOSTO SI SONO PERSI 12 ORDINI. Ci si arriva solo con una sequenza
+  // precisa, e ognuno dei tre ingredienti serve:
+  //   · un ordine che ha GIA' superato l'intervallo anti-churn, o `decideReprice` esce a
+  //     `rate-limited` prima di guardare qualunque altra cosa;
+  //   · una vita residua DENTRO il margine di rinnovo (180 s), o il ramo del rinnovo non si apre;
+  //   · un libro cosi' sottile che il motore rifiuti, o non c'e' niente da fermare.
+  {
+    const M6 = '0x' + 'f6'.repeat(32);
+    const m6 = VENUE.creaMercato({ conditionId: M6, mid: 0.40, tick: 0.01, minSize: 50, bandaCents: 4.5 });
+    MERCATI_SIMULATI.add(M6.toLowerCase());
+    await MO.placeManualOrder({ marketId: M6, book: 'yes', side: 'BUY', price: 0.38, size: 60,
+      userId: 'operator', inCoda: true }, depsRegole());
+
+    // ⚠ LA MEMORIA DEGLI ORDINI VISTI E' UNA DEP, e senza di lei il rilevatore non puo' esistere:
+    // `scaduto-senza-rinnovo` confronta gli id di IERI con quelli di OGGI, e con una `new Map()` a
+    // ogni chiamata non ha nessun ieri con cui confrontare. Era il motivo per cui restava rossa.
+    const visti = new Map();
+    const ciclo6 = async () => AR.runAutoRepriceCycle({
+      now: () => VENUE.ora, configDeps: {}, ordiniVisti: visti,
+      killStatus: () => ({ effectivelyKilled: false, readable: true }),
+      listOrders: async () => ({ ok: true, orders: VENUE.ordiniVivi(M6) }),
+      resolveRules: () => regolePer(M6),
+      readVenue: async () => ({ readable: true, closed: false, acceptingOrders: true }),
+      readDepth: () => { const m = VENUE.mercato(M6);
+        return { readable: true, ageMs: 0, live: true,
+          yes: { bids: m.book.yes.bids, asks: m.book.yes.asks }, no: { bids: m.book.no.bids, asks: m.book.no.asks } }; },
+      replaceOrder: async (spec) => MO.replaceManualOrder(spec, depsRegole()),
+      cancelOrder: async (spec) => MO.cancelManualOrder(spec, 'banco'),
+      audit: (x) => GIORNALE.push(x),
+    }).catch((e) => ({ errore: e.message }));
+
+    // ① IL TETTO ORARIO. Si semina lo STATO — `recentAt`, cioe' gli istanti dei riprezzi recenti — e
+    //    il ciclo ne CALCOLA il conteggio da solo (auto-reprice.js:1480). Venticinque riprezzi
+    //    nell'ultima ora contro un tetto di 20: il rinnovo deve passare COMUNQUE e dichiararlo.
+    BASE.STATO_RIPREZZO.markets[M6.toLowerCase()] = {
+      recentAt: Array.from({ length: 25 }, (_, i) => VENUE.ora - (i + 1) * 60_000),
+      lastRepriceAt: VENUE.ora - 10 * 60_000,   // ben oltre l'intervallo anti-churn
+    };
+    // Si porta la vita residua dentro il margine di rinnovo (180 s su una GTD di 1380 s).
+    VENUE.avanza(1240 * 1000);
+    const vivo = VENUE.ordiniVivi(M6)[0];
+    passo('rinnovi: vita residua dentro il margine', { sec: vivo ? vivo.secondsToExpiry : null });
+    await ciclo6();
+    passo('rinnovi: ciclo con TETTO ORARIO raggiunto (25 su 20)');
+
+    // ② IL PAVIMENTO DI PROFONDITA'. Libro ridotto a un solo livello sottilissimo dentro la banda: il
+    //    motore non trova un prezzo conforme, il rinnovo dovuto viene FERMATO, e l'ordine muore.
+    const M7 = '0x' + 'a7'.repeat(32);
+    const m7 = VENUE.creaMercato({ conditionId: M7, mid: 0.40, tick: 0.01, minSize: 50, bandaCents: 4.5 });
+    MERCATI_SIMULATI.add(M7.toLowerCase());
+    await MO.placeManualOrder({ marketId: M7, book: 'yes', side: 'BUY', price: 0.38, size: 60,
+      userId: 'operator', inCoda: true }, depsRegole());
+    const visti7 = new Map();
+    const ciclo7 = async () => AR.runAutoRepriceCycle({
+      now: () => VENUE.ora, configDeps: {}, ordiniVisti: visti7,
+      killStatus: () => ({ effectivelyKilled: false, readable: true }),
+      listOrders: async () => ({ ok: true, orders: VENUE.ordiniVivi(M7) }),
+      resolveRules: () => regolePer(M7),
+      readVenue: async () => ({ readable: true, closed: false, acceptingOrders: true }),
+      readDepth: () => { const m = VENUE.mercato(M7);
+        return { readable: true, ageMs: 0, live: true,
+          yes: { bids: m.book.yes.bids, asks: m.book.yes.asks }, no: { bids: m.book.no.bids, asks: m.book.no.asks } }; },
+      replaceOrder: async (spec) => MO.replaceManualOrder(spec, depsRegole()),
+      cancelOrder: async (spec) => MO.cancelManualOrder(spec, 'banco'),
+      audit: (x) => GIORNALE.push(x),
+    }).catch((e) => ({ errore: e.message }));
+    await ciclo7();                       // primo giro: il rilevatore impara l'id
+    VENUE.avanza(1240 * 1000);            // dentro il margine di rinnovo
+    // ⚠ UN SOLO LIVELLO, e sottile: «mai primo sul libro» cerca dal SECONDO in giu', quindi con un
+    // livello solo non esiste un prezzo conforme. E' la forma esatta di `profondita-insufficiente`.
+    m7.book.yes.bids = [{ price: 0.39, size: 3 }];
+    m7.book.no.bids = [{ price: 0.59, size: 3 }];
+    await ciclo7();
+    passo('rinnovi: ciclo con PAVIMENTO che morde (un livello da 3 share)',
+      { vivi: VENUE.ordiniVivi(M7).length });
+
+    // ⚠ E QUI IL BANCO INSEGNA UNA COSA CHE NON MI ASPETTAVO: il pavimento di profondita' NON ferma
+    // piu' un rinnovo. E' la correzione del 16 agosto (`63c10a0`, §5.2 p.21, `esenzione-rinnovo`) che
+    // funziona — il rinnovo ripiazza allo STESSO prezzo e non passa dal motore, quindi il pavimento
+    // non lo puo' rifiutare. `anomalia-rinnovo-fermato` per profondita' e' quindi diventata
+    // difficilmente raggiungibile PER COSTRUZIONE: la causa che segnalava e' stata rimossa.
+    //
+    // Per far morire un ordine senza successore serve un'altra strada, e questa e' reale: il FEED
+    // TACE nel momento del rinnovo. Il ciclo salta (`mid-stale`), l'ordine non viene rinnovato, e
+    // muore di GTD — che e' esattamente la firma di `scaduto-senza-rinnovo`.
+    const M8 = '0x' + 'b8'.repeat(32);
+    const m8 = VENUE.creaMercato({ conditionId: M8, mid: 0.40, tick: 0.01, minSize: 50, bandaCents: 4.5 });
+    MERCATI_SIMULATI.add(M8.toLowerCase());
+    await MO.placeManualOrder({ marketId: M8, book: 'yes', side: 'BUY', price: 0.38, size: 60,
+      userId: 'operator', inCoda: true }, depsRegole());
+    const visti8 = new Map();
+    let feedMuto8 = false;
+    const ciclo8 = async () => AR.runAutoRepriceCycle({
+      now: () => VENUE.ora, configDeps: {}, ordiniVisti: visti8,
+      killStatus: () => ({ effectivelyKilled: false, readable: true }),
+      listOrders: async () => ({ ok: true, orders: VENUE.ordiniVivi(M8) }),
+      // Il mid invecchia: `midAgeSec` oltre il limite ⇒ `mid-stale`, e il rinnovo non parte.
+      resolveRules: () => ({ ...regolePer(M8), midAgeSec: feedMuto8 ? 600 : 1, feedAgeSec: feedMuto8 ? 600 : 1 }),
+      readVenue: async () => ({ readable: true, closed: false, acceptingOrders: true }),
+      readDepth: () => { const m = VENUE.mercato(M8);
+        return { readable: true, ageMs: 0, live: true,
+          yes: { bids: m.book.yes.bids, asks: m.book.yes.asks }, no: { bids: m.book.no.bids, asks: m.book.no.asks } }; },
+      replaceOrder: async (spec) => MO.replaceManualOrder(spec, depsRegole()),
+      cancelOrder: async (spec) => MO.cancelManualOrder(spec, 'banco'),
+      audit: (x) => GIORNALE.push(x),
+    }).catch(() => ({}));
+    await ciclo8();                        // il rilevatore impara l'id
+    VENUE.avanza(1240 * 1000);
+    feedMuto8 = true;
+    await ciclo8();                        // rinnovo dovuto, ma il mid e' stantio: si salta
+    passo('rinnovi: feed muto nel momento del rinnovo', { vivi: VENUE.ordiniVivi(M8).length });
+    VENUE.avanza(200 * 1000);              // l'ordine muore di GTD, senza successore
+    feedMuto8 = false;
+    await ciclo8();
+    passo('rinnovi: ciclo dopo la morte per GTD senza successore', { vivi: VENUE.ordiniVivi(M8).length });
+  }
+
   // ════════════════════════════════════════════════════════════════════════════════════════════════
   // IL VERDETTO
   // ════════════════════════════════════════════════════════════════════════════════════════════════

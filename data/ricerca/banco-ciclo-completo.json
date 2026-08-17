@@ -1,8 +1,8 @@
 {
- "generatoIl": "2026-08-17T09:59:17.409Z",
- "durataMs": 6760,
- "eventiVenue": 57,
- "righeGiornale": 189,
+ "generatoIl": "2026-08-17T10:12:54.859Z",
+ "durataMs": 8314,
+ "eventiVenue": 69,
+ "righeGiornale": 218,
  "passi": [
   {
    "ora": "09:00:00",
@@ -132,13 +132,37 @@
    "ordiniVivi": 2,
    "scadenzaSec": 1180,
    "cicli": 18
+  },
+  {
+   "ora": "21:28:00",
+   "n": "rinnovi: vita residua dentro il margine",
+   "sec": 140
+  },
+  {
+   "ora": "21:28:00",
+   "n": "rinnovi: ciclo con TETTO ORARIO raggiunto (25 su 20)"
+  },
+  {
+   "ora": "21:48:40",
+   "n": "rinnovi: ciclo con PAVIMENTO che morde (un livello da 3 share)",
+   "vivi": 2
+  },
+  {
+   "ora": "22:09:20",
+   "n": "rinnovi: feed muto nel momento del rinnovo",
+   "vivi": 1
+  },
+  {
+   "ora": "22:12:40",
+   "n": "rinnovi: ciclo dopo la morte per GTD senza successore",
+   "vivi": 0
   }
  ],
  "regoleInventariate": 91,
- "regoleScattate": 17,
- "regoleMaiScattate": 74,
+ "regoleScattate": 19,
+ "regoleMaiScattate": 72,
  "formeDinamiche": 13,
- "dinamicheConcretizzate": 16,
+ "dinamicheConcretizzate": 17,
  "scattate": [
   {
    "regola": "attraversamento-consentito",
@@ -232,7 +256,21 @@
    "volte": 9
   },
   {
+   "regola": "rinnovo-esente-dal-tetto",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 1
+  },
+  {
    "regola": "riprezzo-in-corso",
+   "file": [
+    "lib/maker/auto-reprice.js"
+   ],
+   "volte": 1
+  },
+  {
+   "regola": "scaduto-senza-rinnovo",
    "file": [
     "lib/maker/auto-reprice.js"
    ],
@@ -252,7 +290,7 @@
     "lib/maker/auto-reprice.js",
     "lib/maker/manual-order.js"
    ],
-   "volte": 31
+   "volte": 40
   },
   {
    "regola": "trigger",
@@ -260,7 +298,7 @@
     "lib/maker/auto-close.js",
     "lib/maker/auto-reprice.js"
    ],
-   "volte": 10
+   "volte": 12
   }
  ],
  "mai": [
@@ -718,13 +756,6 @@
    "volte": 0
   },
   {
-   "regola": "rinnovo-esente-dal-tetto",
-   "file": [
-    "lib/maker/auto-reprice.js"
-   ],
-   "volte": 0
-  },
-  {
    "regola": "riposizionamento-mercato-non-valido",
    "file": [
     "lib/maker/auto-close.js"
@@ -735,13 +766,6 @@
    "regola": "riposizionamento-piazzato",
    "file": [
     "lib/maker/auto-close.js"
-   ],
-   "volte": 0
-  },
-  {
-   "regola": "scaduto-senza-rinnovo",
-   "file": [
-    "lib/maker/auto-reprice.js"
    ],
    "volte": 0
   },
@@ -804,12 +828,13 @@
   "skip-no-entry-price",
   "riposizionamento-niente",
   "modalita-chiusura-lato-posseduto-tentativo-fallito",
-  "modalita-chiusura-lato-posseduto-reject-venue"
+  "modalita-chiusura-lato-posseduto-reject-venue",
+  "skip-mid-stale"
  ],
  "eventiVenueRiassunti": [
   {
    "tipo": "ordine-nato",
-   "n": 20
+   "n": 25
   },
   {
    "tipo": "mid-mosso",
@@ -821,7 +846,7 @@
   },
   {
    "tipo": "ordine-scaduto-gtd",
-   "n": 14
+   "n": 21
   },
   {
    "tipo": "merge-fallito",

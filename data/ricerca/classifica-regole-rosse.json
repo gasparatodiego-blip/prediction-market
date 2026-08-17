@@ -1,8 +1,8 @@
 {
- "generatoIl": "2026-08-17T09:59:17.739Z",
- "totaleRosse": 74,
+ "generatoIl": "2026-08-17T10:13:04.904Z",
+ "totaleRosse": 72,
  "gruppo1_sospette": 12,
- "gruppo2_mancaScenario": 62,
+ "gruppo2_mancaScenario": 60,
  "nonTrovate": 0,
  "perFamiglia": [
   {
@@ -11,7 +11,7 @@
   },
   {
    "famiglia": "ciclo di vita del mercato",
-   "n": 15
+   "n": 13
   },
   {
    "famiglia": "rete e rate limit",
@@ -412,12 +412,6 @@
    "famiglia": "interruttori e emergenze"
   },
   {
-   "regola": "rinnovo-esente-dal-tetto",
-   "file": "lib/maker/auto-reprice.js",
-   "riga": 2018,
-   "famiglia": "ciclo di vita del mercato"
-  },
-  {
    "regola": "riposizionamento-mercato-non-valido",
    "file": "lib/maker/auto-close.js",
    "riga": 2754,
@@ -428,12 +422,6 @@
    "file": "lib/maker/auto-close.js",
    "riga": 774,
    "famiglia": "errori e casi degeneri"
-  },
-  {
-   "regola": "scaduto-senza-rinnovo",
-   "file": "lib/maker/auto-reprice.js",
-   "riga": 2318,
-   "famiglia": "ciclo di vita del mercato"
   },
   {
    "regola": "sotto-obiettivo",

@@ -169,6 +169,12 @@ class VenueSimulato {
         price: o.price, size: o.size, sizeMatched: o.sizeMatched,
         sizeRemaining: +(o.size - o.sizeMatched).toFixed(6), source: 'manual-ui',
         secondsToExpiry: o.scadeA ? Math.max(0, Math.round((o.scadeA - this.ora) / 1000)) : null,
+        // ⚠ `expiresAtMs` VA ESPOSTO, e la sua assenza rendeva un rilevatore muto per intero.
+        // `scaduto-senza-rinnovo` legge `o.expiresAtMs` (auto-reprice.js:936) e senza quel campo esce
+        // a `continue` prima di giudicare: la regola risultava rossa per un campo mancante nella
+        // FIXTURE, non per un difetto del bot. Sesta volta oggi che una fixture si maschera da regola
+        // morta — ed e' il motivo per cui ogni caso di questi va annotato invece che solo corretto.
+        expiresAtMs: o.scadeA || null,
         createdMs: o.nato, orderType: o.scadeA ? 'GTD' : 'GTC' }));
   }
 
@@ -295,7 +301,7 @@ sostituisci('lib/safety/venue-positions-snapshot.js', {
 // LEGGE, mai CIO' CHE IL BOT DECIDE.
 const MERCATI_SIMULATI = new Set();
 // Lo stato del riprezzo, in memoria e VIVO fra un giro e l'altro.
-const STATO_RIPREZZO = { markets: {}, cycles: 0, lastCycleMs: 0 };
+const STATO_RIPREZZO = { markets: {}, cycles: 0, lastCycleMs: 0, riprezziQuestOra: 0 };
 const vero_mm = require(path.join(ROOT, 'lib/maker/manual-mode'));
 sostituisci('lib/maker/manual-mode.js', {
   ...vero_mm,
@@ -327,6 +333,10 @@ sostituisci('lib/maker/auto-reprice-config.js', {
     return { ok: true };
   },
   readAutoRepriceState: () => ({ readable: true, ...STATO_RIPREZZO }),
+  // ⚠ IL CONTEGGIO ORARIO NON SI SOSTITUISCE: il ciclo lo CALCOLA da `marketState.recentAt`
+  // (auto-reprice.js:1480), quindi il banco semina lo STATO e lascia fare l'aritmetica a lui.
+  // Sostituire la funzione avrebbe scavalcato il calcolo vero — e con esso l'unica cosa che si voleva
+  // mettere alla prova.
 });
 
 // 3 · L'ADAPTER DEL VENUE. E' il seam vero: tutto cio' che sta sopra e' produzione.
