@@ -15,7 +15,7 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 | **passi del giro completo** | **26 su 26** (erano 18: sei passi nuovi, uno per regola) |
 | **suite** | 214 test · **212 verdi · 1 rosso**, voluto e spiegato (§8) · 1 non parte |
 | **regole che scattano** | **20 statiche + 15 dinamiche su 91**, col cablaggio di produzione |
-| **quanti mercati** | **3**, da `MAKER_MERCATI_CONTEMPORANEI` nell'ambiente di agent41 |
+| **quanti mercati** | **1**, da `MAKER_MERCATI_CONTEMPORANEI` nell'ambiente di agent41 — ⚠ ma il **perimetro è 4** e si consuma da solo (§10) |
 | **bot** | **DISARMATO**: `MAKER_MODE=off` · `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT=dry-run` · perno vuoto · **zero ordini a libro** |
 
 ---
@@ -365,6 +365,79 @@ on-chain non ha firmato per giorni.
 
 ---
 
+## 10 · 🎯 L'ARMAMENTO A UN MERCATO — dove siamo arrivati, e cosa resta
+
+L'operatore ha chiesto di armare **un mercato solo**, una cintura alla volta, con una fermata dopo
+ognuna. L'ordine dei passi è stato deciso da lui dopo la prima fermata: **3 → 2 → 1**.
+
+### ✅ Fatto: il numero a 1
+
+`MAKER_MERCATI_CONTEMPORANEI: '1'` in `agents/ecosystem.config.js`, letto da `/proc` su agent41.
+
+**⚠ MA IL PERIMETRO NON È 1: È 4**, e non lo diventerà da solo. Due ragioni, entrambe volute:
+- **la selezione non caccia gli occupanti quando il tetto scende** (R1: il numero governa quanti
+  mercati si APRONO). `selezione.js prova` sulla funzione vera: «0 entrati, 0 usciti». Restano i tre
+  già scelti;
+- **il quarto è Hong Kong**, che entra dall'unione di §4.8 perché ci sono 6 share dentro.
+
+**Quando escono i quattro, misurato sul board vivo:**
+
+| mercato | esce fra | perché |
+|---|---|---|
+| `0x1f1c6390…` Thomas | **~5,4 giorni** | scadenza sotto il pavimento di 24 h |
+| `0x12dc2b61…` Ballon d'Or | **~72,4 giorni** | idem |
+| `0xd4e77ba6…` Fed rate cuts | **~133,4 giorni** | idem |
+| `0xe9b3e28d…` Hong Kong | **mai, come stanno le cose** | vedi punto 2 |
+
+⚠ E l'operatore ha deciso: **niente perno**. «Il bot deve scegliere.» Il perimetro si consuma da sé.
+
+### ✅ Fatto: punto 3 — il giornale muto — commit `7eb5710`
+
+Il presidio scriveva a verbale solo con un prezzo in mano. **Misurato: ZERO righe su 400 record**,
+mentre girava ogni due minuti su una posizione reale. Adesso scrive **sempre**, con tre esiti distinti
+(`rinunciata-prezzo-non-calcolabile` · `rinunciata-ricavo-nullo` · `rinunciata-sblocco-oltre-tetto`),
+la causa in chiaro e il flag **`sulBoard`**. Rese iniettabili `fileAncore` e `scrivi`.
+Prova: `presidio-scrive-sempre` **20/0**.
+
+**⚠ EFFETTO COLLATERALE, DICHIARATO E NON RIPARATO A MANO.** La **prima** corsa di quel test — prima
+che `scrivi` diventasse iniettabile — ha scritto nella produzione:
+
+1. **quattro record finti** in `data/realloc-scheduler.jsonl`, con `marketId` `0xaa…`/`0xbb…`/`0xcc…`/
+   `0xdd…`. Il registro è **append-only** (§4.10): non si cancellano. Accanto c'è una riga
+   `rettifica-registro` che li dichiara per nome. Il test ora misura **prima e dopo**, non in assoluto.
+2. **l'ancora di Hong Kong azzerata** in `data/presidio-posizioni.json`: era a 64,6 min, è tornata a 0
+   (ri-ancorata alle `13:24:53Z`). Conseguenza: il presidio riprende a giudicarla dopo **60 minuti da
+   lì**. Nessun capitale mosso — le cinture bloccano ogni invio e su quella posizione il prezzo non è
+   comunque calcolabile. **Non l'ho rimessa indietro**: scrivere in uno stato di produzione un valore
+   che nessuna osservazione giustifica è esattamente l'errore che l'ha causata.
+
+**⚠ Terza occorrenza in un giorno** della classe «un test che guida una funzione che scrive deve
+poterle dire dove» — dopo `kill-perdita-giornaliera` e la prima stesura di R10.
+
+### ⏳ Resta: punto 2 — il sotto-minimo fuori dal board
+
+**Il problema, verificato eseguendo la decisione vera.** Hong Kong non è più sul board (122 righe, non
+c'è). Il minimo del venue si legge **dal board**, quindi `minSize` è `null`, quindi la posizione **non
+è marcata `sottoMinimo`** — e il ramo di R6 è `if (c.sottoMinimo === true)`. Non ci entra mai: il
+presidio la vede come una normale posizione direzionale e prova a **venderla**, non a sbloccarla. E
+non può nemmeno venderla, perché il prezzo d'uscita si prende dalla stessa riga di board che manca.
+
+**Cosa fare:** far arrivare la size minima anche quando il mercato è uscito dal board — dal **catalogo
+di ripiego** o dal **venue** — così R6 ha una via d'uscita vera invece di rinunciare ogni due minuti.
+
+### ⏳ Resta: punto 1 — i gradini 2 e 3, col perimetro a 4, disarmati
+
+Aprire **`MAKER_MODE`**, fermarsi e verificare che l'ordine arrivi al gate successivo e non oltre. Poi
+**`MAKER_ADAPTER_DRYRUN`**, e mostrare gli ordini **costruiti e firmati** che si fermano prima
+dell'invio (`dry-run-validated` nel giornale) — prezzi, size, distanza dal mid, per tutti i mercati
+del perimetro.
+
+**⚠ `MANUAL_ORDER_PLACEMENT` NON SI TOCCA** finché l'operatore non ha visto quegli ordini. Il KILL a
+−$100 resta attivo. Regola di sempre: test → commit → riavvio **dal file e insieme** → verifica su
+`/proc`.
+
+---
+
 ## Stato del sistema — 18 agosto 2026
 
 **Bot DISARMATO**, letto da `/proc/<pid>/environ` dei processi vivi:
@@ -376,7 +449,7 @@ on-chain non ha firmato per giorni.
 | `MANUAL_ORDER_PLACEMENT` | `dry-run` ⇒ inserita | assente ⇒ inserita |
 | `REALLOC_SCHEDULER_DRY_RUN` | — | `0` ⇒ **aperta** (le altre tre tengono) |
 | `MAKER_LIVE_MIN_MARKET` | **vuota** | **vuota** |
-| `MAKER_MERCATI_CONTEMPORANEI` | — | **`3`** (R1) |
+| `MAKER_MERCATI_CONTEMPORANEI` | — | **`1`** (R1, armamento a un mercato) |
 
 ⇒ **nessuna cintura è stata toccata in tutta la sessione.** KILL spento · selezione automatica
 **accesa** · allowlist gestita da lei · **zero ordini a libro** · **zero sospensioni per erosione**
@@ -426,6 +499,20 @@ I file di servizio stanno in **`/tmp/rewards-bot-bot/`** (0700), non in `/tmp` n
 ---
 
 ## Come ripartire
+
+```bash
+claude --permission-mode auto
+```
+
+Poi, come primo messaggio:
+
+> Riprendi da APERTI.md §10: il punto 3 è chiuso (`7eb5710`). Fai il **punto 2** — il presidio deve
+> riconoscere il sotto-minimo anche quando il mercato è uscito dal board, prendendo la size minima dal
+> catalogo di ripiego o dal venue. Poi il **punto 1**: apri `MAKER_MODE`, fermati, poi
+> `MAKER_ADAPTER_DRYRUN`, e mostrami gli ordini costruiti e firmati che si fermano prima dell'invio.
+> `MANUAL_ORDER_PLACEMENT` non si tocca. Bot disarmato.
+
+
 
 ```bash
 cd /home/bot/bot && claude --permission-mode auto
