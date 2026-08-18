@@ -22,15 +22,31 @@ Ultima verifica contro codice/stato reali: **18 agosto 2026 — dopo la migrazio
 > **⚠ I FILE DI SERVIZIO NON SONO IN `/tmp` NUDO** ma in `/tmp/rewards-bot-<utente>` (0700), definizione
 > unica in `lib/percorsi-runtime.js`: `/tmp` è condiviso e ha lo sticky bit, e i file di `root` erano
 > diventati né riscrivibili né cancellabili (§5-bis p.189).
-> **STATO AL 18 AGOSTO 2026, LETTO DAI PROCESSI VIVI**: **flotta a 11 processi ONLINE** (§5.1) ·
-> `MAKER_MODE=off` · `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT=dry-run` su agent40 ·
-> freno di agent41 `=0` ⇒ **agent40 4/4, agent41 3/4** (§4.14; il freno è l'unica aperta, e le altre tre
-> bastano perché il gate del venue le legge tutte) · `MAKER_MERCATI_CONTEMPORANEI=3`
-> su agent41 (R1) · KILL spento · selezione automatica **ACCESA** · perno **vuoto** · **zero ordini a
-> libro** · zero sospensioni per erosione.
-> **⚠ `MAKER_MODE` NEL `.env` È NEUTRALIZZATO** (`off`), e la regola resta: pm2 tiene la propria copia
-> dell'ambiente e i caricatori `.env` scrivono solo le chiavi **assenti**. Per armare non basta il `.env`
-> — serve dichiararlo in `agents/ecosystem.config.js` e riavviare **dal file**.
+> ## 🔴🔴 IL BOT È ARMATO E OPERA CON CAPITALE VERO — dalle 16:21Z del 18 agosto 2026
+> **STATO AL 18 AGOSTO 2026, SERA, LETTO DAI PROCESSI VIVI**: flotta a 11 processi ONLINE (§5.1) ·
+> `MAKER_MODE=live-min` · `MAKER_ADAPTER_DRYRUN=false` · **`MANUAL_ORDER_PLACEMENT=send`** su agent40
+> **e** agent41 · freno di agent41 `=0` ⇒ **ZERO CINTURE INSERITE, 0/4** (§4.14) ·
+> `MAKER_MERCATI_CONTEMPORANEI=5` su agent41 (R1) · `SLOT_STERILE_ARMATO=0` · KILL spento ·
+> selezione automatica **ACCESA** · perno **vuoto**.
+> ⚠ **QUANTI ORDINI CI SIANO A LIBRO NON SI SCRIVE QUI: SI LEGGE.** Alle 22:57Z erano **1 mercato e 2
+> ordini** (~$52,55), ma il numero cambia ogni pochi minuti. **Si legge da
+> `data/venue-orders.json`**, che agent40 scrive da letture VERE del venue — **non** ricostruendolo dal
+> giornale sommando i `sent` e togliendo le scadenze registrate: il 18 agosto sera l'ho fatto e ho
+> dichiarato «4 mercati, 8 ordini, $209,08» mentre al venue ce n'erano 2, perche' sei scadenze erano
+> gia' avvenute e agent40 non le aveva ancora scritte. Una ricostruzione non e' una lettura.
+> **⚠ CIÒ CHE RESTA DAVANTI NON SONO PIÙ CINTURE, È STATO DEL SISTEMA**: il KILL, il tetto per ordine
+> ($65,63), il tetto per mercato ($61,25), l'esposizione cumulativa (**$650**, §4.2), il rate limit,
+> la perdita giornaliera a **−$100**, «mai primo sul libro» e la banda premiante. **Il freno vero è il
+> kill a −$100**, non il tetto di esposizione — quello serve solo a non murare la gestione.
+> **⚠ `MAKER_MODE` NEL `.env` DICE ANCORA `off`, ED È INERTE**: pm2 tiene la propria copia
+> dell'ambiente e i caricatori `.env` scrivono solo le chiavi **assenti**. Quello che conta è
+> `agents/ecosystem.config.js` + riavvio **dal file**. ⚠ `scripts/cli/stato.js` stampa una riga «`.env`
+> (cosa entrerebbe al prossimo riavvio DAL FILE)» che è **sbagliata e rassicura**: legge il solo `.env`,
+> mentre un riavvio dal file applica l'ecosystem. Da correggere.
+> **⚠ OGNI RIAVVIO DI agent40 ABBANDONA GLI ORDINI GIÀ A LIBRO**: al suo avvio diventano
+> **PRE-ESISTENTI**, cioè «invisibili al motore — non riprezzati, non rinnovati, non cancellati»
+> (`lib/maker/ordini-preesistenti.js`, regola voluta). Con `send` aperto significa che **un deploy
+> condanna il libro esistente alla morte per GTD**. Misurato il 18 agosto: due ordini veri morti così.
 > **LA RIDUZIONE (15/08)**: 568 file su 1.267 **spostati** — mai cancellati — in `_archivio`, che
 > conserva i percorsi (`mv _archivio/<p> <p>` riporta indietro; `INDICE-SPOSTATI.json` è l'elenco). La
 > catena serve **486 file**. **⚠ `_archivio` è ESCLUSO dai sei test strutturali che camminano l'albero.**
@@ -628,11 +644,26 @@ sulla **gamba peggiore quotabile**, non sulla media. Conseguenza derivata e non 
 60/40** — al più 24 posti alle aperture, **16 riservati a rinnovi e chiusure protettive**. Invariante
 difesa da un test: `rateCap ≥ 2 × mercatiPerGiro` con almeno 8 posti di margine. Un'apertura rimandata
 è un **rinvio dichiarato** (`rimandato-per-quota`), non un errore. Cap per ordine di safety **$80**
-(era $1000 — 16 agosto 2026, decisione dell'operatore) e cap cumulativo di esposizione aperta **$150**
-(era $600 — 16 agosto 2026, decisione dell'operatore: è la cintura scelta per limitare la rotazione di
-§4.13, e conta i **fill riconciliati**, non gli ordini a riposo)
-(invariato). **Perdita giornaliera massima $100** (era $25), che è il kill switch chiesto per il giro di
-prova. ⚠ `data/safety-risk-limits.json` è **gitignored**: è stato dedotto sul disco, non nel commit.
+(era $1000 — 16 agosto 2026, decisione dell'operatore) e cap cumulativo di esposizione aperta **$650**
+(era $600 → $150 il 16 agosto → **$650 il 18 agosto sera**, decisione dell'operatore, per reggere i
+**5 mercati** di §4.13: conta i **fill riconciliati**, non gli ordini a riposo).
+**Perdita giornaliera massima $100** (era $25) — **è questo il freno vero**, non il tetto di
+esposizione, che serve solo a non murare la gestione.
+
+> **⚠ PERCHÉ $650 E NON $320 — 18 agosto 2026.** 5 × $61,25 = $306,25 di ordini a riposo, quindi «poco
+> sopra $310» sembrerebbe bastare. **Non basta**: il gate confronta `openNotionalUsd + notional`
+> **anche sugli ordini di APERTURA**, quindi a $320 si smetterebbe di piazzare a metà strada —
+> esattamente ciò che è successo a $150 il 16 agosto, quando la gamba più cara del piano smetteva di
+> essere piazzabile oltre ~$95 di fill. Caso peggiore calcolato: $306 a riposo + $310 di fill ≈ **$616**.
+> **⚠ E `data/safety-risk-limits.json` NON È PIÙ GITIGNORED** (18 agosto 2026): i cinque numeri che
+> governano l'esposizione vivevano solo sul disco di una macchina, e un ripristino da git li avrebbe
+> riportati a valori diversi **in silenzio** — è lo stesso file che faceva fallire il banco al passo 3
+> perché nel worktree non c'era. Scelta **una fonte sola versionata**, non default-nel-repo +
+> override-locale: due file sono il modo in cui il valore locale diverge senza che nessuno lo veda.
+> `limiti-versionati.test.js` (19/0) fallisce se il file manca, se torna in `.gitignore`, se manca uno
+> dei cinque limiti, se un valore supera il tetto duro, e — l'asserzione che conta — **se il disco non
+> coincide con il versionato**. ⚠ Il lettore già falliva chiuso e non è stato toccato: `clampNum` marca
+> `missing`, `HARD_CEILINGS` taglia solo dall'alto, `manual-order` rifiuta con `cap-missing`.
 **Mercati per giro: 10** (era 12 — 13 agosto 2026), dichiarati in
 **un posto solo** (`utilizzo-capitale.leggiMaxNuoviPerGiro`) e importati dal trigger.
 
@@ -1071,11 +1102,46 @@ test lo asserisce); il cablaggio sta in `agent41` e passa dalle **stesse** funzi
 
 | | |
 |---|---|
-| **vincoli** | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo** · **max N ATTIVI dove N = `MAKER_MERCATI_CONTEMPORANEI`** (R1, 18/08: ambiente di agent41, un posto solo, letto da `/proc`; difetto e soffitto 3) · **composizione DERIVATA da N** (`quotaScaglioni`): N≥2 ⇒ 1 «basso» (≤20) + (N−1) «alto» (≤50); N=1 ⇒ un secchio solo, che ammette tutto — con la regola stretta un unico slot potrebbe ospitare solo un minSize ≤ 20 e restare vuoto. ⚠ **168 → 24 h**: fra 48 e 168 h il board è VUOTO (168/96/48 danno piano identico e vuoto, 24 h sblocca 27 ammissibili). ⚠ **Il vincolo delle 3 CATEGORIE è stato TOLTO**: 23 dei 26 ammissibili sono `elections`, quindi la diversificazione teneva due slot sui mercati **peggiori** — netto −$0,111/g e +$0,026/g contro +$10,64/g escluso |
+| **vincoli** | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo** · **max N ATTIVI dove N = `MAKER_MERCATI_CONTEMPORANEI`** (R1, 18/08: ambiente di agent41, un posto solo, letto da `/proc`; difetto 3, **soffitto 5 dal 18/08 sera**) · **book UTILIZZABILE** (18/08 sera: `needsResnapshot === false` e un book esiste — v. il riquadro qui sotto) · **composizione DERIVATA da N** (`quotaScaglioni`): N≥2 ⇒ 1 «basso» (≤20) + (N−1) «alto» (≤50); N=1 ⇒ un secchio solo, che ammette tutto — con la regola stretta un unico slot potrebbe ospitare solo un minSize ≤ 20 e restare vuoto. ⚠ **168 → 24 h**: fra 48 e 168 h il board è VUOTO (168/96/48 danno piano identico e vuoto, 24 h sblocca 27 ammissibili). ⚠ **Il vincolo delle 3 CATEGORIE è stato TOLTO**: 23 dei 26 ammissibili sono `elections`, quindi la diversificazione teneva due slot sui mercati **peggiori** — netto −$0,111/g e +$0,026/g contro +$10,64/g escluso |
 | **interruttore** | `data/selezione-mercati.json`, `scripts/cli/selezione.js {stato\|prova\|accendi\|spegni}`. Difetto **SPENTA**; file illeggibile ⇒ **spenta**. **ACCESA dal 15/08** |
 | **quando gira** | a ogni ciclo 6 h **e** a ogni controllo del capitale fermo (120 s), **prima** del piano — e prima di `decidiTrigger`, così un mercato che scade esce anche nei giri in cui il trigger non scatta |
 | **classifica** | `levels[<capitale minimo>].grossRewardDay`, cioè la stima che **il board ha già calcolato** con la formula del venue → ripiego `rateOrdinamento` → `rewardsDailyRate`. **Non** il montepremi (§5 p.132). Pareggio rotto sul `conditionId`: due giri sullo stesso board danno la stessa risposta |
 | **il piano si restringe** | `restringiAllaSelezione` in `calcolaPianoFuoriProcesso`, cioè il punto per cui **entrambi** i percorsi (6 h e mini-ciclo) sono coperti da una regola sola. **Interseca, non sostituisce**; intersezione vuota ⇒ vincolo **impossibile**, mai vincolo **assente** |
+
+> **📖 IL BOOK DEV'ESSERE UTILIZZABILE — 18 agosto 2026 sera, e la prima stesura era SBAGLIATA.**
+> Il cancello chiede «il book memorizzato è utilizzabile?», **non** «ha avuto eventi di recente».
+> Escluso solo chi ha **`needsResnapshot === true`** o non ha proprio un book (assente dalla mappa, o
+> senza tocco). **Nessuna soglia di età, di nessun tipo.**
+> **⚠ LA PRIMA STESURA ESCLUDEVA `live !== true`, E BUTTAVA FUORI I MERCATI TRANQUILLI.** `live` in
+> agent34 significa «è arrivato un evento su QUEL asset negli ultimi 30 s» (`live-book.freshness`),
+> non «siamo abbonati»: su un libro fermo l'età cresce **mentre il quadro memorizzato resta perfetto**
+> — misurato il 5 agosto, al picco di 35 s il book coincideva **esattamente** con la lettura REST. E i
+> mercati tranquilli sono quelli che un maker di rewards vuole: senza selezione avversa gli ordini
+> restano a libro e maturano. Misurato: **19% degli asset è silenzioso in un istante qualunque**, e il
+> mercato che sembrava «caduto» è tornato `live` da solo al primo evento. Col criterio vecchio erano
+> esclusi **14 book su 125**; col nuovo **1**.
+> **⚠ LA DOMANDA «SIAMO CIECHI?» NON APPARTIENE ALLA SELEZIONE**: la risolve `mid-stantio` (§4.1),
+> che decide se TOGLIERE un ordine già a libro. Due soglie sullo stesso fatto sarebbero due opinioni.
+> **⚠ E UNO SLOT VUOTO PER SCARSITÀ SI DICHIARA** (`slotVuotiPerScarsita`, più `postiNonAssegnati` e
+> `scartatiPerComposizione`, che erano calcolati e **mai copiati nel giornale**): il record ora dice
+> «il board non offre abbastanza mercati ammissibili: N su 142 valutati». Il 18 agosto sera gli
+> ammissibili oscillavano fra **4 e 7 su ~142**, cioè intorno al numero di posti: uno slot vuoto è
+> spesso povertà del board, non un difetto, e le due cose devono restare distinguibili.
+
+> **🧊 «SLOT STERILE» — LA REGOLA C'È MA È DISARMATA** (`SLOT_STERILE_ARMATO=0`, 18 agosto 2026).
+> Libera uno slot che per **due osservazioni consecutive** non produce ordini, perché un altro mercato
+> ci provi. **⚠ È STATA DISARMATA LA SERA STESSA IN CUI È NATA**: presumeva che la causa stesse nel
+> MERCATO, mentre quella sera stava nel FEED — e ha buttato fuori **cinque volte** un mercato che
+> andava benissimo (`0x17dfedcac2`, 20:49:54 · 20:55:54 · 21:03:24 · 21:05:24 · 21:06:40).
+> **⚠ LA CORREZIONE C'È E NON È MAI GIRATA ARMATA**: «nessun ordine a libro» ha **due cause opposte** —
+> *sterile* (non ci abbiamo mai messo capitale, o non ce lo possiamo mettere) e *svuotato da noi* (il
+> repricer ha cancellato per mid stantio, l'erosione ha sospeso). Un'osservazione non conta come
+> sterile se in quel mercato ci sono state **cancellazioni nostre** nella finestra, e il contatore si
+> **azzera a ogni piazzamento riuscito**. Margine e cooldown non sono stati aggiunti al posto di
+> questo: rallenterebbero la regola senza correggerla.
+> **⚠ DISARMATA NON VUOL DIRE ASSENTE**: continua a misurare e a scrivere cosa *avrebbe* fatto.
+> **PER RIARMARLA**: si cancella `SLOT_STERILE_ARMATO` da `ecosystem.config.js` e si riavvia agent41
+> dal file. Assente ⇒ **ARMATA**, come `SBLOCCO_GRADINO6_ARMATO`.
 
 > **🔄 LA ROTAZIONE ROVESCIA LA REGOLA DELLO SLOT — decisione dell'operatore, 16 agosto 2026.**
 > Un mercato che riceve un fill — **totale o parziale** — **esce dal conteggio dei 3 attivi** e **resta in

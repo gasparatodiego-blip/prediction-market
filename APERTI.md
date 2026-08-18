@@ -633,6 +633,90 @@ artefatti del worktree** (percorsi assoluti della policy; snapshot congelato) �
 
 ---
 
+## 14 · 🌙 LA NOTTE DEL 18 AGOSTO — LA CATENA DELLA FRESCHEZZA, E IL SILENZIO CHE NON È CECITÀ
+
+Diciassette commit dopo l'armamento. Il filo che li tiene insieme è uno solo: **il bot confondeva un
+mercato tranquillo con un feed rotto**, e ogni presidio costruito su quella confusione faceva danno.
+
+### La catena della freschezza, in tre punti che non si parlavano
+
+| chi | soglia | cosa faceva |
+|---|---|---|
+| **repricer** (`auto-reprice`) | 120 s | rifiutava di muovere un ordine su un mid vecchio |
+| **piazzatore** (`manual-order`) | — | **nessun controllo**: il gate era opt-in e nessuno lo chiedeva |
+| **uscita** (`auto-close`) | — | **nessun controllo**: vendeva sul bid camminato di un libro qualunque |
+
+Il piazzatore apriva coppie su un book fermo e tre minuti dopo il repricer le cancellava. Adesso tutti
+e tre prendono la soglia da **`regimeFeed`**, la stessa funzione, importata: il piazzatore non può
+essere più permissivo di chi mantiene, **per costruzione**. Le soglie restano diverse (60 s per
+selezione e piazzatore, 120 s per il repricer) e va bene: la direzione è prudente.
+
+### E poi la scoperta che ribalta tutto: `live:false` non vuol dire «caduto»
+
+`live-book.freshness` dichiara `live:false` dopo **30 s senza eventi su quell'asset**. Su un mercato a
+134 giorni con volume minimo è lo stato normale, e il quadro memorizzato **resta perfetto** — misurato
+il 5 agosto: al picco di 35 s il book coincideva esattamente con la lettura REST. Misurato stanotte:
+**19% degli asset è silenzioso in un istante qualunque**, e il mercato che sembrava caduto è tornato
+`live` da solo al primo evento.
+
+Quindi:
+- **gate di selezione** — la domanda è «il book è utilizzabile?» (`needsResnapshot === false`), non «ha
+  avuto eventi». Esclusi **1 book su 125** invece di 14.
+- **`mid-stantio`** — il presidio resta ma scatta per «siamo ciechi», non per «il mercato tace».
+  `mid-not-live` e `mid-age-unknown` restano cecità sempre (è assenza, non silenzio); `mid-stale` lo è
+  solo se il **feed nel suo insieme** non è vivo o il book chiede resnapshot. Fail-closed se la
+  vitalità non è nota, e a verbale si scrive **quale condizione ha deciso**.
+
+### Il deadlock, e una quota che era diventata un divieto
+
+Il piano è rimasto fermo **196 minuti**. L'allocatore finanzia la coda lunga con una passata derivata
+dal budget della fascia corta — e con un solo slot su un mercato a 134 giorni la fascia corta era
+**vuota**, quindi la coda otteneva zero. **Una quota è una proporzione: senza fascia corta diventava un
+divieto**, e rispondere «niente» non protegge da nulla. ⚠ Allarga un limite di rischio: il 100% del
+piano può ora stare oltre i 7 giorni. Restano tetto per mercato, slot, esposizione e kill.
+
+### Cinque mercati, e i tre blocchi che non erano uno
+
+`MAKER_MERCATI_CONTEMPORANEI` **non** era l'unico punto: chiedere 5 veniva **rifiutato in silenzio**
+(«non è un intero fra 1 e 3»). Soffitto **3 → 5**, `quotaScaglioni` lo eredita (stessa costante),
+esposizione cumulativa **$150 → $650** — e $650 e non $320 perché il gate conta
+`openNotionalUsd + notional` **anche sulle aperture**, quindi a $320 si smetterebbe a metà strada.
+
+### I limiti di rischio ora sono versionati
+
+`data/safety-risk-limits.json` era **gitignored**: i cinque numeri che governano l'esposizione vivevano
+solo sul disco di una macchina. Scelta **una fonte sola versionata**, non default+override — due file
+sono il modo in cui il valore locale diverge in silenzio. `limiti-versionati.test.js` fallisce se il
+file manca, se torna ignorato, se manca un limite, se supera il tetto duro, e **se il disco non
+coincide con il versionato**.
+
+### ⚠ I DIFETTI CHE HO INTRODOTTO IO, STANOTTE
+
+| # | difetto | chi l'ha preso |
+|---|---|---|
+| 1 | valvola per-voce a 30 min: faceva uscire dal perimetro un mercato con ordini vivi | il **replay**, non il test |
+| 2 | snapshot alimentato da `owned`, che **esclude i pre-esistenti**: ogni riavvio azzerava il perimetro | la lettura del venue (`count 2` contro `{}`) |
+| 3 | `Number(rules.midAgeSec)` in `auto-close`: **settima** occorrenza di `Number(null) === 0` | il test nuovo |
+| 4 | `cfg` invece di `config` in `auto-reprice` — **terza volta oggi** sullo stesso file | `mid-stantio.test.js` |
+| 5 | gate di selezione su `live !== true`: escludeva i mercati tranquilli | la misura sul feed |
+| 6 | regola dello slot sterile: ha rilasciato **5 volte** un mercato che andava bene | il registro `maker-auto-reprice-audit` |
+| 7 | «4 mercati, 8 ordini, $209,08» **ricostruito dal giornale** invece che letto dal venue: erano 2 | **l'operatore, guardando la UI** |
+
+Il numero 7 è il peggiore, perché non è un difetto di codice ma di metodo: avevo lo strumento giusto
+(`venue-orders.json`, scritto da letture vere) e ho preferito una ricostruzione. **Una ricostruzione
+non è una lettura**, ed è la stessa frase che avevo scritto due volte nei commenti quella sera.
+
+### ⚠ E IL DIFETTO CHE RESTA APERTO: ogni riavvio di agent40 uccide il libro
+
+All'avvio, gli ordini già a riposo diventano **PRE-ESISTENTI**: «invisibili al motore — non riprezzati,
+non rinnovati, non cancellati». Con `send` aperto significa che **un deploy condanna il libro alla
+morte per GTD**. Misurato: riavvio alle 22:44:45, sei ordini scaduti alle 22:50 senza rinnovo, finestra
+vuota di ~8 minuti su tre mercati. Il rinnovo proattivo parte 180 s prima della scadenza, e il riavvio
+è caduto tre minuti prima di quella finestra.
+**La decisione su come chiuderlo è dell'operatore** — le due vie sono in fondo a questa sezione.
+
+---
+
 ## 11 · 🔬 IL GIRO DI PROVA A UN MERCATO — 24 ore, dalle 15:12Z del 18 agosto
 
 Istruzione dell'operatore: **un mercato solo per 24 ore, poi domani se ne aggiunge**. La allowlist è
