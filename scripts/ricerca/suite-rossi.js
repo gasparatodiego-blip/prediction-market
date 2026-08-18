@@ -22,7 +22,22 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const OUT_DIR = path.join(ROOT, 'data', 'ricerca');
 const nome = (process.argv[2] || 'baseline').replace(/[^\w.-]/g, '-');
 const OUT = path.join(OUT_DIR, `suite-rossi-${nome}.json`);
-const TIMEOUT_MS = 60_000;
+// ⚠ 60 → 120 s, decisione dell'operatore del 18 agosto 2026: «alza il limite, non accorciare il test.
+// È un timeout, non una regressione.»
+//
+// IL FATTO: `tre-fix-sicurezza.test.js` misura **48-50 s** e col carico della macchina entrava e
+// usciva dai rossi (49,98 s → 48,42 s prima e dopo le modifiche del 17 agosto, quindi il tempo non
+// veniva da una regressione). **Un test che scade è indistinguibile da un test che fallisce**, e per
+// due giorni questa suite ha riportato come «rosso» un test che da solo fa 42/0.
+//
+// PERCHÉ 120 E NON 70: il margine non si mette sul valore misurato, si mette sul valore che il carico
+// può produrre. 70 s sarebbero il 40% sopra i 50 misurati, cioè dentro l'oscillazione che ha già
+// prodotto il falso rosso. 120 s è il doppio del tempo peggiore osservato: sopra quella soglia non c'è
+// più un test lento, c'è un test bloccato — che è la cosa che questo limite deve ancora saper dire.
+//
+// ⚠ IL LIMITE NON È SPARITO, e non deve. Un test senza timeout blocca la suite intera e nessuno
+// scopre più perché: il timeout è l'unica cosa che distingue «lento» da «appeso».
+const TIMEOUT_MS = 120_000;
 
 /** Tutti i `*.test.js` del repo, esclusi node_modules, .next e `_archivio`.
  *
