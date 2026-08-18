@@ -227,6 +227,9 @@ const { leggiRewardReale } = require('../lib/maker/reward-reale');
 const { buildMarketBoard, buildOrderBoard, buildSummary } = require('../lib/maker/operator-board');
 const { AUTO_CLOSE_SOURCE } = require('../lib/maker/auto-close-config');
 const { writeVenuePositions, readVenuePositions, readVenuePositionsConRefresh } = require('../lib/safety/venue-positions-snapshot');
+// Il gemello per gli ordini a riposo: stessa disciplina di freschezza, ma FONDE per mercato invece di
+// sovrascrivere — v. il commento in testa a quel modulo, e' li' che sta la correzione.
+const { writeVenueOrders } = require('../lib/safety/venue-orders-snapshot');
 // L'AVVISO SUI RESIDUI CHE MUOIONO SOTTO LA SOGLIA MINIMA. Deposita in data/ quello che il ciclo scopre,
 // perché lo legga la dashboard: la riga di log da sola non ha mai avvisato nessuno (0x4c19a7, 5 agosto).
 const { registraResiduiSottoSoglia } = require('../lib/maker/residui-sotto-soglia');
@@ -1955,6 +1958,23 @@ async function cycle() {
   // «non ho guardato» non e' «non c'e' piu' niente».
   if (res.ran === true && Array.isArray(res.mercatiConOrdini)) {
     mercatiConOrdiniUltimoGiro = new Set(res.mercatiConOrdini);
+  }
+  // ── E SI DEPOSITA SU DISCO, FONDENDO — 18 agosto 2026 ────────────────────────────────────────────
+  // La memoria di processo qui sopra NON BASTA, e il 18 agosto e' costato 52 minuti fuori dal libro a
+  // bot armato: `new Set(res.mercatiConOrdini)` sostituisce l'insieme INTERO, ma `mercatiConOrdini`
+  // contiene solo i mercati che questo giro e' riuscito a guardare — e `cadenza-adattiva` fa `continue`
+  // prima del conteggio su un mercato «lento» quasi ogni giro. Un giro saltato per cadenza cancellava
+  // il mercato dalla memoria, e senza memoria non tornava mai piu' nello scope.
+  //
+  // Lo snapshot risolve le due meta' del problema: FONDE per mercato (chi non e' stato guardato
+  // conserva la sua voce) e SOPRAVVIVE al riavvio. `mercatiLetti` e' cio' che il venue ha davvero
+  // risposto, ed e' la lista senza la quale la fusione non potrebbe distinguere «guardato e vuoto» da
+  // «non guardato» — che e' esattamente l'errore da cui nasce tutto questo.
+  if (res.ran === true && Array.isArray(res.mercatiLetti)) {
+    try {
+      const esito = writeVenueOrders({ guardati: res.mercatiLetti, conOrdini: res.mercatiConOrdini || [] });
+      if (esito && esito.ok !== true) log(`snapshot ordini a riposo NON scritto: ${esito.reason}`);
+    } catch (e) { log('snapshot ordini a riposo NON scritto:', e && e.message ? e.message : String(e)); }
   }
   for (const r of (res.daRipianificare || [])) {
     if (!r || !r.marketId) continue;
