@@ -296,7 +296,13 @@ module.exports = {
         // PER ARMARE si cambia questa riga in `'send'` e si riavvia DAL FILE. E' una modifica visibile,
         // in git, che si legge con `pm2 env` e con `/proc/<pid>/environ`: le tre cose che il 16 agosto
         // non c'erano.
-        MANUAL_ORDER_PLACEMENT: 'dry-run',
+        // ⚠⚠ APERTA IL 18 AGOSTO 2026, ~16:20Z, SU ISTRUZIONE ESPLICITA DELL'OPERATORE IN CHAT.
+        // Da questa riga gli ordini RAGGIUNGONO IL VENUE. Non e' piu' una prova: e' capitale vero.
+        // Quello che resta davanti non e' una cintura d'armamento, e' stato del sistema: il KILL, il
+        // tetto per ordine ($65,63), il tetto per mercato ($61,25), l'esposizione cumulativa ($150),
+        // il rate limit, la perdita giornaliera a -$100, «mai primo sul libro» e la banda premiante.
+        // PER DISARMARE: si rimette 'dry-run' qui e nel blocco di agent41, e si riavvia DAL FILE.
+        MANUAL_ORDER_PLACEMENT: 'send',
 
         // ⚠ 1000 → 5000 ms IL 16 AGOSTO 2026, DOPO AVER MISURATO IL DANNO. Il pavimento a 1 s era stato
         // chiesto per il riprezzo «event-driven»; con il lock per mercato in servizio ha prodotto
@@ -598,12 +604,16 @@ module.exports = {
         // regge per un'assenza, non per una riga che qualcuno ha scritto apposta.
         MAKER_ADAPTER_DRYRUN: 'false',
 
+        // ⚠⚠ APERTA IL 18 AGOSTO 2026, ~16:21Z, SU ISTRUZIONE ESPLICITA DELL'OPERATORE IN CHAT.
+        // ⚠ QUI PESA PIU' CHE SU agent40: agent40 RIPREZZA cio' che esiste, agent41 APRE. Da questa
+        // riga il bot apre posizioni da solo, senza che nessuno confermi il singolo ordine.
+        // ⚠ E SMETTE DI ESSERE UN'ASSENZA: fino a ieri reggeva perche' la variabile non c'era, cioe'
+        // per il difetto fail-closed di `manualPlacement` (tutto cio' che non e' 'send' e' 'dry-run').
+        // Adesso e' dichiarata, e va DISARMATA cancellandola o rimettendola a 'dry-run'.
+        MANUAL_ORDER_PLACEMENT: 'send',
+
         // COME SI DISARMA TUTTO: si cancellano queste righe (e quelle di agent40) e si riavvia dal
-        // file. Ogni assenza e' fail-closed per costruzione. Delle quattro, e' dichiarata solo
-        // MAKER_MODE (gradino 1, APERTA); le altre tre restano:
-        // MAKER_ADAPTER_DRYRUN — assente qui, `true` dal `.env` ⇒ ombra forzata.
-        // REALLOC_SCHEDULER_DRY_RUN — assente ⇒ freno di prova INSERITO (fail-closed).
-        // MANUAL_ORDER_PLACEMENT — assente ⇒ la corsia manuale resta dry-run.
+        // file. Ogni assenza e' fail-closed per costruzione.
         // ⚠ E' QUESTO il processo che APRE: `bulk-allocate` di agent41 e' «un ciclo su
         // `placeManualOrder`, nient'altro», quindi arriva alla stessa porta di agent40 e incontra le
         // stesse quattro cinture. Non esiste una seconda strada verso il venue.

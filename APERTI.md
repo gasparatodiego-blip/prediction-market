@@ -610,11 +610,23 @@ succedere.
 
 ## 12 · 👁 COSA GUARDARE NELLE PROSSIME ORE
 
-> ## ⚠ PRIMA DI TUTTO: IN DRY-RUN NON ARRIVERÀ NESSUN PREMIO, E NON È UN GUASTO
-> `MANUAL_ORDER_PLACEMENT` è ancora inserita, quindi **nessun ordine raggiunge il venue**. Nelle
-> prossime 24 ore ci saranno **zero ordini a libro, zero fill, zero reward, e il saldo resterà
-> $1.495,26**. Chi va a cercare un premio e non lo trova non ha trovato un difetto: ha trovato la
-> cintura che è stata lasciata apposta. Quello che si osserva qui è la **macchina**, non il guadagno.
+> ## 🔴 IL BOT È ARMATO — 18 agosto 2026, 16:21Z, capitale vero
+> **`MANUAL_ORDER_PLACEMENT=send` su entrambi i processi. Zero cintura d'armamento inserita.** I primi
+> due ordini veri della vita di questo bot sono a libro dalle **16:32:08Z**. Quello che resta davanti
+> non sono cinture ma stato del sistema: KILL, tetto per ordine, tetto per mercato, esposizione
+> cumulativa $150, rate limit, perdita giornaliera −$100, «mai primo sul libro», banda premiante.
+>
+> **⚠ MA IL PREMIO SARÀ QUASI ZERO LO STESSO, E NON È UN GUASTO.** A 35 tick dal mid il punteggio del
+> venue è 0,0494 invece di 0,956: **lordo modellato ~$0,08/giorno**, netto ~$0,06. Chi cerca un premio
+> visibile non troverà un difetto, troverà il prezzo del bordo esterno.
+>
+> **⚠ E I FILL SARANNO QUASI CERTAMENTE ZERO, il che vuol dire che R5/R6/R7 NON verranno provate.**
+> Misurato sul tape delle 24 h precedenti, separando i due libri: sul **YES** un solo trade sotto il
+> mid, a **9 tick**; sul **NO** 22 trade, mediana **11 tick**, massimo **28**. A 35 tick **nessuna
+> delle due gambe sarebbe stata toccata nemmeno una volta**. La distanza a cui un fill diventa
+> probabile è **~10 tick (1,0¢)**, cioè `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V ≈ 0,22` invece di 0,95.
+> ⚠ E i due libri non sono simmetrici: 22 dei 23 trade sotto il mid sono sul **NO**, cioè sulla gamba
+> da $1,27 — non su quella da $55,09.
 
 ### I quattro comandi, in ordine di quanto rispondono
 
@@ -642,13 +654,16 @@ succedere.
 
 - **ogni ~10 minuti** un mini-ciclo: `mini-ciclo FORZATO: $5x rimessi al lavoro su 1 mercato/i
   (2 ordini piazzati, 0 rifiutati)`. **Due** ordini, non uno: la coppia è simmetrica per costruzione;
-- nel giornale, per ciclo: **2 `dry-run-validated` sul percorso dell'adapter** (firma 317 byte,
-  `validateOrder: ACCEPTED`) e 2 su `manual-place` con **`gate: nessuno`**;
+- nel giornale, per ciclo: `outcome: **sent**` con un **`orderId` vero** (`0x…`), `placement: send`,
+  **`gate: nessuno`**. `dry-run-validated` da qui in poi **non deve più comparire**: se ricompare, una
+  cintura si è richiusa;
 - **modo adapter `live-min`** — senza `:dryrun`;
 - **perimetro 1** su entrambi i pid, e **lo stesso** conditionId;
-- **0 ordini a riposo · 0 posizioni al venue**, sempre;
-- `capitale al lavoro ~3,7%` con `obiettivo 95%` e la riga «sotto-obiettivo»: **è corretto** — il
-  capitale non può lavorare perché non si invia;
+- **2 ordini a riposo · 0 posizioni al venue** — due, non uno: la coppia è simmetrica per costruzione;
+- gli ordini **cambiano `orderId` ogni ~23 minuti**: è la GTD nativa che scade e il rinnovo che
+  ripiazza, non un errore. Il nozionale resta ~$56 e la coppia ~93¢;
+- `capitale al lavoro ~3,8%` con `obiettivo 95%` e la riga «sotto-obiettivo»: **è corretto** — un solo
+  mercato su $1.495 di capitale, il resto è cassa per scelta;
 - `copertura … da-coprire (0/2 gambe) … si ripiazza` e `ripristino …: nessuna riga nel piano salvato`:
   rumore atteso a libro vuoto, non un errore;
 - `⚠ LA SCALA STA AFFAMANDO IL PIANO`: è un avviso di misura, non un guasto — con un mercato solo su
@@ -660,8 +675,11 @@ succedere.
 |---|---|---|
 | **perimetro ≠ 1**, o diverso fra i due pid | `mercati.js` | la selezione ha ruotato, o un riavvio è stato scoordinato (§5.1) |
 | **il mercato è cambiato** | `selezione.js` | spodestamento: legittimo solo con +$0,50/g o +25% di netto (R9). Se succede senza, è da capire |
-| **ordini a riposo > 0** o **posizioni > 0** | `stato.js` | **impossibile in dry-run.** Se compare, qualcosa invia davvero: guardare subito `MANUAL_ORDER_PLACEMENT` su `/proc` |
-| `gate:` diverso da `nessuno` | giornale | l'ordine viene rifiutato prima della firma. `maker-mode`/`dry-run` = una cintura si è richiusa; `limit-*` = un tetto morde; `live-min-market-unset` = perimetro vuoto |
+| **ordini a riposo ≠ 2** | `stato.js` | **0** = nessuno sta piazzando (guardare `gate:` nel giornale); **1** = una gamba è morta e l'altra no, cioè esposizione direzionale — R5/copertura devono rimetterla entro ~2 min; **>2** = si sta accumulando, e il tetto per mercato dovrebbe averlo impedito |
+| **posizioni > 0** | `stato.js` | **un fill è avvenuto.** Non è un guasto — è l'evento che stiamo aspettando — ma da lì partono R5/R6/R7: seguire `modalita-chiusura`, `completaCoppia`, `urgenza-scoperto` nel giornale, e controllare che il residuo non resti sotto le 20 share |
+| **nozionale a libro > $61,25** su un mercato | `stato.js` / giornale | il tetto per mercato non ha morso: è un difetto, non una scelta |
+| `outcome: dry-run-validated` ricompare | giornale | una cintura si è richiusa (riavvio non dal file, o `.env` che ha vinto): verificare `/proc` |
+| `gate:` diverso da `nessuno` | giornale | l'ordine viene rifiutato prima dell'invio. `maker-mode`/`dry-run` = una cintura si è richiusa; `limit-*` = un tetto morde; `live-min-market-unset` = perimetro vuoto |
 | **zero cicli per > 20 min** | log agent41 | l'autodiagnosi sale la **scala di sblocco** (un gradino ogni 5 min). Il gradino 6 è disarmato, quindi non arriverà a FERMA — ma i gradini 1-5 si vedono nel giornale |
 | `data/guardian-state.json` **compare** | disco | guardiano scattato: ordini cancellati e bot su FERMA. Nessun riarmo automatico |
 | `sparizione-non-nostra` | giornale | ⚠ **attenzione al falso positivo noto**: non conosce il riscatto on-chain (§10, riquadro rosso). Prima di allarmarsi, cercare `redeemPositions` nello stesso minuto |
