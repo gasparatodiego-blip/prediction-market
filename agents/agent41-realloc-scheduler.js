@@ -1048,7 +1048,16 @@ let ultimoTriggerAt = null;
  * cancel-only per ritirare una gamba orfana, stesso conteggio degli ordini nella finestra del rate
  * limit. Estratta qui perche' due cablaggi diversi verso la stessa porta sono due modi di divergere.
  */
-function piazzaCoppia(rows, diag) {
+/**
+ * @param ordiniVivi  gli ordini del venue GIÀ LETTI dal chiamante, se li ha.
+ *
+ * ⚠ IL TERZO ARGOMENTO NON È UN'OTTIMIZZAZIONE QUALUNQUE. Senza, la corsia di piazzamento rilegge gli
+ * ordini nostri dal venue per OGNI gamba — e `riconciliaCopertura`, che è il chiamante che ripristina
+ * le gambe, quella lista l'ha letta un istante prima e la sta già usando per giudicare la copertura.
+ * Rileggerla a valle non è solo una chiamata sprecata: è una SECONDA fotografia, che può divergere
+ * dalla prima e far decidere il prezzo su un book diverso da quello su cui si è deciso di piazzare.
+ */
+function piazzaCoppia(rows, diag, ordiniVivi = null) {
   return runBulkAllocation(
     // QUI c'era `dryRunOnly: false` CABLATO: il mini-ciclo piazzava a prescindere da qualunque flag.
     // E' il secondo dei due percorsi di agent41 verso il venue, e senza questa riga il freno avrebbe
@@ -1062,6 +1071,12 @@ function piazzaCoppia(rows, diag) {
         try { const u = readUsage({ userId: OPERATOR_USER }); return Number.isFinite(u.ordersInWindow) ? u.ordersInWindow : 0; }
         catch { return 0; }
       })(),
+      // ⚠ SI PASSA SOLO SE C'È DAVVERO. Una lista vuota NON è una lista assente: passarla direbbe al
+      // piazzamento «non hai nessun ordine tuo», che su un mercato dove ne abbiamo uno lo farebbe
+      // mettere un tick dietro a se stesso. Se il chiamante non l'ha letta, a valle si rilegge.
+      ...(Array.isArray(ordiniVivi)
+        ? { resolveOwnOrders: async () => ({ ok: true, orders: ordiniVivi }) }
+        : {}),
     },
   );
 }
@@ -1474,7 +1489,13 @@ async function ripristinaGamba({ id, v, riga, ora, deps }) {
     const piazza = deps.piazza || piazzaCoppia;
     let diag = { readable: false };
     try { diag = readUsage({ userId: OPERATOR_USER }); } catch { diag = { readable: false }; }
-    ref = await piazza(righeDaPiazzare, diag);
+    // ⚠ GLI ORDINI GIÀ LETTI SI PASSANO ANCHE A VALLE. `deps.ordiniVivi` è la STESSA lista su cui
+    // `valutaCopertura` ha appena giudicato e su cui `dimensionaCoppia` ha appena scelto la size:
+    // farla rileggere alla corsia di piazzamento vorrebbe dire decidere la size su una fotografia e
+    // piazzare su un'altra. È la stessa disciplina della riga qui sopra — «gli ordini vivi si passano,
+    // non si rileggono» — portata di un livello più in giù, dove finora si fermava.
+    ref = await piazza(righeDaPiazzare, diag,
+      Array.isArray(deps.ordiniVivi) ? deps.ordiniVivi : null);
   } catch (e) {
     ref = { ok: false, reason: e && e.message ? e.message : String(e), placed: 0 };
   } finally {
