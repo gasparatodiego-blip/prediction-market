@@ -552,6 +552,10 @@ const RIPIANIFICA_TTL_MS = 24 * 3_600_000;
 // mercato appena uscito dal piano finche' ci restano ordini sopra. In memoria e non su disco — dopo un
 // riavvio vale la lista vuota, cioe' il comportamento che il ciclo aveva prima del 12 agosto 2026.
 let mercatiConOrdiniUltimoGiro = new Set();
+// L'ultima firma dello scope ALLARGATO, per non riscrivere la stessa riga a ogni ciclo (agent40 gira
+// ogni pochi secondi). Vive in memoria: dopo un riavvio la prima riga si riscrive, ed e' giusto —
+// e' un fatto nuovo per un processo nuovo.
+let firmaScopeAllargato = null;
 
 const daRipianificareCoda = (() => {
   const m = new Map();
@@ -1970,6 +1974,37 @@ async function cycle() {
   // conserva la sua voce) e SOPRAVVIVE al riavvio. `mercatiLetti` e' cio' che il venue ha davvero
   // risposto, ed e' la lista senza la quale la fusione non potrebbe distinguere «guardato e vuoto» da
   // «non guardato» — che e' esattamente l'errore da cui nasce tutto questo.
+  // ── E SI DICE PERCHE' UN MERCATO E' NELLO SCOPE, quando non e' il piano a tenercelo ─────────────
+  // ⚠ QUARTO SILENZIO DELLA STESSA FAMIGLIA, trovato il 18 agosto cercando cosa avrebbe letto
+  // l'operatore la mattina dopo: `runAutoRepriceCycle` calcola `scope.perche` — la ragione per cui
+  // ogni mercato e' nello scope del rinnovo — e questo chiamante non lo leggeva. Zero occorrenze in
+  // tutto il giornale. Cioe' la componente che tiene a libro il capitale quando il piano lascia un
+  // mercato funzionava senza lasciare traccia, ed e' esattamente cio' che rende un presidio non
+  // verificabile: «ha funzionato» sarebbe stato un atto di fede.
+  //
+  // Si scrive solo quando la FIRMA cambia, perche' questo ciclo gira ogni pochi secondi e una riga
+  // per giro sarebbe rumore che nasconde il segnale invece di darlo.
+  if (res.ran === true && res.scope && res.scope.aggiunti > 0) {
+    const perche = res.scope.perche || {};
+    const aggiunti = Object.entries(perche).filter(([, p]) => p !== 'piano');
+    const firma = aggiunti.map(([id, p]) => `${id}:${p}`).sort().join('|');
+    if (firma && firma !== firmaScopeAllargato) {
+      firmaScopeAllargato = firma;
+      const righe = aggiunti.map(([id, p]) => `${String(id).slice(0, 10)}… (${p})`).join(' · ');
+      log(`SCOPE ALLARGATO: ${aggiunti.length} mercato/i tenuti nel riprezzo pur non essendo nel piano — ${righe}`);
+      try {
+        appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'agent40', op: 'scope-rinnovo',
+          outcome: 'allargato-oltre-il-piano',
+          reason: `il piano non nomina piu' questi mercati, ma restano gestiti: ${righe}`,
+          observed: { totale: res.scope.totale, daPiano: res.scope.daPiano, aggiunti: res.scope.aggiunti,
+            perche: Object.fromEntries(aggiunti) } });
+      } catch (e) { log('audit scope-rinnovo non scritto:', e.message); }
+    }
+  } else if (res.ran === true && firmaScopeAllargato !== null) {
+    firmaScopeAllargato = null;
+    log('SCOPE ALLARGATO: rientrato — tutti i mercati del riprezzo sono di nuovo nel piano');
+  }
+
   if (res.ran === true && Array.isArray(res.mercatiLetti)) {
     try {
       const esito = writeVenueOrders({ guardati: res.mercatiLetti, conOrdini: res.mercatiConOrdini || [] });
