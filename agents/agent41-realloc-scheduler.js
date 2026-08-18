@@ -2499,7 +2499,14 @@ async function miniCiclo(decisione, deps = {}) {
   // entrambe le fonti, tenuti in due funzioni, sono due occasioni di dimenticarne una: qui la fonte
   // chiama UNA funzione e le prende entrambe.
   const righeAmmesse = (righe, dove) => {
-    const sel = selezioneAttiva();
+    // ⚠ LA SELEZIONE SI INIETTA, come già fa `riconciliaCopertura` (`deps.selezione`). Senza, questa
+    // funzione legge `data/selezione-mercati.json` VERO: un test che guida il mini-ciclo con le sue
+    // righe se le vede togliere tutte perché i suoi mercati finti non sono fra quelli che il bot ha
+    // scelto stamattina — e il verdetto diventa «l'ultimo piano non ha righe utilizzabili», che
+    // sembra un difetto del piano mentre è lo stato del bot che entra dalla finestra.
+    // Tre test del mini-ciclo erano rossi per questo, e sarebbero tornati verdi da soli il giorno in
+    // cui la selezione avesse scelto per caso quei mercati: la peggiore forma di prova.
+    const sel = (deps.selezione || selezioneAttiva)();
     let dopoSelezione = righe || [];
     if (sel.attiva) {
       // `idsAttivi`, NON `ids`: un mercato in gestione sta chiudendo la sua posizione, e aprirci sopra
