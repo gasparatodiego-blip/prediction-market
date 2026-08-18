@@ -13,6 +13,7 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 | **cinture** | **4/4 inserite** su agent40 e agent41, lette da `/proc/<pid>/environ` |
 | **regole concordate** | **10 su 10 in servizio** (§0), **10 su 10 verificate dal banco** |
 | **passi del giro completo** | **26 su 26** (erano 18: sei passi nuovi, uno per regola) |
+| **suite** | 214 test · **209 verdi · 4 rossi**, tutti classificati (§8) · 1 non parte |
 | **regole che scattano** | **20 statiche + 15 dinamiche su 91**, col cablaggio di produzione |
 | **quanti mercati** | **3**, da `MAKER_MERCATI_CONTEMPORANEI` nell'ambiente di agent41 |
 | **bot** | **DISARMATO**: `MAKER_MODE=off` · `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT=dry-run` · perno vuoto · **zero ordini a libro** |
@@ -280,11 +281,11 @@ nell'ecosystem e riavviare dal file.
 
 | # | cosa | perché è ancora aperto | cosa serve da te |
 |---|---|---|---|
-| 1 | **la metà di R6 che morderebbe davvero** | «anche oltre 101¢» vale per **comprare l'altro lato** e sbloccare un residuo col merge. Non esiste un percorso che compri sopra il tetto della coppia, e inventarlo sarebbe un meccanismo nuovo su capitale reale. La metà implementata (vendere attraversando, anche sotto il minimo) copre il caso comune | **decidi se vuoi quel percorso.** Se sì: quanto sopra 101¢ si può spendere, e con quale tetto in dollari |
-| 2 | **`tre-fix-sicurezza` scade nella suite** | 48-50 s contro il limite di 60 s. Da solo fa **42/0** | o si accorcia il test o si alza il limite: **è una decisione** |
-| 3 | **i tre rossi voluti di §5.2 p.37** | `maxOpenNotionalUsd` $150 sta sotto `3 × $61,25 = $183,75`, quindi tre test difendono un'invariante che hai deciso di non volere più. **Non ammorbiditi** | quale invariante è ora quella giusta |
+| 1 | ~~**la metà di R6 che morderebbe davvero**~~ — **CHIUSA**: si compra l'altro lato anche oltre 101¢, coi due tetti **in dollari** decisi dall'operatore — mai più del valore della posizione, e mai più di $5. Se nessuno dei due basta, si dichiara e si aspetta la risoluzione | — | — |
+| 2 | ~~**`tre-fix-sicurezza` scade**~~ — **CHIUSO**: limite alzato a 120 s per decisione dell'operatore. Misura 75,75 s e sotto carico concorrente può ancora scadere | — | — |
+| 3 | ~~**i tre rossi voluti di §5.2 p.37**~~ — **CHIUSI**: l'invariante è `capitale impegnato ≤ N × $61,25`, con N dall'ambiente. Le asserzioni erano rovesciate | — | — |
 | 4 | **`pm2 startup` non fatto** | richiede root, `sudo` chiede la password. Al suo posto una riga `@reboot … pm2 resurrect` nella crontab di `bot` | esegui il comando in CLAUDE.md §5.1, poi **togli la riga di cron** — due meccanismi che riaccendono la stessa flotta sono peggio di uno |
-| 5 | **`git push` bloccato — 88 commit locali** | remote HTTPS, nessuna credenziale: `could not read Username`. Non può farlo un agente | una chiave SSH o un PAT |
+| 5 | **`git push` bloccato — 105 commit locali** | remote HTTPS, nessuna credenziale. I comandi per la chiave SSH sono stati dati; `~/.ssh` non esiste ancora | esegui i sei passi della chiave SSH |
 
 ### Aperto perché manca una misura
 
@@ -297,6 +298,69 @@ nell'ecosystem e riavviare dal file.
 | 10 | **la cadenza adattativa è sotto-risolta** | agent40 classifica il 99,6% «lenta» mentre `leggiFinestraTutti` vede `rangeMid = 0` sul 48,8%: il conto non torna. Non è la leva |
 | 11 | **che il residuo NASCA** | la via d'uscita esiste (riscatto on-chain, nessun minimo). Resta a monte: le leve sono size e profondità, non un meccanismo nuovo |
 | 12 | **`npm run build` fallisce** | manca `lucide-react`, causa preesistente. Il JS compila, muore nel type-check. Il `dashboard` non è nella flotta ⇒ non serve a nessun processo vivo |
+
+---
+
+## 8 · 🧪 I ROSSI DELLA SUITE, CLASSIFICATI UNO PER UNO
+
+Il 18 agosto la suite aveva **12 rossi**. Nessuno era nuovo: cinque non erano nemmeno nell'elenco noto
+di CLAUDE.md, che era **vecchio**. Classificati tutti e dodici, **chiusi otto, ne restano quattro** —
+e i quattro sono tutti «decisione» o «costo zero», nessuno è un difetto.
+
+### Chiusi
+
+| test | era | cosa si è scoperto |
+|---|---|---|
+| `sette-punti` · `tetti-per-giro-e-scope` · `tetto-derivato-dallo-scaglione` | decisione | l'invariante giusta è **`capitale impegnato ≤ N × $61,25`**, con **N letto dall'ambiente**. Le asserzioni erano **rovesciate**: chiedevano che il tetto di esposizione fosse più LARGO del massimo impegnabile, cioè che non mordesse mai |
+| `miniciclo-prende-il-mercato` · `passate-mini-ciclo` · `tetti-dal-miniciclo` | test vecchio | **non era il piano**: quei tre lo iniettavano già. A leggere da disco era la **selezione**, che filtrava via tutte le righe perché i mercati finti non erano quelli scelti dal bot quel giorno |
+| `cancellazione-riconosciuta` | test vecchio | pretendeva cancellazioni nella coda del registro **vivo**: a bot disarmato non ce ne sono |
+| `tetto-orizzonte` | test vecchio | asseriva sul piano dell'8 agosto letto da disco, che ora contiene l'ultimo piano vero (vuoto) |
+| `dipendenze-collegate` | **difetto vero** | `resolveOwnOrders` dichiarata e mai iniettata — vedi sotto |
+| `end-of-scale-cycle` | test vecchio | lo scope del ciclo è «abilitati ∪ mercati con posizione», e la posizione **viva** di Hong Kong gli faceva visitare due mercati: lo stesso ordine rinnovato due volte |
+| `scaduto-senza-rinnovo` | test vecchio | il primo ciclo **rinnovava** l'ordine (nasce a 20 s dalla scadenza, il margine è 180 s), quindi l'id cercato dopo non esisteva **per costruzione** |
+
+### Aperti, e perché
+
+| test | classe | perché resta |
+|---|---|---|
+| `attraversamento-scatta` · `scadenza-ereditata` · `tetto-e-scoperta` | **decisione** | difendono tre valori che l'operatore ha cambiato: la concessione al 5% (R7), il pavimento d'orizzonte a 24 h (R2), il tetto per ordine passato da «metà mercato» a «gamba più cara» il 16 agosto. Vanno riscritti sulle regole nuove, come i tre già chiusi |
+| `categoria-mercato` | **costo zero** | misura un classificatore che **nessuno importa**. Il suo unico «importatore» è un nome di file dentro una allowlist. Quello in servizio legge il campo `category` e su 129 mercati del board vivo restituisce `null` **zero volte** — e anche se lo facesse, escluderebbe **quel** mercato con un motivo dichiarato, senza bloccare nient'altro |
+| `leg-order` | non parte | test JS su moduli TypeScript |
+
+### La lezione che vale più dei sette test
+
+**Cinque rossi su dodici avevano la stessa causa**: guidavano codice vero contro lo **stato vivo** —
+piano, selezione, posizioni, registro. Non erano cinque problemi, era uno. E sarebbero tornati verdi
+**da soli** il giorno in cui il bot avesse per caso scelto quei mercati: la peggiore forma di prova,
+perché il verde non avrebbe significato niente.
+
+Ogni seam che serviva **esisteva già** (`deps.selezione`, `deps.posizioni`, `leggiPiano`,
+`pianoLeggero`): nessuno la iniettava. È la stessa classe del difetto vero trovato lo stesso giorno.
+
+---
+
+## 9 · 🔌 LE DIPENDENZE DICHIARATE E MAI INIETTATE — un inventario, non un caso
+
+`resolveOwnOrders` era **letta** dalla corsia di piazzamento e **nessuno la passava**: il blocco che la
+usa non entrava mai. **Non era un guasto** — il ripiego rilegge dal venue, che è corretto — ma costava
+una chiamata di rete **per gamba** e, più serio, una **seconda fotografia** degli ordini: chi ripristina
+una gamba legge la lista, la usa per giudicare la copertura *e* per scegliere la size, poi il
+piazzamento ne rileggeva un'altra. Decidere la size su una fotografia e piazzare su un'altra è il modo
+in cui due letture divergenti diventano un prezzo sbagliato. **Quinta occorrenza** di questa classe.
+
+Ora è cablata dove serve. E soprattutto: lo scanner classificava già tutte le **187** dipendenze di
+`lib/`, ma il test falliva solo su due categorie e lasciava fuori la più numerosa — **con ripiego e mai
+iniettata da nessuno: 44**. Nessun test le nominava.
+
+`dipendenze-mai-iniettate.test.js` pretende che **ogni** dep mai iniettata sia o iniettata, o
+**dichiarata** con una ragione. Sei famiglie: percorso di file · primitiva di sistema · sacca di
+sotto-dipendenze · funzione pura sostituibile · manopola del relayer · superficie on-chain. E
+l'inventario non può invecchiare: il test cade anche se una voce descrive una dep che non esiste più,
+o una che **invece** è iniettata.
+
+⚠ La famiglia più delicata è **superficie on-chain**: `mergeOnChain` ha come difetto il relayer vero.
+La sua gemella `signerProvider` è già stata la **seconda** occorrenza di questa classe, e il merge
+on-chain non ha firmato per giorni.
 
 ---
 
@@ -332,8 +396,17 @@ I file di servizio stanno in **`/tmp/rewards-bot-bot/`** (0700), non in `/tmp` n
 | `b29f429` `c0fc111` | **R4** | le due misure, prima di decidere |
 | `1b8b34c` | **R4** | `book-erosion` collegato ad `auto-reprice` |
 | `176c5a5` | **E** | sei passi nuovi nel banco: **26/26** |
+| `cd53c82` | **2+3** | l'invariante di esposizione è `≤ N × $61,25`; timeout della suite a 120 s |
+| `b1fdec9` | **difetto** | **il presidio d'uscita gira anche a bot fermo** |
+| `ab2bca0` | **R6** | comprare l'altro lato per sbloccare un residuo, coi due tetti in dollari |
+| `8dccac9` | **1** | il freno di agent41 può stare nell'ecosystem, e il divieto resta scritto |
+| `21aac7c` | **manuale** | `MANUALE.md`: il comportamento per intero, senza riferimenti al codice |
+| `8ff2185` | **2-bis** | il terzo rosso voluto esisteva, in `lib/rewards/` |
+| `a01144a` | **difetto** | `resolveOwnOrders` cablata, e l'inventario di tutte le dep mai iniettate |
+| `7bdc0db` `6108b78` | **test** | i cinque che dipendevano dallo stato del bot: iniettato, non letto |
+| `1c555f7` | **test** | il 4 e il 7 erano test vecchi, non difetti |
 
-### I tre difetti trovati oggi che nessun test vedeva
+### I cinque difetti trovati oggi che nessun test vedeva
 
 1. **il presidio dei 60 minuti non gira a bot FERMO** — sta dietro `if (!TRIGGER_ATTIVO || !botAttivo())`,
    e FERMA è esattamente lo stato che il kill produce: «l'ultima rete» non c'era nel momento per cui
@@ -344,6 +417,10 @@ I file di servizio stanno in **`/tmp/rewards-bot-bot/`** (0700), non in `/tmp` n
 3. **il test del kill giornaliero scriveva nel `data/` di produzione** — `spazzaEFerma` vera depositava
    una richiesta finta che agent41 avrebbe eseguito. Residuo rimosso, percorso reso iniettabile, e ora
    c'è l'asserzione su *dove non* ha scritto.
+4. **il presidio d'uscita non girava a bot FERMO** — stava dietro `botAttivo()`, e FERMA è lo stato che
+   il kill produce: la «ultima rete» non c'era nel momento per cui esiste. Nominato dall'operatore.
+5. **`resolveOwnOrders` dichiarata e mai iniettata** — quinta occorrenza della classe. Non un guasto,
+   ma una lettura del venue sprecata per gamba e una seconda fotografia degli ordini.
 
 ---
 

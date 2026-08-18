@@ -1,6 +1,6 @@
 ════════════════════════════════════════════════════════════════════════════════
 MANUALE OPERATIVO DEL BOT DI LIQUIDITY REWARDS SU POLYMARKET
-Comportamento completo, aggiornato al 18 agosto 2026
+Comportamento completo, aggiornato al 18 agosto 2026 (sera)
 ════════════════════════════════════════════════════════════════════════════════
 
 COSA FA QUESTO BOT, IN UNA FRASE
@@ -295,6 +295,19 @@ tetto di 30 — perché il ciclo che ospita questa decisione gira ogni due minut
 senza raffreddamento un mercato che rifiuta sempre verrebbe ritentato 720 volte
 al giorno.
 
+B9 · IL BOT STA PER RIMETTERE A LIBRO UNA GAMBA CHE HA APPENA TOLTO
+Quando: la gamba è stata cancellata perché la profondità davanti si era erosa (caso B3), e il
+meccanismo che rimette a libro le gambe mancanti gira di lì a poco.
+Cosa fa: non la rimette. Legge il registro delle uscite e aspetta che la sospensione scada o che la
+profondità torni.
+Cosa NON fa: non aggira il registro. Senza quel controllo l'uscita da cinque minuti durerebbe due — il
+meccanismo che ripristina le gambe parte SUBITO, perché la scadenza degli ordini è di ventitré minuti —
+e il giornale mostrerebbe una cancellazione e un ripristino, cioè quello che il bot fa già: la regola
+sarebbe invisibile oltre che inerte.
+Se il dato non è leggibile: registro illeggibile ⇒ nessuna sospensione ⇒ la gamba torna a libro. È il
+verso opposto della regola generale, e ha una ragione: una sospensione è una rinuncia al premio, e un
+file che non si legge non deve poter tenere il bot fuori dal mercato per sempre.
+
 B8 · IL MERCATO USCITO DALL'ELENCO HA ANCORA I NOSTRI ORDINI
 Quando: la selezione toglie un mercato mentre lì ci sono ancora ordini o
 posizioni.
@@ -540,6 +553,18 @@ SENZA via d'uscita, ed è per questo che esiste un interruttore separato per
 «smetti di aprire».
 Se il dato non è leggibile: si comporta come se fosse attivo.
 
+E3-bis · IL BOT È SU «FERMO» — cosa continua a girare, e cosa no
+Quando: l'interruttore operativo è su fermo, per mano di una persona o perché un kill lo ha messo lì.
+Cosa fa: smette di APRIRE. Non sceglie mercati nuovi, non alloca capitale, non rimette a libro gambe
+mancanti.
+Cosa CONTINUA a fare: tutto quello che TOGLIE esposizione. L'uscita automatica, la riprezzatura e il
+rinnovo delle posizioni aperte, la chiusura di sicurezza dopo un'ora, e la chiusura d'emergenza
+richiesta da un kill.
+Perché conta: lo stato in cui le gambe scoperte sono più probabili — subito dopo un kill — è
+esattamente quello in cui devono essere guardate. Un fermo che spegnesse anche l'uscita lascerebbe le
+posizioni senza nessuno che se ne occupa, ed è precisamente ciò che il blocco d'emergenza generale fa
+apposta e questo interruttore non deve fare.
+
 E4 · IL BOT SMETTE DI LAVORARE SENZA CHE NESSUNO SE NE ACCORGA
 Quando: gli ordini a riposo sono zero, o il capitale al lavoro sta sotto il 50%
 per quindici minuti, o non c'è stato nessun ciclo negli ultimi venti minuti, o
@@ -669,7 +694,20 @@ PARTE QUARTA — I PRINCIPI CHE SPIEGANO TUTTO IL RESTO
    stata fatta cadere di proposito almeno una volta, sul codice precedente, per
    dimostrare che stava misurando qualcosa.
 
-8. IL PREMIO SI MATURA STANDO FERMI. Ogni movimento costa la posizione in coda.
+8. UNA PROVA CHE DIPENDE DALLO STATO DEL BOT NON MISURA IL BOT. Se una verifica
+   legge il piano, la selezione, le posizioni o il registro VIVI, il suo esito
+   dice cosa stava facendo il bot quando è stata lanciata, non se il codice è
+   giusto. Il caso peggiore non è il rosso: è il verde che arriva da solo il
+   giorno in cui lo stato per caso combacia, perché quel verde non significa
+   niente. Ogni verifica riceve i dati su cui deve giudicare — non li cerca.
+
+9. QUANDO UNA REGOLA CAMBIA, LA SUA PROVA VA RISCRITTA, NON AMMORBIDITA. Una
+   verifica che difende la regola vecchia è indistinguibile da una che ha trovato
+   un difetto: le si toglie la vecchia proprietà e le si dà la nuova, sullo
+   stesso caso e con la stessa severità. Ammorbidirla — allargare una soglia,
+   togliere un'asserzione — trasforma una decisione in una dimenticanza.
+
+10. IL PREMIO SI MATURA STANDO FERMI. Ogni movimento costa la posizione in coda.
    Per questo quasi tutte le tarature sono orientate al NON agire: soglie con
    isteresi, conferme multiple, intervalli minimi, raffreddamenti crescenti. Un
    bot nervoso su questo venue perde il montepremi per evitare due esecuzioni
