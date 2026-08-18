@@ -336,6 +336,25 @@ module.exports = {
         // il caricatore scrive solo le chiavi ASSENTI da `process.env`, e pm2 ne inietta gia' una.
         // ⚠ PER DISARMARE si CANCELLA questa riga e si riavvia dal file: l'assenza e' fail-closed.
         MAKER_MODE: 'live-min',
+        // ══ GRADINO 2 · MAKER_ADAPTER_DRYRUN APERTA — 18 agosto 2026, istruzione dell'operatore ═════
+        // ⚠ E' QUESTA LA RIGA CHE FA FIRMARE GLI ORDINI, ed e' il motivo per cui esiste il gradino.
+        // `canWrite = LIVE_MODES.includes(mode) && !dryRun` (`adapter.js:589`). Finche' e' `false` la
+        // scrittura esce a `adapter.js:776` con `outcome:'shadow'` — cioe' PRIMA della chiamata
+        // dell'SDK che costruisce e firma (`adapter.js:894`, firma EIP-712).
+        // MISURATO sul giornale prima di questo gradino: 983 `shadow` e ZERO `dry-run-validated` sul
+        // percorso dell'adapter. Nessun ordine era mai stato firmato in tutta la vita di questo bot;
+        // i `dry-run-validated` che si vedevano sono di `manual-place`, cioe' la contabilita' della
+        // corsia manuale, scritta DOPO che l'adapter aveva gia' rifiutato. Due righe che si somigliano
+        // e dicono cose opposte: «costruito» e «costruito, firmato, fermato un istante prima».
+        // ⚠ COSA RESTA DAVANTI: SOLO `MANUAL_ORDER_PLACEMENT`. L'ordine viene costruito, passa tutti i
+        // gate, viene FIRMATO, e si ferma all'ultimo `if` prima dell'invio (`adapter.js:923`) con
+        // `outcome:'dry-run-validated'` e `wouldSend`. Una cintura sola fra il bot e il venue.
+        // ⚠ E DA QUI LE LETTURE E LE CANCELLAZIONI DIVENTANO VERE: con `canWrite` a `true` non escono
+        // piu' da `shadowOk` nemmeno `listOpenOrders`, `getPositions` e le cancellazioni. Nessun ordine
+        // e' a libro adesso, quindi non c'e' niente da cancellare — ma la capacita' c'e'.
+        // ⚠ `false` E NON L'ASSENZA: il `.env` porta `MAKER_ADAPTER_DRYRUN=true`, e il caricatore
+        // scrive solo le chiavi assenti — togliere questa riga rimetterebbe `true`, cioe' RIARMA.
+        MAKER_ADAPTER_DRYRUN: 'false',
         // MAKER_ADAPTER_DRYRUN — NON DICHIARATA: assente qui, il `.env` impone `true` ⇒ ombra forzata.
         //   Dal 17/08 `buildPlacementAdapter` la passa davvero all'adapter: prima non la leggeva nessuno
         //   su questo percorso, perche' `createMakerAdapter` fa `opts.dryRun === true` senza ripiego.
@@ -571,6 +590,13 @@ module.exports = {
         // ⚠ Vale qui il commento esteso scritto nel blocco di agent40. In breve: toglie il rifiuto
         // `maker-mode`, non apre l'invio, e il valore dev'essere `live-min` ESATTO.
         MAKER_MODE: 'live-min',
+        // ══ GRADINO 2 · MAKER_ADAPTER_DRYRUN APERTA — 18 agosto 2026 ════════════════════════════════
+        // Aperta INSIEME a quella di agent40, nello stesso riavvio dal file (§5.1). Vale il commento
+        // esteso nel blocco di agent40: e' la riga che fa FIRMARE gli ordini, e da qui l'unica cintura
+        // rimasta su questo processo e' `MANUAL_ORDER_PLACEMENT`, che qui e' ASSENTE — cioe' `dry-run`
+        // per difetto fail-closed, non per dichiarazione. E' la cintura piu' sottile della sequenza:
+        // regge per un'assenza, non per una riga che qualcuno ha scritto apposta.
+        MAKER_ADAPTER_DRYRUN: 'false',
 
         // COME SI DISARMA TUTTO: si cancellano queste righe (e quelle di agent40) e si riavvia dal
         // file. Ogni assenza e' fail-closed per costruzione. Delle quattro, e' dichiarata solo
