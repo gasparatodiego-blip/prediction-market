@@ -2254,9 +2254,38 @@ async function selezionaMercati(deps = {}) {
   const codaLungaGiorni = (() => {
     try { return require('../lib/rewards/horizon').LONG_TAIL_DAYS; } catch { return null; }
   })();
+
+  // ── LA LIVENESS DEL BOOK, COME CANCELLO DI SELEZIONE — 18 agosto 2026 ──────────────────────────
+  // Un mercato che non si puo' PREZZARE non si puo' quotare: non deve occupare uno slot. La soglia
+  // viene da `regimeFeed`, la STESSA funzione del repricer e del piazzatore (D1 non esprimibile), e la
+  // vitalita' da cui dipende e' quella che agent34 pubblica nello stesso file dei book.
+  // ⚠ FILE ILLEGGIBILE ⇒ `leggibile:false` ⇒ il cancello NON si applica: non si svuota la selezione
+  // perche' non si e' riusciti a leggere un file.
+  const bookVivi = (() => {
+    try {
+      const { fileRuntime, NOMI } = require('../lib/percorsi-runtime');
+      const { regimeFeed } = require('../lib/maker/auto-reprice');
+      const j = JSON.parse(fs.readFileSync(fileRuntime(NOMI.bookVivi), 'utf8'));
+      const mercati = (j && j.markets && typeof j.markets === 'object') ? j.markets : null;
+      if (!mercati) return { leggibile: false, motivo: 'lo snapshot dei book non porta `markets`' };
+      const vit = j.feed && j.feed.vitality;
+      const reg = regimeFeed(vit && typeof vit === 'object' ? vit : null);
+      const per = {};
+      for (const [id, b] of Object.entries(mercati)) {
+        per[String(id).trim().toLowerCase()] = {
+          live: b && b.live === true,
+          ageMs: b && Number.isFinite(b.ageMs) ? b.ageMs : null,
+          reason: b && b.yes && b.yes.reason ? b.yes.reason : null,
+        };
+      }
+      return { leggibile: true, per, etaMassimaMs: reg.limite * 1000, regime: reg.regime, quanti: Object.keys(per).length };
+    } catch (e) {
+      return { leggibile: false, motivo: e && e.message ? e.message : String(e) };
+    }
+  })();
   const d = SELM.decidiSelezione({
     board, stato: stato.stato, posizioni, ora: Date.now(), escludi: quarantena, orizzonteMassimoOre,
-    nettoPerMercato, conOrdiniVivi, max: quanti.quanti, codaLungaGiorni,
+    nettoPerMercato, conOrdiniVivi, max: quanti.quanti, codaLungaGiorni, bookVivi,
   });
   if (!d.ok) {
     annuncia('log', `selezione automatica: nessuna decisione — ${d.motivo}`);
@@ -2337,6 +2366,9 @@ async function selezionaMercati(deps = {}) {
     // questa riga, un giro in cui il vincolo morde e' indistinguibile da un giro in cui non c'era
     // niente di meglio — ed e' proprio la domanda che il 18 agosto e' rimasta senza risposta.
     scartatiPerCodaLunga: d.scartatiPerCodaLunga || [],
+    bookVivi: bookVivi.leggibile
+      ? { leggibile: true, quanti: bookVivi.quanti, regime: bookVivi.regime, etaMassimaMs: bookVivi.etaMassimaMs }
+      : { leggibile: false, motivo: bookVivi.motivo || null },
     nettiIniettati: nettoPerMercato ? Object.keys(nettoPerMercato).length : null,
     ordiniViviLeggibili: conOrdiniVivi ? conOrdiniVivi.leggibile === true : null,
     statoSalvato: salvato.ok, statoErrore: salvato.ok ? null : salvato.error,
