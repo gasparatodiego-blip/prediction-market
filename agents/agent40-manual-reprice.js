@@ -2007,7 +2007,13 @@ async function cycle() {
 
   if (res.ran === true && Array.isArray(res.mercatiLetti)) {
     try {
-      const esito = writeVenueOrders({ guardati: res.mercatiLetti, conOrdini: res.mercatiConOrdini || [] });
+      // ⚠ `mercatiConNostriOrdini` e NON `mercatiConOrdini`: il secondo esclude i pre-esistenti, cioe'
+      // dopo ogni riavvio dichiarerebbe vuoto un mercato che ha i nostri ordini a libro — e la fusione
+      // («guardato e vuoto ⇒ la voce esce») lo toglierebbe dal perimetro. Ripiego sul vecchio campo
+      // solo se il nuovo manca, cosi' un disallineamento fra i due moduli non azzera lo snapshot.
+      const conOrdini = Array.isArray(res.mercatiConNostriOrdini)
+        ? res.mercatiConNostriOrdini : (res.mercatiConOrdini || []);
+      const esito = writeVenueOrders({ guardati: res.mercatiLetti, conOrdini });
       if (esito && esito.ok !== true) log(`snapshot ordini a riposo NON scritto: ${esito.reason}`);
     } catch (e) { log('snapshot ordini a riposo NON scritto:', e && e.message ? e.message : String(e)); }
   }
