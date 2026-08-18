@@ -333,7 +333,17 @@ const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 
 // ── REGISTRO ────────────────────────────────────────────────────────────────────────────────────────
 function scrivi(rec) {
-  const riga = JSON.stringify({ ...rec, pid: process.pid });
+  // ── ⚠ OGNI RECORD PORTA UN ORARIO — 18 agosto 2026 ──────────────────────────────────────────────
+  // Questa funzione aggiungeva solo il `pid`. Chi voleva una data doveva ricordarsi di metterla, e
+  // infatti meta' dei tipi di record non ce l'aveva: i `slot-sterile` di stasera dichiaravano CHE un
+  // mercato era stato rilasciato e non QUANDO, e la sequenza si e' potuta ricostruire solo perche'
+  // `setAutoReprice` tiene un registro suo. Una riga senza orario e' mezza dichiarazione: dice che e'
+  // successo, non permette di metterlo in fila con il resto.
+  // Si mette QUI e non nei chiamanti: un campo che dipende dalla memoria di chi scrive e' un campo che
+  // prima o poi manca. `at` gia' presente ⇒ si rispetta, cosi' chi timbra un istante DIVERSO da quello
+  // della scrittura (l'inizio di un giro, per esempio) non se lo vede sovrascritto.
+  const at = rec && rec.at ? rec.at : new Date().toISOString();
+  const riga = JSON.stringify({ at, ...rec, pid: process.pid });
   try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.appendFileSync(LOG_FILE, riga + '\n'); }
   catch (e) { console.error('[realloc] registro non scrivibile:', e.message); }
 }
@@ -1192,6 +1202,23 @@ const LVPP = require('../lib/maker/libro-vuoto-perimetro-pieno');
 // senza ordini», e dopo un riavvio l'unica risposta onesta e' «zero» — cioe' si riparte dando al
 // mercato il suo ciclo di grazia, invece di ereditare un conteggio che nessun processo ha osservato.
 let statoLibroVuoto = LVPP.statoVuoto();
+
+// ── IL RICALCOLO A VUOTO: LIMITATO, E SOPRATTUTTO DICHIARATO — 18 agosto 2026 ──────────────────────
+// Durante il deadlock di stasera il ricalcolo leggero e' girato a ogni ciclo per SEI ORE senza mai
+// produrre una riga da salvare: 13-16 s di processo figlio ogni ~2 minuti, e il piano salvato che
+// invecchiava da 196 a 358 minuti mentre nessuno diceva «sto ricalcolando a vuoto». Il singolo giro lo
+// dichiarava («nessun mercato ammissibile adesso»), ma nessuno sommava: e la somma e' il fatto.
+//
+// ⚠ IL LIMITE NON SPEGNE IL RICALCOLO, LO DIRADA. Dopo `SOGLIA` giri consecutivi a vuoto si aspetta
+// `RAFFREDDAMENTO_MS` prima di riprovare — da ~14 s ogni 2 minuti a ~14 s ogni 10. Il piano continua a
+// essere ritentato: quello che sparisce e' lo spreco, non il tentativo.
+// ⚠ E SI AZZERA AL PRIMO RICALCOLO UTILE: una riga prodotta dimostra che la situazione e' cambiata.
+const RICALCOLO_VUOTO_SOGLIA = 3;
+const RICALCOLO_VUOTO_RAFFREDDAMENTO_MS = 600_000;   // 10 minuti
+let ricalcoliAVuoto = 0;
+let ricalcoliAVuotoDal = null;
+let msSprecatiAVuoto = 0;
+let ultimoRicalcoloAVuotoAt = null;
 const BOARD_REWARD = path.join(DATA_DIR_A41, 'liquidity-rewards.json');
 
 /** Il board dei mercati premianti (l'uscita di agent24). `null` — MAI `[]` — se non si legge: la
@@ -2391,7 +2418,41 @@ async function selezionaMercati(deps = {}) {
     const attiviOra = Object.entries((d.statoNuovo && d.statoNuovo.selezionati) || {})
       .filter(([, v]) => v && v.inGestione !== true)
       .map(([id]) => id);
-    const v = LVPP.valuta({ attivi: attiviOra, ordini: conOrdiniVivi, stato: statoLibroVuoto, ora: Date.now() });
+    // ── I DUE SEGNALI CHE DISTINGUONO LE DUE CAUSE — 18 agosto 2026 ───────────────────────────────
+    // «Nessun ordine a libro» ha due cause opposte: sterile (non ci abbiamo mai messo capitale) e
+    // svuotato da noi (ce l'avevamo e l'abbiamo tolto). Si leggono dal giornale maker in modo
+    // INCREMENTALE — il file supera i 400 MB e rileggerlo per intero a ogni ciclo sarebbe il costo che
+    // questa regola dovrebbe far risparmiare.
+    // ⚠ `marketRef` E' L'UNICO CAMPO USABILE: `manual-cancel` porta un `marketId` REDATTO e
+    // `order-vanished` un `token_...`. Le cancellazioni si riconoscono dai record di `auto-reprice`,
+    // che portano `cid_<conditionId>` in chiaro.
+    const segnali = (() => {
+      try {
+        const GI = require('../lib/maker/giornale-incrementale');
+        const acc = GI.scansiona({
+          file: path.join(DATA_DIR, 'polymarket-maker-audit.jsonl'),
+          chiave: 'slot-sterile-segnali',
+          crea: () => ({ piazzati: new Map(), svuotati: new Map() }),
+          ingest: (riga, a) => {
+            let j; try { j = JSON.parse(riga); } catch { return; }
+            const ref = typeof j.marketRef === 'string' && j.marketRef.startsWith('cid_')
+              ? j.marketRef.slice(4).trim().toLowerCase() : null;
+            if (!ref || !Number.isFinite(j.ts)) return;
+            if (j.op === 'manual-place' && j.outcome === 'sent') a.piazzati.set(ref, j.ts);
+            else if (j.op === 'auto-reprice' && /cancellat|sospes/.test(String(j.outcome || ''))) a.svuotati.set(ref, j.ts);
+          },
+        });
+        const soglia = Date.now() - LVPP.MAX_INTERVALLO_MS;
+        const recenti = (m) => [...m.entries()].filter(([, t]) => t >= soglia).map(([id]) => id);
+        return { piazzati: recenti(acc.piazzati), svuotati: recenti(acc.svuotati), leggibile: true };
+      } catch (e) {
+        // ⚠ ILLEGGIBILE ⇒ NESSUN SEGNALE ⇒ la regola torna a vedere una causa sola. Il verso e' quello
+        // sbagliato, quindi lo si dichiara e basta: non e' un caso da nascondere.
+        return { piazzati: [], svuotati: [], leggibile: false, motivo: e && e.message ? e.message : String(e) };
+      }
+    })();
+    const v = LVPP.valuta({ attivi: attiviOra, ordini: conOrdiniVivi, stato: statoLibroVuoto, ora: Date.now(),
+      svuotatiDaNoi: segnali.svuotati, piazzatiConSuccesso: segnali.piazzati });
     statoLibroVuoto = v.statoNuovo;
     // ── ⚠ L'INTERRUTTORE DI DISARMO — 18 agosto 2026, decisione dell'operatore ─────────────────────
     // ASSENTE ⇒ ARMATA, come per `SBLOCCO_GRADINO6_ARMATO`: un env che sparisce non puo' spegnere una
@@ -2409,7 +2470,7 @@ async function selezionaMercati(deps = {}) {
     if (!armata) {
       if (v.azione === 'rilascia') {
         annuncia('log', `SLOT STERILE (DISARMATO): avrei rilasciato ${v.daRilasciare.length} mercato/i — ${v.daRilasciare.map((x) => String(x.id).slice(0, 10) + '…').join(', ')}`);
-        scrivi({ tipo: 'slot-sterile', esito: 'disarmato', disarmato: true,
+        scrivi({ at: new Date().toISOString(), tipo: 'slot-sterile', esito: 'disarmato', disarmato: true,
           avrebbeRilasciato: v.daRilasciare.map((x) => ({ id: x.id, osservazioni: x.osservazioni })),
           motivo: 'SLOT_STERILE_ARMATO=0: si registra e non si tocca', pid: process.pid });
       }
@@ -2417,17 +2478,20 @@ async function selezionaMercati(deps = {}) {
       for (const x of v.daRilasciare) {
         const r = await rilasciaDallaSelezione({ marketId: x.id, motivo: x.motivo });
         annuncia('log', `SLOT STERILE: ${String(x.id).slice(0, 10)}… occupava un posto da ${x.osservazioni} osservazioni senza ordini a libro — rilasciato`);
-        scrivi({ tipo: 'slot-sterile', esito: r && r.ok !== false ? 'rilasciato' : 'rilascio-fallito',
+        scrivi({ at: new Date().toISOString(), tipo: 'slot-sterile',
+          esito: r && r.ok !== false ? 'rilasciato' : 'rilascio-fallito',
           marketId: x.id, osservazioni: x.osservazioni, dettaglio: x.dettaglio,
+          segnaliLeggibili: segnali.leggibile, nonContate: v.nonContate || [],
           errore: r && r.ok === false ? (r.motivo || null) : null, pid: process.pid });
       }
     } else if (Object.keys(v.conteggi || {}).length) {
       // Si scrive anche l'ATTESA, o «non ha ancora due osservazioni» sarebbe indistinguibile da «non
       // ho guardato» — che e' esattamente il silenzio costato quattro volte oggi.
-      scrivi({ tipo: 'slot-sterile', esito: 'in-attesa', motivo: v.motivo, conteggi: v.conteggi, pid: process.pid });
+      scrivi({ at: new Date().toISOString(), tipo: 'slot-sterile', esito: 'in-attesa', motivo: v.motivo,
+        conteggi: v.conteggi, nonContate: v.nonContate || [], segnaliLeggibili: segnali.leggibile, pid: process.pid });
     }
   } catch (e) {
-    scrivi({ tipo: 'slot-sterile', esito: 'errore', motivo: e && e.message ? e.message : String(e), pid: process.pid });
+    scrivi({ at: new Date().toISOString(), tipo: 'slot-sterile', esito: 'errore', motivo: e && e.message ? e.message : String(e), pid: process.pid });
   }
 
   return { attiva: true, applicata: true, ...rec };
@@ -2777,27 +2841,71 @@ async function miniCiclo(decisione, deps = {}) {
       annuncia('log', `mini-ciclo: ricostruzione NON adottata — ${motivo}; si prosegue col piano di prima (${giroPrima.scelte.length} scelte)`);
       return true;
     };
-    const tRic = Date.now();
-    try {
-      pianoRicalcolato = await ricalcola({ capital: decisione.saldoUsd, maxPerMarketUsd: capMercato });
-    } catch (e) {
-      if (!tieniIlPrecedente(`il ricalcolo leggero e' fallito: ${e.message}`)) {
+    let tRic = Date.now();
+    // ⚠ IL FRENO SUL RICALCOLO A VUOTO. Non spegne: dirada. E dichiara ogni volta che salta, cosi'
+    // «sto aspettando» non e' indistinguibile da «non sto facendo niente».
+    if (ricalcoliAVuoto >= RICALCOLO_VUOTO_SOGLIA
+      && Number.isFinite(ultimoRicalcoloAVuotoAt)
+      && (Date.now() - ultimoRicalcoloAVuotoAt) < RICALCOLO_VUOTO_RAFFREDDAMENTO_MS) {
+      const attesaS = Math.round((RICALCOLO_VUOTO_RAFFREDDAMENTO_MS - (Date.now() - ultimoRicalcoloAVuotoAt)) / 1000);
+      const motivoSalto = `${ricalcoliAVuoto} ricalcoli consecutivi senza nessuna riga da salvare`
+        + ` (${Math.round(msSprecatiAVuoto / 1000)}s spesi in tutto, dal ${ricalcoliAVuotoDal || '?'}):`
+        + ` si riprova fra ${attesaS}s invece che a ogni giro`;
+      scrivi({ tipo: 'ricalcolo-a-vuoto', esito: 'saltato-per-raffreddamento',
+        consecutivi: ricalcoliAVuoto, msSprecati: msSprecatiAVuoto, dal: ricalcoliAVuotoDal,
+        riprovaFraS: attesaS, causaUltima: perche, pid: process.pid });
+      annuncia('log', `mini-ciclo: ricalcolo SALTATO — ${motivoSalto}`);
+      if (!tieniIlPrecedente(motivoSalto)) {
         return { ...referto, esito: 'nessuna-azione', utilizzo: utilPrima,
-          motivo: `${perche}, e il ricalcolo leggero e' fallito: ${e.message}` };
+          ricalcolo: { saltato: true, consecutiviAVuoto: ricalcoliAVuoto, riprovaFraS: attesaS },
+          motivo: `${perche} — ${motivoSalto}` };
       }
       pianoRicalcolato = null;
+    } else {
+      tRic = Date.now();
+      try {
+        pianoRicalcolato = await ricalcola({ capital: decisione.saldoUsd, maxPerMarketUsd: capMercato });
+      } catch (e) {
+        if (!tieniIlPrecedente(`il ricalcolo leggero e' fallito: ${e.message}`)) {
+          return { ...referto, esito: 'nessuna-azione', utilizzo: utilPrima,
+            motivo: `${perche}, e il ricalcolo leggero e' fallito: ${e.message}` };
+        }
+        pianoRicalcolato = null;
+      }
     }
     if (pianoRicalcolato !== null) {
       const righeFresche = (pianoRicalcolato && pianoRicalcolato.rows) || [];
-      referto.ricalcolo = { motivo: perche, durataMs: Date.now() - tRic, righe: righeFresche.length,
+      const durataRic = Date.now() - tRic;
+      referto.ricalcolo = { motivo: perche, durataMs: durataRic, righe: righeFresche.length,
         finestraOre: FINESTRA_LEGGERA_ORE };
       if (!righeFresche.length) {
+        // ── LA SOMMA, che e' il fatto che nessuno diceva ────────────────────────────────────────
+        ricalcoliAVuoto += 1;
+        msSprecatiAVuoto += durataRic;
+        ultimoRicalcoloAVuotoAt = Date.now();
+        if (ricalcoliAVuoto === 1) ricalcoliAVuotoDal = new Date().toISOString();
+        scrivi({ tipo: 'ricalcolo-a-vuoto', esito: 'nessuna-riga',
+          consecutivi: ricalcoliAVuoto, durataMs: durataRic, msSprecati: msSprecatiAVuoto,
+          dal: ricalcoliAVuotoDal, causa: perche,
+          dettaglio: 'il ricalcolo ha girato e non ha prodotto nessuna riga da salvare: il piano resta quello di prima e continua a invecchiare',
+          pid: process.pid });
+        if (ricalcoliAVuoto === RICALCOLO_VUOTO_SOGLIA) {
+          annuncia('log', `mini-ciclo: ${ricalcoliAVuoto} ricalcoli consecutivi a vuoto (${Math.round(msSprecatiAVuoto / 1000)}s spesi) — da ora si dirada a uno ogni ${Math.round(RICALCOLO_VUOTO_RAFFREDDAMENTO_MS / 60000)} minuti`);
+        }
         if (!tieniIlPrecedente('il ricalcolo leggero non ha trovato nessun mercato ammissibile adesso')) {
           return { ...referto, esito: 'nessuna-azione', utilizzo: utilPrima,
             motivo: `${perche} — e il ricalcolo leggero non ha trovato nessun mercato ammissibile adesso:`
               + ' il capitale resta liquido perche' + ' non c\'e\' dove metterlo, non perche\' non si e\' guardato' };
         }
       } else {
+        // ⚠ AZZERA: una riga prodotta dimostra che la situazione e' cambiata, e il conteggio di prima
+        // non descrive piu' adesso.
+        if (ricalcoliAVuoto > 0) {
+          scrivi({ tipo: 'ricalcolo-a-vuoto', esito: 'rientrato', consecutiviPrima: ricalcoliAVuoto,
+            msSprecati: msSprecatiAVuoto, dal: ricalcoliAVuotoDal, righeOra: righeFresche.length, pid: process.pid });
+          annuncia('log', `mini-ciclo: ricalcolo di nuovo utile (${righeFresche.length} righe) dopo ${ricalcoliAVuoto} giri a vuoto`);
+        }
+        ricalcoliAVuoto = 0; msSprecatiAVuoto = 0; ricalcoliAVuotoDal = null; ultimoRicalcoloAVuotoAt = null;
         const fresche = righeAmmesse(righeFresche, 'ricostruzione');
         const giroFresco = TRIG.pianificaGiro({ ...comuni, righe: fresche, disponibileUsd: spendibileUsd });
         if (giroFresco.scelte.length >= giroPrima.scelte.length) {
