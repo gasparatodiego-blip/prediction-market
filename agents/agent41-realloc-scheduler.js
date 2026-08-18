@@ -313,6 +313,10 @@ const COP = require('../lib/maker/copertura-gambe');
 // Il presidio che impedisce un'altra FL-27 da cinque ore. Indipendente dalla scala d'uscita: vedi
 // `presidio-posizioni-vecchie` per perche' e' deliberatamente stupido e quando andra' tolto.
 const PRESIDIO = require('../lib/maker/presidio-posizioni-vecchie');
+// Il minimo premiante del venue da TRE fonti — board, catalogo di ripiego, CLOB. Senza questo il
+// presidio non poteva sapere che una posizione fuori dal board e' un residuo sotto il minimo, e il ramo
+// di R6 non si raggiungeva mai. Vedi `min-size-mercato.js` per la misura.
+const MINSIZE = require('../lib/maker/min-size-mercato');
 const PRESIDIO_FILE = require('path').join(require('../lib/safety/store').DATA_DIR, 'presidio-posizioni.json');
 // R10 · la richiesta depositata da agent43. Chi la scrive non puo' eseguirla, chi la esegue non puo'
 // deciderla: e' la stessa separazione del referto di cancellazione.
@@ -1966,6 +1970,11 @@ async function eseguiChiusuraDiEmergenza(deps = {}) {
   return esito;
 }
 
+// La memoria dei tentativi falliti verso il venue vive NEL PROCESSO e non su disco, come per il
+// recupero delle scadenze in agent40: un riavvio deve poter riprovare subito. Il costo di un tentativo
+// in piu' e' una richiesta; il costo di non riprovare e' un residuo che nessuno riconosce.
+let minSizeFallite = {};
+
 async function presidioPosizioniVecchie(deps = {}) {
   // ⚠ IL GIORNALE SI INIETTA. `scrivi` di modulo APPENDE al registro VERO in `data/`: un test che
   // guida questo presidio scriveva quattro record finti nel giornale di produzione senza che niente
@@ -1989,14 +1998,70 @@ async function presidioPosizioniVecchie(deps = {}) {
       size: Number(x.size), avgPrice: Number(x.avgPrice), curPrice: Number(x.curPrice) }));
   } catch { pos = null; }
 
-  const minPerMercato = (() => {
+  // ══ IL MINIMO PREMIANTE VIENE DA TRE FONTI, NON PIU' DAL SOLO BOARD — 18 agosto 2026 ═════════════
+  //
+  // ⚠ QUI C'ERA UN CICLO SUL SOLO BOARD, e non era un dettaglio: da `minSizePerMercato` dipende
+  // `sottoMinimo`, e da `sottoMinimo` dipende il ramo di R6 (`if (c.sottoMinimo === true)`). Un mercato
+  // uscito dal board non aveva minimo, quindi non era MAI sotto il minimo, quindi quel ramo non si
+  // raggiungeva — e uscire dal board e' lo stato normale di una posizione vecchia, cioe' esattamente
+  // il caso per cui il presidio esiste. Misurato su Hong Kong `0xe9b3e28d`: assente dal board, assente
+  // dal catalogo, assente da Gamma, e il CLOB lo conosce (`min_size` 20, contro 6 share possedute).
+  //
+  // ⚠ E il ciclo vecchio scriveva `Number(r.rewardsMinSize)` senza filtro: `Number(null)` e' `0`, e un
+  // minimo di 0 non e' «non so», e' «niente e' sotto il minimo». `min-size-mercato.minimoDa` pretende
+  // un numero finito e positivo, o il mercato resta fra i mancanti — dove almeno si vede.
+  const idsPos = (pos || []).map((x) => x && x.conditionId).filter(Boolean);
+  // ⚠ ANCHE LA LETTURA DEL CATALOGO SI INIETTA. Non per simmetria con `salvaCatalogo`: un test che non
+  // puo' dire quale catalogo leggere legge quello di PRODUZIONE, e allora il suo esito dipende da quali
+  // mercati ci siano dentro oggi — cioe' e' verde o rosso per ragioni che non hanno a che fare con
+  // quello che prova.
+  const catalogoRipiego = (() => {
     try {
-      const board = leggiBoardReward() || [];
-      const m = {};
-      for (const r of board) { const c = String(r.conditionId || '').toLowerCase(); if (c) m[c] = Number(r.rewardsMinSize); }
-      return m;
-    } catch { return {}; }
+      if (deps.leggiCatalogo) return deps.leggiCatalogo();
+      return require('../lib/maker/market-catalog').readMarketCatalog().markets || null;
+    } catch { return null; }
   })();
+  const ris = MINSIZE.risolvi({ conditionIds: idsPos, board: leggiBoardReward(), catalogo: catalogoRipiego });
+  const minPerMercato = { ...ris.minSize };
+  // ── LA TERZA FONTE, E SI CHIEDE PRIMA DI DECIDERE ─────────────────────────────────────────────────
+  // Il recupero sta SOPRA `PRESIDIO.valuta` di proposito: il presidio e' gia' asincrono, quindi il
+  // valore letto adesso serve GIA' a questo giro. `scadenza-recupero` non poteva farlo — il suo lettore
+  // a valle e' sincrono — e infatti li' il dato arriva al ciclo dopo. Qui non c'e' ragione di aspettare.
+  if (ris.mancanti.length) {
+    const rec = await MINSIZE.recuperaDalVenue({
+      mancanti: ris.mancanti, falliti: minSizeFallite, now: Date.now(),
+      leggiVenue: deps.leggiVenue || ((id) => require('../lib/maker/verifica-mercati-venue').leggiVenueClob({ marketId: id })),
+      // ⚠ SI SALVA IL RECORD INTERO, NON IL SOLO MINIMO. `upsertMarket` RIFIUTA i record parziali
+      // (`REQUIRED_FIELDS`: tokenIdYes, tokenIdNo, tick, negRisk) — verificato, e vale anche quando il
+      // record esiste gia'. Un `salva({marketId, rewardsMinSize})` sarebbe una lettura di rete che non
+      // si posa mai: e' il difetto latente del gemello in agent40, che salva `{marketId, endDate}` e
+      // quindi non puo' salvare. Qui la lettura del CLOB porta tutti e quattro i campi obbligatori.
+      salva: deps.salvaCatalogo || ((id, lettura) => {
+        const MC = require('../lib/maker/market-catalog');
+        const rigaCat = MC.recordDaLetturaVenue(id, lettura, Date.now());
+        if (!rigaCat) return { ok: false, error: 'lettura del venue non traducibile in un record di catalogo' };
+        return MC.upsertMarket(rigaCat, { by: 'agent41 · presidio posizioni vecchie',
+          reason: 'board e catalogo di ripiego non portano il minimo premiante: chiesto al CLOB' });
+      }),
+    });
+    minSizeFallite = rec.falliti;
+    Object.assign(minPerMercato, rec.minSize);
+    for (const r of rec.recuperati) {
+      annuncia('log', `minimo premiante recuperato dal venue: ${r.marketId.slice(0, 12)}… ⇒ ${r.minSize} share`
+        + (r.salvato ? ' · salvato nel catalogo di ripiego' : ` · ⚠ NON salvato (${r.motivoSalvataggio}): si usa lo stesso, si riprovera'`));
+    }
+    if (rec.nonTrovati.length) {
+      annuncia('log', `⚠ minimo premiante NON recuperabile per ${rec.nonTrovati.length} mercato/i con posizione: `
+        + rec.nonTrovati.map((x) => `${x.marketId.slice(0, 12)} (${x.motivo})`).join(' · ')
+        + ' — su questi il residuo sotto il minimo resta irriconoscibile, e R6 non puo\' valutare lo sblocco');
+    }
+    // ⚠ SI SCRIVE A VERBALE ANCHE QUANDO NON SI RECUPERA NIENTE: senza, «il presidio non ha marcato
+    // sotto-minimo» resta indistinguibile fra «non lo e'» e «non l'ho potuto sapere». E' la stessa
+    // ragione per cui il presidio scrive sempre le sue rinunce.
+    scriviRec({ tipo: 'min-size-recupero', chiesti: rec.chiesti,
+      recuperati: rec.recuperati, nonTrovati: rec.nonTrovati,
+      mancantiPrima: ris.mancanti, fontiSuDisco: ris.fonte });
+  }
 
   const v = PRESIDIO.valuta({ posizioni: pos, ancore, ora: Date.now(), minSizePerMercato: minPerMercato });
   esito.tenute = v.tenute.length;
