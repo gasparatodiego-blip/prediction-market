@@ -13,7 +13,7 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 | **cinture** | **4/4 inserite** su agent40 e agent41, lette da `/proc/<pid>/environ` |
 | **regole concordate** | **10 su 10 in servizio** (§0), **10 su 10 verificate dal banco** |
 | **passi del giro completo** | **26 su 26** (erano 18: sei passi nuovi, uno per regola) |
-| **suite** | 214 test · **209 verdi · 4 rossi**, tutti classificati (§8) · 1 non parte |
+| **suite** | 214 test · **212 verdi · 1 rosso**, voluto e spiegato (§8) · 1 non parte |
 | **regole che scattano** | **20 statiche + 15 dinamiche su 91**, col cablaggio di produzione |
 | **quanti mercati** | **3**, da `MAKER_MERCATI_CONTEMPORANEI` nell'ambiente di agent41 |
 | **bot** | **DISARMATO**: `MAKER_MODE=off` · `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT=dry-run` · perno vuoto · **zero ordini a libro** |
@@ -304,8 +304,9 @@ nell'ecosystem e riavviare dal file.
 ## 8 · 🧪 I ROSSI DELLA SUITE, CLASSIFICATI UNO PER UNO
 
 Il 18 agosto la suite aveva **12 rossi**. Nessuno era nuovo: cinque non erano nemmeno nell'elenco noto
-di CLAUDE.md, che era **vecchio**. Classificati tutti e dodici, **chiusi otto, ne restano quattro** —
-e i quattro sono tutti «decisione» o «costo zero», nessuno è un difetto.
+di CLAUDE.md, che era **vecchio**. Classificati tutti e dodici, **chiusi undici**. Ne resta **uno**, ed
+è rosso **per decisione**: `categoria-mercato` misura un classificatore che nessuno importa — costo
+zero, e la ragione è scritta nella sua intestazione perché nessuno la debba ricostruire.
 
 ### Chiusi
 
@@ -323,7 +324,7 @@ e i quattro sono tutti «decisione» o «costo zero», nessuno è un difetto.
 
 | test | classe | perché resta |
 |---|---|---|
-| `attraversamento-scatta` · `scadenza-ereditata` · `tetto-e-scoperta` | **decisione** | difendono tre valori che l'operatore ha cambiato: la concessione al 5% (R7), il pavimento d'orizzonte a 24 h (R2), il tetto per ordine passato da «metà mercato» a «gamba più cara» il 16 agosto. Vanno riscritti sulle regole nuove, come i tre già chiusi |
+| `attraversamento-scatta` · `scadenza-ereditata` · `tetto-e-scoperta` | **CHIUSI** | riscritti sulle regole nuove, non ammorbiditi. ⚠ In `scadenza-ereditata` il blocco sull'ignoto è stato **INVERTITO**: difendeva «l'ignoto entra», mentre dal 13 agosto il filtro è fail-closed. C'erano **due test che si contraddicevano** — `tetto-orizzonte` diceva il contrario ed era verde. E la stessa derivazione vecchia del tetto per ordine era scritta **anche nel selfcheck di `concentration.js`**, che non gira e quindi non l'aveva detto a nessuno: il reperto D1 dentro il modulo che esiste per impedirlo |
 | `categoria-mercato` | **costo zero** | misura un classificatore che **nessuno importa**. Il suo unico «importatore» è un nome di file dentro una allowlist. Quello in servizio legge il campo `category` e su 129 mercati del board vivo restituisce `null` **zero volte** — e anche se lo facesse, escluderebbe **quel** mercato con un motivo dichiarato, senza bloccare nient'altro |
 | `leg-order` | non parte | test JS su moduli TypeScript |
 
