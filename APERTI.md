@@ -532,6 +532,107 @@ cancellare — ma la capacità c'è.
 
 ---
 
+## 13 · 🔒 LA SERA DEL 18 AGOSTO — IL PERIMETRO, IL DEADLOCK, E QUATTRO SILENZI
+
+Il bot è stato armato alle 16:21Z (l'ultima cintura aperta su entrambi i processi). Quello che è
+successo dopo ha trovato più difetti di una giornata di lettura del codice.
+
+### ⓵ Il buco di §4.8: un mercato con ordini a libro usciva dal perimetro — `0f3ba6e`, `a0f5e0f`
+
+**Il fatto.** 16:32:08 due ordini veri su `0x1f1c6390` ($56,36). ~16:42 il mercato **esce dal board**
+(`riga-assente`), la selezione lo rilascia, `setAutoReprice` lo spegne, agent40 smette di visitarlo.
+16:55:08 la GTD scade e **nessuno rinnova**. Bot armato e fuori dal libro per **52 minuti**. Costo di
+capitale **$0**, solo perché a 35 tick dal mid non si era riempito niente.
+
+**Due difese esistevano ed erano entrambe inerti.**
+- §4.8 dichiarava il buco: l'unione è `abilitati ∪ POSIZIONI`, e la metà «ordine a riposo» non era
+  coperta. La mitigazione scritta — «muore per GTD in 23 minuti o si riempie» — era accettabile in
+  dry-run e non con l'ultima cintura aperta.
+- `auto-reprice.scopeRinnovo` aveva **già** la terza componente `deps.mercatiConOrdiniVivi`, ed era
+  pure iniettata da agent40. Ma è una **corsa**: si sovrascrive intera a ogni giro e si popola solo
+  nei giri che superano quattro cancelli — e `cadenza-adattiva` fa `continue` **prima** che gli ordini
+  vengano contati. Un giro saltato per cadenza cancella il mercato; senza memoria non torna nello
+  scope, quindi non viene più guardato, quindi non torna mai in memoria.
+
+**La cura**: `lib/safety/venue-orders-snapshot.js`, gemello di quello delle posizioni con **una
+differenza di sostanza — fonde per mercato, non sovrascrive**. Le posizioni arrivano da una chiamata
+che elenca tutto, quindi «assente» è una prova; gli ordini si leggono un mercato per volta e solo per
+i mercati in scope, quindi «assente da questo giro» quasi sempre vuol dire «non ho guardato». Lo
+scrittore riceve `guardati` **e** `conOrdini`.
+
+**⚠ E la valvola per-voce era un difetto mio, trovato dal replay e non dal test.** Stava a 30 minuti
+«perché sopra la GTD di 23», e faceva uscire dal perimetro un mercato con ordini vivi che nessuno
+aveva guardato per un'ora — cioè riproduceva il guasto con un'ora di ritardo. La via d'uscita normale
+di una voce è l'**osservazione**, non il tempo. Ora è a **6 ore**, backstop e non meccanismo, e
+l'asserzione chiede un **ordine di grandezza** sopra la GTD: quella vecchia (`> GTD`) era vera anche
+col valore sbagliato, cioè non difendeva niente.
+
+### ⓶ LA PROVA SUL VIVO — 19:55:25Z, e il bot ha fatto più del previsto
+
+Lo stesso identico scenario, col codice nuovo. Il mercato Walmart `0x59ddbb62…` esce dal board **e dal
+piano** mentre ha due ordini a libro:
+
+```
+19:55:25  ✅ è USCITO DAL BOARD e dal piano, ha ordini a libro, e IL PERIMETRO LO TIENE (daOrdini)
+```
+
+E non è stata solo appartenenza a un insieme: **agent40 ha continuato a gestirlo**, 47 record in
+cinque minuti — tentativi di rinnovo col conto alla rovescia (`RINNOVO DOVUTO E FERMATO … 45s … 21s`),
+rifiutati da una regola di rischio vera (`profondita-insufficiente`) e ogni volta **dichiarati**; poi,
+uscito il mercato dal board, `skip-mid-not-live` («il mid viene da manual-catalog, non dal book vivo di
+agent34: non si muove un ordine vero su un mid che non è vivo»); infine alle **19:57:56**
+`cecita-timeout-nessun-libro` ⇒ **`manual-cancel ok`**.
+
+**Il bot ha cancellato i propri ordini di proposito quando il libro è andato al buio.** La sera prima
+li aveva lasciati morire in silenzio. È la differenza fra un perimetro e una lista.
+
+### ⓷ Il deadlock che teneva il piano fermo da 196 minuti — `9fc3d19`, `3924b34`
+
+L'allocatore finanzia la coda lunga (oltre `LONG_TAIL_DAYS` = 7) con una seconda passata derivata dal
+budget della **fascia corta**: §4.4, «fascia corta vuota ⇒ la coda non ottiene niente». La selezione
+non conosceva quella regola. Con un solo slot l'unico posto è finito su un mercato a **134,2 giorni**
+⇒ fascia corta del piano **vuota** ⇒ **zero righe, per sempre**. Sul board c'erano **79** mercati in
+fascia corta che il piano non poteva vedere.
+
+Stessa forma del deadlock del 13 agosto (§5-bis p.120): due regole giuste in due moduli che non si
+parlano.
+
+**⚠ E la prima stesura della cura non bastava**: filtravo solo i candidati, e sul bot vivo il giornale
+diceva «2 scartati per coda lunga» col piano ancora a zero righe — perché **lo slot era già
+occupato**. Ora si libera anche l'occupante, con gli **stessi** guardiani dello spodestamento: chi ha
+ordini a riposo è intoccabile, lista non leggibile ⇒ non si libera nessuno.
+**⚠ E la mia asserzione di «monotonia» era falsa**, l'ha presa il test: il vincolo restringe i
+**candidati**, non la **selezione** — con uno slot solo, escludere il lungo fa entrare un corto che
+prima non entrava.
+
+### ⓸ I QUATTRO SILENZI, che sono la vera lezione della serata
+
+| # | chi taceva | cosa diceva invece |
+|---|---|---|
+| 1 | il presidio d'uscita (`7eb5710`) | rinunciava senza scrivere niente |
+| 2 | il mercato uscito dal perimetro | nessuna riga: si smetteva di guardarlo e basta |
+| 3 | `eseguiGradino('ricostruisci-piano')` | `return fatto(true, …)` **incondizionato**, risultato buttato via. La scala è salita al gradino 6 **sette volte** oggi mentre il gradino il cui mestiere era rifare il piano dichiarava ogni volta di averlo fatto |
+| 4 | `agent40` e `res.scope.perche` | la ragione per cui un mercato è nello scope era **calcolata e mai letta**: zero occorrenze in tutto il giornale |
+
+Il numero 3 non poteva nemmeno controllare: `controlloCapitaleFermo` **non restituiva niente**. Il
+gemello due righe sotto (`ripara-precondizioni`) fa `fatto(n > 0, …)` da sempre.
+
+**La forma comune: una funzione che dichiara l'INTENZIONE invece del FATTO.** Non è un difetto di
+logica — è un difetto di onestà del codice verso chi lo legge dopo.
+
+### Le prove
+
+`venue-orders-snapshot` **33/0** (col blocco E che rigioca la serata e porta la **controprova**:
+senza snapshot il mercato esce) · `selezione-coda-lunga` **32/0** · `selezione-mercati` **104/0** ·
+`dipendenze-mai-iniettate` **23/0** (ha preso subito `entryMaxAgeMs` non dichiarata) ·
+**suite intera 218 test, 214 verdi**, in un worktree isolato con `DATA_DIR` e `BOT_RUNTIME_DIR`
+verificati **empiricamente** — e le impronte dei 9 file di stato di produzione **immutate**.
+I tre rossi: `categoria-mercato` (voluto) · `policy-permessi` e `snapshot-posizioni`, **entrambi
+artefatti del worktree** (percorsi assoluti della policy; snapshot congelato) — **nel repo vero 84/0 e
+41/0**.
+
+---
+
 ## 11 · 🔬 IL GIRO DI PROVA A UN MERCATO — 24 ore, dalle 15:12Z del 18 agosto
 
 Istruzione dell'operatore: **un mercato solo per 24 ore, poi domani se ne aggiunge**. La allowlist è

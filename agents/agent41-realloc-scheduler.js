@@ -1185,6 +1185,13 @@ const SELM = require('../lib/maker/selezione-mercati');
 const QUANTI = require('../lib/maker/quanti-mercati');
 const SCAD = require('../lib/maker/scadenza-fuori-perimetro');
 const SELS = require('../lib/maker/selezione-stato');
+// «Perimetro pieno, libro vuoto» non deve durare piu' di un ciclo — regola dell'operatore del
+// 18 agosto 2026. Il modulo e' puro; lo stato del contatore vive nel processo (sotto).
+const LVPP = require('../lib/maker/libro-vuoto-perimetro-pieno');
+// ⚠ IN MEMORIA E NON SU DISCO, di proposito: descrive «quante volte DI FILA ho visto questo slot
+// senza ordini», e dopo un riavvio l'unica risposta onesta e' «zero» — cioe' si riparte dando al
+// mercato il suo ciclo di grazia, invece di ereditare un conteggio che nessun processo ha osservato.
+let statoLibroVuoto = LVPP.statoVuoto();
 const BOARD_REWARD = path.join(DATA_DIR_A41, 'liquidity-rewards.json');
 
 /** Il board dei mercati premianti (l'uscita di agent24). `null` — MAI `[]` — se non si legge: la
@@ -2341,6 +2348,35 @@ async function selezionaMercati(deps = {}) {
       op: 'selezione-mercati', outcome: 'applicata',
       response: { occupati: d.occupati, entrati: entrati.map((x) => x.id), usciti: usciti.map((x) => x.id) } });
   } catch { /* un giornale non scritto non annulla una decisione gia' presa */ }
+
+  // ── «PERIMETRO PIENO, LIBRO VUOTO» NON DEVE DURARE PIU' DI UN CICLO ─────────────────────────────
+  // Regola dell'operatore, 18 agosto 2026. Uno slot occupato che non produce ordini e' inutile
+  // qualunque sia la ragione — un piano che non lo finanzia, un gate che rifiuta sempre, un book
+  // troppo sottile. Questa non diagnostica: MISURA L'ESITO e libera lo slot perche' un altro ci provi.
+  // La decisione e' PURA (`libro-vuoto-perimetro-pieno`, zero `require`); qui c'e' solo il cablaggio,
+  // e il rilascio passa dalla STESSA funzione degli altri (`rilasciaDallaSelezione`), non da una nuova.
+  try {
+    const attiviOra = Object.entries((d.statoNuovo && d.statoNuovo.selezionati) || {})
+      .filter(([, v]) => v && v.inGestione !== true)
+      .map(([id]) => id);
+    const v = LVPP.valuta({ attivi: attiviOra, ordini: conOrdiniVivi, stato: statoLibroVuoto, ora: Date.now() });
+    statoLibroVuoto = v.statoNuovo;
+    if (v.azione === 'rilascia') {
+      for (const x of v.daRilasciare) {
+        const r = await rilasciaDallaSelezione({ marketId: x.id, motivo: x.motivo });
+        annuncia('log', `SLOT STERILE: ${String(x.id).slice(0, 10)}… occupava un posto da ${x.osservazioni} osservazioni senza ordini a libro — rilasciato`);
+        scrivi({ tipo: 'slot-sterile', esito: r && r.ok !== false ? 'rilasciato' : 'rilascio-fallito',
+          marketId: x.id, osservazioni: x.osservazioni, dettaglio: x.dettaglio,
+          errore: r && r.ok === false ? (r.motivo || null) : null, pid: process.pid });
+      }
+    } else if (Object.keys(v.conteggi || {}).length) {
+      // Si scrive anche l'ATTESA, o «non ha ancora due osservazioni» sarebbe indistinguibile da «non
+      // ho guardato» — che e' esattamente il silenzio costato quattro volte oggi.
+      scrivi({ tipo: 'slot-sterile', esito: 'in-attesa', motivo: v.motivo, conteggi: v.conteggi, pid: process.pid });
+    }
+  } catch (e) {
+    scrivi({ tipo: 'slot-sterile', esito: 'errore', motivo: e && e.message ? e.message : String(e), pid: process.pid });
+  }
 
   return { attiva: true, applicata: true, ...rec };
 }
