@@ -1794,6 +1794,29 @@ async function presidioPosizioniVecchie(deps = {}) {
       esito.chiuse.push({ ...c, chiusa: false, motivo: 'miglior bid non leggibile: non si vende al buio' });
       continue;
     }
+    // ══ R6 · IL LIMITE DELL'OPERATORE, MISURATO E NON PROMESSO — 18 agosto 2026 ═════════════════════
+    // REGOLA: «si chiude sempre, anche da taker. Limite: non spendere per uscire piu' di quanto la
+    // posizione valga.»
+    // ⚠ SU UNA VENDITA IL LIMITE HA UNA SOLA FORMA NON VUOTA, e va detta: chi vende non spende, INCASSA.
+    // Il costo dell'uscita e' la rinuncia `(valore - ricavo)`, e `rinuncia <= valore` equivale a
+    // `ricavo >= 0`, cioe' e' vero per costruzione a qualunque prezzo positivo. Quindi qui il limite
+    // morde in un caso solo — ricavo NULLO — e quel caso si rifiuta invece di lasciarlo passare come
+    // «chiusura riuscita a zero». I tre numeri finiscono comunque a verbale, o «si e' chiuso» non
+    // direbbe a che prezzo si e' rinunciato.
+    // ⚠ LA META' DEL LIMITE CHE MORDEREBBE DAVVERO — comprare l'altro lato oltre 101c per sbloccare un
+    // residuo col merge — NON e' implementata: non esiste un percorso che compri sopra il tetto della
+    // coppia, e inventarlo qui sarebbe un meccanismo nuovo su capitale reale. Resta aperto in APERTI.md.
+    const valoreUsd = Number.isFinite(c.curPrice) && c.curPrice > 0 ? +(c.curPrice * c.size).toFixed(4) : null;
+    const ricavoUsd = +(prezzo * c.size).toFixed(4);
+    if (!(ricavoUsd > 0)) {
+      esito.chiuse.push({ ...c, chiusa: false, prezzo,
+        motivo: `ricavo nullo (${c.size} share a ${prezzo}): uscire non renderebbe niente, e il limite dell'operatore`
+          + ' e\' di non spendere per uscire piu\' di quanto la posizione valga' });
+      scrivi({ tipo: 'presidio-posizioni-vecchie', esito: 'rinunciata-ricavo-nullo',
+        marketId: c.conditionId, asset: c.asset, size: c.size, etaMin: c.etaMin, prezzo,
+        sottoMinimo: c.sottoMinimo === true, valoreUsd, ricavoUsd });
+      continue;
+    }
     let r = null;
     try {
       r = await (deps.piazza || placeManualOrder)({
@@ -1814,6 +1837,9 @@ async function presidioPosizioniVecchie(deps = {}) {
     // ricostruibile confrontando due registri.
     scrivi({ tipo: 'presidio-posizioni-vecchie', esito: (r && r.ok) ? 'chiusa' : 'chiusura-fallita',
       marketId: c.conditionId, asset: c.asset, size: c.size, etaMin: c.etaMin, prezzo,
+      // R6: un'uscita sotto il minimo resta distinguibile da una normale, e la rinuncia si misura.
+      sottoMinimo: c.sottoMinimo === true, minSizeMercato: c.minSizeMercato ?? null,
+      valoreUsd, ricavoUsd, rinunciaUsd: valoreUsd !== null ? +(valoreUsd - ricavoUsd).toFixed(4) : null,
       motivo: c.motivo, scalaNonHaChiuso: true,
       nota: 'ULTIMA RETE: questa posizione ha attraversato tutti i gradini della scala d\'uscita senza'
         + ' chiudersi. L\'intervento del presidio e\' di per se\' un\'anomalia da guardare.',
