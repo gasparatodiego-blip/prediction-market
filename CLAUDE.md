@@ -894,11 +894,30 @@ catalogo di ripiego. **Non allarga il perimetro di rischio**: aggiunge solo merc
 **già** dentro — non apre un mercato nuovo, apre la *gestione* di una posizione che esiste.
 Fail-closed ovunque, e subordinata all'interruttore generale.
 
-**⚠ Resta scoperta una metà, ed è dichiarata**: l'unione è `abilitati ∪ posizioni` perché **non esiste
-uno snapshot locale degli ordini a riposo** (esiste solo per le posizioni). La metà «ordine a riposo» è
-coperta indirettamente: un ordine su un mercato disabilitato muore per GTD entro 23 minuti o si riempie,
-e allora la posizione entra nell'unione entro un giro di snapshot (≤ 60 s). Coprirla direttamente
-richiede uno snapshot degli ordini, cioè un file, uno scrittore e una regola di freschezza.
+> **🔒 LA METÀ SCOPERTA È STATA CHIUSA — 18 agosto 2026, `0f3ba6e` + `a0f5e0f`.**
+> Qui c'era scritto che l'unione è `abilitati ∪ posizioni` e che la metà «ordine a riposo» restava
+> scoperta, «coperta indirettamente» dal fatto che un ordine su un mercato disabilitato muore per GTD
+> entro 23 minuti. Era vero, ed **era accettabile solo in dry-run**: il 18 agosto, col bot armato, il
+> mercato `0x1f1c6390` è uscito dal board dieci minuti dopo aver ricevuto due ordini veri ($56,36), la
+> selezione l'ha rilasciato, e alle 16:55:08 la GTD è scaduta **senza che nessuno rinnovasse**. Bot
+> armato e fuori dal libro per 52 minuti. Costo $0 solo perché a 35 tick non si era riempito niente.
+> **L'unione è ora `abilitati ∪ posizioni ∪ mercati con ORDINI A RIPOSO`**, terza componente da
+> `lib/safety/venue-orders-snapshot.js` (`enabledDaOrdini`), e la stessa componente entra nello
+> `scopeRinnovo` di `auto-reprice`.
+> **⚠ QUESTO SNAPSHOT FONDE PER MERCATO, NON SI SOVRASCRIVE**, ed è lì che sta la correzione: le
+> posizioni arrivano da una chiamata che elenca tutto, quindi «assente» è una **prova**; gli ordini si
+> leggono **un mercato per volta e solo per i mercati in scope**, quindi «assente da questo giro» quasi
+> sempre significa «non ho guardato». Lo scrittore riceve `guardati` **e** `conOrdini`: non guardato ⇒
+> la voce resta, guardato e vuoto ⇒ la voce esce.
+> **⚠ E LA DIFESA CHE ESISTEVA ERA UNA CORSA**: `auto-reprice` aveva già `deps.mercatiConOrdiniVivi`,
+> iniettata da agent40 — ma quella memoria si sovrascrive intera a ogni giro e si popola solo dopo
+> quattro cancelli, e **`cadenza-adattiva` fa `continue` prima del conteggio**. Un giro saltato per
+> cadenza cancellava il mercato; senza memoria non tornava nello scope, quindi non veniva più guardato,
+> quindi non tornava mai in memoria.
+> **⚠ LA VALVOLA PER-VOCE È UN BACKSTOP A 6 ORE, NON UN MECCANISMO**: la via d'uscita normale è
+> l'osservazione. La prima stesura la metteva a 30 minuti «perché sopra la GTD» e **riproduceva il
+> guasto con un'ora di ritardo** — l'ha trovata il replay della serata, non il test, perché
+> l'asserzione (`> GTD`) era vera anche col valore sbagliato.
 
 > **⚲ IL PERNO `MAKER_LIVE_MIN_MARKET` RESTRINGE, NON AGGIUNGE — 17 agosto 2026, decisione dell'operatore.**
 > `perno impostato ⇒ il perimetro live-min È il perno, e nient'altro`; perno assente ⇒ è la lista
