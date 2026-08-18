@@ -10,13 +10,13 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 | | |
 |---|---|
 | **flotta pm2** | **11 processi ONLINE**, utente `bot`, `cwd` `/home/bot/bot` |
-| **cinture** | **4/4 inserite** su agent40 e agent41, lette da `/proc/<pid>/environ` |
+| **cinture** | **1/4 inserite** su agent41, **2/4** su agent40 — lette da `/proc/<pid>/environ` (§10) |
 | **regole concordate** | **10 su 10 in servizio** (§0), **10 su 10 verificate dal banco** |
-| **passi del giro completo** | **26 su 26** (erano 18: sei passi nuovi, uno per regola) |
-| **suite** | 214 test · **212 verdi · 1 rosso**, voluto e spiegato (§8) · 1 non parte |
+| **passi del giro completo** | **26 su 26**, 0 rossi — identico al controllo su HEAD nello stesso worktree |
+| **suite** | 216 test · **214 verdi · 1 rosso**, voluto e spiegato (§8) · 1 non parte |
 | **regole che scattano** | **20 statiche + 15 dinamiche su 91**, col cablaggio di produzione |
-| **quanti mercati** | **1**, da `MAKER_MERCATI_CONTEMPORANEI` nell'ambiente di agent41 — ⚠ ma il **perimetro è 4** e si consuma da solo (§10) |
-| **bot** | **DISARMATO**: `MAKER_MODE=off` · `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT=dry-run` · perno vuoto · **zero ordini a libro** |
+| **quanti mercati** | **1**, da `MAKER_MERCATI_CONTEMPORANEI` nell'ambiente di agent41 — ⚠ ma il **perimetro è 2** e si consuma da solo (§10) |
+| **bot** | **UNA CINTURA SOLA**: le due di armamento sono APERTE su istruzione dell'operatore, resta `MANUAL_ORDER_PLACEMENT` (`dry-run` su agent40, **assente** su agent41) · perno vuoto · **zero ordini a libro** · gli ordini si costruiscono, si **firmano** e si fermano un istante prima dell'invio (§10) |
 
 ---
 
@@ -365,29 +365,24 @@ on-chain non ha firmato per giorni.
 
 ---
 
-## 10 · 🎯 L'ARMAMENTO A UN MERCATO — dove siamo arrivati, e cosa resta
+## 10 · 🎯 L'ARMAMENTO A UN MERCATO — i tre punti sono chiusi
 
 L'operatore ha chiesto di armare **un mercato solo**, una cintura alla volta, con una fermata dopo
-ognuna. L'ordine dei passi è stato deciso da lui dopo la prima fermata: **3 → 2 → 1**.
+ognuna. L'ordine dei passi è stato deciso da lui: **3 → 2 → 1**. Tutti e tre sono fatti.
 
 ### ✅ Fatto: il numero a 1
 
 `MAKER_MERCATI_CONTEMPORANEI: '1'` in `agents/ecosystem.config.js`, letto da `/proc` su agent41.
 
-**⚠ MA IL PERIMETRO NON È 1: È 4**, e non lo diventerà da solo. Due ragioni, entrambe volute:
-- **la selezione non caccia gli occupanti quando il tetto scende** (R1: il numero governa quanti
-  mercati si APRONO). `selezione.js prova` sulla funzione vera: «0 entrati, 0 usciti». Restano i tre
-  già scelti;
-- **il quarto è Hong Kong**, che entra dall'unione di §4.8 perché ci sono 6 share dentro.
-
-**Quando escono i quattro, misurato sul board vivo:**
+**⚠ MA IL PERIMETRO NON È 1: È 2** (era 4), e non lo diventerà da solo: la selezione non caccia gli
+occupanti quando il tetto scende — R1 governa quanti mercati si **aprono**, non quanti restano.
 
 | mercato | esce fra | perché |
 |---|---|---|
 | `0x1f1c6390…` Thomas | **~5,4 giorni** | scadenza sotto il pavimento di 24 h |
-| `0x12dc2b61…` Ballon d'Or | **~72,4 giorni** | idem |
 | `0xd4e77ba6…` Fed rate cuts | **~133,4 giorni** | idem |
-| `0xe9b3e28d…` Hong Kong | **mai, come stanno le cose** | vedi punto 2 |
+| ~~`0x12dc2b61…` Ballon d'Or~~ | **uscito** | spodestato dalla selezione |
+| ~~`0xe9b3e28d…` Hong Kong~~ | **uscito il 18/08 alle 14:54** | ⚠ **non per scadenza**: la posizione è stata **riscattata on-chain**. Vedi il riquadro rosso in fondo a questa sezione |
 
 ⚠ E l'operatore ha deciso: **niente perno**. «Il bot deve scegliere.» Il perimetro si consuma da sé.
 
@@ -414,45 +409,147 @@ che `scrivi` diventasse iniettabile — ha scritto nella produzione:
 **⚠ Terza occorrenza in un giorno** della classe «un test che guida una funzione che scrive deve
 poterle dire dove» — dopo `kill-perdita-giornaliera` e la prima stesura di R10.
 
-### ⏳ Resta: punto 2 — il sotto-minimo fuori dal board
+### ✅ Fatto: punto 2 — il sotto-minimo fuori dal board — commit `c17c740`
 
-**Il problema, verificato eseguendo la decisione vera.** Hong Kong non è più sul board (122 righe, non
-c'è). Il minimo del venue si legge **dal board**, quindi `minSize` è `null`, quindi la posizione **non
-è marcata `sottoMinimo`** — e il ramo di R6 è `if (c.sottoMinimo === true)`. Non ci entra mai: il
-presidio la vede come una normale posizione direzionale e prova a **venderla**, non a sbloccarla. E
-non può nemmeno venderla, perché il prezzo d'uscita si prende dalla stessa riga di board che manca.
+**Il difetto.** `sottoMinimo` decide se R6 può valutare lo sblocco (`if (c.sottoMinimo === true)`), e il
+minimo veniva dal **solo board**. Un mercato uscito dal board non ha minimo ⇒ non è mai sotto il minimo
+⇒ **quel ramo non si raggiungeva mai** — e uscire dal board è lo stato NORMALE di una posizione vecchia,
+cioè esattamente il caso per cui il presidio esiste. Non era un'assenza dichiarata: era un'assenza
+**travestita da risposta**. Il presidio non diceva «non so», diceva «non è sotto il minimo».
 
-**Cosa fare:** far arrivare la size minima anche quando il mercato è uscito dal board — dal **catalogo
-di ripiego** o dal **venue** — così R6 ha una via d'uscita vera invece di rinunciare ogni due minuti.
+**La misura, su Hong Kong `0xe9b3e28d` (6 share):**
 
-### ⏳ Resta: punto 1 — i gradini 2 e 3, col perimetro a 4, disarmati
+| fonte | risposta |
+|---|---|
+| board (120 righe) | **assente** |
+| catalogo di ripiego (23 mercati) | **assente** |
+| Gamma | **assente** — «mercato non trovato per questo conditionId», **12 fallimenti oggi** nei log di agent40 |
+| **CLOB** | **`rewards.min_size` = 20** ⇒ 6 < 20, sotto il minimo da giorni |
 
-Aprire **`MAKER_MODE`**, fermarsi e verificare che l'ordine arrivi al gate successivo e non oltre. Poi
-**`MAKER_ADAPTER_DRYRUN`**, e mostrare gli ordini **costruiti e firmati** che si fermano prima
-dell'invio (`dry-run-validated` nel giornale) — prezzi, size, distanza dal mid, per tutti i mercati
-del perimetro.
+**La cura** — `lib/maker/min-size-mercato.js`, decisione pura (zero `require`): **board → catalogo di
+ripiego → CLOB**. Il minimo dev'essere finito e **positivo** o non è una risposta (`Number(null)` è `0`,
+e un minimo di 0 significa «niente è sotto il minimo»: era proprio la bugia da impedire, e il ciclo
+vecchio la conteneva alla lettera). La terza fonte si chiede solo quando le prime due tacciono, al più
+5 per giro, 30 min di raffreddamento sui falliti, e **sopra** la decisione — il presidio è già
+asincrono, quindi il valore letto adesso serve **già a questo giro**.
 
-**⚠ `MANUAL_ORDER_PLACEMENT` NON SI TOCCA** finché l'operatore non ha visto quegli ordini. Il KILL a
-−$100 resta attivo. Regola di sempre: test → commit → riavvio **dal file e insieme** → verifica su
-`/proc`.
+**⚠ Si salva il record INTERO, non il solo minimo.** `upsertMarket` rifiuta i record parziali
+(`REQUIRED_FIELDS`: tokenIdYes, tokenIdNo, tick, negRisk), **anche quando il record esiste già** —
+verificato. È il difetto **latente** del gemello in agent40: `recuperaScadenze` salva
+`{marketId, endDate}`, quindi **non può salvare mai**, e da lì i 12 «scadenza NON recuperabile» al
+giorno su una posizione reale. `recordDaLetturaVenue` sta accanto a `recordDaRigaBoard` — due mapper in
+due file sarebbero il reperto D1.
+
+**⚠ Il fail-closed non è stato tolto, si è spostato dove appartiene**: «nessuna delle tre fonti
+risponde» ⇒ non si marca e non si compra. E le tre superfici verso l'esterno (`leggiVenue`,
+`salvaCatalogo`, `leggiCatalogo`) sono **iniettabili**, perché un test che non può dire dove leggere e
+scrivere legge e scrive la produzione — quarta occorrenza in un giorno.
+
+**In produzione ha già girato:** `minimo premiante recuperato dal venue: 0xe9b3e28d9c… ⇒ 20 share ·
+salvato nel catalogo di ripiego`.
+
+Prove: `min-size-mercato` 28/0 · `presidio-riconosce-sotto-minimo` **30/0** (cade sul sorgente di ieri)
+· `sblocco-residuo-scatta` 24/0 — **riscritto, non ammorbidito**: il suo §④ asseriva la proprietà
+opposta («senza board il minimo è ignoto ⇒ nessun acquisto»), vera al 17 e falsa apposta dal 18. E le
+sue ancore finivano in `data/presidio-posizioni.json` di **produzione**.
+
+### ✅ Fatto: punto 1 — i due gradini — commit `c4ff438` e `83fe112`
+
+| gradino | cintura | dove si vede |
+|---|---|---|
+| **1** | `MAKER_MODE` → `live-min`, su **entrambi** i processi che decidono un prezzo | modo adapter **`off:dryrun` → `live-min:dryrun`**; 2 ordini costruiti, fermati con `shadow` |
+| **2** | `MAKER_ADAPTER_DRYRUN` → `false`, stesso riavvio dal file | modo adapter **`live-min`**; per la prima volta `dry-run-validated` **sul percorso dell'adapter** |
+
+**⚠ IL FATTO CHE IL GRADINO 2 HA SCOPERTO, ed è il motivo per cui il gradino esiste.**
+`canWrite = LIVE_MODES.includes(mode) && !dryRun` (`adapter.js:589`). Finché è `false` la scrittura esce
+a **`adapter.js:776`** con `outcome:'shadow'` — cioè **prima** della chiamata dell'SDK che costruisce e
+firma (`adapter.js:894`). Misurato sul giornale **prima** del gradino 2, ultimi 20 MB:
+
+| | |
+|---|---|
+| `shadow`, percorso **adapter** | **983** |
+| `dry-run-validated`, percorso **adapter** | **0** |
+| `dry-run-validated`, percorso **`manual-place`** | **968** |
+
+**Nessun ordine era mai stato FIRMATO in tutta la vita di questo bot.** I 968 che si vedevano sono la
+contabilità della corsia manuale, scritta **dopo** che l'adapter aveva già rifiutato. Due righe che si
+somigliano e dicono cose opposte: «costruito» e «costruito, firmato, fermato un istante prima».
+
+**Gli ordini veri — 14:57:58Z, mercato `0x1f1c6390…`**, coppia simmetrica, 56,1 share per lato:
+
+| lato | prezzo | nozionale | dal mid | in coda |
+|---|---|---|---|---|
+| **YES BUY** | 0,905 | $50,77 | 3,45¢ | un tick dietro il miglior bid altrui (93,7¢) |
+| **NO BUY** | 0,026 | $1,46 | 3,45¢ | un tick dietro il miglior bid altrui (5,8¢) |
+
+Coppia **93,1¢** (sotto 101¢) · totale **$52,23** (sotto il tetto di $61,25) · GTD 1380 s ·
+`postOnly:true` · **`signatureBytes: 317`** · `validateOrder: ACCEPTED (eth_call — nothing submitted)` ·
+`dryRun:true`, `sent:false`. **Zero ordini al venue.** Il bersaglio è fermato a 3,45¢ dal mid invece dei
+4,28¢ chiesti dalla manopola 0,95: bordo premiante meno i 10 tick di margine (§4.1).
+
+**⚠ RESTA UNA CINTURA SOLA**, ed è `MANUAL_ORDER_PLACEMENT` — **non toccata**, per istruzione. Su
+agent40 è `dry-run` **dichiarata**; su agent41 è **assente**, cioè regge per il difetto fail-closed e
+non per una riga che qualcuno ha scritto apposta. **È la cintura più sottile della sequenza.**
+**⚠ E da qui letture e cancellazioni sono VERE**: con `canWrite` a `true` non escono più da `shadowOk`
+nemmeno `listOpenOrders`, `getPositions` e le cancellazioni. Zero ordini a libro, quindi niente da
+cancellare — ma la capacità c'è.
+
+---
+
+> ## 🔴 IL RISCATTO È RIUSCITO TRE VOLTE E IL CODICE HA DETTO CHE ERA FALLITO — 18 agosto, 14:54
+>
+> **È una conseguenza diretta del punto 2 — prevista e dichiarata nel commit — ma con dentro due difetti
+> che nessuno conosceva.** Riempito il catalogo dal CLOB, `negRisk` è diventato leggibile e il riscatto
+> automatico di agent40, che falliva da tutto il giorno con «negRisk non leggibile», è partito.
+>
+> **I fatti, dal giornale:** **tre** transazioni `redeemPositions`, nonce 46/47/48, alle 14:54:29 ·
+> 14:54:41 · 14:54:52, **tutte e tre `STATE_CONFIRMED`** con hash (`0x2133b0c9…`, `0xcb4e364b…`,
+> `0x982d5c7c…`). Il codice ha registrato **`riscatto-fallito`, motivo «il relayer non ha confermato»,
+> `tentativi: 3`**.
+>
+> **① IL SUCCESSO NON VIENE RICONOSCIUTO.** Il chiamante non legge `esito: STATE_CONFIRMED`, quindi ha
+> ritentato tre volte: la **prima** transazione aveva già svuotato la posizione, la seconda e la terza
+> hanno riscattato **zero** e sono costate solo gas. E `data/riscatti.json` porta ancora `fallito` su un
+> riscatto **riuscito** — l'idempotenza del registro (§5 p.131) sta difendendo il fatto sbagliato.
+>
+> **② E LA SPARIZIONE HA FATTO SCATTARE UN ALLARME DI SICUREZZA FALSO.** `auto-close-on-fill` ha scritto
+> `sparizione-non-nostra`: «*6.00 share uscite senza nessun nostro ordine che le spieghi … Qualcuno con
+> la chiave di questo wallet ha venduto da fuori dal nostro sistema.*» Non è vero: le ha tolte il
+> **nostro** riscatto. Quel rilevatore guarda i nostri SELL e il merge, e **non conosce il riscatto
+> on-chain**. Un allarme che grida al furto quando il bot fa il suo mestiere è un allarme che si impara
+> a ignorare.
+>
+> **QUANTO È COSTATO: $0 di capitale.** Le 6 share erano il lato **PERDENTE** (il CLOB dà `No` vincente
+> su quel mercato, il nostro token a `winner:false`, `price:0`), quindi il riscatto valeva zero per
+> costruzione. Saldo **$1.495,26 prima → $1.495,26 dopo**. Il costo è **gas per tre transazioni invece
+> di una**.
+> **⚠ E LA CIFRA DI `CLAUDE.md` ERA SBAGLIATA**: «$3,00 bloccati». Erano **$0,00** — il carico a 0,50
+> non è il valore di un token risolto a zero. Anche §5-bis p.187 va corretto di conseguenza.
+>
+> **NON È STATO CORRETTO**: sono due difetti sul percorso on-chain, fuori dallo scopo dato, e la
+> correzione va decisa. **Non sta spendendo altro gas**: zero transazioni dalle 14:54:52, perché senza
+> posizione non c'è più niente da riscattare.
 
 ---
 
 ## Stato del sistema — 18 agosto 2026
 
-**Bot DISARMATO**, letto da `/proc/<pid>/environ` dei processi vivi:
+**Bot con UNA CINTURA SOLA**, letto da `/proc/<pid>/environ` dei processi vivi (pid 374883 e 374889):
 
 | | agent40 | agent41 |
 |---|---|---|
-| `MAKER_MODE` | `off` ⇒ inserita | `off` ⇒ inserita |
-| `MAKER_ADAPTER_DRYRUN` | `true` ⇒ inserita | `true` ⇒ inserita |
-| `MANUAL_ORDER_PLACEMENT` | `dry-run` ⇒ inserita | assente ⇒ inserita |
-| `REALLOC_SCHEDULER_DRY_RUN` | — | `0` ⇒ **aperta** (le altre tre tengono) |
+| `MAKER_MODE` | `live-min` ⇒ **APERTA** | `live-min` ⇒ **APERTA** |
+| `MAKER_ADAPTER_DRYRUN` | `false` ⇒ **APERTA** | `false` ⇒ **APERTA** |
+| `MANUAL_ORDER_PLACEMENT` | `dry-run` ⇒ **inserita** | **assente** ⇒ inserita *(regge per il difetto)* |
+| `REALLOC_SCHEDULER_DRY_RUN` | — | `0` ⇒ **aperta** |
 | `MAKER_LIVE_MIN_MARKET` | **vuota** | **vuota** |
 | `MAKER_MERCATI_CONTEMPORANEI` | — | **`1`** (R1, armamento a un mercato) |
 
-⇒ **nessuna cintura è stata toccata in tutta la sessione.** KILL spento · selezione automatica
-**accesa** · allowlist gestita da lei · **zero ordini a libro** · **zero sospensioni per erosione**
+⇒ **due cinture sono state aperte su istruzione dell'operatore (§10), e ne resta UNA.** Gli ordini si
+costruiscono, passano tutti i gate, si **firmano** e si fermano all'ultimo `if` prima dell'invio.
+KILL spento · bot su **AVVIA** (dalle 21:23:33Z del 17/08, `cli/avvia`) · selezione automatica
+**accesa** · allowlist gestita da lei · **zero ordini a libro** · **zero posizioni al venue** (l'ultima
+è stata riscattata alle 14:54, v. il riquadro rosso di §10) · **zero sospensioni per erosione**
 (`data/sospensioni-erosione.json` assente, ed è lo stato sano) · `data/chiusura-emergenza-richiesta.json`
 assente.
 
