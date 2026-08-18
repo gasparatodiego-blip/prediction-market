@@ -409,6 +409,25 @@ module.exports = {
         // che resta `dry-run` su agent40 e assente qui. **Nessun ordine puo' raggiungere il venue.**
         // ⚠ FAIL-CLOSED AL CONTRARIO: il freno e' inserito quando la variabile e' ASSENTE. Cancellare
         // questa riga lo RIARMA — dimenticarsene rende il bot piu' sicuro, mai meno.
+        // ══ IL FRENO DI PROVA DI agent41 — a `0` per scelta dell'operatore (18 agosto 2026) ═══════
+        // ⚠⚠ LEGGERE PRIMA DI RICOLLEGARLA A QUALCOSA. Fino al 7 agosto 2026 questa variabile ERA il
+        // freno di agent41, e un test vietava che tornasse qui dentro. Il divieto nasceva da tre
+        // ragioni, e due valgono ancora:
+        //   ① due interruttori per una decisione sola significano che spegnerne uno non la spegne:
+        //      il freno d'ambiente e AVVIA/FERMA rispondevano alla stessa domanda, e chi metteva il
+        //      bot su FERMA poteva credere di averlo fermato mentre l'altro diceva di sì;
+        //   ② un env si legge UNA VOLTA all'avvio, `bot-enabled` a ogni giro: per cambiare un env
+        //      servono file + riavvio, cioè i due gesti che in emergenza non si fanno;
+        //   ③ e viveva nella memoria di pm2, non nel file: `--update-env` FONDE, quindi cancellarla
+        //      da qui non la toglieva dal processo (serviva `pm2 delete` + `pm2 start`).
+        //
+        // OGGI È QUI, E NON DECIDE NIENTE: nessun ramo di agent41 legge
+        // `process.env.REALLOC_SCHEDULER_DRY_RUN` — il freno vero è `bot-enabled`, riletto a ogni
+        // giro. Dichiararla senza che nessuno la legga non crea un secondo interruttore: crea una
+        // riga inerte, che `scripts/cli/stato.js` mostra come cintura APERTA, cioè visibile.
+        //
+        // ⚠ CHI LA RICOLLEGA A UN RAMO CHE DECIDE FA CADERE `gestione-manuale-nel-flusso.test.js`,
+        // ed è voluto: quello è il divieto che conta, e non è stato tolto.
         REALLOC_SCHEDULER_DRY_RUN: '0',
 
         // ══ R1 · QUANTI MERCATI IL BOT TIENE ATTIVI — 18 agosto 2026, decisione dell'operatore ══════
