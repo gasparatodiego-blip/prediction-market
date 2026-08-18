@@ -237,16 +237,30 @@ C.titolo('SELEZIONE DEI MERCATI');
 {
   const SELM = require('../../lib/maker/selezione-mercati');
   const SELS = require('../../lib/maker/selezione-stato');
+  const QUANTI = require('../../lib/maker/quanti-mercati');
   const s = SELS.leggiStato();
+  // ⚠ R1 · IL NUMERO SI LEGGE DAL PROCESSO CHE DECIDE, NON DALLA COSTANTE DI QUESTA COPIA DEL REPO.
+  // È la stessa disciplina delle cinture (§5-bis p.184): `MAKER_MERCATI_CONTEMPORANEI` vive
+  // nell'ambiente di agent41, e a processo non riavviato il file e il processo possono divergere. Una
+  // riga che stampasse la costante direbbe 3 mentre il bot ne apre 1 — peggio che non stamparla.
+  const vivoSel = C.flottaViva().per.get('agent41-realloc-scheduler');
+  const ambSel = vivoSel && vivoSel.pid ? C.envDiProcesso(vivoSel.pid) : null;
+  const q = QUANTI.quantiMercati(ambSel || {});
+  const quantiTxt = ambSel ? `${q.quanti}` : `${q.quanti} (agent41 non vivo)`;
   if (!s.leggibile) {
     riga('automatica', C.col.rosso('ILLEGGIBILE ⇒ SPENTA'), `${s.error} — la lista resta quella scritta a mano`);
   } else {
     riga('automatica', s.attiva ? C.col.verde('ACCESA') : C.col.giallo('spenta'),
-      s.attiva ? `agent41 sceglie fino a ${SELM.MAX_MERCATI_CONTEMPORANEI} mercati a ogni ciclo`
+      s.attiva ? `agent41 sceglie fino a ${quantiTxt} mercati a ogni ciclo`
         : 'la lista si scrive a mano con `mercati.js`');
+    riga('quanti mercati', C.col.ciano(quantiTxt),
+      `${q.motivo}${ambSel ? '' : ' — ⚠ letto dal DIFETTO, non dal processo'}`);
+    riga('composizione', C.col.spento(SELM.quotaScaglioni(q.quanti)
+      .map((b) => `${b.posti}× ${b.chiave} (minSize ≤ ${b.maxMinSize})`).join(' + ')),
+    'derivata dal numero, non dichiarata a parte');
     riga('vincoli', C.col.spento(`minSize ≤ ${SELM.MIN_SIZE_MASSIMA} · scadenza ≥ ${SELM.ORIZZONTE_MINIMO_ORE} h · niente meteo`), '');
     const voci = Object.entries(s.stato.selezionati || {});
-    riga('slot occupati', C.col.ciano(`${voci.length} / ${SELM.MAX_MERCATI_CONTEMPORANEI}`),
+    riga('slot occupati', C.col.ciano(`${voci.length} / ${quantiTxt}`),
       voci.length ? '' : 'nessun mercato scelto');
     for (const [id, v] of voci) {
       const uscente = v.uscenteDal != null;

@@ -28,7 +28,19 @@ const C = require('./_comune');
 C.caricaEnv();
 
 const SELM = require('../../lib/maker/selezione-mercati');
+// R1 · il numero di mercati non e' una costante: vive nell'ambiente di agent41 e si legge da
+// `/proc/<pid>/environ`, come le cinture. Stampare la costante direbbe 3 mentre il bot ne apre 1.
+const QUANTI = require('../../lib/maker/quanti-mercati');
 const SELS = require('../../lib/maker/selezione-stato');
+
+/** Quanti mercati sta usando il processo VIVO. `null` se agent41 non e' vivo ⇒ si dichiara il difetto,
+ *  invece di far credere che il numero stampato venga dal bot. */
+function quantiVivi() {
+  const v = C.flottaViva().per.get('agent41-realloc-scheduler');
+  const amb = v && v.pid ? C.envDiProcesso(v.pid) : null;
+  const q = QUANTI.quantiMercati(amb || {});
+  return amb ? String(q.quanti) : `${q.quanti} (difetto: agent41 non vivo)`;
+}
 const VP = require('../../lib/safety/venue-positions-snapshot');
 const ARC = require('../../lib/maker/auto-reprice-config');
 
@@ -78,14 +90,14 @@ function mostraStato(intestazione = 'SELEZIONE AUTOMATICA DEI MERCATI') {
   console.log('  vincoli               : ' + C.col.ciano(`minSize ≤ ${SELM.MIN_SIZE_MASSIMA}`)
     + ' · ' + C.col.ciano(`scadenza ≥ ${SELM.ORIZZONTE_MINIMO_ORE} h`)
     + ' · ' + C.col.ciano('niente meteo')
-    + ' · ' + C.col.ciano(`max ${SELM.MAX_MERCATI_CONTEMPORANEI} contemporanei`));
+    + ' · ' + C.col.ciano(`max ${quantiVivi()} contemporanei`));
 
   const voci = Object.entries(s.stato.selezionati || {});
   const pos = leggiPosizioni();
   if (!voci.length) {
-    console.log('  slot occupati         : ' + C.col.spento(`0 / ${SELM.MAX_MERCATI_CONTEMPORANEI}`));
+    console.log('  slot occupati         : ' + C.col.spento(`0 / ${quantiVivi()}`));
   } else {
-    console.log(`  slot occupati         : ${C.col.ciano(String(voci.length))} / ${SELM.MAX_MERCATI_CONTEMPORANEI}`);
+    console.log(`  slot occupati         : ${C.col.ciano(String(voci.length))} / ${quantiVivi()}`);
     for (const [id, v] of voci) {
       const haPos = pos.leggibile && pos.conditionIds.includes(id);
       const uscente = v.uscenteDal != null;
@@ -120,7 +132,13 @@ function prova() {
   const orizzonteMassimoOre = (() => {
     try { return Number(require('../../lib/rewards/horizon').MAX_HORIZON_DAYS) * 24 || null; } catch { return null; }
   })();
-  const d = SELM.decidiSelezione({ board, stato: s.stato, posizioni: pos, ora: Date.now(), escludi: quar, orizzonteMassimoOre });
+  // ⚠ R1 · `prova` deve simulare il bot VIVO, quindi prende il numero dal suo ambiente e non dal
+  // difetto: senza `max` questa prova risponderebbe per un tetto di 3 anche a operatore che ha
+  // chiesto 1, cioe' mostrerebbe mercati che il bot non aprirebbe.
+  const vivoQ = C.flottaViva().per.get('agent41-realloc-scheduler');
+  const ambQ = vivoQ && vivoQ.pid ? C.envDiProcesso(vivoQ.pid) : null;
+  const maxQ = QUANTI.quantiMercati(ambQ || {}).quanti;
+  const d = SELM.decidiSelezione({ board, stato: s.stato, posizioni: pos, ora: Date.now(), escludi: quar, orizzonteMassimoOre, max: maxQ });
   if (!d.ok) {
     console.log('\n  ' + C.col.giallo('NESSUNA DECISIONE: ') + d.motivo);
     console.log('  ' + C.col.spento('e questo e\' il verso giusto: nessun mercato entra e — soprattutto — nessuno esce'));
@@ -136,7 +154,7 @@ function prova() {
   stampa('ENTREREBBERO:', d.entranti, C.col.ciano, (r) => C.col.spento(`\n       minSize ${r.minSize} · ${r.oreAllaScadenza.toFixed(1)} h · stima ${r.punteggio.toFixed(3)} $/g (${r.fontePunteggio})`));
   stampa('USCIREBBERO:', d.uscenti, C.col.giallo, (r) => C.col.spento(`\n       ${r.dettaglio}`));
   stampa('SLOT LIBERATI:', d.liberati, C.col.spento);
-  console.log(`\n  slot occupati dopo    : ${d.occupati} / ${SELM.MAX_MERCATI_CONTEMPORANEI}`);
+  console.log(`\n  slot occupati dopo    : ${d.occupati} / ${quantiVivi()}`);
   if (!s.attiva) console.log('\n  ' + C.col.spento('la selezione e\' SPENTA: niente di tutto questo sta accadendo. `accendi` per attivarla.'));
 }
 
@@ -173,7 +191,7 @@ const cfg = ARC.readAutoRepriceConfig();
 const attiviOra = (cfg && cfg.readable) ? (cfg.enabledMarketIds || []) : null;
 if (vuole) {
   C.staPerCambiare([
-    `agent41 sceglie da solo fino a ${SELM.MAX_MERCATI_CONTEMPORANEI} mercati, a ogni ciclo (≤ 2 minuti)`,
+    `agent41 sceglie da solo fino a ${quantiVivi()} mercati, a ogni ciclo (≤ 2 minuti)`,
     `dentro i vincoli: minSize ≤ ${SELM.MIN_SIZE_MASSIMA} · scadenza ≥ ${SELM.ORIZZONTE_MINIMO_ORE} h · niente famiglia meteo`,
     'un mercato che esce dai vincoli viene tolto dalla lista subito, ma il suo slot si libera SOLO a posizione chiusa',
     'il piano dell\'allocatore viene ristretto ai soli mercati scelti',

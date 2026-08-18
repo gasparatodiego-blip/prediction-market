@@ -1156,6 +1156,8 @@ function copiaRegoleNelRipiego({ marketId }, by) {
 // mini-ciclo e della fase 3 del reset; chi esce passa da `setAutoReprice`, la stessa funzione del
 // ciclo delle sei ore. Una seconda strada sarebbe una seconda verita' sullo stesso file.
 const SELM = require('../lib/maker/selezione-mercati');
+// R1 · quanti mercati contemporanei: dall'ambiente di QUESTO processo, non da una costante.
+const QUANTI = require('../lib/maker/quanti-mercati');
 const SCAD = require('../lib/maker/scadenza-fuori-perimetro');
 const SELS = require('../lib/maker/selezione-stato');
 const BOARD_REWARD = path.join(DATA_DIR_A41, 'liquidity-rewards.json');
@@ -2005,9 +2007,16 @@ async function selezionaMercati(deps = {}) {
     ? deps.conOrdiniVivi
     : await mercatiConOrdiniVivi(deps);
 
+  // ⚠ R1 · QUANTI MERCATI LO DECIDE L'OPERATORE, E IL NUMERO VIVE NEL PROCESSO. Prima `max` non
+  // veniva passato affatto, quindi valeva la costante di sorgente: non scrivibile senza toccare il
+  // codice, e non leggibile da `/proc/<pid>/environ`. Adesso viene da `MAKER_MERCATI_CONTEMPORANEI`,
+  // dichiarata in `agents/ecosystem.config.js` su QUESTO processo — l'unico che esegue la selezione.
+  // La composizione per scaglione la deriva `quotaScaglioni(max)` dentro `decidiSelezione`: un numero
+  // solo, non due.
+  const quanti = (deps.quanti !== undefined ? deps.quanti : QUANTI.quantiMercati());
   const d = SELM.decidiSelezione({
     board, stato: stato.stato, posizioni, ora: Date.now(), escludi: quarantena, orizzonteMassimoOre,
-    nettoPerMercato, conOrdiniVivi,
+    nettoPerMercato, conOrdiniVivi, max: quanti.quanti,
   });
   if (!d.ok) {
     annuncia('log', `selezione automatica: nessuna decisione — ${d.motivo}`);
@@ -2063,7 +2072,9 @@ async function selezionaMercati(deps = {}) {
   const salvato = SELS.scriviStato(statoDaSalvare, { by: 'agent41 · selezione automatica',
     reason: `${entrati.filter((x) => x.aperto).length} entrati, ${usciti.length} usciti, ${d.liberati.length} slot liberati` });
 
-  const riassunto = `selezione automatica: ${d.occupati}/${SELM.MAX_MERCATI_CONTEMPORANEI} slot attivi`
+  // ⚠ Il denominatore e' il numero VERO di questo processo, non la costante: se il riassunto dicesse
+  // 3 mentre l'operatore ha chiesto 1, sarebbe una riga che descrive un bot diverso da quello vivo.
+  const riassunto = `selezione automatica: ${d.occupati}/${quanti.quanti} slot attivi`
     + (d.inGestione.length ? ` (+${d.inGestione.length} in gestione, fuori dal conteggio)` : '')
     + ` · ${d.ammissibili} mercati ammissibili su ${d.valutati} valutati`
     + (spodestati.length ? ` · SPODESTATI ${spodestati.map((x) => `${x.id.slice(0, 10)}… (netto ${x.netto.toFixed(3)}/g → ${x.nettoNuovo.toFixed(3)}/g)`).join(', ')}` : '')

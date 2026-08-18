@@ -264,6 +264,16 @@ module.exports = {
       // per costruzione — MAKER_MODE assente non e' in LIVE_MODES ⇒ rifiuto; MANUAL_ORDER_PLACEMENT
       // assente ⇒ 'dry-run'. Togliere e' piu' sicuro che scrivere, ed e' voluto.
       env:           { NODE_ENV: 'production', HOME: CASA, MAKER_FUNDING_APPROVED: 'true',
+        // ══ IL PERNO NON C'E', ED E' UNA SCELTA — 17 agosto 2026, sera tardi ══════════════════════
+        // `MAKER_LIVE_MIN_MARKET` e' stato messo e poi TOLTO nella stessa sera, per decisione
+        // dell'operatore: «il bot deve scegliere i mercati da solo».
+        // ⚠ SENZA PERNO IL PERIMETRO E' UNA CONSEGUENZA, non una dichiarazione: torna a essere
+        // l'unione di §4.8 («abilitati ∪ mercati con posizione»), quindi cambia da sé ogni volta che
+        // una posizione si apre o si chiude, e la lista degli abilitati la scrive la SELEZIONE
+        // AUTOMATICA. E' il comportamento voluto qui — un perno renderebbe il perimetro stabile, ma
+        // toglierebbe al bot proprio la decisione che si vuole osservare.
+        // ⚠ E il perno RESTRINGE: rimetterlo escluderebbe di nuovo ogni mercato con posizione dal
+        // completamento della coppia (§4.8). Non e' una manopola di sicurezza, e' un vincolo di scope.
         // ══ MANUAL_ORDER_PLACEMENT — DICHIARATA QUI DAL 17 AGOSTO 2026 ═════════════════════════════
         //
         // IL FATTO CHE HA PRODOTTO QUESTA RIGA. Il 16 agosto alle 19:22:53 agent40 e' stato riavviato
@@ -385,6 +395,46 @@ module.exports = {
       env:           {
         NODE_ENV: 'production', HOME: CASA,
         REALLOC_SCHEDULER_ENABLED: '1',   // ← fa esistere il processo; NON gli fa piazzare niente (vedi sopra).
+        // ══ NESSUN PERNO, come su agent40 — v. il commento esteso in quel blocco ══════════════════
+        // ⚠ Se un giorno si rimette, va rimesso su ENTRAMBI e con lo STESSO valore: due perni diversi
+        // sui due processi che decidono un prezzo danno due perimetri diversi sullo stesso libro —
+        // uno apre dove l'altro non rinnova.
+        // ══ IL FRENO DI PROVA, DISINSERITO — 17 agosto 2026, decisione dell'operatore ═════════════
+        // ⚠ QUESTA RIGA FA SI' CHE agent41 TENTI DAVVERO IL PIAZZAMENTO. Non e' un armamento: e' il
+        // PRIMO dei passi della sequenza (§6 di APERTI.md), quello che si puo' disfare senza
+        // conseguenze, e serve a far attraversare al piano TUTTI i gate per vedere dove si ferma.
+        // ⚠ CIO' CHE RESTA DAVANTI, e sono tre cinture su quattro: `MAKER_MODE` (assente ⇒ non e' uno
+        // stadio vivo ⇒ rifiuto `maker-mode`, e dal 17/08 quel rifiuto arriva anche alla corsia
+        // manuale), `MAKER_ADAPTER_DRYRUN=true` dal `.env` (ombra forzata) e `MANUAL_ORDER_PLACEMENT`
+        // che resta `dry-run` su agent40 e assente qui. **Nessun ordine puo' raggiungere il venue.**
+        // ⚠ FAIL-CLOSED AL CONTRARIO: il freno e' inserito quando la variabile e' ASSENTE. Cancellare
+        // questa riga lo RIARMA — dimenticarsene rende il bot piu' sicuro, mai meno.
+        REALLOC_SCHEDULER_DRY_RUN: '0',
+
+        // ══ R1 · QUANTI MERCATI IL BOT TIENE ATTIVI — 18 agosto 2026, decisione dell'operatore ══════
+        // «il numero lo decido io prima di ogni sessione (uno, due, tre). I mercati li sceglie il bot.
+        //  Un solo posto dove scrivere quel numero, letto dai processi vivi.»
+        //
+        // ⚠ QUESTO È IL POSTO, ed è uno solo. Prima il numero era `MAX_MERCATI_CONTEMPORANEI = 3` nel
+        // sorgente, e agent41 non lo passava nemmeno: non si poteva cambiare senza toccare il codice, e
+        // `stato.js` stampava la costante di QUESTA copia del repo invece del numero del processo vivo.
+        // Adesso vive qui, quindi si legge da `/proc/<pid>/environ` come le cinture (§5-bis p.184).
+        //
+        // ⚠ SOLO SU agent41: è l'unico processo che esegue la selezione. Dichiararlo anche altrove
+        // creerebbe due copie che un riavvio scoordinato può far divergere (§5.1).
+        //
+        // ⚠ LA COMPOSIZIONE LA DERIVA `quotaScaglioni(max)`, non va scritta qui: 1 ⇒ un secchio solo;
+        // 2 ⇒ 1 basso + 1 alto ($85,75); 3 ⇒ 1 basso + 2 alti ($147,00, la cifra decisa).
+        //
+        // ⚠ CAMBIARLO RICHIEDE IL RIAVVIO **DAL FILE**: `--update-env` prende l'ambiente della shell,
+        //   pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler
+        //
+        // ⚠ E RIDURLO NON CHIUDE NIENTE DA SOLO: la selezione non spodesta chi ha ordini vivi o una
+        // posizione (R9), quindi il numero governa quanti se ne APRONO e il rientro avviene per consumo.
+        //
+        // ⚠ Un valore che non si capisce vale il DIFETTO (3), mai zero: un errore di battitura non può
+        // fermare il bot in silenzio, e non può nemmeno aprirlo di più (il massimo è 3).
+        MAKER_MERCATI_CONTEMPORANEI: '3',
         // ── DICHIARATA, NON PIÙ SOLO EREDITATA (4 agosto 2026) ────────────────────────────────────
         // Qui la fragilità è REALE, a differenza del caso di agent40: agent41 NON ha il caricatore di
         // .env scritto a mano che agent40 ha in testa al file (verificato: `grep -c "Load .env"` → 0).
