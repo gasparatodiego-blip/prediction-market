@@ -3160,7 +3160,7 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   //
   // E da oggi c'e' un terzo cancello gratuito, il KILL: da quando il mini-ciclo puo' RICALCOLARE, un
   // giro sprecato non costa piu' una lettura ma tredici secondi e centinaia di megabyte.
-  if (!TRIGGER_ATTIVO || !botAttivo()) return;
+  if (!TRIGGER_ATTIVO) return;
   let kill = { effectivelyKilled: false, readable: true };
   try { kill = killSwitch.killStatus(); } catch { kill = { effectivelyKilled: true, readable: false }; }
   const killAttivo = kill.effectivelyKilled === true || kill.readable === false;
@@ -3168,16 +3168,41 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
     if (forzatoDa) annuncia('log', `avvio forzato ignorato: kill-switch ${kill.readable === false ? 'NON LEGGIBILE' : 'ATTIVO'} — nessun piazzamento`);
     return;
   }
+
+  // ══ IL PRESIDIO D'USCITA GIRA ANCHE A BOT FERMO — 18 agosto 2026, decisione dell'operatore ═══════
+  //
+  // «Se il kill mette FERMA e FERMA spegne l'ultima rete, allora dopo un kill le gambe scoperte
+  //  restano senza nessuno che le guardi.» Aveva ragione, ed era il difetto piu' grave trovato ieri.
+  //
+  // ⚠ IL PRESIDIO STAVA DIETRO `botAttivo()`, E NON DOVEVA. §2 dice cosa significa FERMA: «ferma i
+  // piazzamenti NUOVI, lascia gestite le posizioni aperte (auto-close, riprezzatura, rinnovi)». Il
+  // presidio dei 60 minuti CHIUDE una posizione aperta: e' gestione, non apertura. Stava dalla parte
+  // sbagliata di un cancello la cui semantica era gia' scritta — e il caso che lo rendeva grave e'
+  // quello che l'operatore ha nominato: il kill a −$100 mette FERMA, quindi lo stato in cui le gambe
+  // scoperte sono piu' probabili e' esattamente quello in cui nessuno le guardava piu'.
+  //
+  // ⚠ COSA RESTA DAVANTI, E PERCHE':
+  //   · `TRIGGER_ATTIVO` — e' l'interruttore del PROCESSO (`TRIGGER_CAPITALE_FERMO=0`): se l'operatore
+  //     ha spento il controllo periodico, non deve girare niente di periodico. Non e' AVVIA/FERMA.
+  //   · il **KILL** — §2: lo leggono TUTTI i percorsi, auto-close compreso, e killare lascia le
+  //     posizioni aperte senza uscita. E' l'emergenza assoluta, e il presidio non la scavalca.
+  //
+  // ⚠ E COSA RESTA DIETRO `botAttivo()`, che e' la meta' che tiene: `riconciliaCopertura` PIAZZA
+  // gambe (`ripristinaGamba`), `selezionaMercati` apre mercati nuovi, il mini-ciclo alloca. Tutto
+  // quello che AGGIUNGE esposizione resta fermo a bot FERMO — si sposta solo cio' che la TOGLIE.
+  // Monotono: il bot a FERMA puo' chiudere di piu' di prima, e aprire esattamente come prima.
+  try { await presidioPosizioniVecchie(); }
+  catch (e) { annuncia('log', `presidio posizioni vecchie non eseguito: ${e.message}`); }
+
+  // ── DA QUI IN POI SI APRE, E CHI APRE PRETENDE AVVIA ──────────────────────────────────────────
+  if (!botAttivo()) return;
+
   // ── LA SELEZIONE GIRA ANCHE QUANDO IL TRIGGER NON SCATTA ──────────────────────────────────────
   // Sta PRIMA di `decidiTrigger` di proposito: un mercato che scade deve uscire dalla lista in minuti
   // anche in una giornata in cui il capitale e' tutto al lavoro e nessun trigger scatta mai. Costa due
-  // letture di file locali, non una chiamata di rete, e i due cancelli gratuiti (bot avviato, kill
-  // spento) sono gia' stati passati qui sopra.
+  // letture di file locali, non una chiamata di rete, e i cancelli gratuiti sono gia' stati passati.
   // ⚠ PRIMA della selezione: un doppione tolto e uno slot dichiarato vuoto cambiano cio' che la
   // selezione vede. Farlo dopo significherebbe decidere sulla fotografia sbagliata.
-  // ⚠ PRIMA di tutto: una posizione oltre l'ora si chiude, e non dipende da niente altro.
-  try { await presidioPosizioniVecchie(); }
-  catch (e) { annuncia('log', `presidio posizioni vecchie non eseguito: ${e.message}`); }
   try { await riconciliaCopertura(); }
   catch (e) { annuncia('log', `riconciliazione della copertura non eseguita: ${e.message}`); }
   try { await selezionaMercati(); }
