@@ -494,7 +494,14 @@ module.exports = {
         // ⚠ RIDURLO NON CHIUDE NIENTE DA SOLO (R1): la selezione non spodesta chi ha ordini vivi o una
         // posizione, e non caccia un occupante solo perché il tetto è sceso. Governa quanti mercati si
         // APRONO; i mercati già scelti escono per consumo, non per questo numero.
-        MAKER_MERCATI_CONTEMPORANEI: '1',
+        // ⚠ 1 → 5 il 18 agosto 2026, decisione dell'operatore. Il soffitto di sorgente e' stato
+        // alzato a 5 nello stesso momento (`selezione-mercati.js`), o questo valore sarebbe stato
+        // rifiutato in silenzio e sarebbe valso il difetto — che e' esattamente il blocco trovato
+        // misurando: `MAKER_MERCATI_CONTEMPORANEI="5" non e' un intero fra 1 e 3`.
+        // ⚠ E il tetto di esposizione cumulativa e' passato a $650 (`data/safety-risk-limits.json`,
+        // gitignored): a $320 il gate avrebbe smesso di piazzare a meta' strada, perche' confronta
+        // `openNotionalUsd + notional` anche sulle aperture. Il freno vero resta il kill a −$100.
+        MAKER_MERCATI_CONTEMPORANEI: '5',
         // ── DICHIARATA, NON PIÙ SOLO EREDITATA (4 agosto 2026) ────────────────────────────────────
         // Qui la fragilità è REALE, a differenza del caso di agent40: agent41 NON ha il caricatore di
         // .env scritto a mano che agent40 ha in testa al file (verificato: `grep -c "Load .env"` → 0).
