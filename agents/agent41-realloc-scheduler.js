@@ -169,6 +169,9 @@ const killSwitch = require('../lib/safety/kill-switch');
 // R10 · per marcare eseguita la richiesta di chiusura: scrittura atomica, o agent43 potrebbe leggere
 // mezzo file e riscrivere una richiesta che qualcuno sta gia' eseguendo.
 const { atomicWriteJson } = require('../lib/atomicJsonWrite');
+// R4 · le sospensioni per erosione: agent40 le scrive quando toglie una gamba dal libro, questo
+// processo le legge per NON rimetterla prima del tempo. Senza, l'uscita da 5 minuti durerebbe due.
+const SOSPE = require('../lib/maker/sospensione-erosione');
 const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 const UTIL = require('../lib/maker/utilizzo-capitale');
 const CAPLAV = require('../lib/maker/capitale-al-lavoro');
@@ -1573,7 +1576,53 @@ async function riconciliaCopertura(deps = {}) {
     // Un presidio che non lascia traccia non e' verificabile, e uno non verificabile non e' un
     // presidio: e' una speranza.
     let r = { tentato: false, motivo: 'stato coperto' };
-    if (v.stato === 'da-coprire') {
+    // ══ R4 · UNA GAMBA TOLTA PER EROSIONE NON SI RIMETTE PRIMA DEL TEMPO — 18 agosto 2026 ═════════
+    // «Cancella e resta fuori. Ma con un tetto: non più di 5 minuti fuori per volta.» (l'operatore)
+    //
+    // ⚠⚠ SENZA QUESTO CONTROLLO LA REGOLA NON ESISTEREBBE. `ripristinaGamba` ha una scala di
+    // raffreddamento che parte SUBITO — il primo tentativo è immediato, perché la GTD è 23 minuti —
+    // quindi rimetterebbe a libro entro 120 s la gamba che agent40 ha appena tolto. «Fuori 5 minuti»
+    // sarebbe durato due, e il giornale avrebbe mostrato una cancellazione e un ripristino, cioè
+    // quello che il bot fa già: la regola sarebbe stata invisibile oltre che inerte.
+    //
+    // ⚠ SI GUARDA IL LATO MANCANTE, non il mercato: i due book sono CLOB indipendenti e si erodono in
+    // momenti diversi. Se manca la gamba YES per erosione e la NO è sana, si aspetta solo la YES.
+    //
+    // ⚠ FAIL-APERTO, come dichiara `sospensione-erosione`: registro illeggibile ⇒ nessuna sospensione
+    // ⇒ si ripristina. Una sospensione è un'astensione dal premio, e un file che non si legge non deve
+    // poter tenere il bot fuori dal libro per sempre.
+    const sospensioni = (deps.leggiSospensioni || SOSPE.leggiStato)();
+    const latiSospesi = [];
+    for (const m of (v.mancanti || [])) {
+      const lato = String((m && m.book) || '').toLowerCase() === 'no' ? 'no' : 'yes';
+      const a = SOSPE.attiva(sospensioni.stato, { marketId: id, book: lato, now: ora });
+      if (a.sospeso) { latiSospesi.push({ lato, restaSec: a.restaSec, motivo: a.motivo }); continue; }
+      // ⚠ IL RIENTRO PER TETTO SI DICHIARA, ed è un requisito esplicito dell'operatore: vuol dire che
+      // il libro NON si è ricostruito in cinque minuti. Misurato il 17 agosto: succede in 66 episodi
+      // su 97. Se si rientrasse in silenzio, il giornale non distinguerebbe «la profondità è tornata»
+      // da «ci siamo arresi», che sono la stessa azione e due fatti opposti.
+      if (a.voce && a.scadutoDaSec !== null) {
+        try {
+          const rel = SOSPE.rilascia(sospensioni.stato, { marketId: id, book: lato, causa: 'tetto' });
+          if (rel.rilasciata) {
+            SOSPE.scriviStato(rel.stato);
+            sospensioni.stato = rel.stato;
+            scrivi({ tipo: 'sospensione-erosione', esito: 'rientro-per-tetto', marketId: id, book: lato,
+              fuoriSec: +((ora - rel.voce.da) / 1000).toFixed(1), baseline: rel.voce.baseline,
+              ratioPct: rel.voce.ratioPct, motivo: rel.motivo });
+            annuncia('error', `⚠ R4 · ${id.slice(0, 12)}…/${lato}: ${rel.motivo}`);
+          }
+        } catch (e) { annuncia('log', `R4 · rilascio per tetto non riuscito: ${e.message}`); }
+      }
+    }
+    if (latiSospesi.length && latiSospesi.length >= (v.mancanti || []).length) {
+      r = { tentato: false, riuscito: false,
+        motivo: `sospeso per EROSIONE: ${latiSospesi.map((x) => `${x.lato} ancora ${x.restaSec}s`).join(' · ')}`
+          + ' — la gamba resta fuori dal libro finché la profondità non risale o scade il tetto' };
+      scrivi({ tipo: 'ripristino-gamba', esito: 'sospeso-per-erosione', marketId: id,
+        mancanti: v.mancanti, lati: latiSospesi, motivo: r.motivo });
+      annuncia('log', `ripristino ${id.slice(0, 12)}…: ${r.motivo}`);
+    } else if (v.stato === 'da-coprire') {
       // `riga` qui e' la riga di BOARD (quella che ha alimentato il giudizio di copertura), e porta i
       // due token. `rigaDi(id)` e' la riga di PIANO, che porta prezzo e size. Sono due cose diverse e
       // vengono da due file diversi: confonderle e' il modo di piazzare sul mercato sbagliato.

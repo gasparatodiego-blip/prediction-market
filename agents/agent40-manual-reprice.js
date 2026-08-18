@@ -74,6 +74,89 @@ const { runAutoRepriceCycle } = require('../lib/maker/auto-reprice');
 // credenziale, nessuna chiave, solo le funzioni del pannello manuale — quindi aggiungere qui non allarga
 // la superficie: la riusa.
 const { runTrackingCycle, TRACKING_POLL_MS, MID_STALE_PAUSE_SEC } = require('../lib/maker/mm-tracking');
+// ── R4 · L'EROSIONE DELLA PROFONDITÀ DAVANTI — 18 agosto 2026, decisione dell'operatore ───────────
+// `book-erosion` esisteva, era completo e testato, ed era cablato SOLO in `mm-tracking` — il motore
+// «Ottimizza», che non ha nemmeno un mercato configurato (`maker-mm-tracking.json` è assente). Cioè
+// un presidio intero che non poteva girare: la stessa forma di «una cintura senza chiamanti».
+// Adesso lo chiama anche il ciclo dei reward, con la taratura decisa dall'operatore.
+const EROS = require('../lib/maker/book-erosion');
+const SOSP = require('../lib/maker/sospensione-erosione');
+
+// ── LA SERIE DELL'EROSIONE VIVE IN MEMORIA, ED È GIUSTO COSÌ ─────────────────────────────────────
+// Un riavvio la azzera e il riscaldamento riparte: un processo appena nato non ha visto com'era il
+// book prima, quindi non può affermare che si sia eroso. È la stessa disciplina del guardiano delle
+// perdite (§5-bis p.141) e lo dice l'intestazione di `book-erosion`.
+// ⚠ La SOSPENSIONE invece sta su DISCO, perché a rimettere la gamba a libro è un altro processo.
+const _serieErosione = new Map();   // `<marketId>|<book>` → stato di book-erosion
+const _ultimaUscita = new Map();    // `<marketId>|<book>` → istante dell'ultima uscita (il freno)
+
+/**
+ * R4 · QUESTO ORDINE VA TOLTO DAL LIBRO PERCHÉ LA PROFONDITÀ DAVANTI È CROLLATA?
+ *
+ * Restituisce `{fired:false}` in tutti i casi in cui non si sa, e `fired:true` solo quando la macchina
+ * di `book-erosion` conferma l'erosione E il freno lo consente E la sospensione viene davvero scritta.
+ *
+ * ⚠ SE LA SOSPENSIONE NON SI SCRIVE, NON SI CANCELLA. È la parte che rende la regola coerente: senza
+ * il registro su disco `ripristinaGamba` rimetterebbe la gamba a libro entro 120 s, e l'uscita da 5
+ * minuti durerebbe due. Meglio non uscire che uscire e rientrare subito — la seconda cosa paga il
+ * costo (l'ordine perde la sua priorità di coda) senza comprare la protezione.
+ */
+function valutaErosione({ marketId, book, price, size, scoringMid, now } = {}) {
+  const no = (reason) => ({ fired: false, reason });
+  const id = typeof marketId === 'string' ? marketId.trim() : '';
+  if (!id) return no('mercato non leggibile');
+  const lato = String(book || '').toLowerCase() === 'no' ? 'no' : 'yes';
+  const k = `${id.toLowerCase()}|${lato}`;
+  const ora = Number.isFinite(now) ? now : Date.now();
+
+  let d = null;
+  try { d = resolveMarketDepth(id); } catch { d = null; }
+  if (!d || d.readable !== true) return no('profondità non leggibile: non si esce dal libro al buio');
+  const lib = lato === 'no' ? d.no : d.yes;
+  const bids = lib && Array.isArray(lib.bids) ? lib.bids : null;
+  if (!bids) return no('il feed non pubblica i bid di questo book');
+
+  const z = EROS.zoneDepth({ levels: bids, orderPrice: price, sideMid: scoringMid });
+  if (!z.readable) return no(z.reason);
+
+  if (!_serieErosione.has(k)) _serieErosione.set(k, EROS.emptyErosionState());
+  // ⚠ IL FRENO SI INIETTA, non si prende dal difetto di `book-erosion` (30 s): l'operatore lo ha
+  // portato a 60 s per rispettare il rail del venue, e il numero vive in `sospensione-erosione`.
+  const cfg = EROS.erosionConfig({ minIntervalMs: SOSP.FRENO_MS });
+  const u = EROS.updateErosion(_serieErosione.get(k), { depth: z.depth, now: ora, cfg });
+
+  // ── IL RIENTRO PER RECUPERO SI DICHIARA QUI ──────────────────────────────────────────────────
+  // ⚠ Non basta che la sospensione scada: quando la profondità RISALE sopra la soglia di rientro la
+  // gamba deve poter tornare a libro SUBITO, senza aspettare i 5 minuti. Il tetto è un limite
+  // superiore al tempo fuori, non una durata fissa. Le due cause restano distinte nel giornale,
+  // perché «è tornata la profondità» e «sono passati 5 minuti» sono due fatti diversi.
+  if (u.recovered === true) {
+    try {
+      const letto0 = SOSP.leggiStato();
+      const rel = SOSP.rilascia(letto0.stato, { marketId: id, book: lato, causa: 'recupero' });
+      if (rel.rilasciata) {
+        SOSP.scriviStato(rel.stato);
+        log(`R4 · ${id.slice(0, 12)}…/${lato}: ${rel.motivo}`);
+      }
+    } catch (e) { log('R4 · rilascio per recupero non riuscito:', e.message); }
+  }
+
+  if (u.fired !== true) return no(u.reason);
+
+  const permesso = EROS.repriceAllowed({ trigger: 'erosione', lastRepriceAt: _ultimaUscita.get(k) ?? null, now: ora, cfg });
+  if (!permesso.allowed) return no(`erosione confermata ma frenata: ${permesso.reason}`);
+
+  // ── SI SCRIVE LA SOSPENSIONE, E SOLO SE RIESCE SI CANCELLA ────────────────────────────────────
+  const letto = SOSP.leggiStato();
+  const s = SOSP.sospendi(letto.stato, { marketId: id, book: lato, now: ora, baseline: u.baseline, ratioPct: u.ratioPct });
+  if (!s.applicata) return no(`sospensione non applicata: ${s.motivo}`);
+  const w = SOSP.scriviStato(s.stato);
+  if (!w.ok) return no(`registro delle sospensioni NON scrivibile (${w.motivo}): non si cancella, o la gamba tornerebbe a libro fra due minuti`);
+
+  _ultimaUscita.set(k, ora);
+  return { fired: true, reason: u.reason, baseline: u.baseline, ratioPct: u.ratioPct,
+    finoA: s.finoA, tettoMs: SOSP.TETTO_FUORI_MS };
+}
 const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-config');
 const { marketWindowFor } = require('../lib/maker/market-clock');
 const { loadAutoRepriceTuning, EXPECTED_RENEWALS_PER_HOUR, setAutoReprice, readAutoRepriceConfig } = require('../lib/maker/auto-reprice-config');
@@ -1710,6 +1793,11 @@ async function cycle() {
     // in silenzio quando `resolveDepth` non è una funzione. È la classe di difetto che
     // scripts/dipendenze-scollegate.js esiste per impedire — una decisione scritta e mai raggiunta.
     resolveDepth: (marketId) => resolveMarketDepth(marketId),
+    // ── R4 · L'EROSIONE DELLA PROFONDITÀ DAVANTI (18 agosto 2026) ────────────────────────────────
+    // La dep che rende raggiungibile il TRIGGER 4 di `decideReprice`. Senza, quel trigger è saltato in
+    // silenzio — la stessa classe di `resolveDepth` qui sopra, e la ragione per cui c'è un test che
+    // asserisce il CABLAGGIO e non solo la decisione (§5-bis p.181).
+    erosione: (arg) => valutaErosione(arg),
     // ── IL VETO DI PROFILO ────────────────────────────────────────────────────────────────────────
     // Due mani, non una logica: il ciclo chiede «che profilo ha questo mercato?» e «questo
     // piazzamento passa i controlli di quel profilo?». Entrambe le risposte vengono da moduli puri.
@@ -2331,4 +2419,6 @@ if (require.main === module) {
   main().catch((e) => { log('fatal:', e && e.stack ? e.stack : String(e)); process.exit(1); });
 }
 
-module.exports = { cycle, reconcileTask, closeTask, sorveglianzaTask, sparizioneTask, registraNostroInvio, snapshotPosizioniTask, trackingTask, breaches, trackingState };
+module.exports = { cycle, reconcileTask, closeTask, sorveglianzaTask, sparizioneTask, registraNostroInvio, snapshotPosizioniTask, trackingTask, breaches, trackingState,
+  // R4: esportata perché il test dello SCATTO la guidi attraverso il ciclo vero invece di reimplementarla.
+  valutaErosione };
