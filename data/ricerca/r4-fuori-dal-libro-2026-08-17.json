@@ -1,0 +1,569 @@
+{
+ "giorno": "2026-08-17",
+ "sorgente": "scripts/ricerca/r4-fuori-dal-libro.js",
+ "regola": {
+  "soloErosioneRelativa": true,
+  "frenoMs": 60000,
+  "sellEsclusi": true,
+  "azione": "cancella-e-resta-fuori",
+  "tettoFuoriMs": 300000,
+  "rientroPct": 60
+ },
+ "sogliaRinunciaMinGiorno": 30,
+ "mercatiMisurati": 50,
+ "mercatiCheEscono": 33,
+ "episodi": 97,
+ "chiusiDaRecupero": 31,
+ "chiusiDalTetto": 66,
+ "frenati": 0,
+ "minutiGiorno": {
+  "mediana": 8.36,
+  "media": 28.25,
+  "peggiore": 180.01
+ },
+ "mercatiSopraSoglia": 12,
+ "premioPersoUsdGiorno": {
+  "mediano": 0.0154,
+  "peggiore": 1.45003,
+  "suTreMercati": 0.046200000000000005
+ },
+ "limiti": [
+  "book troncato a 3 livelli: profondita e baseline sottostimate, il rapporto meno",
+  "feed a ~115 s: il tetto dei 5 min si risolve a passi di ~2 campioni",
+  "solo lato BID: l altro CLOB puo erodersi in un altro momento",
+  "mentre si e fuori si misura col prezzo che l ordine AVREBBE",
+  "premio al nostro capitale estrapolato in proporzione dal livello $500 del board"
+ ],
+ "perMercato": [
+  {
+   "id": "0x806f7cfb803afc4c500cc96e14774bd3bc0b4eb338ea76129d30851f5631eece",
+   "minPerGiorno": 180.01,
+   "episodi": 1,
+   "oreOsservate": 0.5,
+   "premioGiornoUsd": 11.0158,
+   "persoUsd": 1.37702,
+   "minSize": 20,
+   "durateMin": [
+    3.75
+   ]
+  },
+  {
+   "id": "0x5b3c1a641b484ca9fc2df23a8daf18f1fe75291260239e2bcd22cfa2d8470906",
+   "minPerGiorno": 180,
+   "episodi": 3,
+   "oreOsservate": 2,
+   "premioGiornoUsd": 11.6003,
+   "persoUsd": 1.45003,
+   "minSize": 20,
+   "durateMin": [
+    5,
+    5,
+    5
+   ]
+  },
+  {
+   "id": "0x311008807b4b85a705e6ffbfc268fa38a031966632dbe9cda1908880a709db43",
+   "minPerGiorno": 126.44,
+   "episodi": 6,
+   "oreOsservate": 4.27,
+   "premioGiornoUsd": 10.5903,
+   "persoUsd": 0.92987,
+   "minSize": 20,
+   "durateMin": [
+    2.5,
+    5,
+    1.25,
+    5,
+    5,
+    3.75
+   ]
+  },
+  {
+   "id": "0x740cf8d8c9c5602542b96a83da27204175aef7157d333322df9652faea44453a",
+   "minPerGiorno": 108.68,
+   "episodi": 3,
+   "oreOsservate": 3.31,
+   "premioGiornoUsd": 12.4592,
+   "persoUsd": 0.9403,
+   "minSize": 20,
+   "durateMin": [
+    5,
+    5,
+    5
+   ]
+  },
+  {
+   "id": "0x319e67f59fd870ca40bc7a9d78f4d1c502c6a3fbb01eae00927ac45a49ef8f2a",
+   "minPerGiorno": 105.88,
+   "episodi": 2,
+   "oreOsservate": 1.42,
+   "premioGiornoUsd": 11.1475,
+   "persoUsd": 0.81964,
+   "minSize": 20,
+   "durateMin": [
+    1.25,
+    5
+   ]
+  },
+  {
+   "id": "0x033d7bd1c464a7aef8eb2ec4464c475803cf76d786f48ae2b29252be9a098e4b",
+   "minPerGiorno": 104.52,
+   "episodi": 3,
+   "oreOsservate": 2.58,
+   "premioGiornoUsd": 14.8025,
+   "persoUsd": 1.07437,
+   "minSize": 20,
+   "durateMin": [
+    5,
+    5,
+    1.25
+   ]
+  },
+  {
+   "id": "0x5b32da800af6444efcbdcf7318459f2012eb1becc181d77f295a93be416cef2f",
+   "minPerGiorno": 77.14,
+   "episodi": 3,
+   "oreOsservate": 2.33,
+   "premioGiornoUsd": 11.088,
+   "persoUsd": 0.594,
+   "minSize": 20,
+   "durateMin": [
+    1.25,
+    3.75,
+    2.5
+   ]
+  },
+  {
+   "id": "0xda455cb37e869e4c8059ace1e8cb1b207be7c0ad2515ae6c2b098653f7dfde63",
+   "minPerGiorno": 69.43,
+   "episodi": 9,
+   "oreOsservate": 11.67,
+   "premioGiornoUsd": 2.4813,
+   "persoUsd": 0.11963,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    5,
+    5,
+    1.25,
+    1.25,
+    5,
+    5,
+    1.25,
+    5
+   ]
+  },
+  {
+   "id": "0x162b8f17f97398a40ccb5db82493d7b814a4c63559fe7f3f7af345c2a8932c4d",
+   "minPerGiorno": 60.23,
+   "episodi": 3,
+   "oreOsservate": 5.48,
+   "premioGiornoUsd": 8.1088,
+   "persoUsd": 0.33914,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    3.75,
+    5
+   ]
+  },
+  {
+   "id": "0xb852c6196f06d89932843d35ccc6c57e911842156d65d1a3f5b1110c5c1f79d4",
+   "minPerGiorno": 57.19,
+   "episodi": 3,
+   "oreOsservate": 6.29,
+   "premioGiornoUsd": 20.5605,
+   "persoUsd": 0.81662,
+   "minSize": 20,
+   "durateMin": [
+    5,
+    5,
+    5
+   ]
+  },
+  {
+   "id": "0x8deb8be8441ee7003dd57ee83ded2998ab11b0b844aa9828d3930cea22beb88f",
+   "minPerGiorno": 50.03,
+   "episodi": 6,
+   "oreOsservate": 10.79,
+   "premioGiornoUsd": 9.5195,
+   "persoUsd": 0.33071,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    1.25,
+    5,
+    5,
+    1.25,
+    5
+   ]
+  },
+  {
+   "id": "0x5762b07c34cd8b8615e4f406d9e69874c26e03d0d30aed29766e278b2b80b914",
+   "minPerGiorno": 30.87,
+   "episodi": 6,
+   "oreOsservate": 21.38,
+   "premioGiornoUsd": 1.7751,
+   "persoUsd": 0.03806,
+   "minSize": 50,
+   "durateMin": [
+    3.75,
+    5,
+    5,
+    5,
+    3.75,
+    5
+   ]
+  },
+  {
+   "id": "0xa4ada0a23e4ae5e86df25562be322a21dbeb5f563820f55ad3f2e086c4ee08bb",
+   "minPerGiorno": 29.14,
+   "episodi": 6,
+   "oreOsservate": 22.65,
+   "premioGiornoUsd": 4.9112,
+   "persoUsd": 0.09939,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    5,
+    2.5,
+    5,
+    5,
+    5
+   ]
+  },
+  {
+   "id": "0x280a469e638f02118890193a7e75f804ddc1e485ba6236f6bab7e0266ed0333c",
+   "minPerGiorno": 28.2,
+   "episodi": 5,
+   "oreOsservate": 21.27,
+   "premioGiornoUsd": 9.4109,
+   "persoUsd": 0.18432,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    5,
+    5,
+    5,
+    5
+   ]
+  },
+  {
+   "id": "0xa875e0b4802818c2ed51fa4a44eeb303d2a11b1df946de66c0444d80468e78b6",
+   "minPerGiorno": 24,
+   "episodi": 2,
+   "oreOsservate": 7.5,
+   "premioGiornoUsd": 1.4773,
+   "persoUsd": 0.02462,
+   "minSize": 50,
+   "durateMin": [
+    2.5,
+    5
+   ]
+  },
+  {
+   "id": "0xe9e713e3d02d67100e35716868238b3824a060ae6c716f310cacc8c39c6a30d0",
+   "minPerGiorno": 21.19,
+   "episodi": 5,
+   "oreOsservate": 22.65,
+   "premioGiornoUsd": 9.0217,
+   "persoUsd": 0.13278,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    5,
+    1.25,
+    3.75,
+    5
+   ]
+  },
+  {
+   "id": "0xbbf84b087712b034fc20b72ea2f410031b09dbedad7db1e13b1aa88a2d76c3e6",
+   "minPerGiorno": 20.96,
+   "episodi": 4,
+   "oreOsservate": 22.9,
+   "premioGiornoUsd": 4.329,
+   "persoUsd": 0.06302,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    5,
+    5,
+    5
+   ]
+  },
+  {
+   "id": "0xd5b21e4d9914de45f51a5e32246572d2059d52702670c4a6a32e354ac4c61f7b",
+   "minPerGiorno": 16.21,
+   "episodi": 4,
+   "oreOsservate": 20.36,
+   "premioGiornoUsd": 4.5735,
+   "persoUsd": 0.05149,
+   "minSize": 50,
+   "durateMin": [
+    1.25,
+    3.75,
+    5,
+    3.75
+   ]
+  },
+  {
+   "id": "0xf45ea40c1c1dafa07037523ffce5f0c998bca21b3cfc36a28bfb01acb1451b12",
+   "minPerGiorno": 15.97,
+   "episodi": 3,
+   "oreOsservate": 22.54,
+   "premioGiornoUsd": 4.8869,
+   "persoUsd": 0.05419,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    5,
+    5
+   ]
+  },
+  {
+   "id": "0xd9e428d3af0ece1d660b4e3e68f556c4a36c63aaef509c00aca5cfcbcccd984c",
+   "minPerGiorno": 14.06,
+   "episodi": 3,
+   "oreOsservate": 17.07,
+   "premioGiornoUsd": 6.9676,
+   "persoUsd": 0.06805,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    3.75,
+    1.25
+   ]
+  },
+  {
+   "id": "0x91836772753996ff5241f027990028192cc55b016c52e5d6cadb9d6a25f07782",
+   "minPerGiorno": 13.12,
+   "episodi": 1,
+   "oreOsservate": 9.14,
+   "premioGiornoUsd": 6.9041,
+   "persoUsd": 0.06292,
+   "minSize": 50,
+   "durateMin": [
+    5
+   ]
+  },
+  {
+   "id": "0xf88334704e9781b78f3e4da3724d5db06083ad76ab32f66f16d92310e8f3c62a",
+   "minPerGiorno": 10.85,
+   "episodi": 2,
+   "oreOsservate": 22.13,
+   "premioGiornoUsd": 0.4341,
+   "persoUsd": 0.00327,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    5
+   ]
+  },
+  {
+   "id": "0x3e6273bbe7069f0216c6e19435a45798053d2cbbbec2085b8b4d1e8831b12a3a",
+   "minPerGiorno": 10.6,
+   "episodi": 2,
+   "oreOsservate": 22.65,
+   "premioGiornoUsd": 1.1783,
+   "persoUsd": 0.00867,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    5
+   ]
+  },
+  {
+   "id": "0x55ac42ecb571b2dccb76735ba8d8510ee6f78fc90ea96d132a11dfbb29d8deae",
+   "minPerGiorno": 9.64,
+   "episodi": 2,
+   "oreOsservate": 21.79,
+   "premioGiornoUsd": 10.1176,
+   "persoUsd": 0.0677,
+   "minSize": 50,
+   "durateMin": [
+    5,
+    3.75
+   ]
+  },
+  {
+   "id": "0x27c7221e0b3dc8e611df662c4ba88cd9600c6c5b5c231d8fe03c0b06e2fa6c0d",
+   "minPerGiorno": 8.36,
+   "episodi": 1,
+   "oreOsservate": 14.36,
+   "premioGiornoUsd": 9.7656,
+   "persoUsd": 0.05668,
+   "minSize": 50,
+   "durateMin": [
+    5
+   ]
+  },
+  {
+   "id": "0x303658c00317867d8206adeed79933fa70ed41854f6ec30de104c8c6babfcf2c",
+   "minPerGiorno": 6.62,
+   "episodi": 2,
+   "oreOsservate": 22.65,
+   "premioGiornoUsd": 1.8227,
+   "persoUsd": 0.00838,
+   "minSize": 50,
+   "durateMin": [
+    1.25,
+    5
+   ]
+  },
+  {
+   "id": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+   "minPerGiorno": 5.94,
+   "episodi": 1,
+   "oreOsservate": 20.21,
+   "premioGiornoUsd": 0.096,
+   "persoUsd": 0.0004,
+   "minSize": 50,
+   "durateMin": [
+    5
+   ]
+  },
+  {
+   "id": "0x995705f945b0ca47cafcb3ec89fead6d9a0f2d0a5f42fecff68fed619d25e86e",
+   "minPerGiorno": 5.44,
+   "episodi": 1,
+   "oreOsservate": 22.07,
+   "premioGiornoUsd": 4.078,
+   "persoUsd": 0.0154,
+   "minSize": 50,
+   "durateMin": [
+    5
+   ]
+  },
+  {
+   "id": "0xb73f32c2884c65f5dae192c33bef3f7ce3faeec4ad313d2d3a6ad62ea2c95caf",
+   "minPerGiorno": 5.34,
+   "episodi": 1,
+   "oreOsservate": 22.46,
+   "premioGiornoUsd": 1.4682,
+   "persoUsd": 0.00545,
+   "minSize": 50,
+   "durateMin": [
+    5
+   ]
+  },
+  {
+   "id": "0x1c49279846b1226fadc7c8d4299eb0a350dd997bc6d5a8164e2975ec47a616ef",
+   "minPerGiorno": 5.17,
+   "episodi": 1,
+   "oreOsservate": 23.23,
+   "premioGiornoUsd": 1.0931,
+   "persoUsd": 0.00392,
+   "minSize": 50,
+   "durateMin": [
+    5
+   ]
+  },
+  {
+   "id": "0xf43d99c0b796e0e5226dffa31c71c9fab943e3f79c0182c144eea93dc6b77ae2",
+   "minPerGiorno": 5.17,
+   "episodi": 1,
+   "oreOsservate": 23.23,
+   "premioGiornoUsd": 0.4801,
+   "persoUsd": 0.00172,
+   "minSize": 50,
+   "durateMin": [
+    5
+   ]
+  },
+  {
+   "id": "0x9d1b9c496cb263b56e3cc6b7b7c54f433a3bedb23e61ddcc52f7f9c77ef003c5",
+   "minPerGiorno": 4.04,
+   "episodi": 1,
+   "oreOsservate": 22.27,
+   "premioGiornoUsd": 8.6257,
+   "persoUsd": 0.0242,
+   "minSize": 50,
+   "durateMin": [
+    3.75
+   ]
+  },
+  {
+   "id": "0xc145a4fabea9c2db89d6c1f3be93fe1859083089c784e2b4587b0eb2bb364747",
+   "minPerGiorno": 2.03,
+   "episodi": 1,
+   "oreOsservate": 14.79,
+   "premioGiornoUsd": 6.1841,
+   "persoUsd": 0.00871,
+   "minSize": 50,
+   "durateMin": [
+    1.25
+   ]
+  },
+  {
+   "id": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+   "minPerGiorno": 0,
+   "episodi": 0,
+   "oreOsservate": 23.23,
+   "premioGiornoUsd": 0.2256,
+   "persoUsd": 0,
+   "minSize": 50,
+   "durateMin": []
+  },
+  {
+   "id": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+   "minPerGiorno": 0,
+   "episodi": 0,
+   "oreOsservate": 23.23,
+   "premioGiornoUsd": 0.4279,
+   "persoUsd": 0,
+   "minSize": 50,
+   "durateMin": []
+  },
+  {
+   "id": "0xfb481845055afdf15febad269fcb534be4c5e79d5789b72659a036660b46e11b",
+   "minPerGiorno": 0,
+   "episodi": 0,
+   "oreOsservate": 23.23,
+   "premioGiornoUsd": 0.4125,
+   "persoUsd": 0,
+   "minSize": 50,
+   "durateMin": []
+  },
+  {
+   "id": "0xf2b0c93903a116cc841c2be960d4f5309153d4b93d6901f69a82f34259365770",
+   "minPerGiorno": 0,
+   "episodi": 0,
+   "oreOsservate": 20.63,
+   "premioGiornoUsd": 0.9953,
+   "persoUsd": 0,
+   "minSize": 50,
+   "durateMin": []
+  },
+  {
+   "id": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "minPerGiorno": 0,
+   "episodi": 0,
+   "oreOsservate": 23.23,
+   "premioGiornoUsd": 0.0192,
+   "persoUsd": 0,
+   "minSize": 50,
+   "durateMin": []
+  },
+  {
+   "id": "0x7aa117977f6d5bdda20d9cab8c53e0abea481d998d385c0b44153df24cd5ab00",
+   "minPerGiorno": 0,
+   "episodi": 0,
+   "oreOsservate": 1.27,
+   "premioGiornoUsd": 8.2808,
+   "persoUsd": 0,
+   "minSize": 20,
+   "durateMin": []
+  },
+  {
+   "id": "0xc16fade4bbc06895f8e456e1e49c6aa51c1b2dc7f734b3ad8fe8a5900d6a4174",
+   "minPerGiorno": 0,
+   "episodi": 0,
+   "oreOsservate": 15.5,
+   "premioGiornoUsd": 4.984,
+   "persoUsd": 0,
+   "minSize": 50,
+   "durateMin": []
+  }
+ ]
+}
