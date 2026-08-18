@@ -2407,6 +2407,16 @@ async function selezionaMercati(deps = {}) {
     // questa riga, un giro in cui il vincolo morde e' indistinguibile da un giro in cui non c'era
     // niente di meglio — ed e' proprio la domanda che il 18 agosto e' rimasta senza risposta.
     scartatiPerCodaLunga: d.scartatiPerCodaLunga || [],
+    // ── ⚠ I TRE CAMPI DIAGNOSTICI CHE `decidiSelezione` CALCOLAVA E NESSUNO LEGGEVA ────────────────
+    // Trovati il 18 agosto cercando perche' il quinto slot non si riempisse: il record del giornale
+    // portava `occupati 4 | ammissibili 6 | entrati 0` e nient'altro, quindi la domanda «perche' quel
+    // posto e' vuoto» non aveva risposta sul disco. `postiNonAssegnati` (un secchio senza candidati),
+    // `scartatiPerComposizione` (chi e' stato scartato per la quota) e `slotVuotiPerScarsita` (quanti
+    // posti restano e perche') esistevano gia' nel ritorno della funzione. Ottava volta oggi che
+    // qualcosa di calcolato non viene letto: qui si legge.
+    postiNonAssegnati: d.postiNonAssegnati || [],
+    scartatiPerComposizione: d.scartatiPerComposizione || [],
+    slotVuotiPerScarsita: d.slotVuotiPerScarsita || null,
     bookVivi: bookVivi.leggibile
       ? { leggibile: true, quanti: bookVivi.quanti, regime: bookVivi.regime, feedVivo: bookVivi.feedVivo,
           etaMassimaMs: bookVivi.etaMassimaMs, etaMassimaAssolutaMs: bookVivi.etaMassimaAssolutaMs }

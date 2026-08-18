@@ -191,7 +191,14 @@ data/copy-close-audit.jsonl.*
 data/safety-kill-switch.json
 data/safety-kill-switch.json.tmp.*
 data/safety-kill-audit.jsonl
-data/safety-risk-limits.json
+# ⚠ `data/safety-risk-limits.json` E' VERSIONATO dal 18 agosto 2026, decisione dell'operatore.
+# Era ignorato, e questo significava che i tetti di rischio vivevano SOLO sul disco di una macchina: un
+# ripristino da git non li avrebbe riportati, e il bot sarebbe ripartito con valori diversi da quelli
+# decisi senza che niente lo dicesse. E' lo stesso file che il 18 agosto faceva fallire il banco al
+# passo 3 («il tetto di esposizione aperta non e' leggibile»), perche' nel worktree non c'era.
+# Non contiene segreti: sono cinque numeri e una lista di venue. `users` e' vuoto e deve restarlo — se
+# un giorno dovesse contenere dati per utente, si versiona il default e si sposta il per-utente altrove.
+# Il file .tmp resta ignorato: e' lo scratch della scrittura atomica, non uno stato.
 data/safety-risk-limits.json.tmp.*
 data/execution-audit.jsonl
 
