@@ -2240,9 +2240,16 @@ async function selezionaMercati(deps = {}) {
   // La composizione per scaglione la deriva `quotaScaglioni(max)` dentro `decidiSelezione`: un numero
   // solo, non due.
   const quanti = (deps.quanti !== undefined ? deps.quanti : QUANTI.quantiMercati());
+  // ⚠ `codaLungaGiorni` VIENE DA `horizon`, L'UNICA FONTE, e si INIETTA perche' `selezione-mercati`
+  // e' puro (zero `require`, un test lo asserisce). Senza, la selezione non sa che l'allocatore
+  // finanzia la coda lunga solo a partire dal budget della fascia corta — ed e' il deadlock del
+  // 18 agosto: unico slot su un mercato a 134 giorni ⇒ fascia corta vuota ⇒ zero righe per sempre.
+  const codaLungaGiorni = (() => {
+    try { return require('../lib/rewards/horizon').LONG_TAIL_DAYS; } catch { return null; }
+  })();
   const d = SELM.decidiSelezione({
     board, stato: stato.stato, posizioni, ora: Date.now(), escludi: quarantena, orizzonteMassimoOre,
-    nettoPerMercato, conOrdiniVivi, max: quanti.quanti,
+    nettoPerMercato, conOrdiniVivi, max: quanti.quanti, codaLungaGiorni,
   });
   if (!d.ok) {
     annuncia('log', `selezione automatica: nessuna decisione — ${d.motivo}`);
@@ -2319,6 +2326,10 @@ async function selezionaMercati(deps = {}) {
     // Lo spodestamento e' l'azione nuova del 16 agosto 2026: va nel giornale con i due netti a
     // confronto, o fra un mese non si potra' dire se la riclassificazione ha migliorato o solo agitato.
     spodestati,
+    // Chi e' stato tolto dai candidati perche' la selezione sarebbe stata tutta coda lunga. Senza
+    // questa riga, un giro in cui il vincolo morde e' indistinguibile da un giro in cui non c'era
+    // niente di meglio — ed e' proprio la domanda che il 18 agosto e' rimasta senza risposta.
+    scartatiPerCodaLunga: d.scartatiPerCodaLunga || [],
     nettiIniettati: nettoPerMercato ? Object.keys(nettoPerMercato).length : null,
     ordiniViviLeggibili: conOrdiniVivi ? conOrdiniVivi.leggibile === true : null,
     statoSalvato: salvato.ok, statoErrore: salvato.ok ? null : salvato.error,
@@ -3081,8 +3092,20 @@ async function eseguiGradino(azione) {
   const fatto = (ok, dettaglio) => ({ azione, ok, dettaglio, durataMs: Date.now() - t0 });
   try {
     if (azione === 'ricostruisci-piano') {
-      await controlloCapitaleFermo({ forzatoDa: 'sblocco-progressivo' });
-      return fatto(true, 'mini-ciclo forzato: il piano viene ricostruito con gli stessi filtri del ciclo pesante');
+      // ⚠ SI GUARDA L'ESITO, NON SI DICHIARA. Fino al 18 agosto qui c'era `await controlloCapitaleFermo()`
+      // seguito da `return fatto(true, 'il piano viene ricostruito…')`: un successo affermato senza
+      // averlo verificato, con un messaggio che descriveva l'INTENZIONE. E' costato una giornata — la
+      // scala e' salita al gradino 6 sette volte mentre il piano restava fermo, e il gradino il cui
+      // mestiere era proprio rifarlo dichiarava ogni volta di averlo fatto. Il gemello due righe sotto
+      // (`ripara-precondizioni`) fa `fatto(n > 0, …)` da sempre: qui mancava, e basta.
+      const r = await controlloCapitaleFermo({ forzatoDa: 'sblocco-progressivo' });
+      if (!r) return fatto(false, 'mini-ciclo NON eseguito: un altro giro era gia in corso (lucchetto)');
+      const ok = r.esito === 'allocato';
+      return fatto(ok, ok
+        ? `piano ricostruito: $${r.allocatoUsd} su ${(r.mercati || []).length} mercato/i`
+        // Il motivo del mini-ciclo e' gia' scritto per esteso e dice PERCHE': lo si riporta invece di
+        // riassumerlo, o la scala perderebbe l'unica diagnosi utile che possiede.
+        : `piano NON ricostruito (esito '${r.esito}'): ${r.motivo || 'senza motivo dichiarato'}`);
     }
     if (azione === 'ricarica-configurazione') {
       // I lettori di questo repo leggono già da disco a ogni chiamata («un controllo che ha bisogno di
@@ -3446,6 +3469,14 @@ async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   } else if (r.esito === 'nessuna-azione') {
     annuncia('log', `mini-ciclo: nessuna azione — ${r.motivo}`);
   }
+  // ── E SI RESTITUISCE L'ESITO, PERCHE' QUALCUNO LO DEVE POTER GUARDARE — 18 agosto 2026 ───────────
+  // Questa funzione non restituiva niente. Chi la chiamava non aveva modo di sapere com'era andata, e
+  // il gradino 1 della scala di sblocco (`ricostruisci-piano`) faceva `await controlloCapitaleFermo()`
+  // e poi `return fatto(true, 'il piano viene ricostruito')` — dichiarando un successo che non poteva
+  // aver verificato. Il 18 agosto la scala e' salita fino al gradino 6 SETTE VOLTE, e ogni volta il
+  // gradino 1 ha detto «eseguito» mentre il piano restava fermo a 15:24. Il messaggio descriveva
+  // l'INTENZIONE, non il fatto.
+  return r;
 }
 
 // ── IL SORVEGLIANTE DELL'INTERRUTTORE — «AVVIA» DEVE PIAZZARE IN MINUTI, NON IN ORE ─────────────────
