@@ -1,4 +1,4 @@
-# Cosa resta aperto — 17 agosto 2026, sera tardi
+# Cosa resta aperto — 18 agosto 2026
 
 Scritto perché una sessione nuova possa riprendere **senza rileggere tutto**. In ordine di quanto costa
 se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
@@ -9,13 +9,56 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 
 | | |
 |---|---|
-| **flotta pm2** | **11 processi ONLINE**, utente `bot`, `cwd` `/home/bot/bot` · `pm2 save` fatto |
-| **cinture** | **4/4 inserite** su agent40 e agent41, lette da `/proc/<pid>/environ` — e da oggi **mordono tutte e quattro** |
-| **passi del giro completo** | **18 su 18** |
+| **flotta pm2** | **11 processi ONLINE**, utente `bot`, `cwd` `/home/bot/bot` |
+| **cinture** | **4/4 inserite** su agent40 e agent41, lette da `/proc/<pid>/environ` |
+| **regole concordate** | **10 su 10 in servizio** (§0), **10 su 10 verificate dal banco** |
+| **passi del giro completo** | **26 su 26** (erano 18: sei passi nuovi, uno per regola) |
 | **regole che scattano** | **20 statiche + 15 dinamiche su 91**, col cablaggio di produzione |
-| **determinismo** | **10 corse su 10**, firma `3589516fd10666bf` — e **identico su due snapshot diversi di `data/`** |
-| **suite** | 209 test · 195 verdi · **10 rossi NOTI** + 1 timeout + 1 che non parte |
-| **bot** | **FERMO**, perno vuoto, allowlist vuota, selezione spenta, **zero ordini a libro** |
+| **quanti mercati** | **3**, da `MAKER_MERCATI_CONTEMPORANEI` nell'ambiente di agent41 |
+| **bot** | **DISARMATO**: `MAKER_MODE=off` · `MAKER_ADAPTER_DRYRUN=true` · `MANUAL_ORDER_PLACEMENT=dry-run` · perno vuoto · **zero ordini a libro** |
+
+---
+
+## 0 · ⚖️ REGOLE CONCORDATE — decise dall'operatore il 18 agosto 2026
+
+**Sono la specifica del bot.** Il codice le rispetta tutte e dieci; il banco le verifica tutte e dieci.
+Chi le cambia cambia il bot, non un dettaglio di implementazione — e deve cambiare **anche** il passo
+del banco che le prova, o la prova resterebbe a difendere la regola vecchia.
+
+| # | regola | dove vive | passo del banco |
+|---|---|---|---|
+| **1** | **QUANTI MERCATI** — il numero lo decide l'operatore prima di ogni sessione (uno, due, tre); i mercati li sceglie il bot. **Un solo posto** dove scriverlo, **letto dai processi vivi** | `MAKER_MERCATI_CONTEMPORANEI` in `agents/ecosystem.config.js` (solo agent41) → `lib/maker/quanti-mercati.js` → `selezione-mercati.quotaScaglioni(max)` | **18** |
+| **2** | **SCELTA** — scarta pavimento premiante oltre $61,25, scadenza sotto 24 h, famiglia meteo. Ordina per **netto**, tenendo conto della concorrenza già in banda | `selezione-mercati.valutaAmmissibilita` (`:81`, `:110`, `:265`, `:282`, `:297`) · `valoreCandidato`/`ordinaCandidati` | **22** |
+| **3** | **INGRESSO** — due gambe, SI e NO, **stessa size decisa insieme**. La più esterna possibile restando premiati: manopola **0,95**, un tick di margine dal bordo. ~$60 per mercato, ~61 share per lato | `size-da-capitale.sharePerLato` · `allocator:565` (`sizePerSideShares`) · `distanza-obiettivo.bordiConMargine` | **3**, **13** |
+| **4** | **RIPREZZO** — guarda il **book**, non solo il mid. Riprezza se il mid esce dalla banda; **e anche** se la profondità davanti si erode: **cancella e resta fuori**, tetto **5 minuti**, poi rientra e lo **dichiara**. Freno **60 s**. Profondità non leggibile: tiene e lo dichiara | `auto-reprice.js:681` (TRIGGER 4) · `book-erosion.js` · `sospensione-erosione.js` · rientro in `agent41.riconciliaCopertura` | **19** |
+| **5** | **FILL PARZIALE** — copre la quantità riempita comprando l'altro lato **per quella quantità esatta**. Cancella **sempre** il residuo, anche sotto il minimo. Poi merge | `strategia-merge.js:249` (`manca`) · `auto-close.js:1006`, `:1136` | **9** |
+| **6** | **RESIDUO SOTTO IL MINIMO** — si chiude **sempre**, anche da taker. Limite: non spendere per uscire più di quanto la posizione valga | `presidio-posizioni-vecchie.js` (deroga) · `agent41.prezzoUscitaAttraversata` (il limite, sul ricavo nullo) | **20** |
+| **7** | **FILL TOTALE** — taker se la coppia resta sotto **101¢**; altrimenti a riposo al massimo prezzo sotto il tetto, che matura premio, per **30 minuti**. Poi la scala: fino al carico, **dopo 60 minuti fino al 5%** | `strategia-merge.decidiLivello` · `urgenza-scoperto.js:72`, `:104`, `pavimentoConcesso` | **6**, **10**, **11** |
+| **8** | **MERGE** — coppia completa: merge **subito, sempre, senza limiti di prezzo**. Il tetto di 101¢ vale **solo** per l'acquisto della gamba mancante | `strategia-merge.js:234-268` (il conto di `manca` sta **sopra** le guardie sul prezzo) | **7**, **12** |
+| **9** | **ROTAZIONE** — sostituisce il peggiore solo se il nuovo rende **+$0,50/g oppure +25%**. Mai un mercato con posizione aperta o coppia incompleta (esce dai tre attivi ma resta gestito fino a coppia chiusa). Mai uno con ordini a riposo. Netto non misurabile: non spodesta e non si fa spodestare | `selezione-mercati.spodestaAbbastanza:157` · le quattro condizioni `:614-624` · `inGestione` `:433`, `:510`, `:527` | **8**, **23** |
+| **10** | **KILL** — a −$100 nella giornata cancella tutti gli ordini **E chiude le posizioni**: coppie a merge, gambe scoperte vendute a mercato, gambe sotto il minimo **restano e vengono dichiarate**. Non riapre fino al giorno dopo | `kill-perdita-giornaliera.js` · `chiusura-di-emergenza.js` · agent43 **deposita**, agent41 **esegue** | **17**, **21** |
+
+### Le tre cose che vanno sapute prima di toccarle
+
+**⚠ R1 · ridurre il numero non chiude niente da solo.** La selezione non spodesta chi ha ordini vivi o
+una posizione (R9), quindi il numero governa quanti mercati si **aprono**; il rientro avviene per
+consumo. È la direzione prudente, ma non è un freno d'emergenza.
+
+**⚠ R4 · senza il registro su disco la regola non esisterebbe.** A cancellare è agent40, a rimettere la
+gamba a libro è agent41, e la sua scala di raffreddamento parte **subito**: avrebbe rimesso a libro
+entro 120 s la gamba appena tolta. «Fuori 5 minuti» sarebbe durato due, e il giornale avrebbe mostrato
+una cancellazione e un ripristino — cioè quello che il bot fa già.
+
+**⚠ R6 e R10 dicono cose diverse sul sotto-minimo, ed è voluto.** R6 governa il percorso **ordinario**,
+dove c'è tempo per un'uscita attraversata e il capitale bloccato costa più della perdita. R10 governa
+l'**emergenza**, dove la priorità è togliere l'esposizione grande in fretta e non aprire percorsi nuovi.
+
+### Le due divergenze confermate dall'operatore, dove il codice è **più prudente** della regola
+
+| | regola | codice | decisione |
+|---|---|---|---|
+| **R3** | «un tick di margine dal bordo» | `max(1 tick, 0,22 × banda)`, col tetto a metà banda | **confermato il codice**: su banda modale coincide, su banda larga tiene di più |
+| **R10** | «non riapre fino al giorno dopo» | **nessun auto-riarmo affatto**: resta fermo finché una mano non cancella il latch | **confermato il codice** |
 
 ---
 
@@ -80,7 +123,7 @@ sulle cinture**, cioè non le avrebbe mai potute smascherare. Corretto: il seam 
 
 ---
 
-## 3 · 🧪 IL BANCO — 18/18, deterministico, e indipendente da `data/`
+## 3 · 🧪 IL BANCO — **26/26**, deterministico, e indipendente da `data/`
 
 ```bash
 cd /home/bot/bot-banco && node scripts/ricerca/banco-scenari.js
@@ -233,43 +276,74 @@ nell'ecosystem e riavviare dal file.
 
 ## 7 · CIÒ CHE RESTA APERTO, col motivo
 
+### Aperto per una decisione dell'operatore
+
+| # | cosa | perché è ancora aperto | cosa serve da te |
+|---|---|---|---|
+| 1 | **la metà di R6 che morderebbe davvero** | «anche oltre 101¢» vale per **comprare l'altro lato** e sbloccare un residuo col merge. Non esiste un percorso che compri sopra il tetto della coppia, e inventarlo sarebbe un meccanismo nuovo su capitale reale. La metà implementata (vendere attraversando, anche sotto il minimo) copre il caso comune | **decidi se vuoi quel percorso.** Se sì: quanto sopra 101¢ si può spendere, e con quale tetto in dollari |
+| 2 | **`tre-fix-sicurezza` scade nella suite** | 48-50 s contro il limite di 60 s. Da solo fa **42/0** | o si accorcia il test o si alza il limite: **è una decisione** |
+| 3 | **i tre rossi voluti di §5.2 p.37** | `maxOpenNotionalUsd` $150 sta sotto `3 × $61,25 = $183,75`, quindi tre test difendono un'invariante che hai deciso di non volere più. **Non ammorbiditi** | quale invariante è ora quella giusta |
+| 4 | **`pm2 startup` non fatto** | richiede root, `sudo` chiede la password. Al suo posto una riga `@reboot … pm2 resurrect` nella crontab di `bot` | esegui il comando in CLAUDE.md §5.1, poi **togli la riga di cron** — due meccanismi che riaccendono la stessa flotta sono peggio di uno |
+| 5 | **`git push` bloccato — 88 commit locali** | remote HTTPS, nessuna credenziale: `could not read Username`. Non può farlo un agente | una chiave SSH o un PAT |
+
+### Aperto perché manca una misura
+
 | # | cosa | perché è ancora aperto |
 |---|---|---|
-| 1 | **`pm2 startup` non fatto** | richiede root, `sudo` chiede la password. Al suo posto una riga `@reboot … pm2 resurrect` nella crontab di `bot` (cron è `active`). Il comando giusto è in CLAUDE.md §5.1; fatto quello, **la riga di cron va tolta** |
-| 2 | **`git push` bloccato — 79 commit locali** | remote HTTPS, nessuna credenziale: `could not read Username`. Serve una chiave SSH o un PAT, e non può farlo un agente |
-| 3 | **`npm run build` fallisce** | manca `lucide-react`, causa preesistente. Il JS compila (`✓ Compiled successfully`), muore nel type-check. Il `dashboard` non è nella flotta ⇒ non serve a nessun processo vivo |
-| 4 | **10 rossi noti su 209 test** | ruotano nei NOMI, non nel conteggio. Elenco in CLAUDE.md §5.2 p.11. Fra questi i **tre di §5.2 p.37**, rossi **apposta** perché $150 sta sotto `3 × $61,25` |
-| 5 | **`tre-fix-sicurezza` scade nella suite** | 48-50 s contro il limite di 60 s. Da solo fa **42/0**. O si accorcia o si alza il limite: è una decisione |
-| 6 | **la sentinella vede il vuoto, non il collasso** | il ramo ③ azzera l'orologio se `ordiniARiposo > 0`: un calo da 23 a 2 è invisibile. La cura è un secondo criterio, e va tarato su una misura che oggi non esiste |
-| 7 | **che il residuo NASCA** | la via d'uscita esiste (riscatto on-chain, nessun minimo). Resta a monte: le leve sono size e profondità, non un meccanismo nuovo |
-| 8 | **il perimetro è una conseguenza, non una dichiarazione** | selezione spenta + allowlist vuota + perno vuoto ⇒ il perimetro è dedotto dall'unione di §4.8 e **cambia con le posizioni**. Il perno lo rende stabile, ed è un atto di armamento |
+| 6 | **la sentinella vede il vuoto, non il collasso** | il ramo ③ azzera l'orologio se `ordiniARiposo > 0`: un calo da 23 ordini a 2 è invisibile. La cura è un secondo criterio (calo relativo su finestra) e va tarato su quanto oscilla normalmente il numero di ordini — misura che oggi non esiste |
+| 7 | **R4 è tarato su un feed più lento del bot** | `mid-history` campiona ogni **~115 s**, agent40 osserva ogni **5-10 s**. I 97 episodi misurati sul 17 agosto sono un **limite inferiore**, e il freno da 60 s non ha mai morso nella misura. Il numero vero si vedrà al primo giro armato |
+| 8 | **il book è troncato a 3 livelli** | la profondità davanti è una sottostima, e la baseline pure. Il *rapporto* fra le due — che è ciò che decide — è meno distorto, ma non esente. È anche la ragione per cui «è sparito un livello» è stato buttato |
 | 9 | **la rotazione toglie il tetto sul numero di mercati esposti** | tre quotano, N completano. Non è misurato quanti possano stare in gestione insieme su book veri |
 | 10 | **la cadenza adattativa è sotto-risolta** | agent40 classifica il 99,6% «lenta» mentre `leggiFinestraTutti` vede `rangeMid = 0` sul 48,8%: il conto non torna. Non è la leva |
+| 11 | **che il residuo NASCA** | la via d'uscita esiste (riscatto on-chain, nessun minimo). Resta a monte: le leve sono size e profondità, non un meccanismo nuovo |
+| 12 | **`npm run build` fallisce** | manca `lucide-react`, causa preesistente. Il JS compila, muore nel type-check. Il `dashboard` non è nella flotta ⇒ non serve a nessun processo vivo |
 
 ---
 
-## Stato del sistema — 17 agosto 2026, sera tardi
+## Stato del sistema — 18 agosto 2026
 
-**Bot FERMO e disarmato**, letto da `/proc/<pid>/environ` degli 11 processi vivi:
+**Bot DISARMATO**, letto da `/proc/<pid>/environ` dei processi vivi:
 
 | | agent40 | agent41 |
 |---|---|---|
 | `MAKER_MODE` | `off` ⇒ inserita | `off` ⇒ inserita |
 | `MAKER_ADAPTER_DRYRUN` | `true` ⇒ inserita | `true` ⇒ inserita |
 | `MANUAL_ORDER_PLACEMENT` | `dry-run` ⇒ inserita | assente ⇒ inserita |
-| `REALLOC_SCHEDULER_DRY_RUN` | — | assente ⇒ **inserita** (fail-closed) |
+| `REALLOC_SCHEDULER_DRY_RUN` | — | `0` ⇒ **aperta** (le altre tre tengono) |
 | `MAKER_LIVE_MIN_MARKET` | **vuota** | **vuota** |
+| `MAKER_MERCATI_CONTEMPORANEI` | — | **`3`** (R1) |
 
-⇒ **4/4 inserite su entrambi**, coerenti col `.env`. `MAKER_FUNDING_APPROVED=true` su entrambi: non è una
-delle quattro, è un'**attestazione**, cioè una cintura nella posizione aperta.
+⇒ **nessuna cintura è stata toccata in tutta la sessione.** KILL spento · selezione automatica
+**accesa** · allowlist gestita da lei · **zero ordini a libro** · **zero sospensioni per erosione**
+(`data/sospensioni-erosione.json` assente, ed è lo stato sano) · `data/chiusura-emergenza-richiesta.json`
+assente.
 
-AVVIA **FERMA** (16/08 18:47:16Z, `by: cli/ferma`) · KILL spento · allowlist **vuota** · selezione
-**spenta** · `guardian-state.json` assente · **zero ordini a libro** · **perimetro live-min = 1**
-(`0xe9b3e28d`, Hong Kong, 6 share sotto il minimo del venue ⇒ quotabile **zero**) · snapshot posizioni
-**fresco** (< 180 s) ⇒ `venue-positions-unreadable` non rifiuta più.
+I file di servizio stanno in **`/tmp/rewards-bot-bot/`** (0700), non in `/tmp` nudo.
 
-**Il feed è vivo**: agent34 su 91 mercati / 182 asset, board di ~141 righe, agent38 dice `ok`.
-I file di servizio stanno in **`/tmp/rewards-bot-bot/`** (0700), non più in `/tmp` nudo.
+### Cosa è cambiato oggi, in ordine di commit
+
+| commit | regola | cosa |
+|---|---|---|
+| `759c09f` | **R8** | la coppia completa si fonde **prima** delle guardie sul prezzo |
+| `93fa78b` | **R7** | la concessione del gradino 2 è il **5% del carico**, non `min(1 tick, 5%)` — ⚠ **allarga un limite di rischio**: $3,06 contro $0,63 sulla gamba più grande |
+| `1131841` | **R6** | il residuo sotto il minimo **si chiude**; il commento che lo teneva era un **D7** |
+| `5d86bd1` `bb6d19c` | **R10** | il kill **chiude anche le posizioni**; agent43 deposita, agent41 esegue |
+| `0ac9bd1` | **R1** | il numero di mercati vive nell'**ambiente**, e la composizione lo **deriva** |
+| `b29f429` `c0fc111` | **R4** | le due misure, prima di decidere |
+| `1b8b34c` | **R4** | `book-erosion` collegato ad `auto-reprice` |
+| `176c5a5` | **E** | sei passi nuovi nel banco: **26/26** |
+
+### I tre difetti trovati oggi che nessun test vedeva
+
+1. **il presidio dei 60 minuti non gira a bot FERMO** — sta dietro `if (!TRIGGER_ATTIVO || !botAttivo())`,
+   e FERMA è esattamente lo stato che il kill produce: «l'ultima rete» non c'era nel momento per cui
+   esiste. Trovato collegando R10, non da un guasto.
+2. **la mappa dei minimi si cercava con chiave sensibile al maiuscolo** — su `{mB: 20}` ogni mercato
+   rispondeva «minimo non leggibile» e finiva fra le *lasciate*. Fail-closed, quindi non pericoloso, ma
+   sbagliato: l'ha presa il test del **cablaggio**, non il selfcheck.
+3. **il test del kill giornaliero scriveva nel `data/` di produzione** — `spazzaEFerma` vera depositava
+   una richiesta finta che agent41 avrebbe eseguito. Residuo rimosso, percorso reso iniettabile, e ora
+   c'è l'asserzione su *dove non* ha scritto.
 
 ---
 
@@ -285,7 +359,7 @@ node scripts/cli/stato.js              # le quattro cinture da /proc/<pid>/envir
 node scripts/cli/mercati.js            # perimetro live-min, stessa fonte
 
 # 2 · LE PROVE, in ordine di quanto provano
-cd /home/bot/bot-banco && node scripts/ricerca/banco-scenari.js            # 18/18
+cd /home/bot/bot-banco && node scripts/ricerca/banco-scenari.js            # 26/26, tutte e 10 le regole
 cd /home/bot/bot-banco && node scripts/ricerca/prova-cinture.js            # 10/0, col controllo
 cd /home/bot/bot-banco && node scripts/ricerca/prova-determinismo-banco.js # 10 corse, una firma
 node scripts/ricerca/suite-rossi.js <nome-sessione>                        # si confrontano i NOMI
@@ -295,6 +369,8 @@ node lib/safety/percorsi-critici.test.js                                   # 15/
 node scripts/ricerca/mercati-corti-24-72h.js       # i candidabili fra 24 e 72 h
 node scripts/ricerca/tre-vie-capitale-fermo.js     # le tre vie (lento: 7 corse del pianificatore)
 node scripts/ricerca/residui-sotto-il-minimo.js    # il residuo peggiore, e perché l'uscita è il riscatto
+node scripts/ricerca/r4-fuori-dal-libro.js         # R4: minuti/giorno fuori dal libro e premio perso
+node scripts/ricerca/r4-erosione-su-giornata-vera.js  # R4: quante volte scatterebbe
 ```
 
 ⚠ **Riavviare i due processi che decidono un prezzo si fa DAL FILE e INSIEME**, e si chiede in chat ogni
