@@ -536,6 +536,25 @@ module.exports = {
         // può spegnere una difesa. La semantica vive in `lib/maker/sblocco-progressivo.gradinoSeiArmato`.
         SBLOCCO_GRADINO6_ARMATO: '0',
 
+        // ══ SLOT STERILE — DISARMATA la sera del 18 agosto 2026, decisione dell'operatore ══════════
+        // La regola libera uno slot che per due osservazioni consecutive non produce ordini, perche'
+        // un altro mercato ci provi. Presume pero' che la causa stia nel MERCATO.
+        //
+        // Quella sera la causa stava nel FEED: i book di agent34 non portavano un istante leggibile,
+        // quindi ogni prezzo veniva giudicato stantio e ogni coppia cancellata entro cinque minuti.
+        // Contro quella causa la regola non cura nulla e fa danno — ruota la selezione bruciando un
+        // candidato buono a ogni giro, e il successivo muore identico.
+        //
+        // ⚠ ASSENTE ⇒ ARMATA, come `SBLOCCO_GRADINO6_ARMATO`: solo il valore esatto '0' disarma, cosi'
+        // una variabile che sparisce non puo' spegnere una regola per sbaglio.
+        // ⚠ DISARMATA NON VUOL DIRE ASSENTE: continua a misurare e a scrivere a verbale cosa AVREBBE
+        // fatto (`tipo:'slot-sterile', esito:'disarmato'`), cosi' quando si riarma si sa quanto
+        // avrebbe ruotato nel frattempo.
+        //
+        // PER RIARMARLA: si cancella questa riga e si riavvia agent41 DAL FILE
+        //   pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler
+        SLOT_STERILE_ARMATO: '0',
+
         // ══ LA MANOPOLA DELLA DISTANZA NELLA BANDA: 0,444 — TEST DELL'OPERATORE, 13/08/2026 ════════
         // Frazione della SEMIAMPIEZZA `v` della banda premiante (`lib/maker/distanza-obiettivo.js`).
         // Sulla banda modale v = 4,5¢ ⇒ pavimento di **2,0¢** dal mid, contro la posizione mediana

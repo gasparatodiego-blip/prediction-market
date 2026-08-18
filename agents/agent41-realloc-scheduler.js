@@ -2361,7 +2361,27 @@ async function selezionaMercati(deps = {}) {
       .map(([id]) => id);
     const v = LVPP.valuta({ attivi: attiviOra, ordini: conOrdiniVivi, stato: statoLibroVuoto, ora: Date.now() });
     statoLibroVuoto = v.statoNuovo;
-    if (v.azione === 'rilascia') {
+    // ── ⚠ L'INTERRUTTORE DI DISARMO — 18 agosto 2026, decisione dell'operatore ─────────────────────
+    // ASSENTE ⇒ ARMATA, come per `SBLOCCO_GRADINO6_ARMATO`: un env che sparisce non puo' spegnere una
+    // regola. Solo il valore ESATTO '0' disarma.
+    //
+    // PERCHE' e' stata disarmata la sera del 18: la regola libera uno slot che non produce ordini, e
+    // presume che la causa stia nel MERCATO. Quella sera la causa stava nel FEED — i book non
+    // portavano un istante leggibile, quindi ogni prezzo veniva giudicato stantio e ogni coppia
+    // cancellata entro cinque minuti. Contro quella causa la regola non cura niente e fa danno:
+    // ruota la selezione bruciando un candidato buono a ogni giro, e il successivo muore uguale.
+    //
+    // ⚠ DISARMATA NON VUOL DIRE ASSENTE: continua a MISURARE e a scrivere che cosa avrebbe fatto,
+    // esattamente come il gradino 6. Serve a sapere, quando si riarma, quanto avrebbe ruotato.
+    const armata = String(process.env.SLOT_STERILE_ARMATO ?? '').trim() !== '0';
+    if (!armata) {
+      if (v.azione === 'rilascia') {
+        annuncia('log', `SLOT STERILE (DISARMATO): avrei rilasciato ${v.daRilasciare.length} mercato/i — ${v.daRilasciare.map((x) => String(x.id).slice(0, 10) + '…').join(', ')}`);
+        scrivi({ tipo: 'slot-sterile', esito: 'disarmato', disarmato: true,
+          avrebbeRilasciato: v.daRilasciare.map((x) => ({ id: x.id, osservazioni: x.osservazioni })),
+          motivo: 'SLOT_STERILE_ARMATO=0: si registra e non si tocca', pid: process.pid });
+      }
+    } else if (v.azione === 'rilascia') {
       for (const x of v.daRilasciare) {
         const r = await rilasciaDallaSelezione({ marketId: x.id, motivo: x.motivo });
         annuncia('log', `SLOT STERILE: ${String(x.id).slice(0, 10)}… occupava un posto da ${x.osservazioni} osservazioni senza ordini a libro — rilasciato`);
