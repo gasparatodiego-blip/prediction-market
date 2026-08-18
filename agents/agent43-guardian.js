@@ -94,6 +94,17 @@ const { impostaBot, statoBot } = require('../lib/maker/bot-enabled');
 // di piazzamento usa: due idee di «perdita giornaliera» che divergono sarebbero il reperto D1 su una
 // decisione di rischio.
 const { valutaPerditaGiornaliera } = require('../lib/maker/kill-perdita-giornaliera');
+// ── R10 · IL KILL CHIUDE ANCHE LE POSIZIONI (18 agosto 2026, decisione dell'operatore) ────────────
+// «a −$100 nella giornata cancella tutti gli ordini E chiude le posizioni. Coppie a merge, gambe
+//  scoperte vendute a mercato, gambe sotto il minimo restano e vengono dichiarate.»
+// ⚠ IL GUARDIANO NON CHIUDE NIENTE DA SE', E NON DEVE POTERLO FARE. La sua unica superficie verso il
+// venue e' la spazzata (`cancel-all`), ed e' una proprieta' STRUTTURALE difesa da un test che cammina
+// il suo albero dei `require` (`guardian-perdite.test.js:152-164`). Dargli la capacita' di vendere
+// significherebbe rompere quel presidio nel modulo che esiste per essere il piu' inerte di tutti.
+// Quindi: qui si CLASSIFICA e si DEPOSITA una richiesta; a eseguirla e' agent41, che sa gia' vendere
+// attraversando (il presidio dei 60 minuti) e da cui passa gia' il merge. Un ingresso nuovo, non una
+// strada nuova. `chiusura-di-emergenza` e' puro e non ha nessun `require`: il suo selfcheck lo prova.
+const { classifica: classificaChiusura } = require('../lib/maker/chiusura-di-emergenza');
 const { resolveLimits } = require('../lib/safety/risk-limits');
 const { readUsage } = require('../lib/safety/usage');
 const UTENTE_OPERATORE = process.env.MAKER_OPERATOR_USER || 'operator';
@@ -160,6 +171,43 @@ function leggiSoglie() {
 const POLL_MS = Number(process.env.GUARDIAN_POLL_MS || 30_000);
 const BASELINE_FILE = path.join(DATA_DIR, 'guardian-baseline.json');
 const STATE_FILE = path.join(DATA_DIR, 'guardian-state.json');
+// ── R10 · DOVE SI DEPOSITA LA RICHIESTA DI CHIUSURA DELLE POSIZIONI ───────────────────────────────
+// Un file, non una chiamata: chi lo scrive (agent43) non puo' eseguire, chi lo esegue (agent41) non
+// puo' decidere lo scatto. La separazione E' il presidio, non un ripiego architetturale.
+const CHIUSURA_FILE = path.join(DATA_DIR, 'chiusura-emergenza-richiesta.json');
+const BOARD_REWARD = path.join(DATA_DIR, 'liquidity-rewards.json');
+
+/** `conditionId → min_incentive_size`, dal board normalizzato. Sola lettura di un file su disco.
+ *  ⚠ Board illeggibile ⇒ mappa VUOTA, e `classifica` tratta un minimo mancante come «non so», cioe'
+ *  LASCIA la gamba invece di venderla: la direzione prudente in emergenza e' non vendere al buio. */
+function leggiMinSizePerMercato(file = BOARD_REWARD) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const righe = Array.isArray(raw && raw.markets) ? raw.markets : [];
+    const m = {};
+    for (const r of righe) {
+      const c = String((r && r.conditionId) || '').toLowerCase();
+      const v = Number(r && r.rewardsMinSize);
+      if (c && Number.isFinite(v) && v > 0) m[c] = v;
+    }
+    return m;
+  } catch { return {}; }
+}
+
+/** Deposita la richiesta. Scrittura atomica: agent41 la legge a ogni ciclo e non deve mai poter
+ *  vedere mezzo file. ⚠ Non sovrascrive una richiesta ancora DA ESEGUIRE — due scatti nello stesso
+ *  giorno non devono cancellare l'elenco che nessuno ha ancora eseguito. */
+function scriviRichiestaChiusura(richiesta) {
+  try {
+    const prec = JSON.parse(fs.readFileSync(CHIUSURA_FILE, 'utf8'));
+    if (prec && prec.eseguita === false) {
+      log('R10 · c\'e\' gia\' una richiesta di chiusura non eseguita: non si sovrascrive');
+      return { ok: false, motivo: 'richiesta precedente non ancora eseguita' };
+    }
+  } catch { /* assente o illeggibile: si scrive */ }
+  atomicWriteJson(CHIUSURA_FILE, richiesta);
+  return { ok: true };
+}
 const HEARTBEATS = fileRuntime('agent-heartbeats.json');
 
 const log = (...a) => console.log(new Date().toISOString(), '[agent43-guardian]', ...a);
@@ -470,10 +518,54 @@ async function spazzaEFerma({ motivo, causa, dettagli = {}, now, stateFile, scri
     else log(`referto depositato: ${evento.ordiniCancellati} ordini su ${evento.mercatiToccati} mercati, reason=${evento.reason}`);
   } catch (e) { log('referto NON depositato:', e.message); }
 
+  // ══ R10 · LA RICHIESTA DI CHIUSURA DELLE POSIZIONI ══════════════════════════════════════════════
+  // ⚠ SOLO PER LA PERDITA GIORNALIERA, e non per il drawdown. Il guardiano del drawdown dichiara da
+  // sempre «le posizioni aperte NON si toccano» (§3), e quella e' una decisione presa e provata: un
+  // drawdown misura un PREZZO, che puo' rientrare, e liquidare su un prezzo che rientra e' il modo di
+  // trasformare una perdita di carta in una perdita vera. La perdita REALIZZATA e' un'altra cosa —
+  // dentro la giornata puo' solo peggiorare — ed e' quella su cui l'operatore ha chiesto la chiusura.
+  // Estendere questo ramo al drawdown e' una decisione dell'operatore, non una simmetria da dedurre.
+  let chiusura = null;
+  if (causa === 'perdita-giornaliera') {
+    try {
+      const snap = deps.posizioni !== undefined ? deps.posizioni : (deps.readVenuePositions || readVenuePositions)();
+      const leggibile = snap && snap.readable === true && Array.isArray(snap.positions);
+      chiusura = classificaChiusura({
+        posizioni: leggibile ? snap.positions : null,
+        minSizePerMercato: (deps.minSizePerMercato !== undefined ? deps.minSizePerMercato : leggiMinSizePerMercato()),
+      });
+      const richiesta = {
+        v: 1, at: now, atIso: new Date(now).toISOString(), causa, motivo,
+        eseguita: false, eseguitaAt: null,
+        ok: chiusura.ok, motivoClassificazione: chiusura.motivo,
+        daFondere: chiusura.daFondere, daVendere: chiusura.daVendere, lasciate: chiusura.lasciate,
+        esposizioneDirezionaleUsd: chiusura.esposizioneDirezionaleUsd, bloccataUsd: chiusura.bloccataUsd,
+        nota: 'DEPOSITATA da agent43, che non puo\' eseguirla: la esegue agent41 al giro dopo. Le coppie'
+          + ' complete le fonde `auto-close.fondiCoppia` (unico percorso verso il relayer), le gambe'
+          + ' scoperte le vende il presidio attraversando, le lasciate restano fino alla risoluzione.',
+      };
+      (deps.scriviRichiestaChiusura || scriviRichiestaChiusura)(richiesta);
+      log(`R10 · chiusura posizioni RICHIESTA: ${chiusura.daFondere.length} da fondere · `
+        + `${chiusura.daVendere.length} da vendere ($${chiusura.esposizioneDirezionaleUsd ?? '?'}) · `
+        + `${chiusura.lasciate.length} lasciate ($${chiusura.bloccataUsd ?? '?'})`
+        + `${chiusura.ok ? '' : ' — NON classificate: ' + chiusura.motivo}`);
+    } catch (e) {
+      // ⚠ Un errore qui NON deve annullare la spazzata, che e' gia' avvenuta ed e' la parte che conta.
+      chiusura = null;
+      log('R10 · richiesta di chiusura NON depositata:', e && e.message ? e.message : String(e));
+    }
+  }
+
   try {
     scrivi(stateFile, {
       v: 1, scattato: true, at: now, atIso: new Date(now).toISOString(),
       reason: 'guardian-auto-kill', causa: causa || 'drawdown',
+      chiusuraPosizioni: chiusura ? {
+        richiesta: true, ok: chiusura.ok,
+        daFondere: chiusura.daFondere.length, daVendere: chiusura.daVendere.length,
+        lasciate: chiusura.lasciate.length,
+        esposizioneDirezionaleUsd: chiusura.esposizioneDirezionaleUsd, bloccataUsd: chiusura.bloccataUsd,
+      } : { richiesta: false, motivo: causa === 'perdita-giornaliera' ? 'deposito fallito' : 'il drawdown non chiude le posizioni' },
       pnlUsd: pnl ? pnl.pnlUsd : null, pnlPct: pnl ? pnl.pnlPct : null,
       baselineUsd: baseline ? baseline.baselineUsd : null,
       totaleUsd: capitale ? capitale.totaleUsd : null,
@@ -487,7 +579,7 @@ async function spazzaEFerma({ motivo, causa, dettagli = {}, now, stateFile, scri
     });
   } catch (e) { log('latch NON scritta:', e.message); }
 
-  return { ordiniCancellati: evento.ordiniCancellati, results, evento, botFermato };
+  return { ordiniCancellati: evento.ordiniCancellati, results, evento, botFermato, chiusura };
 }
 
 async function loop() {

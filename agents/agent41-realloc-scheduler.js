@@ -166,6 +166,9 @@ const { capPerMarketUsd, mercatiNecessari, MARKET_CAP_FIXED_USD } = require('../
 const TRIG = require('../lib/maker/trigger-capitale-fermo');
 const { appendMakerAudit } = require('../lib/venues/polymarket-clob-maker/audit');
 const killSwitch = require('../lib/safety/kill-switch');
+// R10 · per marcare eseguita la richiesta di chiusura: scrittura atomica, o agent43 potrebbe leggere
+// mezzo file e riscrivere una richiesta che qualcuno sta gia' eseguendo.
+const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 const { readVenuePositions } = require('../lib/safety/venue-positions-snapshot');
 const UTIL = require('../lib/maker/utilizzo-capitale');
 const CAPLAV = require('../lib/maker/capitale-al-lavoro');
@@ -305,6 +308,9 @@ const COP = require('../lib/maker/copertura-gambe');
 // `presidio-posizioni-vecchie` per perche' e' deliberatamente stupido e quando andra' tolto.
 const PRESIDIO = require('../lib/maker/presidio-posizioni-vecchie');
 const PRESIDIO_FILE = require('path').join(require('../lib/safety/store').DATA_DIR, 'presidio-posizioni.json');
+// R10 · la richiesta depositata da agent43. Chi la scrive non puo' eseguirla, chi la esegue non puo'
+// deciderla: e' la stessa separazione del referto di cancellazione.
+const CHIUSURA_EMERGENZA_FILE = require('path').join(require('../lib/safety/store').DATA_DIR, 'chiusura-emergenza-richiesta.json');
 const CLOB_BASE = process.env.POLY_CLOB_BASE || 'https://clob.polymarket.com';
 // Un ciclo non parte mai nel primo minuto di vita del processo: un riavvio in serie di pm2 non deve
 // tradursi in una raffica di reset. E se l'ultimo ciclo è più recente dell'intervallo, si aspetta il
@@ -1751,6 +1757,140 @@ async function scadenzeFuoriPerimetro(deps = {}) {
 // ⚠ SOLO CHIUDE. Non apre, non riprezza, non tocca la scala. E attraversa lo spread dichiarandolo
 // (`attraversaApposta`), perche' un'uscita che resta appesa sopra il book non e' un'uscita — e' il
 // modo in cui oggi la posizione e' sopravvissuta al proprio gradino.
+// ══ IL PREZZO DI UN'USCITA ATTRAVERSATA, E IL LIMITE R6 — UNA VOLTA SOLA ═════════════════════════
+// Estratta il 18 agosto 2026 quando il kill a −$100 ha avuto bisogno della stessa vendita del presidio
+// dei 60 minuti (R10). Ricopiarla avrebbe prodotto due idee di «quanto sotto il bid si vende» che un
+// giorno divergono — il reperto D1 su un'azione che tocca capitale reale.
+//
+// Si vende ATTRAVERSANDO: un tick SOTTO il miglior bid, cosi' l'ordine si esegue davvero. In uscita il
+// prezzo bello non serve a niente: un ordine che resta a libro non e' un'uscita.
+function prezzoUscitaAttraversata(c, riga) {
+  const bid = riga ? Number(riga.bestBid) : null;
+  const tick = riga ? Number(riga.tickSize) : 0.01;
+  const prezzo = Number.isFinite(bid) && bid > tick ? +(bid - tick).toFixed(6) : null;
+  if (prezzo === null) {
+    return { prezzo: null, valoreUsd: null, ricavoUsd: null,
+      motivo: 'miglior bid non leggibile: non si vende al buio' };
+  }
+  // ══ R6 · IL LIMITE DELL'OPERATORE, MISURATO E NON PROMESSO ═════════════════════════════════════
+  // REGOLA: «si chiude sempre, anche da taker. Limite: non spendere per uscire piu' di quanto la
+  // posizione valga.»
+  // ⚠ SU UNA VENDITA IL LIMITE HA UNA SOLA FORMA NON VUOTA, e va detta: chi vende non spende, INCASSA.
+  // Il costo dell'uscita e' la rinuncia `(valore - ricavo)`, e `rinuncia <= valore` equivale a
+  // `ricavo >= 0`, cioe' e' vero per costruzione a qualunque prezzo positivo. Quindi morde in un caso
+  // solo — ricavo NULLO — e quel caso si rifiuta invece di passare come «chiusura riuscita a zero».
+  // I tre numeri viaggiano comunque, o «si e' chiuso» non direbbe a che prezzo si e' rinunciato.
+  // ⚠ LA META' DEL LIMITE CHE MORDEREBBE DAVVERO — comprare l'altro lato oltre 101c per sbloccare un
+  // residuo col merge — NON e' implementata: non esiste un percorso che compri sopra il tetto della
+  // coppia, e inventarlo sarebbe un meccanismo nuovo su capitale reale. Aperta in APERTI.md.
+  const valoreUsd = Number.isFinite(c.curPrice) && c.curPrice > 0 ? +(c.curPrice * c.size).toFixed(4) : null;
+  const ricavoUsd = +(prezzo * c.size).toFixed(4);
+  if (!(ricavoUsd > 0)) {
+    return { prezzo, valoreUsd, ricavoUsd,
+      motivo: `ricavo nullo (${c.size} share a ${prezzo}): uscire non renderebbe niente, e il limite dell'operatore`
+        + ' e\' di non spendere per uscire piu\' di quanto la posizione valga' };
+  }
+  return { prezzo, valoreUsd, ricavoUsd, motivo: null };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// R10 · IL KILL A −$100 CHIUDE ANCHE LE POSIZIONI — 18 agosto 2026, decisione dell'operatore
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// «a −$100 nella giornata cancella tutti gli ordini E chiude le posizioni. Coppie a merge, gambe
+//  scoperte vendute a mercato, gambe sotto il minimo restano e vengono dichiarate.»
+//
+// A DECIDERE e' agent43, che deposita `data/chiusura-emergenza-richiesta.json` e NON puo' eseguire:
+// la sua unica superficie al venue e' la spazzata, ed e' una proprieta' strutturale provata da un test
+// che cammina il suo albero dei `require`. A ESEGUIRE e' questa funzione, che non puo' decidere. La
+// separazione E' il presidio, non un ripiego architetturale.
+//
+// ⚠⚠ GIRA PRIMA DEI CANCELLI DI `controlloCapitaleFermo`, ED E' IL PUNTO DELLA CORREZIONE.
+// Il presidio dei 60 minuti — «l'ultima rete» — sta DIETRO `if (!TRIGGER_ATTIVO || !botAttivo())`,
+// cioe' non gira a bot FERMO. E FERMA e' esattamente lo stato che il kill produce: la rete non c'era
+// proprio nel momento per cui esiste. Trovato collegando R10, non da un guasto.
+//
+// ⚠ IL KILL SWITCH RESTA DAVANTI, ed e' l'unico cancello che qui si rispetta. KILL attivo o non
+// leggibile ⇒ non si vende: il KILL e' l'emergenza assoluta e §4 dice che lo leggono TUTTI i percorsi,
+// auto-close compreso. Un'uscita che lo scavalca sarebbe una via nuova aperta nel momento peggiore.
+//
+// ⚠ COSA NON FA, e va detto per intero:
+//   · NON fonde. Il merge ha un percorso solo (`auto-close.fondiCoppia`, agent40) e una seconda strada
+//     verso il relayer sarebbe una seconda verita' su quale batch si firma. Le coppie si DICHIARANO
+//     `da-fondere`; auto-close non e' gated da AVVIA e le fonde al suo giro.
+//   · NON tocca le gambe sotto il minimo: restano, e la richiesta le elenca (R10).
+//   · NON riapre niente e non tocca AVVIA/FERMA: chiude, e basta.
+async function eseguiChiusuraDiEmergenza(deps = {}) {
+  const file = deps.file || CHIUSURA_EMERGENZA_FILE;
+  let ric = null;
+  try { ric = JSON.parse(require('fs').readFileSync(file, 'utf8')); } catch { return null; }
+  // ⚠ Una richiesta gia' eseguita, o malformata, non e' un'emergenza: si esce in silenzio. Un file che
+  // non si capisce NON diventa «chiudi tutto»: sarebbe la direzione di guasto peggiore.
+  if (!ric || ric.eseguita !== false || !Array.isArray(ric.daVendere)) return null;
+
+  const esito = { vendute: [], daFondere: (ric.daFondere || []).length,
+    lasciate: (ric.lasciate || []).length, motivo: null };
+
+  let kill = { effectivelyKilled: true, readable: false };
+  try { kill = killSwitch.killStatus(); } catch { kill = { effectivelyKilled: true, readable: false }; }
+  if (kill.effectivelyKilled === true || kill.readable === false) {
+    esito.motivo = `kill-switch ${kill.readable === false ? 'NON LEGGIBILE' : 'ATTIVO'}: non si vende — il KILL sta davanti a tutto`;
+    annuncia('error', `⚠ R10 · chiusura di emergenza SOSPESA: ${esito.motivo}`);
+    scrivi({ tipo: 'chiusura-emergenza', esito: 'sospesa-per-kill', motivo: esito.motivo,
+      daVendere: ric.daVendere.length, daFondere: esito.daFondere, lasciate: esito.lasciate });
+    return esito;   // ⚠ la richiesta NON si marca eseguita: si riprova quando il KILL cade
+  }
+
+  annuncia('error', `🔴 R10 · CHIUSURA DI EMERGENZA (${ric.causa}): ${ric.daVendere.length} gambe scoperte da vendere`
+    + ` · ${esito.daFondere} coppie da fondere (le fonde auto-close) · ${esito.lasciate} lasciate sotto il minimo`);
+
+  for (const c of ric.daVendere) {
+    const riga = (leggiBoardReward() || []).find((r) => String(r.conditionId || '').toLowerCase() === String(c.conditionId || '').toLowerCase());
+    const book = riga && String(riga.tokenId) === c.asset ? 'yes' : 'no';
+    // ⚠ LO STESSO prezzo del presidio, dalla STESSA funzione: due idee di «quanto sotto il bid si
+    // vende» che divergono sarebbero il reperto D1 su un'azione che tocca capitale reale.
+    const { prezzo, valoreUsd, ricavoUsd, motivo: motivoNo } = prezzoUscitaAttraversata(c, riga);
+    if (motivoNo) {
+      esito.vendute.push({ ...c, chiusa: false, prezzo, motivo: motivoNo });
+      scrivi({ tipo: 'chiusura-emergenza', esito: 'non-venduta', marketId: c.conditionId, asset: c.asset,
+        size: c.size, prezzo, valoreUsd, ricavoUsd, motivo: motivoNo });
+      continue;
+    }
+    let r = null;
+    try {
+      r = await (deps.piazza || placeManualOrder)({
+        marketId: c.conditionId, book, side: 'SELL', price: prezzo, size: c.size,
+        chiudePosizione: true, attraversaApposta: true, allowOutOfBand: true,
+      }, 'chiusura-emergenza');
+    } catch (e) { r = { ok: false, reason: e && e.message ? e.message : String(e) }; }
+    const ok = !!(r && r.ok);
+    esito.vendute.push({ ...c, prezzo, chiusa: ok, error: ok ? null : String((r && r.reason) || 'ignoto').slice(0, 160) });
+    annuncia(ok ? 'log' : 'error', `R10 · ${String(c.conditionId).slice(0, 12)}… ${c.size} share a ${(prezzo * 100).toFixed(1)}c`
+      + (ok ? ' — venduta' : ` — ⚠ FALLITA: ${String((r && r.reason) || '').slice(0, 90)}`));
+    scrivi({ tipo: 'chiusura-emergenza', esito: ok ? 'venduta' : 'vendita-fallita',
+      marketId: c.conditionId, asset: c.asset, size: c.size, prezzo, valoreUsd, ricavoUsd,
+      causa: ric.causa, error: ok ? null : String((r && r.reason) || '').slice(0, 200) });
+  }
+
+  // ⚠ SI MARCA ESEGUITA ANCHE SE QUALCHE VENDITA E' FALLITA, e va detto: il presidio dei 60 minuti e
+  // la scala d'uscita restano dietro a raccogliere quello che non e' passato. Ritentare all'infinito
+  // da qui sarebbe il difetto delle 799 ricostruzioni del giro di prova del 16 agosto: la frequenza
+  // del ciclo diventerebbe la frequenza dell'azione.
+  const falliteN = esito.vendute.filter((x) => x.chiusa !== true).length;
+  try {
+    atomicWriteJson(file, { ...ric, eseguita: true, eseguitaAt: Date.now(),
+      eseguitaAtIso: new Date().toISOString(),
+      venduteOk: esito.vendute.length - falliteN, venduteFallite: falliteN });
+  } catch (e) { annuncia('log', `R10 · richiesta NON marcata eseguita: ${e.message}`); }
+
+  scrivi({ tipo: 'chiusura-emergenza', esito: 'completata', causa: ric.causa,
+    venduteOk: esito.vendute.length - falliteN, venduteFallite: falliteN,
+    daFondere: esito.daFondere, lasciate: esito.lasciate,
+    esposizioneDirezionaleUsd: ric.esposizioneDirezionaleUsd ?? null, bloccataUsd: ric.bloccataUsd ?? null,
+    nota: 'le coppie complete le fonde auto-close (unico percorso verso il relayer); le gambe sotto il'
+      + ' minimo restano fino alla risoluzione, per R10' });
+  return esito;
+}
+
 async function presidioPosizioniVecchie(deps = {}) {
   const esito = { chiuse: [], tenute: 0, motivo: null };
   let ancore = {};
@@ -1786,35 +1926,14 @@ async function presidioPosizioniVecchie(deps = {}) {
   for (const c of v.daChiudere) {
     const riga = (leggiBoardReward() || []).find((r) => String(r.conditionId || '').toLowerCase() === c.conditionId);
     const book = riga && String(riga.tokenId) === c.asset ? 'yes' : 'no';
-    const bid = riga ? Number(riga.bestBid) : null;
-    // Si vende ATTRAVERSANDO: il prezzo e' un tick sotto il miglior bid, cosi' si esegue davvero.
-    const tick = riga ? Number(riga.tickSize) : 0.01;
-    const prezzo = Number.isFinite(bid) && bid > tick ? +(bid - tick).toFixed(6) : null;
-    if (prezzo === null) {
-      esito.chiuse.push({ ...c, chiusa: false, motivo: 'miglior bid non leggibile: non si vende al buio' });
-      continue;
-    }
-    // ══ R6 · IL LIMITE DELL'OPERATORE, MISURATO E NON PROMESSO — 18 agosto 2026 ═════════════════════
-    // REGOLA: «si chiude sempre, anche da taker. Limite: non spendere per uscire piu' di quanto la
-    // posizione valga.»
-    // ⚠ SU UNA VENDITA IL LIMITE HA UNA SOLA FORMA NON VUOTA, e va detta: chi vende non spende, INCASSA.
-    // Il costo dell'uscita e' la rinuncia `(valore - ricavo)`, e `rinuncia <= valore` equivale a
-    // `ricavo >= 0`, cioe' e' vero per costruzione a qualunque prezzo positivo. Quindi qui il limite
-    // morde in un caso solo — ricavo NULLO — e quel caso si rifiuta invece di lasciarlo passare come
-    // «chiusura riuscita a zero». I tre numeri finiscono comunque a verbale, o «si e' chiuso» non
-    // direbbe a che prezzo si e' rinunciato.
-    // ⚠ LA META' DEL LIMITE CHE MORDEREBBE DAVVERO — comprare l'altro lato oltre 101c per sbloccare un
-    // residuo col merge — NON e' implementata: non esiste un percorso che compri sopra il tetto della
-    // coppia, e inventarlo qui sarebbe un meccanismo nuovo su capitale reale. Resta aperto in APERTI.md.
-    const valoreUsd = Number.isFinite(c.curPrice) && c.curPrice > 0 ? +(c.curPrice * c.size).toFixed(4) : null;
-    const ricavoUsd = +(prezzo * c.size).toFixed(4);
-    if (!(ricavoUsd > 0)) {
-      esito.chiuse.push({ ...c, chiusa: false, prezzo,
-        motivo: `ricavo nullo (${c.size} share a ${prezzo}): uscire non renderebbe niente, e il limite dell'operatore`
-          + ' e\' di non spendere per uscire piu\' di quanto la posizione valga' });
-      scrivi({ tipo: 'presidio-posizioni-vecchie', esito: 'rinunciata-ricavo-nullo',
-        marketId: c.conditionId, asset: c.asset, size: c.size, etaMin: c.etaMin, prezzo,
-        sottoMinimo: c.sottoMinimo === true, valoreUsd, ricavoUsd });
+    const { prezzo, valoreUsd, ricavoUsd, motivo: motivoNo } = prezzoUscitaAttraversata(c, riga);
+    if (motivoNo) {
+      esito.chiuse.push({ ...c, chiusa: false, prezzo, motivo: motivoNo });
+      if (prezzo !== null) {
+        scrivi({ tipo: 'presidio-posizioni-vecchie', esito: 'rinunciata-ricavo-nullo',
+          marketId: c.conditionId, asset: c.asset, size: c.size, etaMin: c.etaMin, prezzo,
+          sottoMinimo: c.sottoMinimo === true, valoreUsd, ricavoUsd });
+      }
       continue;
     }
     let r = null;
@@ -2967,6 +3086,12 @@ async function autodiagnosiPeriodica(deps = {}) {
 /** Il controllo periodico. Costa una lettura di saldo (in cache) e niente altro finche' non scatta. */
 async function controlloCapitaleFermo({ forzatoDa = null } = {}) {
   if (inCorso) return;                    // il lucchetto, prima di qualunque I/O
+  // ⚠⚠ R10 · PRIMA DEI CANCELLI, E APPOSTA. Il kill a −$100 mette il bot su FERMA: se la chiusura
+  // delle posizioni stesse dietro `botAttivo()` non girerebbe mai, perche' lo stato che la richiede e'
+  // esattamente quello che la spegnerebbe. Costa una lettura di file locale quando il file non c'e'.
+  // Il KILL switch resta davanti, ma DENTRO la funzione: e' l'unico cancello che qui si rispetta.
+  try { await eseguiChiusuraDiEmergenza(); }
+  catch (e) { annuncia('error', `⚠ R10 · chiusura di emergenza NON eseguita: ${e.message}`); }
   // ── I CANCELLI GRATUITI PRIMA DI QUELLO CHE COSTA (8 agosto 2026) ──────────────────────────────
   // `leggiSaldo` e' una chiamata HTTP al dashboard che a sua volta fa una lettura on-chain (cache TTL
   // 45s, sotto la cadenza di 120s: quindi ogni giro ne provocava una nuova). Farla PRIMA di guardare
@@ -3325,6 +3450,7 @@ module.exports = { giro, controlloCapitaleFermo, leggiVenue, leggiSaldo, prossim
   miniCiclo, preparaMercatoNuovo, pianoLeggero, sorvegliaAvvio, sorvegliaVuoto,
   selezionaMercati, rilasciaDallaSelezione, selezioneAttiva, restringiAllaSelezione, leggiBoardReward, posizioniPerSelezione,
   riconciliaAllowlist, scadenzeFuoriPerimetro, riconciliaCopertura, presidioPosizioniVecchie,
+  eseguiChiusuraDiEmergenza, prezzoUscitaAttraversata,
   // ⚠ `ripristinaGamba` e' esportata per essere PROVATA SUL CABLAGGIO e non solo sulla decisione:
   // `riconciliaCopertura` scrive nel giornale vero (`scrivi` non e' iniettabile), mentre questa funzione
   // non scrive niente e accetta tutte le dep. E' la lezione di §5-bis p.181: le tre difese inerti del
