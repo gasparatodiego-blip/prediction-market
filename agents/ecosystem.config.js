@@ -322,8 +322,20 @@ module.exports = {
         // scoperto molto prima che gli ordini invecchino.
         MAKER_MID_STANTIO_TIMEOUT_MS: '120000',
         MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95',
-        // MAKER_MODE — NON DICHIARATA: assente ⇒ non e' in LIVE_MODES ⇒ rifiuto `maker-mode`. Dal
-        //   17/08 questo rifiuto arriva anche alla CORSIA MANUALE, che prima cablava `mode:'live-min'`.
+        // ══ GRADINO 1 · MAKER_MODE APERTA — 18 agosto 2026, istruzione dell'operatore ══════════════
+        // «apri MAKER_MODE, fermati, poi MAKER_ADAPTER_DRYRUN. MANUAL_ORDER_PLACEMENT non si tocca.»
+        //
+        // ⚠ COSA APRE, ESATTAMENTE: `evaluatePlacementGate` smette di rifiutare con gate `maker-mode`.
+        // NON apre l'invio. Dietro restano `MAKER_ADAPTER_DRYRUN=true` (ombra: l'ordine si costruisce,
+        // si firma e non parte) e `MANUAL_ORDER_PLACEMENT='dry-run'` (l'ultimo `if` prima della POST).
+        // ⚠ IL VALORE DEV'ESSERE UNO DEI DUE ESATTI di `adapter.LIVE_MODES` — `live-min` o `live`:
+        // `cinture-armamento.modoVivo` non fa `trim()` ne' `toLowerCase()`, quindi `'LIVE-MIN'` o
+        // `'live-min '` richiuderebbero la cintura senza dirlo. `live-min` e' lo stesso valore del
+        // `.env`, ed e' il piu' stretto dei due.
+        // ⚠ E' DICHIARATA QUI E NON LASCIATA AL `.env` perche' il `.env` e' INERTE su questi processi:
+        // il caricatore scrive solo le chiavi ASSENTI da `process.env`, e pm2 ne inietta gia' una.
+        // ⚠ PER DISARMARE si CANCELLA questa riga e si riavvia dal file: l'assenza e' fail-closed.
+        MAKER_MODE: 'live-min',
         // MAKER_ADAPTER_DRYRUN — NON DICHIARATA: assente qui, il `.env` impone `true` ⇒ ombra forzata.
         //   Dal 17/08 `buildPlacementAdapter` la passa davvero all'adapter: prima non la leggeva nessuno
         //   su questo percorso, perche' `createMakerAdapter` fa `opts.dryRun === true` senza ripiego.
@@ -553,9 +565,16 @@ module.exports = {
         // basta cancellarla per RIARMARLO. La direzione e' voluta: dimenticarsi di una riga rende il
         // bot piu' sicuro, mai meno.
         //
+        // ══ GRADINO 1 · MAKER_MODE APERTA — 18 agosto 2026, istruzione dell'operatore ══════════════
+        // Aperta INSIEME a quella di agent40, nello stesso riavvio dal file: sono i due processi che
+        // decidono un prezzo, e armarne uno solo produce un bot che apre e non rinnova (§5.1).
+        // ⚠ Vale qui il commento esteso scritto nel blocco di agent40. In breve: toglie il rifiuto
+        // `maker-mode`, non apre l'invio, e il valore dev'essere `live-min` ESATTO.
+        MAKER_MODE: 'live-min',
+
         // COME SI DISARMA TUTTO: si cancellano queste righe (e quelle di agent40) e si riavvia dal
-        // file. Ogni assenza e' fail-closed per costruzione. NESSUNA e' dichiarata qui:
-        // MAKER_MODE — assente ⇒ non e' uno stadio vivo ⇒ rifiuto `maker-mode`, corsia manuale inclusa.
+        // file. Ogni assenza e' fail-closed per costruzione. Delle quattro, e' dichiarata solo
+        // MAKER_MODE (gradino 1, APERTA); le altre tre restano:
         // MAKER_ADAPTER_DRYRUN — assente qui, `true` dal `.env` ⇒ ombra forzata.
         // REALLOC_SCHEDULER_DRY_RUN — assente ⇒ freno di prova INSERITO (fail-closed).
         // MANUAL_ORDER_PLACEMENT — assente ⇒ la corsia manuale resta dry-run.
