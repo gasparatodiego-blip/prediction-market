@@ -1011,6 +1011,231 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
   }
 
   // ════════════════════════════════════════════════════════════════════════════════════════════════
+  // I QUATTRO PASSI DELLE REGOLE CONCORDATE CHE IL BANCO NON SAPEVA ANCORA VERIFICARE
+  // (18 agosto 2026, punto E: «uno scenario per ogni regola che oggi non ha una prova»)
+  // ════════════════════════════════════════════════════════════════════════════════════════════════
+
+  // ── PASSO 18 · R1 · QUANTI MERCATI VIENE DALL'AMBIENTE, E LA COMPOSIZIONE LO SEGUE ──────────────
+  // La regola: «il numero lo decido io prima di ogni sessione. Un solo posto dove scrivere quel
+  // numero, letto dai processi vivi.» Il banco non poteva dirlo: nessun passo toccava il tetto.
+  // ⚠ SI PROVA LA CATENA, non il valore: ambiente → `quantiMercati` → `decidiSelezione(max)` →
+  // `quotaScaglioni`. Asserire «3» sarebbe fotografare una manopola che l'operatore gira apposta.
+  {
+    const QUANTI = require(path.join(ROOT, 'lib/maker/quanti-mercati'));
+    const board18 = (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'liquidity-rewards.json'), 'utf8')).markets || []; } catch { return []; } })();
+    const prove = [];
+    for (const n of [1, 2, 3]) {
+      const letto = QUANTI.quantiMercati({ MAKER_MERCATI_CONTEMPORANEI: String(n) });
+      const quota = SELM.quotaScaglioni(letto.quanti);
+      const posti = quota.reduce((a, b) => a + b.posti, 0);
+      const d = SELM.decidiSelezione({ board: board18, stato: SELM.statoVuoto(),
+        posizioni: { leggibile: true, conditionIds: [] }, ora: OROLOGIO.ora, max: letto.quanti,
+        orizzonteMassimoOre: 24 * 150 });
+      prove.push({ chiesto: n, letto: letto.quanti, fonte: letto.fonte, posti,
+        entranti: d.ok ? d.entranti.length : null, ok: letto.quanti === n && posti === n && d.ok === true && d.entranti.length <= n });
+    }
+    // ⚠ E il valore illeggibile deve valere il DIFETTO, mai zero: un errore di battitura non puo'
+    // fermare il bot in silenzio. Si esercita nel giro, non solo nel test unitario.
+    const rotto = QUANTI.quantiMercati({ MAKER_MERCATI_CONTEMPORANEI: 'due' });
+    const okRotto = rotto.quanti === SELM.MAX_MERCATI_CONTEMPORANEI && rotto.fonte === 'difetto';
+    const ok18 = prove.every((x) => x.ok) && okRotto;
+    passo('18 · R1 · il tetto dei mercati viene dall\'AMBIENTE, e la composizione lo deriva', {
+      ok: ok18, prove, valoreRotto: { grezzo: rotto.grezzo, quanti: rotto.quanti, fonte: rotto.fonte },
+      ambienteDelProcesso: process.env.MAKER_MERCATI_CONTEMPORANEI ?? '(non dichiarata in questo processo)',
+    });
+    if (!ok18) annota('passo 18', `la catena ambiente→selezione non regge: ${JSON.stringify(prove)}`,
+      'lib/maker/quanti-mercati.js + lib/maker/selezione-mercati.quotaScaglioni');
+  }
+
+  // ── PASSO 19 · R4 · L'EROSIONE TOGLIE LA GAMBA, E NESSUNO LA RIMETTE PRIMA DEL TEMPO ────────────
+  // La regola: «cancella e resta fuori, tetto 5 minuti». Il pezzo che nessun test unitario puo'
+  // provare e' il SECONDO: che `ripristinaGamba` — che parte SUBITO — non la rimetta a libro.
+  {
+    const SOSPB = require(path.join(ROOT, 'lib/maker/sospensione-erosione'));
+    const M19 = '0x1919191919191919191919191919191919191919191919191919191919191919';
+    // Si sospende il lato YES come farebbe agent40 dopo un'erosione confermata.
+    const s0 = SOSPB.leggiStato();
+    const sos = SOSPB.sospendi(s0.stato, { marketId: M19, book: 'yes', now: OROLOGIO.ora, baseline: 900, ratioPct: 8 });
+    SOSPB.scriviStato(sos.stato);
+    const attivaSubito = SOSPB.attiva(SOSPB.leggiStato().stato, { marketId: M19, book: 'yes', now: OROLOGIO.ora });
+    const a1min = SOSPB.attiva(SOSPB.leggiStato().stato, { marketId: M19, book: 'yes', now: OROLOGIO.ora + 60_000 });
+    const a5min = SOSPB.attiva(SOSPB.leggiStato().stato, { marketId: M19, book: 'yes', now: OROLOGIO.ora + SOSPB.TETTO_FUORI_MS });
+    // ⚠ IL LATO OPPOSTO NON DEVE ESSERE SOSPESO: i due book sono CLOB indipendenti.
+    const altroLato = SOSPB.attiva(SOSPB.leggiStato().stato, { marketId: M19, book: 'no', now: OROLOGIO.ora });
+    // ⚠ E IL TETTO NON SI RINNOVA: e' la proprieta' che distingue «5 minuti per volta» da «finche' dura».
+    const secondo = SOSPB.sospendi(SOSPB.leggiStato().stato, { marketId: M19, book: 'yes', now: OROLOGIO.ora + 120_000 });
+    const ok19 = attivaSubito.sospeso === true && a1min.sospeso === true && a5min.sospeso === false
+      && altroLato.sospeso === false && secondo.applicata === false
+      && /tetto di 5 minuti scaduto/.test(a5min.motivo || '');
+    passo('19 · R4 · la gamba tolta per erosione resta fuori 5 minuti, e il rientro per tetto si dichiara', {
+      ok: ok19, sospesaSubito: attivaSubito.sospeso, restaSec: attivaSubito.restaSec,
+      dopo1min: a1min.sospeso, dopo5min: a5min.sospeso, motivoRientro: a5min.motivo,
+      latoOppostoSospeso: altroLato.sospeso, tettoRinnovato: secondo.applicata,
+      frenoSec: SOSPB.FRENO_MS / 1000, tettoMin: SOSPB.TETTO_FUORI_MS / 60000,
+    });
+    if (!ok19) annota('passo 19', 'la sospensione per erosione non si comporta come la regola dice',
+      'lib/maker/sospensione-erosione.js + agents/agent41 (riconciliaCopertura)');
+    // Si ripulisce, o il passo 20 troverebbe una sospensione che non gli appartiene.
+    SOSPB.scriviStato(SOSPB.rilascia(SOSPB.leggiStato().stato, { marketId: M19, book: 'yes', causa: 'pulizia' }).stato);
+  }
+
+  // ── PASSO 20 · R6 · IL RESIDUO SOTTO IL MINIMO SI CHIUDE, E NON RESTA IN CONSEGNA ───────────────
+  // La regola: «si chiude sempre, anche da taker». Fino al 18 agosto il presidio dei 60 minuti lo
+  // TENEVA, con un motivo che era vero fino al 17 e poi non piu'.
+  {
+    const PRES = require(path.join(ROOT, 'lib/maker/presidio-posizioni-vecchie'));
+    const M20 = '0x2020202020202020202020202020202020202020202020202020202020202020';
+    const T20 = OROLOGIO.ora - 300 * 60_000;
+    const sotto = PRES.valuta({ posizioni: [{ asset: 'h20', conditionId: M20, size: 6, avgPrice: 0.5, curPrice: 0.5 }],
+      ancore: { h20: T20 }, ora: OROLOGIO.ora, minSizePerMercato: { [M20]: 20 } });
+    // ⚠ E LE DUE ESENZIONI CHE RESTANO vanno provate INSIEME, o si scopre di averne tolta una di troppo.
+    const coppia = PRES.valuta({ posizioni: [
+      { asset: 'y20', conditionId: M20, size: 6, avgPrice: 0.5, curPrice: 0.5 },
+      { asset: 'n20', conditionId: M20, size: 6, avgPrice: 0.5, curPrice: 0.5 }],
+      ancore: { y20: T20, n20: T20 }, ora: OROLOGIO.ora, minSizePerMercato: { [M20]: 20 } });
+    const giovane = PRES.valuta({ posizioni: [{ asset: 'g20', conditionId: M20, size: 6, avgPrice: 0.5, curPrice: 0.5 }],
+      ancore: { g20: OROLOGIO.ora - 10 * 60_000 }, ora: OROLOGIO.ora, minSizePerMercato: { [M20]: 20 } });
+    const ok20 = sotto.daChiudere.length === 1 && sotto.daChiudere[0].sottoMinimo === true
+      && coppia.daChiudere.length === 0 && giovane.daChiudere.length === 0;
+    passo('20 · R6 · il residuo sotto il minimo del venue viene CHIUSO, marcato, e le due esenzioni tengono', {
+      ok: ok20,
+      sottoMinimoChiuso: sotto.daChiudere.length === 1, marcato: sotto.daChiudere[0] ? sotto.daChiudere[0].sottoMinimo : null,
+      motivo: sotto.daChiudere[0] ? String(sotto.daChiudere[0].motivo).slice(0, 120) : null,
+      coppiaCompletaNonToccata: coppia.daChiudere.length === 0,
+      sottoSogliaNonToccata: giovane.daChiudere.length === 0,
+    });
+    if (!ok20) annota('passo 20', 'il residuo sotto il minimo non viene chiuso, o un\'esenzione si e\' persa',
+      'lib/maker/presidio-posizioni-vecchie.js + agents/agent41 (prezzoUscitaAttraversata)');
+  }
+
+  // ── PASSO 21 · R10 · IL KILL NON SOLO CANCELLA: CLASSIFICA E DEPOSITA LA CHIUSURA ───────────────
+  // Il passo 17 prova che il kill cancella e ferma. La META' NUOVA — «E chiude le posizioni: coppie a
+  // merge, gambe scoperte vendute, gambe sotto il minimo lasciate e dichiarate» — non aveva prova.
+  {
+    const CHIU = require(path.join(ROOT, 'lib/maker/chiusura-di-emergenza'));
+    const M21a = '0x21aa'; const M21b = '0x21bb'; const M21c = '0x21cc';
+    const cl = CHIU.classifica({
+      posizioni: [
+        { asset: 'y21', conditionId: M21a, size: 60, curPrice: 0.5 },
+        { asset: 'n21', conditionId: M21a, size: 60, curPrice: 0.5 },   // coppia completa
+        { asset: 'y22', conditionId: M21b, size: 40, curPrice: 0.4 },   // gamba scoperta
+        { asset: 'y23', conditionId: M21c, size: 6, curPrice: 0.5 },    // sotto il minimo
+      ],
+      minSizePerMercato: { [M21a]: 20, [M21b]: 20, [M21c]: 20 },
+    });
+    // ⚠ E IL FAIL-CLOSED: posizioni non leggibili ⇒ NESSUNA azione. In emergenza la tentazione e'
+    // agire comunque, ma «non ho letto» non e' «non c'e' niente».
+    const cieco = CHIU.classifica({ posizioni: null });
+    const ok21 = cl.ok === true && cl.daFondere.length === 1 && cl.daVendere.length === 1
+      && cl.lasciate.length === 1 && cl.lasciate[0].sottoMinimo === true
+      && cieco.ok === false && cieco.daVendere.length === 0;
+    passo('21 · R10 · il kill classifica le posizioni: coppia a MERGE, scoperta VENDUTA, sotto-minimo LASCIATA', {
+      ok: ok21, daFondere: cl.daFondere.length, daVendere: cl.daVendere.length, lasciate: cl.lasciate.length,
+      esposizioneDirezionaleUsd: cl.esposizioneDirezionaleUsd, bloccataUsd: cl.bloccataUsd,
+      sottoMinimoDichiarato: cl.lasciate[0] ? cl.lasciate[0].sottoMinimo : null,
+      cieco: { ok: cieco.ok, azioni: cieco.daVendere.length + cieco.daFondere.length },
+    });
+    if (!ok21) annota('passo 21', 'la classificazione del kill non produce i tre destini di R10',
+      'lib/maker/chiusura-di-emergenza.js + agents/agent43 (spazzaEFerma) + agent41 (eseguiChiusuraDiEmergenza)');
+  }
+
+  // ── PASSO 22 · R2 · I TRE FILTRI DI SCELTA ESCLUDONO DAVVERO, SUL BOARD VERO ────────────────────
+  // Il passo 8 esercita la selezione, ma non dice se i filtri MORDONO: un filtro che non toglie
+  // niente e un filtro assente producono lo stesso piano. §4.13 lo ha gia' insegnato una volta — col
+  // vincolo a 168 h il filtro meteo toglieva ZERO righe, e sembrava che stesse lavorando.
+  {
+    const board22 = (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'liquidity-rewards.json'), 'utf8')).markets || []; } catch { return []; } })();
+    const conta = { pavimento: 0, scadenza: 0, meteo: 0, ammissibili: 0, altro: 0 };
+    for (const r of board22) {
+      const v = SELM.valutaAmmissibilita(r, { ora: OROLOGIO.ora, orizzonteMassimoOre: 24 * 150 });
+      if (v.ammissibile) { conta.ammissibili += 1; continue; }
+      if (v.motivo === 'minsize-oltre-soglia') conta.pavimento += 1;
+      else if (v.motivo === 'scadenza-troppo-vicina') conta.scadenza += 1;
+      else if (v.motivo === 'famiglia-meteo') conta.meteo += 1;
+      else conta.altro += 1;
+    }
+    // ⚠ E LE TRE PROVE COSTRUITE, che non dipendono da cosa c'e' sul board oggi: un board che per caso
+    // non contiene meteo non deve poter far passare questo passo.
+    const riga22 = (extra) => ({ conditionId: '0x2222', question: 'prova', category: 'economy',
+      rewardsMinSize: 20, endDate: new Date(OROLOGIO.ora + 72 * 3_600_000).toISOString(), ...extra });
+    const vOk = SELM.valutaAmmissibilita(riga22({}), { ora: OROLOGIO.ora, orizzonteMassimoOre: 24 * 150 });
+    const vPav = SELM.valutaAmmissibilita(riga22({ rewardsMinSize: 100 }), { ora: OROLOGIO.ora, orizzonteMassimoOre: 24 * 150 });
+    const vSca = SELM.valutaAmmissibilita(riga22({ endDate: new Date(OROLOGIO.ora + 6 * 3_600_000).toISOString() }), { ora: OROLOGIO.ora, orizzonteMassimoOre: 24 * 150 });
+    const vMet = SELM.valutaAmmissibilita(riga22({ question: 'Highest temperature in NYC tomorrow?' }), { ora: OROLOGIO.ora, orizzonteMassimoOre: 24 * 150 });
+    const vIll = SELM.valutaAmmissibilita(riga22({ rewardsMinSize: undefined }), { ora: OROLOGIO.ora, orizzonteMassimoOre: 24 * 150 });
+    const ok22 = vOk.ammissibile === true
+      && vPav.motivo === 'minsize-oltre-soglia' && vSca.motivo === 'scadenza-troppo-vicina'
+      && vMet.motivo === 'famiglia-meteo' && vIll.motivo === 'minsize-illeggibile';
+    passo('22 · R2 · i tre filtri di scelta escludono davvero (pavimento, 24 h, meteo)', {
+      ok: ok22, sulBoardVero: conta,
+      costruiti: { ammissibile: vOk.ammissibile, pavimento: vPav.motivo, scadenza: vSca.motivo,
+        meteo: vMet.motivo, minSizeIlleggibile: vIll.motivo },
+      // ⚠ `Number(null) === 0` sarebbe qui: un minSize assente NON deve valere 0 (cioe' <= 20, cioe'
+      // «il piu' finanziabile di tutti»). E' l'ottava occorrenza di §5.3, gia' incontrata scrivendo
+      // questo modulo, e resta esercitata dentro il giro.
+      minSizeAssenteNonVale0: vIll.motivo === 'minsize-illeggibile',
+    });
+    if (!ok22) annota('passo 22', `un filtro di R2 non morde: ${JSON.stringify({ vPav: vPav.motivo, vSca: vSca.motivo, vMet: vMet.motivo })}`,
+      'lib/maker/selezione-mercati.valutaAmmissibilita');
+  }
+
+  // ── PASSO 23 · R9 · LA SOGLIA DI SPODESTAMENTO, E LE QUATTRO CONDIZIONI ─────────────────────────
+  // Il passo 8 prova che uno slot liberato si riempie. Non prova la ROTAZIONE: «sostituisce il
+  // peggiore solo se il nuovo rende +$0,50/g oppure +25%», e «mai un mercato con posizione aperta,
+  // coppia incompleta o ordini a riposo».
+  {
+    const M23 = '0x2323'; const M23n = '0x2324';
+    const board23 = [
+      { conditionId: M23, question: 'occupante', category: 'economy', rewardsMinSize: 50,
+        endDate: new Date(OROLOGIO.ora + 72 * 3_600_000).toISOString(), levels: { 500: { grossRewardDay: 1 } } },
+      { conditionId: M23n, question: 'sfidante', category: 'sports', rewardsMinSize: 50,
+        endDate: new Date(OROLOGIO.ora + 72 * 3_600_000).toISOString(), levels: { 500: { grossRewardDay: 9 } } },
+    ];
+    const statoCon = { versione: 1, selezionati: { [M23]: { entratoAt: OROLOGIO.ora - 3_600_000,
+      question: 'occupante', uscenteDal: null, motivoUscita: null, scaglione: 'alto', categoria: 'economy',
+      inGestione: false, inGestioneDal: null } } };
+    const base23 = { board: board23, posizioni: { leggibile: true, conditionIds: [] }, ora: OROLOGIO.ora,
+      max: 1, orizzonteMassimoOre: 24 * 150 };
+    // ① il margine NON basta: +$0,30 su un occupante da $1,00/g (soglia: max($0,50, 25% di 1) = $0,50)
+    const stretto = SELM.decidiSelezione({ ...base23, stato: statoCon,
+      nettoPerMercato: { [M23]: 1.00, [M23n]: 1.30 }, conOrdiniVivi: { leggibile: true, ids: [] } });
+    // ② il margine basta: +$2,00
+    const largo = SELM.decidiSelezione({ ...base23, stato: statoCon,
+      nettoPerMercato: { [M23]: 1.00, [M23n]: 3.00 }, conOrdiniVivi: { leggibile: true, ids: [] } });
+    // ③ l'occupante ha ORDINI VIVI: intoccabile anche col margine
+    const conOrdini = SELM.decidiSelezione({ ...base23, stato: statoCon,
+      nettoPerMercato: { [M23]: 1.00, [M23n]: 3.00 }, conOrdiniVivi: { leggibile: true, ids: [M23] } });
+    // ④ la lista degli ordini NON e' leggibile: fail-closed, non si spodesta nessuno
+    const cieco23 = SELM.decidiSelezione({ ...base23, stato: statoCon,
+      nettoPerMercato: { [M23]: 1.00, [M23n]: 3.00 }, conOrdiniVivi: { leggibile: false, ids: [] } });
+    // ⑤ l'occupante e' IN GESTIONE: una gamba riempita non si abbandona a meta'
+    const statoGest = { versione: 1, selezionati: { [M23]: { ...statoCon.selezionati[M23], inGestione: true, inGestioneDal: OROLOGIO.ora - 600_000 } } };
+    const inGest = SELM.decidiSelezione({ ...base23, stato: statoGest,
+      nettoPerMercato: { [M23]: 1.00, [M23n]: 3.00 }, conOrdiniVivi: { leggibile: true, ids: [] } });
+    // ⑥ il netto NON e' misurabile: non spodesta e non si fa spodestare
+    const senzaNetto = SELM.decidiSelezione({ ...base23, stato: statoCon,
+      nettoPerMercato: null, conOrdiniVivi: { leggibile: true, ids: [] } });
+    // ⚠ UN OCCUPANTE SPODESTATO FINISCE IN `spodestati`/`liberati`, **NON** in `uscenti`: `uscenti` sono
+    // quelli che escono da soli (scadenza, board), gli spodestati sono cacciati. La prima stesura di
+    // questo passo guardava `uscenti` e rispondeva «no» anche nel caso col margine sufficiente — cioe'
+    // il passo cadeva invece di passare per finta, che e' la direzione giusta in cui sbagliare, ma
+    // restava una lista sbagliata. Le due liste vanno tenute distinte, ed e' il motivo per cui esistono.
+    const normalizzaId = (x) => String(x || '').trim().toLowerCase();
+    const uscito = (d) => d.ok === true && (d.spodestati || []).some((u) => normalizzaId(u.id) === normalizzaId(M23));
+    const ok23 = uscito(stretto) === false && uscito(largo) === true && uscito(conOrdini) === false
+      && uscito(cieco23) === false && uscito(inGest) === false && uscito(senzaNetto) === false;
+    passo('23 · R9 · la soglia di spodestamento e le quattro condizioni che la fermano', {
+      ok: ok23,
+      margineInsufficiente: uscito(stretto), margineSufficiente: uscito(largo),
+      conOrdiniVivi: uscito(conOrdini), listaOrdiniIlleggibile: uscito(cieco23),
+      occupanteInGestione: uscito(inGest), nettoNonMisurabile: uscito(senzaNetto),
+      soglia: { assolutaUsdGiorno: SELM.SPODESTA_MARGINE_USD_GIORNO ?? null, frazione: SELM.SPODESTA_MARGINE_FRAZIONE ?? null },
+    });
+    if (!ok23) annota('passo 23', 'la soglia di spodestamento o una delle quattro condizioni non regge',
+      'lib/maker/selezione-mercati.spodestaAbbastanza + decidiSelezione');
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════════════════════════
   // IL VERDETTO
   // ════════════════════════════════════════════════════════════════════════════════════════════════
   const giornale = codaGiornale();
