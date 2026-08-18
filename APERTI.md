@@ -532,6 +532,152 @@ cancellare — ma la capacità c'è.
 
 ---
 
+## 11 · 🔬 IL GIRO DI PROVA A UN MERCATO — 24 ore, dalle 15:12Z del 18 agosto
+
+Istruzione dell'operatore: **un mercato solo per 24 ore, poi domani se ne aggiunge**. La allowlist è
+stata **svuotata** e lo stato della selezione **azzerato** (lasciandola accesa) con la sua funzione vera
+`selezione-stato.scriviStato`; il posto l'ha riempito **la selezione**, non io.
+
+⚠ **Perché non bastava svuotare la allowlist.** Gli slot occupati si contano da `stato.selezionati`, non
+dalla lista: con 2 selezionati e `max 1` la selezione **non caccia nessuno** (R1 governa quanti mercati
+si APRONO, non quanti restano) e non avrebbe riempito niente. Verificato con `selezione.js prova` prima
+di toccare: «RESTANO» entrambi, «slot occupati dopo 2/1». Svuotare la sola lista avrebbe dato
+perimetro **0**, cioè il bot fermo per rifiuto `live-min-market-unset`.
+
+### Il mercato che ha scelto
+
+| | |
+|---|---|
+| `conditionId` | `0x1f1c63908f6c1e3b49559fa80ddef36baa9c5482d52e6a7852c90303807ee22e` |
+| domanda | *Will N'Kiyla "Jasmine" Thomas be the Democratic nominee for Senate in Oklahoma?* · `Elections` |
+| scadenza | **2026-08-25T00:00:00Z** — fra **6,4 giorni**, fonte `clob` |
+| banda premiante | **4,50¢** · tick **0,1¢** · `min_incentive_size` **20 share** · montepremi **$100/g** |
+| book | mid **0,942** · bid 0,937 · ask 0,947 |
+
+⚠ **Non è il mercato che prevedeva la simulazione a stato vuoto** (dava `0x59ddbb62…` Walmart): la
+`prova` della CLI **non inietta il netto**, agent41 sì. Chi rilegge non deduca la scelta dalla `prova`.
+
+### Le due gambe, misurate — 15:12:36Z e 15:12:37Z
+
+| lato | prezzo | size | nozionale | dal mid | in coda |
+|---|---|---|---|---|---|
+| **YES BUY** | 0,908 | 56,1 | **$50,94** | 3,5¢ | un tick dietro il miglior bid altrui (93,9¢) |
+| **NO BUY** | 0,022 | 56,1 | **$1,23** | 3,5¢ | un tick dietro il miglior bid altrui (5,3¢) |
+
+Coppia **93,0¢** (tetto 101¢) · **capitale impegnato $52,17** (tetto per mercato $61,25) · GTD 1380 s ·
+`postOnly` · firma **317 byte** · `validateOrder: ACCEPTED (eth_call — nothing submitted)` · **`sent:false`**.
+Il margine dal bordo morde: 10 tick per lato, bordi `[0,908 · 0,978]` invece di `[0,898 · 0,988]`.
+
+### 🔴 IL PREMIO STIMATO, E IL NUMERO CHE NON SI VEDE DAL PIANO
+
+Il piano dice **lordo $1,53/g · netto $0,86/g** (quota modellata 1,5% su $100/g, concorrenza in banda
+**3.612 share**). **Ma il piano modella l'ordine a 0,1¢ dal mid, e l'ordine sta a 3,5¢.** Sulla
+quadratica del venue (`placementScore`, la funzione del repo):
+
+| | punteggio S | Qu | quota | lordo/g |
+|---|---|---|---|---|
+| dove il **piano** lo modella (0,1¢) | 0,9560 | 53,65 | 1,4635% | **$1,46** |
+| dove l'ordine **sta davvero** (3,5¢) | **0,0494** | 2,77 | **0,0767%** | **$0,08** |
+
+**Diciannove volte più basso.** A capitale $52 su questo mercato, al bordo esterno della banda, il
+premio lordo modellato è **otto centesimi al giorno** — netto praticamente zero. Non è un difetto: è
+il prezzo del bordo esterno (§4.1, manopola 0,95), scelto per non essere riempiti. **Ma è il numero da
+avere in mano prima di dire `send`**, e il piano da solo non lo mostra.
+
+### Il residuo peggiore, se resta scoperto
+
+| caso | quantità | valore |
+|---|---|---|
+| residuo **sotto** il minimo del venue, gamba YES | 19,99 share | **$18,15** |
+| residuo sotto il minimo, gamba NO | 19,99 share | $0,44 |
+| **gamba intera scoperta** (fill totale di un lato) | 56,1 share | **$50,95** YES · $1,23 NO |
+
+Il residuo sotto il minimo **non resta bloccato**: R6 lo vende attraversando (deroga `BELOW_MIN_SIZE`
+sulle chiusure), e se il bid non è leggibile prova lo sblocco comprando l'altro lato entro
+`min(valore, $5)`. Altrimenti aspetta la risoluzione — **6,4 giorni**. La gamba intera è sopra il
+minimo, quindi vendibile a libro, e la scala d'urgenza la governa a 30/60/240 minuti.
+
+### Il perimetro, letto da `/proc` — **1**
+
+Entrambi i processi che decidono un prezzo vedono **un mercato solo**, ed è lo stesso:
+agent40 (pid 374883) **1** · agent41 (pid 374889) **1**. Perno `MAKER_LIVE_MIN_MARKET` **vuoto**: il
+perimetro è l'unione di §4.8, e regge a 1 perché le posizioni al venue sono **zero**.
+⚠ **Non è stabile per costruzione**: al primo fill il mercato entra in gestione, esce dal conteggio
+degli attivi e la selezione ne apre un altro (rotazione, §4.13). Con `send` ancora chiuso non può
+succedere.
+
+---
+
+## 12 · 👁 COSA GUARDARE NELLE PROSSIME ORE
+
+> ## ⚠ PRIMA DI TUTTO: IN DRY-RUN NON ARRIVERÀ NESSUN PREMIO, E NON È UN GUASTO
+> `MANUAL_ORDER_PLACEMENT` è ancora inserita, quindi **nessun ordine raggiunge il venue**. Nelle
+> prossime 24 ore ci saranno **zero ordini a libro, zero fill, zero reward, e il saldo resterà
+> $1.495,26**. Chi va a cercare un premio e non lo trova non ha trovato un difetto: ha trovato la
+> cintura che è stata lasciata apposta. Quello che si osserva qui è la **macchina**, non il guadagno.
+
+### I quattro comandi, in ordine di quanto rispondono
+
+| comando | risponde a |
+|---|---|
+| `node scripts/cli/stato.js` | **il primo da lanciare.** Cinture da `/proc`, interruttori, mercati attivi, ordini a riposo, posizioni, limiti, flotta |
+| `node scripts/cli/mercati.js` | il **perimetro vero**, letto da `/proc` per ogni processo che decide un prezzo. È qui che si vede se è ancora **1** |
+| `node scripts/cli/selezione.js` | chi occupa lo slot; `selezione.js prova` dice cosa sceglierebbe **adesso** senza scrivere niente |
+| `node scripts/cli/distanza.js` | che i due processi siano d'accordo sulla distanza dal mid — se divergono i prezzi non sono confrontabili |
+
+### I file, e cosa dicono
+
+| file | cosa |
+|---|---|
+| `data/polymarket-maker-audit.jsonl` | **il giornale che conta.** Ogni ordine costruito, il suo gate, la firma, la distanza dal mid. Ruota sopra i 400 MB |
+| `data/realloc-scheduler.jsonl` | il giornale di agent41: selezione, copertura, presidio, sblocco, recupero del minimo |
+| `data/osservatore/giornale-<data>.md` | il racconto in italiano di agent45, un campione ogni 60 s — **il posto da cui partire se qualcosa è andato storto e non si sa cosa** |
+| `data/osservatore/campioni-<data>.jsonl` | gli stessi campioni in forma misurabile |
+| `~/.pm2/logs/agent4{0,1}-*-out.log` | il flusso, in chiaro |
+| `data/guardian-state.json` | **l'assenza È lo stato sano.** Se compare, il guardiano è scattato e il bot è su FERMA |
+| `data/sospensioni-erosione.json` | assente = nessuna gamba tolta per erosione (R4) |
+| `data/chiusura-emergenza-richiesta.json` | assente = il kill a −$100 non è mai scattato (R10) |
+
+### ✅ Normale — è così che si vede che funziona
+
+- **ogni ~10 minuti** un mini-ciclo: `mini-ciclo FORZATO: $5x rimessi al lavoro su 1 mercato/i
+  (2 ordini piazzati, 0 rifiutati)`. **Due** ordini, non uno: la coppia è simmetrica per costruzione;
+- nel giornale, per ciclo: **2 `dry-run-validated` sul percorso dell'adapter** (firma 317 byte,
+  `validateOrder: ACCEPTED`) e 2 su `manual-place` con **`gate: nessuno`**;
+- **modo adapter `live-min`** — senza `:dryrun`;
+- **perimetro 1** su entrambi i pid, e **lo stesso** conditionId;
+- **0 ordini a riposo · 0 posizioni al venue**, sempre;
+- `capitale al lavoro ~3,7%` con `obiettivo 95%` e la riga «sotto-obiettivo»: **è corretto** — il
+  capitale non può lavorare perché non si invia;
+- `copertura … da-coprire (0/2 gambe) … si ripiazza` e `ripristino …: nessuna riga nel piano salvato`:
+  rumore atteso a libro vuoto, non un errore;
+- `⚠ LA SCALA STA AFFAMANDO IL PIANO`: è un avviso di misura, non un guasto — con un mercato solo su
+  $1.495 di capitale è aritmeticamente inevitabile.
+
+### 🔴 Non normale — qui si guarda subito
+
+| segnale | dove | cosa vuol dire |
+|---|---|---|
+| **perimetro ≠ 1**, o diverso fra i due pid | `mercati.js` | la selezione ha ruotato, o un riavvio è stato scoordinato (§5.1) |
+| **il mercato è cambiato** | `selezione.js` | spodestamento: legittimo solo con +$0,50/g o +25% di netto (R9). Se succede senza, è da capire |
+| **ordini a riposo > 0** o **posizioni > 0** | `stato.js` | **impossibile in dry-run.** Se compare, qualcosa invia davvero: guardare subito `MANUAL_ORDER_PLACEMENT` su `/proc` |
+| `gate:` diverso da `nessuno` | giornale | l'ordine viene rifiutato prima della firma. `maker-mode`/`dry-run` = una cintura si è richiusa; `limit-*` = un tetto morde; `live-min-market-unset` = perimetro vuoto |
+| **zero cicli per > 20 min** | log agent41 | l'autodiagnosi sale la **scala di sblocco** (un gradino ogni 5 min). Il gradino 6 è disarmato, quindi non arriverà a FERMA — ma i gradini 1-5 si vedono nel giornale |
+| `data/guardian-state.json` **compare** | disco | guardiano scattato: ordini cancellati e bot su FERMA. Nessun riarmo automatico |
+| `sparizione-non-nostra` | giornale | ⚠ **attenzione al falso positivo noto**: non conosce il riscatto on-chain (§10, riquadro rosso). Prima di allarmarsi, cercare `redeemPositions` nello stesso minuto |
+| `riscatto fallito` con `STATE_CONFIRMED` accanto | giornale | è il difetto di §10: il riscatto è **riuscito**. Non ritentare a mano |
+| `minimo premiante NON recuperabile` | log agent41 | il CLOB non risponde per un mercato con posizione: R6 non può riconoscere un sotto-minimo |
+
+### Il numero da guardare più di tutti
+
+**La distanza dal mid: 3,5¢ su una banda di 4,5¢.** È lì che si decide il premio, e a quella distanza
+il punteggio del venue è **0,0494 invece di 0,956** — diciannove volte meno (§11). Se domani si
+aggiunge un mercato, la domanda che conta non è «quanti mercati» ma **se il bordo esterno valga il suo
+prezzo**: la manopola è `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V` (§5.2 p.31) e cambiarla richiede il
+riavvio **coordinato** dei due processi.
+
+---
+
 ## Stato del sistema — 18 agosto 2026
 
 **Bot con UNA CINTURA SOLA**, letto da `/proc/<pid>/environ` dei processi vivi (pid 374883 e 374889):
