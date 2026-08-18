@@ -1967,9 +1967,20 @@ async function eseguiChiusuraDiEmergenza(deps = {}) {
 }
 
 async function presidioPosizioniVecchie(deps = {}) {
+  // ⚠ IL GIORNALE SI INIETTA. `scrivi` di modulo APPENDE al registro VERO in `data/`: un test che
+  // guida questo presidio scriveva quattro record finti nel giornale di produzione senza che niente
+  // lo dicesse — ed e' successo scrivendo la prova di questa stessa correzione. Terza occorrenza
+  // oggi della classe «un test che guida una funzione che scrive deve poterle dire dove».
+  const scriviRec = deps.scrivi || scrivi;
   const esito = { chiuse: [], tenute: 0, motivo: null };
   let ancore = {};
-  try { ancore = JSON.parse(require('fs').readFileSync(PRESIDIO_FILE, 'utf8')).ancore || {}; } catch { ancore = {}; }
+  // ⚠ IL FILE DELLE ANCORE È INIETTABILE, e non per eleganza: le ancore decidono da QUANTO una
+  // posizione è aperta, cioè l'unica cosa che questo presidio guarda. Un test che non può metterle
+  // trova ogni posizione appena nata — ancorata ad adesso — e quindi sotto la soglia dei 60 minuti:
+  // il presidio non giudica niente, e il test resta verde su un percorso mai raggiunto. È la stessa
+  // classe delle cinque prove corrette stamattina, su un file diverso.
+  const fileAncore = deps.fileAncore || PRESIDIO_FILE;
+  try { ancore = JSON.parse(require('fs').readFileSync(fileAncore, 'utf8')).ancore || {}; } catch { ancore = {}; }
   let pos = null;
   try {
     const snap = (deps.leggiPosizioni || readVenuePositions)();
@@ -1993,9 +2004,9 @@ async function presidioPosizioniVecchie(deps = {}) {
   // Le ancore si salvano SEMPRE (tranne quando la lettura e' fallita: li' `valuta` le restituisce
   // invariate), o una posizione vecchia si ringiovanirebbe a ogni giro.
   try {
-    const fs_ = require('fs'); const tmp = `${PRESIDIO_FILE}.tmp`;
+    const fs_ = require('fs'); const tmp = `${fileAncore}.tmp`;
     fs_.writeFileSync(tmp, JSON.stringify({ aggiornatoAl: new Date().toISOString(), ancore: v.ancore }, null, 1));
-    fs_.renameSync(tmp, PRESIDIO_FILE);
+    fs_.renameSync(tmp, fileAncore);
   } catch { /* un'ancora non salvata concede un giro in piu', non ne toglie */ }
 
   for (const c of v.daChiudere) {
@@ -2040,7 +2051,7 @@ async function presidioPosizioniVecchie(deps = {}) {
           const okS = !!(rs && rs.ok);
           annuncia(okS ? 'log' : 'error', `R6 · SBLOCCO ${c.conditionId.slice(0, 12)}…: ${sbl.motivo}`
             + (okS ? '' : ` — ⚠ FALLITO: ${String((rs && rs.reason) || '').slice(0, 90)}`));
-          scrivi({ tipo: 'sblocco-residuo', esito: okS ? 'comprato' : 'acquisto-fallito',
+          scriviRec({ tipo: 'sblocco-residuo', esito: okS ? 'comprato' : 'acquisto-fallito',
             marketId: c.conditionId, asset: c.asset, sizeResidua: c.size,
             latoComprato: book === 'yes' ? 'no' : 'yes', size: sbl.size, prezzo: sbl.prezzoPeggiore,
             costoUsd: sbl.costoUsd, valoreResiduoUsd: sbl.valoreResiduoUsd,
@@ -2054,16 +2065,38 @@ async function presidioPosizioniVecchie(deps = {}) {
       }
 
       esito.chiuse.push({ ...c, chiusa: false, prezzo, motivo: motivoNo });
-      if (prezzo !== null || sbl) {
-        scrivi({ tipo: 'presidio-posizioni-vecchie',
-          esito: sbl ? 'rinunciata-sblocco-oltre-tetto' : 'rinunciata-ricavo-nullo',
-          marketId: c.conditionId, asset: c.asset, size: c.size, etaMin: c.etaMin, prezzo,
-          sottoMinimo: c.sottoMinimo === true, valoreUsd, ricavoUsd,
-          // ⚠ IL COSTO DEL *NON* CURARE SI MISURA: quanto sarebbe servito per sbloccarla, e quanto si
-          // poteva spendere. Senza questi due numeri «si aspetta la risoluzione» non è verificabile.
-          sblocco: sbl ? { costoNecessarioUsd: sbl.costoNecessarioUsd ?? null, tettoUsd: sbl.tetto,
-            limitatoDa: sbl.limitatoDa, motivo: sbl.motivo } : null });
-      }
+      // ══ OGNI RINUNCIA SI SCRIVE, ANCHE QUANDO NON C'È NIENTE DA SCRIVERE — 18 agosto 2026 ═══════
+      //
+      // ⚠ QUESTA RIGA ERA `if (prezzo !== null || sbl)`, e il ramo PIÙ COMUNE non entrava mai. Quando
+      // il mercato è uscito dal board — che è lo stato normale di una posizione vecchia — il prezzo
+      // d'uscita non è calcolabile, `prezzo` è `null`, lo sblocco non viene nemmeno valutato, e il
+      // presidio rinunciava **in silenzio**. Misurato il 18 agosto sui 400 record più recenti del
+      // giornale: **ZERO righe di presidio**, mentre girava ogni due minuti e rinunciava ogni volta
+      // su una posizione reale. Non si poteva sapere che stava succedendo se non eseguendo a mano la
+      // sua funzione.
+      //
+      // «Un presidio che non lascia traccia non è verificabile, e uno non verificabile non è un
+      // presidio: è una speranza» — è scritto tre funzioni più su, per la copertura delle gambe, e
+      // valeva identico qui. Adesso si scrive SEMPRE, e l'esito dice QUALE delle tre rinunce è.
+      const esitoRinuncia = sbl ? 'rinunciata-sblocco-oltre-tetto'
+        : (prezzo === null ? 'rinunciata-prezzo-non-calcolabile' : 'rinunciata-ricavo-nullo');
+      scriviRec({ tipo: 'presidio-posizioni-vecchie', esito: esitoRinuncia,
+        marketId: c.conditionId, asset: c.asset, size: c.size, etaMin: c.etaMin, prezzo,
+        sottoMinimo: c.sottoMinimo === true, minSizeMercato: c.minSizeMercato ?? null,
+        valoreUsd, ricavoUsd,
+        // ⚠ LA CAUSA IN CHIARO, non solo l'etichetta: «bid non leggibile» e «ricavo nullo» portano allo
+        // stesso esito — la gamba resta — ma sono due guasti diversi e si riparano in due modi diversi.
+        motivo: motivoNo,
+        // ⚠ E SE IL MERCATO NON È SUL BOARD VA DETTO, perché è la causa a monte di quasi tutte queste
+        // rinunce: senza riga di board non c'è né il prezzo né il minimo del venue, quindi né la
+        // vendita né lo sblocco sono valutabili. Chi legge il giornale deve vederlo qui, non dedurlo.
+        sulBoard: !!riga,
+        // ⚠ IL COSTO DEL *NON* CURARE SI MISURA: quanto sarebbe servito per sbloccarla, e quanto si
+        // poteva spendere. Senza questi due numeri «si aspetta la risoluzione» non è verificabile.
+        sblocco: sbl ? { costoNecessarioUsd: sbl.costoNecessarioUsd ?? null, tettoUsd: sbl.tetto,
+          limitatoDa: sbl.limitatoDa, motivo: sbl.motivo } : null });
+      annuncia('log', `presidio ${String(c.conditionId).slice(0, 12)}…: RINUNCIA (${esitoRinuncia})`
+        + ` — ${String(motivoNo).slice(0, 90)}${riga ? '' : ' · mercato NON sul board'}`);
       continue;
     }
     let r = null;
@@ -2084,7 +2117,7 @@ async function presidioPosizioniVecchie(deps = {}) {
     // La scala ha gradini a 30, 60 e 240 minuti e una posizione che arriva fin qui li ha attraversati
     // tutti senza chiudere: `scalaNonHaChiuso: true` rende il fatto CERCABILE nel giornale invece che
     // ricostruibile confrontando due registri.
-    scrivi({ tipo: 'presidio-posizioni-vecchie', esito: (r && r.ok) ? 'chiusa' : 'chiusura-fallita',
+    scriviRec({ tipo: 'presidio-posizioni-vecchie', esito: (r && r.ok) ? 'chiusa' : 'chiusura-fallita',
       marketId: c.conditionId, asset: c.asset, size: c.size, etaMin: c.etaMin, prezzo,
       // R6: un'uscita sotto il minimo resta distinguibile da una normale, e la rinuncia si misura.
       sottoMinimo: c.sottoMinimo === true, minSizeMercato: c.minSizeMercato ?? null,
