@@ -91,7 +91,10 @@ const { readTrackingConfig, setTracking } = require('../lib/maker/mm-tracking-co
 const { setManualMode } = require('../lib/maker/manual-mode');
 const { setAutoClose } = require('../lib/maker/auto-close-config');
 const { fetchVenuePositions } = require('../lib/maker/manual-reset');
-const { resolveMarketRules } = require('../lib/maker/manual-order');
+const { resolveMarketRules, resolveMarketDepth } = require('../lib/maker/manual-order');
+// R6, seconda meta' · lo sblocco di un residuo comprando l'altro lato, coi due tetti in DOLLARI
+// decisi dall'operatore. Modulo puro: decide, non compra.
+const SBLOCCO_RESIDUO = require('../lib/maker/sblocco-residuo');
 const { writeAllocatedCapital, readAllocatedCapitalAll } = require('../lib/maker/allocated-capital');
 const { writeCollectorPriority } = require('../lib/rewards/collector-priority');
 
@@ -1979,11 +1982,66 @@ async function presidioPosizioniVecchie(deps = {}) {
     const book = riga && String(riga.tokenId) === c.asset ? 'yes' : 'no';
     const { prezzo, valoreUsd, ricavoUsd, motivo: motivoNo } = prezzoUscitaAttraversata(c, riga);
     if (motivoNo) {
+      // ══ R6, SECONDA METÀ · LA VIA CHE NON PASSA DAL LIBRO — 18 agosto 2026 ═════════════════════
+      // «Tetto in DOLLARI: spendi al massimo quanto vale la posizione residua, e comunque mai più di
+      //  $5. Se nemmeno così si chiude, dichiara e lascia stare.» (l'operatore)
+      //
+      // ⚠ SI ARRIVA QUI SOLO QUANDO LA VENDITA È IMPOSSIBILE: bid non leggibile, o ricavo nullo. La
+      // prima metà di R6 (vendere attraversando, con la deroga sul minimo) resta la via principale, e
+      // questa è il ripiego — non una scorciatoia che la scavalca.
+      //
+      // ⚠ E SOLO PER I RESIDUI SOTTO IL MINIMO. Una gamba sopra il minimo che oggi non si vende avrà
+      // un bid domani: comprarle l'altro lato sopra la pari sarebbe pagare una perdita per un problema
+      // transitorio. Il residuo sotto il minimo invece non ha altra via che il merge.
+      let sbl = null;
+      if (c.sottoMinimo === true) {
+        let asks = null;
+        try {
+          const d = resolveMarketDepth(c.conditionId);
+          // L'ALTRO lato: se possediamo YES, si compra NO. `book` è il nostro.
+          const altro = d && d.readable === true ? (book === 'yes' ? d.no : d.yes) : null;
+          asks = altro && Array.isArray(altro.asks) ? altro.asks : null;
+        } catch { asks = null; }
+        sbl = SBLOCCO_RESIDUO.valutaSblocco({ sizeResidua: c.size, prezzoCorrente: c.curPrice, asksAltroLato: asks });
+        if (sbl.sblocca === true) {
+          // ⚠ SI COMPRA L'ALTRO LATO, e l'ordine è una CHIUSURA: porta i due lati in parti uguali,
+          // cioè esposizione direzionale ZERO. È il caso che `esenzione-chiusura` chiama «BUY entro
+          // `manca`» (§4.6), quindi passa dal tetto per ordine come qualunque altra chiusura.
+          // Il prezzo è il peggiore della scala camminata: sotto quello l'ordine non si esegue.
+          let rs = null;
+          try {
+            rs = await (deps.piazza || placeManualOrder)({
+              marketId: c.conditionId, book: book === 'yes' ? 'no' : 'yes', side: 'BUY',
+              price: sbl.prezzoPeggiore, size: sbl.size,
+              chiudePosizione: true, attraversaApposta: true, allowOutOfBand: true,
+            }, 'sblocco-residuo');
+          } catch (e) { rs = { ok: false, reason: e && e.message ? e.message : String(e) }; }
+          const okS = !!(rs && rs.ok);
+          annuncia(okS ? 'log' : 'error', `R6 · SBLOCCO ${c.conditionId.slice(0, 12)}…: ${sbl.motivo}`
+            + (okS ? '' : ` — ⚠ FALLITO: ${String((rs && rs.reason) || '').slice(0, 90)}`));
+          scrivi({ tipo: 'sblocco-residuo', esito: okS ? 'comprato' : 'acquisto-fallito',
+            marketId: c.conditionId, asset: c.asset, sizeResidua: c.size,
+            latoComprato: book === 'yes' ? 'no' : 'yes', size: sbl.size, prezzo: sbl.prezzoPeggiore,
+            costoUsd: sbl.costoUsd, valoreResiduoUsd: sbl.valoreResiduoUsd,
+            tettoUsd: sbl.tetto, limitatoDa: sbl.limitatoDa, motivo: sbl.motivo,
+            // ⚠ La coppia NON si fonde qui: il merge ha un percorso solo (`auto-close.fondiCoppia`).
+            nota: 'la coppia ora è completa: la fonde auto-close al suo giro, e il merge on-chain non ha minimi di size',
+            error: okS ? null : String((rs && rs.reason) || '').slice(0, 200) });
+          esito.chiuse.push({ ...c, chiusa: false, sbloccata: okS, motivo: `${motivoNo} · SBLOCCO: ${sbl.motivo}` });
+          continue;
+        }
+      }
+
       esito.chiuse.push({ ...c, chiusa: false, prezzo, motivo: motivoNo });
-      if (prezzo !== null) {
-        scrivi({ tipo: 'presidio-posizioni-vecchie', esito: 'rinunciata-ricavo-nullo',
+      if (prezzo !== null || sbl) {
+        scrivi({ tipo: 'presidio-posizioni-vecchie',
+          esito: sbl ? 'rinunciata-sblocco-oltre-tetto' : 'rinunciata-ricavo-nullo',
           marketId: c.conditionId, asset: c.asset, size: c.size, etaMin: c.etaMin, prezzo,
-          sottoMinimo: c.sottoMinimo === true, valoreUsd, ricavoUsd });
+          sottoMinimo: c.sottoMinimo === true, valoreUsd, ricavoUsd,
+          // ⚠ IL COSTO DEL *NON* CURARE SI MISURA: quanto sarebbe servito per sbloccarla, e quanto si
+          // poteva spendere. Senza questi due numeri «si aspetta la risoluzione» non è verificabile.
+          sblocco: sbl ? { costoNecessarioUsd: sbl.costoNecessarioUsd ?? null, tettoUsd: sbl.tetto,
+            limitatoDa: sbl.limitatoDa, motivo: sbl.motivo } : null });
       }
       continue;
     }
