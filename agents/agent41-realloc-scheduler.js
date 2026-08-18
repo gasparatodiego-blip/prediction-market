@@ -2299,13 +2299,27 @@ async function selezionaMercati(deps = {}) {
       const reg = regimeFeed(vit && typeof vit === 'object' ? vit : null);
       const per = {};
       for (const [id, b] of Object.entries(mercati)) {
+        const y = (b && b.yes) || {};
         per[String(id).trim().toLowerCase()] = {
           live: b && b.live === true,
           ageMs: b && Number.isFinite(b.ageMs) ? b.ageMs : null,
-          reason: b && b.yes && b.yes.reason ? b.yes.reason : null,
+          reason: y.reason || null,
+          // ⚠ I DUE SEGNALI CHE DICONO SE IL BOOK E' UTILIZZABILE, che non sono `live`:
+          //   · `needsResnapshot` — agent34 sa di aver perso l'ancoraggio di questo libro;
+          //   · il tocco — senza bid ne' ask non c'e' un prezzo da cui partire.
+          // `live` invece dice solo «e' arrivato un evento negli ultimi 30 s», che su un mercato
+          // tranquillo e' falso di continuo senza che il quadro sia sbagliato.
+          needsResnapshot: y.needsResnapshot === true,
+          haTocco: Number.isFinite(y.bestBid) || Number.isFinite(y.bestAsk),
         };
       }
-      return { leggibile: true, per, etaMassimaMs: reg.limite * 1000, regime: reg.regime, quanti: Object.keys(per).length };
+      // Il tetto assoluto e' la GTD: oltre la vita di un ordine si quoterebbe su una fotografia piu'
+      // vecchia dell'ordine stesso. Importato da `auto-reprice-config`, non ricopiato.
+      let gtdMs = null;
+      try { gtdMs = require('../lib/maker/auto-reprice-config').RESTING_GTD_SECONDS * 1000; } catch { gtdMs = null; }
+      return { leggibile: true, per, quanti: Object.keys(per).length,
+        etaMassimaMs: reg.limite * 1000, regime: reg.regime, feedVivo: reg.regime === 'vivo',
+        etaMassimaAssolutaMs: gtdMs };
     } catch (e) {
       return { leggibile: false, motivo: e && e.message ? e.message : String(e) };
     }
@@ -2394,7 +2408,8 @@ async function selezionaMercati(deps = {}) {
     // niente di meglio — ed e' proprio la domanda che il 18 agosto e' rimasta senza risposta.
     scartatiPerCodaLunga: d.scartatiPerCodaLunga || [],
     bookVivi: bookVivi.leggibile
-      ? { leggibile: true, quanti: bookVivi.quanti, regime: bookVivi.regime, etaMassimaMs: bookVivi.etaMassimaMs }
+      ? { leggibile: true, quanti: bookVivi.quanti, regime: bookVivi.regime, feedVivo: bookVivi.feedVivo,
+          etaMassimaMs: bookVivi.etaMassimaMs, etaMassimaAssolutaMs: bookVivi.etaMassimaAssolutaMs }
       : { leggibile: false, motivo: bookVivi.motivo || null },
     nettiIniettati: nettoPerMercato ? Object.keys(nettoPerMercato).length : null,
     ordiniViviLeggibili: conOrdiniVivi ? conOrdiniVivi.leggibile === true : null,
