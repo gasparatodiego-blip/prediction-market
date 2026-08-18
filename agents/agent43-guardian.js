@@ -197,16 +197,21 @@ function leggiMinSizePerMercato(file = BOARD_REWARD) {
 /** Deposita la richiesta. Scrittura atomica: agent41 la legge a ogni ciclo e non deve mai poter
  *  vedere mezzo file. ⚠ Non sovrascrive una richiesta ancora DA ESEGUIRE — due scatti nello stesso
  *  giorno non devono cancellare l'elenco che nessuno ha ancora eseguito. */
-function scriviRichiestaChiusura(richiesta) {
+// ⚠ IL PERCORSO E' UN PARAMETRO, E NON PER ELEGANZA. La prima stesura scriveva sempre su
+// `CHIUSURA_FILE`: `kill-perdita-giornaliera.test.js` guida `spazzaEFerma` VERA e ha depositato una
+// richiesta finta nel `data/` di PRODUZIONE, che agent41 avrebbe eseguito al giro dopo. E' la stessa
+// classe del 7 agosto 2026, quando una versione del test del guardiano lascio' residui sullo stato
+// vero (§2, famiglia 3 dei permessi). Un test che guida una funzione che SCRIVE deve poterle dire dove.
+function scriviRichiestaChiusura(richiesta, file = CHIUSURA_FILE) {
   try {
-    const prec = JSON.parse(fs.readFileSync(CHIUSURA_FILE, 'utf8'));
+    const prec = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (prec && prec.eseguita === false) {
       log('R10 · c\'e\' gia\' una richiesta di chiusura non eseguita: non si sovrascrive');
       return { ok: false, motivo: 'richiesta precedente non ancora eseguita' };
     }
   } catch { /* assente o illeggibile: si scrive */ }
-  atomicWriteJson(CHIUSURA_FILE, richiesta);
-  return { ok: true };
+  atomicWriteJson(file, richiesta);
+  return { ok: true, file };
 }
 const HEARTBEATS = fileRuntime('agent-heartbeats.json');
 
@@ -544,7 +549,7 @@ async function spazzaEFerma({ motivo, causa, dettagli = {}, now, stateFile, scri
           + ' complete le fonde `auto-close.fondiCoppia` (unico percorso verso il relayer), le gambe'
           + ' scoperte le vende il presidio attraversando, le lasciate restano fino alla risoluzione.',
       };
-      (deps.scriviRichiestaChiusura || scriviRichiestaChiusura)(richiesta);
+      (deps.scriviRichiestaChiusura || scriviRichiestaChiusura)(richiesta, deps.chiusuraFile || CHIUSURA_FILE);
       log(`R10 · chiusura posizioni RICHIESTA: ${chiusura.daFondere.length} da fondere · `
         + `${chiusura.daVendere.length} da vendere ($${chiusura.esposizioneDirezionaleUsd ?? '?'}) · `
         + `${chiusura.lasciate.length} lasciate ($${chiusura.bloccataUsd ?? '?'})`
@@ -603,8 +608,16 @@ function main() {
   const s = leggiSoglie();
   log(`starting — un giro ogni ${POLL_MS}ms; soglie −${s.pct}% / −$${s.abs} (rilette a OGNI giro da .env, nessun riavvio serve).`);
   log('  sorveglia le PERDITE, non i processi: agent37 resta il dead-man dei battiti e i due non si sovrappongono.');
-  log(`  allo scatto: cancel-all (sola cancellazione) → referto reason=guardian-auto-kill → bot su FERMA. Nessun auto-riarmo.`);
-  log('  NON tocca le posizioni aperte e NON ferma l\'uscita automatica: una posizione aperta resta gestita.');
+  // ⚠ QUESTO BANNER DEVE DIRE LO STATO VERO, e da R10 i due scatti NON fanno piu' la stessa cosa.
+  // Fino al 18 agosto 2026 diceva «NON tocca le posizioni aperte» per entrambi: dopo R10 sarebbe stato
+  // un commento invecchiato che l'operatore legge nei log — il reperto D7 nella forma piu' visibile.
+  log('  allo scatto per DRAWDOWN: cancel-all (sola cancellazione) → referto reason=guardian-auto-kill → bot su FERMA.');
+  log('    NON tocca le posizioni aperte e NON ferma l\'uscita automatica: una posizione aperta resta gestita.');
+  log('  allo scatto per PERDITA GIORNALIERA REALIZZATA (R10): come sopra, PIU\' la richiesta di chiusura');
+  log('    delle posizioni depositata in data/chiusura-emergenza-richiesta.json — coppie complete a merge,');
+  log('    gambe scoperte vendute attraversando, gambe sotto il minimo LASCIATE e dichiarate.');
+  log('    ⚠ La esegue agent41: questo processo classifica e deposita, e non ha nessuna superficie che venda.');
+  log('  Nessun auto-riarmo in nessuno dei due casi: si riparte cancellando il latch a mano.');
   const bot = statoBot();
   log(`  stato attuale del bot: ${bot.enabled ? 'AVVIATO' : 'FERMO'}${bot.motivo ? ` (${bot.motivo})` : ''}`);
   loop();
