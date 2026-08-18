@@ -453,7 +453,11 @@ module.exports = {
         //
         // ⚠ Un valore che non si capisce vale il DIFETTO (3), mai zero: un errore di battitura non può
         // fermare il bot in silenzio, e non può nemmeno aprirlo di più (il massimo è 3).
-        MAKER_MERCATI_CONTEMPORANEI: '3',
+        // ⚠ 3 → 1 il 18 agosto 2026, decisione dell'operatore: si arma UN MERCATO SOLO.
+        // ⚠ RIDURLO NON CHIUDE NIENTE DA SOLO (R1): la selezione non spodesta chi ha ordini vivi o una
+        // posizione, e non caccia un occupante solo perché il tetto è sceso. Governa quanti mercati si
+        // APRONO; i mercati già scelti escono per consumo, non per questo numero.
+        MAKER_MERCATI_CONTEMPORANEI: '1',
         // ── DICHIARATA, NON PIÙ SOLO EREDITATA (4 agosto 2026) ────────────────────────────────────
         // Qui la fragilità è REALE, a differenza del caso di agent40: agent41 NON ha il caricatore di
         // .env scritto a mano che agent40 ha in testa al file (verificato: `grep -c "Load .env"` → 0).
