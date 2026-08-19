@@ -1,22 +1,34 @@
-# Cosa resta aperto — 18 agosto 2026
+# Cosa resta aperto — aggiornato il 19 agosto 2026
 
 Scritto perché una sessione nuova possa riprendere **senza rileggere tutto**. In ordine di quanto costa
 se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 
+> ## 🔴🔴 FINESTRA DI OSSERVAZIONE — 24 ORE DALLE 15:22Z DEL 19 AGOSTO 2026
+> **Il bot è VIVO con capitale vero, `send` su entrambi i processi, e in questa finestra NON SI TOCCA.**
+> Nessun deploy, nessun riavvio, nessuna modifica. Un difetto trovato **si scrive qui e non si corregge**.
+> **Unica eccezione che ferma tutto**: un `reject-venue` su `cancelOrder` o `cancelMarketOrders`.
+> Il perché e cosa si sta registrando stanno in **§15**.
+
 ---
 
-## IL QUADRO — dove siamo
+## IL QUADRO — dove siamo, letto dai processi vivi il 19 agosto alle 15:20Z
 
 | | |
 |---|---|
-| **flotta pm2** | **11 processi ONLINE**, utente `bot`, `cwd` `/home/bot/bot` |
-| **cinture** | **1/4 inserite** su agent41, **2/4** su agent40 — lette da `/proc/<pid>/environ` (§10) |
+| **flotta pm2** | **11 processi ONLINE**, utente `bot`, `cwd` `/home/bot/bot` · agent34 pid 465022 · agent40 pid 470362 · agent41 pid 470902 |
+| **cinture** | **0/4 inserite**, da `/proc/<pid>/environ`: `MAKER_MODE=live-min` · `MAKER_ADAPTER_DRYRUN=false` · **`MANUAL_ORDER_PLACEMENT=send` su agent40 E agent41** · freno di agent41 `REALLOC_SCHEDULER_DRY_RUN=0` |
+| **ultimo commit** | `153fac2` «anche agent41 torna a send: il bot puo' riaprire posizioni» |
+| **a libro** | **3 mercati · 5 ordini · $136,59** — Kane, Yamal, «no Fed rate cuts». Letto dal venue (`data/venue-orders.json`) **e** ricostruito dal giornale: **i due concordano** |
+| **posizioni** | **ZERO**. Nessun fill da quando è armato: il residuo Hong Kong non c'è più nello snapshot |
+| **selezione** | **ACCESA**, 4 selezionati su un tetto di **5** (`MAKER_MERCATI_CONTEMPORANEI=5`) · perno vuoto · 1 slot vuoto, causa dichiarata: «il board non offre abbastanza mercati ammissibili: **4 su 135 valutati**» |
+| **interruttori** | KILL **spento** · AVVIA su **acceso** · `guardian-state.json` **assente** (= sano) · `chiusura-emergenza-richiesta.json` assente · `sospensioni-erosione.json` assente |
+| **capitale** | saldo **$1.491,36** · PnL guardiano **−$58,82 (−3,79%)** contro una baseline del 16/08 — **sotto la soglia del 5%**, nessun latch |
+| **premio** | stima integrata: **$1,94 il 18 agosto** (copertura 98,0%), **$0,79 oggi** fino alle 15:20 (copertura 94,0%). Incasso vero: ancora non pagato dal venue |
 | **regole concordate** | **10 su 10 in servizio** (§0), **10 su 10 verificate dal banco** |
 | **passi del giro completo** | **26 su 26**, 0 rossi — identico al controllo su HEAD nello stesso worktree |
 | **suite** | **229 test · 226 verdi · 2 ROSSI · 1 non parte** (19/08, albero committato, misurato; erano 12 la mattina). I 2 dipendono dai **dati vivi** (board), non dal codice. Gli 8 di `c919981` sono stati riscritti sul gate `book-non-databile`; i 3 del tetto di esposizione sull'invariante giusta — **`cap ≥ riposo + completamento`**, cap fermo a $650 |
 | **regole che scattano** | **20 statiche + 15 dinamiche su 91**, col cablaggio di produzione |
-| **quanti mercati** | **1**, da `MAKER_MERCATI_CONTEMPORANEI` nell'ambiente di agent41 — ⚠ ma il **perimetro è 2** e si consuma da solo (§10) |
-| **bot** | **UNA CINTURA SOLA**: le due di armamento sono APERTE su istruzione dell'operatore, resta `MANUAL_ORDER_PLACEMENT` (`dry-run` su agent40, **assente** su agent41) · perno vuoto · **zero ordini a libro** · gli ordini si costruiscono, si **firmano** e si fermano un istante prima dell'invio (§10) |
+| **stop condition** | `reject-venue` su cancellazioni nelle ultime 24 h: **ZERO**. I 14 `reject-venue` del giornale sono tutti su `postOrder`/`manual-place`, cioè piazzamenti, non cancellazioni |
 
 ---
 
@@ -1032,3 +1044,112 @@ pm2 save     # o il @reboot riporterebbe su la flotta di prima
    erano inerti e i loro test erano verdi.
 2. *Un presidio simulato più permissivo dell'originale non è un presidio.* Il banco cablava le cinture e
    quindi non avrebbe mai potuto smascherarle — lo stesso difetto, un piano più su.
+
+---
+
+## 15 · 👁 LA FINESTRA DI 24 ORE — cosa si registra, cosa mancava, e la sola cosa che è stata aggiunta
+
+**19 agosto 2026, 15:22Z — decisione dell'operatore.** Il bot è vivo con capitale vero su tre mercati.
+Per 24 ore non si tocca niente: nessun deploy, nessun riavvio, nessuna modifica. Un difetto trovato si
+scrive qui e **non si corregge**. L'unica cosa che ferma tutto è un `reject-venue` su `cancelOrder` o
+`cancelMarketOrders` — quello vorrebbe dire che la severità nuova dell'adapter (19 agosto, `risposta-venue`)
+sta rifiutando cancellazioni buone, ed è l'unico difetto che costa capitale mentre si guarda.
+
+### Le tre domande a cui la finestra deve rispondere
+
+① quanti mercati ha tenuto in media · ② quanto tempo il capitale è stato fermo senza ordini a libro ·
+③ quanto premio ha incassato. Un comando solo: **`node scripts/osserva/rispondi-24h.js`**.
+
+### Cos'era già registrato — sei grandezze su sette
+
+| grandezza | dove, e in che forma |
+|---|---|
+| **mercati nel piano** | `data/realloc-scheduler.jsonl`, `tipo:'mini-ciclo'` → `mercati[]` con `allocatoUsd`, più `ricalcolo.righe` e `motivoStop`. ~100 record ogni 6 h |
+| **ammissibili su valutati, e la causa di uno slot vuoto** | idem, `tipo:'selezione-mercati'` → `ammissibili`/`valutati`, `slotVuotiPerScarsita.motivo` («il board non offre abbastanza mercati ammissibili: 4 su 135 valutati»), `postiNonAssegnati`, `scartatiPerComposizione` |
+| **ingressi e uscite, con la causa** | idem → `entrati`/`usciti`/`liberati`/`spodestati`/`entratiInGestione`, **ognuno con `motivo` e `dettaglio`** (`riga-assente` · `nessuna riga di board per questo mercato`) |
+| **ogni fill** | `data/safety-fills.jsonl`, `kind:'fill'` → `side`, `filledPrice`, `filledSize`, `orderId`, `source`. ⚠ **`market` è il tokenId, non il conditionId**: il mercato si risolve dal board, non si legge dalla riga |
+| **ogni scadenza GTD** | `data/polymarket-maker-audit.jsonl`, `auto-reprice/scaduto-senza-rinnovo` (con `book`, `side`, `price`, `size`, `expiresAt` e il **gate che ha fermato il rinnovo**) e `order-vanished/expired` |
+| **premio maturato** | `data/stima-campioni.json`, un campione ogni 5 min da agent40; l'integrale è `lib/maker/stima-integrata.integra({giorno})` |
+
+**Il tempo fino al ripiazzamento non è un campo: è una sottrazione**, fra la scadenza e il
+`manual-place/sent` successivo sullo stesso mercato e libro. **Verificato derivabile su dati veri**:
+sulle ultime 8 scadenze, 6 hanno un ripiazzamento (54-59 s, e uno a 2.313 s) e 2 non ce l'hanno affatto
+— cioè i due «MAI» sono un fatto, non un dato mancante.
+
+### La settima mancava, e la ragione era strutturale
+
+**Quali mercati hanno ordini a libro, istante per istante, non era registrato da nessuna parte.**
+
+- `data/venue-orders.json` è l'unica fonte **autorevole** — agent40 la scrive da letture vere del venue —
+  ma **si sovrascrive**: è uno stato, non una serie. Domani non dice niente su ieri. E non porta
+  conteggi né nozionale, perché chi la scrive riceve *insiemi di mercati*, non ordini.
+- `agent45` dichiara `ordiniPerMercato: null` **con il motivo**, ed è un null **strutturale**: il
+  giornale REDIGE `requested.marketId` sulle righe `manual-list`, quindi il conteggio per mercato non è
+  ricostruibile da lì. Verificato sul file grezzo, non sull'output: il valore su disco è la stringa
+  `0x[redacted-64hex]`, 18 caratteri.
+- il suo `nozionaleABookUsd` è una **ricostruzione**, e la si è vista corta: alle 15:15 dichiarava
+  `mercatiVisti: 2` mentre al venue i mercati con ordini erano **3**.
+
+### ⚠ E LA CORREZIONE NON POTEVA VIVERE DENTRO UN AGENT
+
+La finestra vieta i riavvii, e il codice di un processo pm2 sta nella sua memoria: una riga aggiunta a
+`lib/osservatore/campionamento.js` o ad agent40 sarebbe stata **inerte per 24 ore**. Sarebbe stata la
+forma più pura di «una regola scritta non è una regola in servizio». Quindi l'osservatore è **esterno**.
+
+### L'unica modifica: `scripts/osserva/registro-24h.js`
+
+Una riga al minuto in `data/osservazione-24h.jsonl`. **Non è nella flotta, non sta in pm2, non tocca
+nessun processo vivo.**
+
+- **⚠ STRUTTURALMENTE INCAPACE DI TOCCARE CAPITALE, e non per promessa**: `registro-24h.test.js`
+  (**30/30**) cammina i `require` e pretende **zero require oltre `fs` e `path`** — nessuno relativo,
+  quindi nessun adapter e nessuna credenziale raggiungibili. Più: nessun `unlink`/`rm`/`rename`/`truncate`
+  (un osservatore non rimuove prove) e le sole due scritture ammesse sono `appendFileSync→USCITA` e
+  `writeFileSync→PIDFILE`, verificate **per nome della destinazione**.
+- **⚠ IL LIBRO SI SCRIVE DUE VOLTE, E LA `divergenza` È IL CAMPO CHE CONTA.** `libroAutorevole` è
+  l'insieme letto dal venue; `libro` è la ricostruzione dal giornale, che ha conteggi, prezzi, size e
+  nozionale. Non si sceglie fra le due e non si mediano: si misura **di quanto non vanno d'accordo**,
+  così domani si sa quanto vale il numero che si sta usando. È la cintura contro il difetto del 18
+  agosto sera, quando una ricostruzione dichiarò «4 mercati, 8 ordini, $209,08» contro i **2** veri.
+- **⚠ LA SCADENZA GTD SI APPLICA ANCHE SENZA UN RECORD CHE LA DICHIARI.** Un ordine più vecchio della
+  sua `ttlSeconds` è morto al venue, che il giornale l'abbia notato o no. Sommare gli `sent` e togliere
+  le sole scadenze **registrate** è esattamente l'errore del 18 agosto, e il test lo prova costruendolo.
+  ⚠ `ttl` ignoto ⇒ **non si pota a indovinare**: l'ordine resta e il conteggio lo dirà.
+- **⚠ «NON HO LETTO» NON DIVENTA MAI «NON C'È»**: `venue-orders.json` oltre **180 s** è
+  `leggibile:false` col motivo, mai «nessun ordine»; un ordine senza nozionale non vale zero, si conta
+  in `ordiniSenzaNozionale` — o il totale mentirebbe in difetto **in silenzio**.
+- **prima riga scritta, e le due fonti concordano**: 3 mercati per entrambe, 5 ordini, **$136,59**.
+  ⚠ Riscontro indipendente: `capitaleInBandaUsd` che agent40 campiona per conto suo dice **$136,59**.
+
+### Il guard, e il difetto che ha evitato
+
+Se l'osservatore muore a metà finestra la misura non è rifacibile — la finestra è passata. Quindi cron
+lo rilancia ogni minuto. **⚠ La prima stesura del guard usava `pgrep -f 'osserva/registro-24h'`, ed era
+rotta nel modo che §5.3 descrive da giorni**: il comando che lo esegue contiene la stringa cercata,
+quindi `pgrep` trova la propria shell, conclude «gira già» e **non riavvia mai, senza dirlo**. L'unicità
+la impone ora lo script stesso, con un **pidfile** letto contro `/proc/<pid>` *e* contro `cmdline` (i pid
+si riciclano): lanciato mentre uno gira, il secondo esce subito. Cron quindi lo lancia e basta.
+**⚠ La riga di cron va tolta a finestra chiusa**: un guard che sopravvive alla ragione per cui esiste
+diventa un secondo meccanismo che nessuno ricorda.
+
+### Cosa NON è stato toccato, ed è deliberato
+
+- **`lib/maker/quantita-davanti.js` resta non committato e senza chiamanti.** È la regola «non stiamo
+  mai primi in coda», scritta ma non cablata: la scelta fra estendere `depthMultiple` e sostituirlo è
+  ancora dell'operatore, e non si tocca un gate del capitale dentro una finestra di osservazione.
+  Verificato che nessun file la importi, quindi è inerte.
+- **Nessun numero di rischio è stato cambiato**: cap $650, tetto per mercato $61,25, tetto per ordine
+  $65,63, perdita giornaliera −$100, rate limit 40/60 s. Tutti dove erano.
+
+### ⚠ Il difetto che questa lettura ha trovato, e che NON viene corretto
+
+**`data/venue-orders.json` è autorevole e non conserva niente.** È l'unica lettura vera del libro, e
+ogni cinque secondi cancella la precedente. L'osservatore esterno di oggi lo campiona al minuto, ma è
+un cerotto fuori dal processo: la correzione vera è che **lo scrittore appenda**, o che l'osservatore
+riceva anche i conteggi che già ha in mano al momento della lettura. Non si fa adesso — richiede di
+toccare agent40 e quindi un riavvio. **Da fare a finestra chiusa.**
+
+**E il gemello:** `requested.marketId` redatto sulle righe `manual-list` rende il conteggio per mercato
+non ricostruibile dal giornale. La redazione protegge un id che nella stessa riga di `manual-place`
+compare **in chiaro** come `marketRef` — cioè non protegge niente e costa una misura. Anche questa a
+finestra chiusa.
