@@ -1629,19 +1629,39 @@ function posizioniUsdDi(marketId) {
 // Si scatta in due momenti soli: all'AVVIO del processo, e quando il kill si SPEGNE (il riarmo). Non a
 // ogni giro: una fotografia continua marcherebbe pre-esistente anche cio' che il bot ha appena piazzato,
 // e il motore smetterebbe di gestire i propri stessi ordini un secondo dopo averli messi.
+// Una riga a verbale, con lo stesso `op` che il consumatore puo' contare. Non solleva mai: una
+// dichiarazione che fa cadere il giro sarebbe peggio del silenzio che sta correggendo.
+function dichiara(op, outcome, reason, observed) {
+  try { appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'agent40', op, outcome, reason, observed }); }
+  catch (e) { log(`audit ${op} non scritto:`, e.message); }
+}
+
 async function scattaFotografia(motivo) {
   let listed = null;
   try { listed = await listManualOrders({ marketId: null }); }
   catch (e) { listed = { ok: false, error: e && e.message ? e.message : String(e) }; }
+  // Si tiene la risposta com'e' arrivata: `causa`, `status` e `forma` vengono dall'adapter
+  // (v. `lib/venues/risposta-venue.js`) e sono cio' che permette di riconoscere il guasto la volta
+  // dopo. Il 19 agosto, di un'ora di letture fallite, non e' rimasto nemmeno lo status.
+  const listedUltima = listed;
   // ── ⚠ L'ADOZIONE: cio' che e' PROVATAMENTE nostro non diventa invisibile ─────────────────────────
   // Tre condizioni, tutte necessarie (v. il commento in testa a `ordini-preesistenti`). Costruite qui
   // perche' e' qui che vivono il piano corrente e il catalogo dei token; la DECISIONE resta la' e non
   // si duplica. Fail-closed su ogni lettura mancante: senza mappa delle origini non si adotta niente.
+  // ⚠ IL CONTEGGIO PER CONDIZIONE. Il predicato risponde `true`/`false` — ed e' giusto che sia cosi',
+  //   perche' `fotografaPreesistenti` fallisce chiuso su qualunque risposta non sia `true`. Ma «tre
+  //   ordini restano invisibili» senza dire PERCHE' non e' verificabile: le tre condizioni hanno cause
+  //   diverse (una e' un ordine di qualcun altro, una e' un mercato uscito dal piano, una e' un token
+  //   che non c'entra) e si riparano in modi diversi. Il motivo si raccoglie qui, dove le condizioni
+  //   vivono, senza cambiare il contratto del modulo.
+  const motiviScarto = new Map();
   const adotta = (() => {
     let mappa = null;
     try { mappa = mappaOrigini({}); } catch { mappa = null; }
     if (!mappa || mappa.size === 0) {
       log('PRE-ESISTENTI · nessuna mappa delle origini leggibile: NESSUNA adozione (fail-closed)');
+      dichiara('preesistenti-nessuna-adozione', 'mappa-origini-illeggibile',
+        'nessuna mappa delle origini leggibile: nessun ordine e stato adottato (fail-closed)', { motivo });
       return null;
     }
     let idsPiano = new Set();
@@ -1649,24 +1669,48 @@ async function scattaFotografia(motivo) {
     catch { idsPiano = new Set(); }
     if (idsPiano.size === 0) {
       log('PRE-ESISTENTI · piano vuoto o non leggibile: NESSUNA adozione (fail-closed)');
+      dichiara('preesistenti-nessuna-adozione', 'piano-vuoto-o-illeggibile',
+        'piano vuoto o non leggibile: nessun ordine e stato adottato (fail-closed)', { motivo });
       return null;
     }
+    const scarta = (o, condizione, dettaglio) => {
+      motiviScarto.set(String(o && o.orderId), { condizione, dettaglio: dettaglio || null });
+      return false;
+    };
     return (o) => {
       // ① origine provata dal registro — mai dedotta dal `source`, che e' ambiguo per costruzione
-      if (origineDiUnOrdine(o, mappa) !== ORIGINE_AUTO) return false;
+      const org = origineDiUnOrdine(o, mappa);
+      if (org !== ORIGINE_AUTO) return scarta(o, '1-origine-non-auto', org);
       // ② mercato nel piano corrente
       const mid = String(o.marketId || '').trim().toLowerCase();
-      if (!mid || !idsPiano.has(mid)) return false;
+      if (!mid) return scarta(o, '2-mercato-illeggibile');
+      if (!idsPiano.has(mid)) return scarta(o, '2-mercato-fuori-piano', mid.slice(0, 12));
       // ③ il token e' uno dei due del mercato
       let regole = null;
-      try { regole = resolveMarketRules(mid); } catch { return false; }
-      if (!regole || regole.readable !== true) return false;
+      try { regole = resolveMarketRules(mid); } catch { return scarta(o, '3-regole-non-risolte', mid.slice(0, 12)); }
+      if (!regole || regole.readable !== true) return scarta(o, '3-regole-non-leggibili', mid.slice(0, 12));
       const tok = o.tokenId != null ? String(o.tokenId) : null;
-      if (!tok) return false;
-      return tok === String(regole.tokenId) || tok === String(regole.tokenIdNo);
+      if (!tok) return scarta(o, '3-token-assente');
+      if (tok !== String(regole.tokenId) && tok !== String(regole.tokenIdNo)) return scarta(o, '3-token-estraneo');
+      return true;
     };
   })();
   const f = fotografaPreesistenti({ listed, now: Date.now(), motivo, adotta });
+  // ⚠ SI SCRIVE SEMPRE, anche a zero adottati: «nessuno adottato» ha cause diverse — non c'erano
+  //   ordini, oppure ce n'erano e nessuno ha passato le tre condizioni — e le due si distinguono solo
+  //   qui. Un presidio che lascia traccia solo quando agisce non e' verificabile (§5-bis p.171).
+  if (f.scattata) {
+    const perCondizione = {};
+    for (const { condizione } of motiviScarto.values()) perCondizione[condizione] = (perCondizione[condizione] || 0) + 1;
+    dichiara('preesistenti-fotografia', f.adottati && f.adottati.length ? 'adottati' : 'nessuno-adottato',
+      `${(f.adottati || []).length} adottato/i · ${f.marcati} lasciato/i invisibile/i`,
+      { motivo, adottati: (f.adottati || []).length, invisibili: f.marcati, perCondizione,
+        scarti: [...motiviScarto.entries()].slice(0, 20).map(([id, m]) => ({ orderId: String(id).slice(0, 14), ...m })) });
+    if (Object.keys(perCondizione).length) {
+      log('PRE-ESISTENTI · non adottati per condizione: '
+        + Object.entries(perCondizione).map(([k, v]) => `${k}=${v}`).join(' · '));
+    }
+  }
   if (f.adottati && f.adottati.length) {
     log(`PRE-ESISTENTI · ADOTTATI ${f.adottati.length} ordine/i provatamente nostri (origine auto · mercato nel piano · token corrispondente):`
       + ' restano VISIBILI al motore e verranno riprezzati e rinnovati come se il processo non si fosse fermato.');
@@ -1677,7 +1721,18 @@ async function scattaFotografia(motivo) {
         observed: { adottati: f.adottati, marcati: f.marcati, motivo } });
     } catch (e) { log('audit preesistenti-adottati non scritto:', e.message); }
   }
-  if (!f.scattata) { log(`PRE-ESISTENTI · nessuna fotografia (${motivo}): ${f.motivo}`); return f; }
+  if (!f.scattata) {
+    // ⚠ LA CECITA' SI DICHIARA NEL GIORNALE, NON SOLO NEL LOG DI pm2. Il log di pm2 ruota, non e'
+    //   interrogabile e non entra in nessuna misura: una dichiarazione che vive solo li' e' una
+    //   dichiarazione che nessuno leggera'. Questo e' l'unico momento in cui si decide chi e' invisibile
+    //   al motore per il resto della vita del processo, e se la fotografia non e' riuscita NON si sa.
+    log(`PRE-ESISTENTI · nessuna fotografia (${motivo}): ${f.motivo}`);
+    dichiara('preesistenti-nessuna-fotografia', 'venue-non-letto',
+      `nessuna fotografia dei pre-esistenti (${motivo}): ${f.motivo} — nessun ordine e stato marcato invisibile e nessuno adottato`,
+      { motivo, causa: (listedUltima && listedUltima.causa) || null, status: (listedUltima && listedUltima.status != null) ? listedUltima.status : null,
+        forma: (listedUltima && listedUltima.forma) || null, errore: (listedUltima && listedUltima.error) || null });
+    return f;
+  }
   if (f.marcati === 0) { log(`PRE-ESISTENTI · ${motivo}: nessun ordine a riposo, il libro era libero — il ciclo gestisce tutto cio' che verra' piazzato da adesso.`); return f; }
   log(`PRE-ESISTENTI · ${motivo}: ${f.marcati} ordine/i gia' a riposo, da ora INVISIBILI al motore`
     + ' — non riprezzati, non rinnovati, non cancellati, fuori dal capitale impegnato. Scadranno da soli.');
