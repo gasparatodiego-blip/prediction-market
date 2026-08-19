@@ -1382,11 +1382,18 @@ resta una riga nel registro di §5-bis.
    compri sopra il tetto della coppia, e inventarlo sarebbe un meccanismo nuovo su capitale reale. La
    metà implementata — vendere attraversando, anche sotto il minimo — copre il caso comune. **Serve una
    decisione**: quanto sopra 101¢ si può spendere, e con quale tetto in dollari.
-43. **🟡 R4 È TARATO SU UN FEED PIÙ LENTO DEL BOT — 18 agosto 2026.** `mid-history` campiona ogni
-   **~115 s**, agent40 osserva ogni **5-10 s**: i **97 episodi** misurati sul 17 agosto sono un **limite
-   inferiore**, e il freno da 60 s non ha mai morso nella misura. Il tetto imposto dal freno è 2/min per
-   gamba; su 3 mercati × 2 gambe fa 12 invii/min contro un `rateCap` di 40/60 s. **Il numero vero si
-   vedrà al primo giro armato**, ed è la prima cosa da guardare.
+43. **🟡 R4 NON È MAI SCATTATA PERCHÉ LA PROFONDITÀ NON È MAI CROLLATA — misurato il 19 agosto.**
+   Replay sui book del 18 (`data/ricerca/erosione-18-agosto.md`, modulo VERO): sulle **vite reali** dei
+   47 ordini misurabili, a **40% ZERO scatti e ZERO letture singole sotto soglia**; il minimo di tutta
+   la giornata è **58,9%** della baseline. La soglia non è tarata male, è lontana dai dati. **Il fill
+   del 23:17:21 è venuto dal MID**: profondità davanti piatta a 260 share fino a **−2 s**, poi il mid
+   salta **+8¢ in un solo intervallo**; il crollo (−72%) arriva **dopo**. Prima soglia che produce
+   qualcosa: **60%, 1 scatto in tutta la giornata**; a 80% sono 3.
+   **⚠ TRE LIMITI**: il feed campiona ogni **75,0 s** (non ~115) contro i 5-10 s di agent40, quindi un
+   crollo più breve di **150 s** è invisibile e i numeri sono un **limite inferiore** · `mid-history`
+   registra **un solo book per mercato** e le **20 gambe sul NO non hanno dati**, compresa quella che si
+   è riempita · **18 vite su 47 non riscaldano nemmeno la baseline**. **Non si tocca niente**: serve una
+   giornata con più fill e il feed del book NO.
 42. **🟡 `tre-fix-sicurezza.test.js` SCADE, NON FALLISCE — 17 agosto 2026.** 48-50 s contro il limite di
    60 s di `suite-rossi.js:25`: entra ed esce dai rossi col carico della macchina (49,98 → 48,42 s prima e
    dopo le modifiche del 17, quindi non è una regressione). **Un test che scade è indistinguibile da un test
