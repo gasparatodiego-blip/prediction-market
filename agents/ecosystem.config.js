@@ -316,7 +316,7 @@ module.exports = {
         // ripiazzamento puo' diventare un doppione.
         // PER RIAPRIRE servono due cose verdi: letture del venue sane, e `cancel-all` che dichiari il
         // fallimento invece di rispondere `cancelled: 0` come se avesse finito.
-        MANUAL_ORDER_PLACEMENT: 'dry-run',
+        MANUAL_ORDER_PLACEMENT: 'send',   // ⚠ RIAPERTO il 19 agosto 2026 su istruzione dell'operatore: letture del venue sane (0 errori) e cancel-all che dichiara il fallimento invece di rispondere `cancelled: 0`.
 
         // ⚠ 1000 → 5000 ms IL 16 AGOSTO 2026, DOPO AVER MISURATO IL DANNO. Il pavimento a 1 s era stato
         // chiesto per il riprezzo «event-driven»; con il lock per mercato in servizio ha prodotto
