@@ -208,6 +208,10 @@ const {
 // LE CANCELLAZIONI CHE SI DEVONO VEDERE. Il 6 agosto 2026 una gamba e' stata cancellata correttamente
 // e nessun evento e' arrivato a una superficie: l'operatore se n'e' accorto guardando l'app del venue.
 const { registraCancellazioni } = require('../lib/maker/cancellazioni-visibili');
+// ── L'ORIGINE DI UN ORDINE, per l'ADOZIONE dei pre-esistenti ────────────────────────────────────────
+// `source` dice quale corsia ha piazzato, `origine` dice se dietro c'era una persona: `manual-ui` vale
+// per il bot E per una mano umana, quindi non basta. Qui serve la prova, non l'indizio.
+const { mappaOrigini, origineDiUnOrdine, ORIGINE_AUTO } = require('../lib/maker/origine-ordine');
 // ── IL CONFRONTO STIMA / CONSUNTIVO ─────────────────────────────────────────────────────────────────
 // Due controlli orari dentro QUESTO processo: nessun pm2 nuovo. agent40 e' gia' sempre acceso e gira
 // ogni 5 secondi, quindi ha gia' l'orologio che serve — aggiungere un processo per due letture al
@@ -1176,7 +1180,16 @@ function registraNostroInvio({ tokenId, marketId, book, side, size, ora: oraIn }
       if (r && r.readable === true) tok = String(book === 'no' ? r.tokenIdNo : r.tokenId);
     } catch { /* si resta col token vuoto */ }
   }
-  nostriInvii.push({ ts: ora, tokenId: tok, side: String(side || ''), size: Number(size) });
+  // ⚠ SI REGISTRA ANCHE IL `marketId`, e non e' ridondanza — 19 agosto 2026.
+  // Il ripiego qui sopra dice «se non si riesce si registra comunque con il token vuoto, perche' un
+  // invio non registrato produrrebbe un ALLARME FALSO». Ma un invio col token VUOTO e' inattribuibile
+  // quanto uno mancante: il rilevatore confronta `norm(o.tokenId) !== tok` e lo scarta. Misurato il
+  // 19 agosto alle 00:20:44: la nostra vendita per attraversamento di 57 secondi prima e' stata
+  // registrata, e l'allarme ha comunque scritto «nostri SELL in finestra: 0.00 share su 0 ordini —
+  // qualcuno con la chiave di questo wallet ha venduto da fuori dal nostro sistema». Falso, e
+  // dell'unico tipo che conta: un allarme di furto che grida quando il bot fa il suo mestiere.
+  // Col mercato registrato l'invio resta attribuibile anche quando il token non si e' potuto risolvere.
+  nostriInvii.push({ ts: ora, tokenId: tok, marketId: String(marketId || ''), side: String(side || ''), size: Number(size) });
   // Si pota su una finestra doppia di quella di giudizio: tenere di piu' non serve, e la lista non
   // deve poter crescere senza fine in un processo che vive giorni.
   const taglio = ora - 2 * SPAR.FINESTRA_MS;
@@ -1620,7 +1633,50 @@ async function scattaFotografia(motivo) {
   let listed = null;
   try { listed = await listManualOrders({ marketId: null }); }
   catch (e) { listed = { ok: false, error: e && e.message ? e.message : String(e) }; }
-  const f = fotografaPreesistenti({ listed, now: Date.now(), motivo });
+  // ── ⚠ L'ADOZIONE: cio' che e' PROVATAMENTE nostro non diventa invisibile ─────────────────────────
+  // Tre condizioni, tutte necessarie (v. il commento in testa a `ordini-preesistenti`). Costruite qui
+  // perche' e' qui che vivono il piano corrente e il catalogo dei token; la DECISIONE resta la' e non
+  // si duplica. Fail-closed su ogni lettura mancante: senza mappa delle origini non si adotta niente.
+  const adotta = (() => {
+    let mappa = null;
+    try { mappa = mappaOrigini({}); } catch { mappa = null; }
+    if (!mappa || mappa.size === 0) {
+      log('PRE-ESISTENTI · nessuna mappa delle origini leggibile: NESSUNA adozione (fail-closed)');
+      return null;
+    }
+    let idsPiano = new Set();
+    try { idsPiano = new Set((readAutoRepriceConfig().enabledMarketIds || []).map((x) => String(x).trim().toLowerCase())); }
+    catch { idsPiano = new Set(); }
+    if (idsPiano.size === 0) {
+      log('PRE-ESISTENTI · piano vuoto o non leggibile: NESSUNA adozione (fail-closed)');
+      return null;
+    }
+    return (o) => {
+      // ① origine provata dal registro — mai dedotta dal `source`, che e' ambiguo per costruzione
+      if (origineDiUnOrdine(o, mappa) !== ORIGINE_AUTO) return false;
+      // ② mercato nel piano corrente
+      const mid = String(o.marketId || '').trim().toLowerCase();
+      if (!mid || !idsPiano.has(mid)) return false;
+      // ③ il token e' uno dei due del mercato
+      let regole = null;
+      try { regole = resolveMarketRules(mid); } catch { return false; }
+      if (!regole || regole.readable !== true) return false;
+      const tok = o.tokenId != null ? String(o.tokenId) : null;
+      if (!tok) return false;
+      return tok === String(regole.tokenId) || tok === String(regole.tokenIdNo);
+    };
+  })();
+  const f = fotografaPreesistenti({ listed, now: Date.now(), motivo, adotta });
+  if (f.adottati && f.adottati.length) {
+    log(`PRE-ESISTENTI · ADOTTATI ${f.adottati.length} ordine/i provatamente nostri (origine auto · mercato nel piano · token corrispondente):`
+      + ' restano VISIBILI al motore e verranno riprezzati e rinnovati come se il processo non si fosse fermato.');
+    for (const a of f.adottati) log(`  · ${String(a.orderId).slice(0, 12)}… su ${String(a.marketId || '?').slice(0, 12)}…`);
+    try {
+      appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'agent40', op: 'preesistenti-adottati',
+        outcome: 'adottati', reason: `${f.adottati.length} ordine/i provatamente nostri adottati all'avvio invece di essere resi invisibili`,
+        observed: { adottati: f.adottati, marcati: f.marcati, motivo } });
+    } catch (e) { log('audit preesistenti-adottati non scritto:', e.message); }
+  }
   if (!f.scattata) { log(`PRE-ESISTENTI · nessuna fotografia (${motivo}): ${f.motivo}`); return f; }
   if (f.marcati === 0) { log(`PRE-ESISTENTI · ${motivo}: nessun ordine a riposo, il libro era libero — il ciclo gestisce tutto cio' che verra' piazzato da adesso.`); return f; }
   log(`PRE-ESISTENTI · ${motivo}: ${f.marcati} ordine/i gia' a riposo, da ora INVISIBILI al motore`
