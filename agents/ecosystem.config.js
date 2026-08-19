@@ -302,7 +302,21 @@ module.exports = {
         // tetto per ordine ($65,63), il tetto per mercato ($61,25), l'esposizione cumulativa ($150),
         // il rate limit, la perdita giornaliera a -$100, «mai primo sul libro» e la banda premiante.
         // PER DISARMARE: si rimette 'dry-run' qui e nel blocco di agent41, e si riavvia DAL FILE.
-        MANUAL_ORDER_PLACEMENT: 'send',
+        // ⚠⚠ SOSPESO IL 19 AGOSTO 2026 alle ~05:25Z, decisione dell'operatore.
+        // Dalle 04:10:37 le letture degli ordini al venue falliscono al 99,5% con
+        // «response.data is not iterable» (SDK clob-client:553, che fa lo spread di `response.data`
+        // senza controllare status ne' forma). Il bot e' CIECO sui propri ordini: non li riprezza,
+        // non li rinnova, non li cancella.
+        // ⚠ LA RAGIONE CHE PESA PIU' DELLE ALTRE: `cancel-all.js:87` elenca gli ordini prima di
+        // spazzare, quindi in questo stato **il KILL e il guardiano delle perdite non possono
+        // cancellare niente**. Con il piazzamento aperto si aprirebbe esposizione che la via d'uscita
+        // d'emergenza non saprebbe chiudere.
+        // Le altre due: un ordine piazzato ora morirebbe in 23 minuti perche' il rinnovo richiede di
+        // leggerlo prima; e i controlli anti-duplicato leggono il libro, quindi al buio un
+        // ripiazzamento puo' diventare un doppione.
+        // PER RIAPRIRE servono due cose verdi: letture del venue sane, e `cancel-all` che dichiari il
+        // fallimento invece di rispondere `cancelled: 0` come se avesse finito.
+        MANUAL_ORDER_PLACEMENT: 'dry-run',
 
         // ⚠ 1000 → 5000 ms IL 16 AGOSTO 2026, DOPO AVER MISURATO IL DANNO. Il pavimento a 1 s era stato
         // chiesto per il riprezzo «event-driven»; con il lock per mercato in servizio ha prodotto
@@ -636,7 +650,21 @@ module.exports = {
         // ⚠ E SMETTE DI ESSERE UN'ASSENZA: fino a ieri reggeva perche' la variabile non c'era, cioe'
         // per il difetto fail-closed di `manualPlacement` (tutto cio' che non e' 'send' e' 'dry-run').
         // Adesso e' dichiarata, e va DISARMATA cancellandola o rimettendola a 'dry-run'.
-        MANUAL_ORDER_PLACEMENT: 'send',
+        // ⚠⚠ SOSPESO IL 19 AGOSTO 2026 alle ~05:25Z, decisione dell'operatore.
+        // Dalle 04:10:37 le letture degli ordini al venue falliscono al 99,5% con
+        // «response.data is not iterable» (SDK clob-client:553, che fa lo spread di `response.data`
+        // senza controllare status ne' forma). Il bot e' CIECO sui propri ordini: non li riprezza,
+        // non li rinnova, non li cancella.
+        // ⚠ LA RAGIONE CHE PESA PIU' DELLE ALTRE: `cancel-all.js:87` elenca gli ordini prima di
+        // spazzare, quindi in questo stato **il KILL e il guardiano delle perdite non possono
+        // cancellare niente**. Con il piazzamento aperto si aprirebbe esposizione che la via d'uscita
+        // d'emergenza non saprebbe chiudere.
+        // Le altre due: un ordine piazzato ora morirebbe in 23 minuti perche' il rinnovo richiede di
+        // leggerlo prima; e i controlli anti-duplicato leggono il libro, quindi al buio un
+        // ripiazzamento puo' diventare un doppione.
+        // PER RIAPRIRE servono due cose verdi: letture del venue sane, e `cancel-all` che dichiari il
+        // fallimento invece di rispondere `cancelled: 0` come se avesse finito.
+        MANUAL_ORDER_PLACEMENT: 'dry-run',
 
         // COME SI DISARMA TUTTO: si cancellano queste righe (e quelle di agent40) e si riavvia dal
         // file. Ogni assenza e' fail-closed per costruzione.
