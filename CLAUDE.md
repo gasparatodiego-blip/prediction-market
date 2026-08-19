@@ -1480,9 +1480,23 @@ resta una riga nel registro di §5-bis.
 11. **I ROSSI NOTI RUOTANO NEI NOMI, NON NEL CONTEGGIO.** Chi confronta confronti i **NOMI** (§5-bis
    p.134): cambiano da soli col board, e un membro nuovo non è una regressione — ma va verificato che il
    rosso non tocchi il codice modificato. **Non parte**: `leg-order` (test JS su moduli TypeScript).
-   **Rossi (10, verificati il 17/08 sera su 209 test)**: `dipendenze-collegate` · `scaduto-senza-rinnovo` ·
-   `scadenza-ereditata` · `categoria-mercato` · `end-of-scale-cycle` · `tetto-e-scoperta` ·
-   `cancellazione-riconosciuta` · i tre di §5.2 p.37.
+   **Rossi: 5 su 229, verificati il 19/08 su albero COMMITTATO** (erano 12 la mattina del 19, e 10 il
+   17/08 su 209 test — l'elenco di allora non vale piu': `dipendenze-collegate`, `scaduto-senza-rinnovo`,
+   `scadenza-ereditata`, `end-of-scale-cycle`, `tetto-e-scoperta`, `cancellazione-riconosciuta` sono
+   verdi). Restano **due famiglie sole, entrambe deliberate**:
+   · **tetto di esposizione** — `sette-punti` (una riga sola: il letterale $150 contro i $650 decisi il
+     18/08), `tetti-per-giro-e-scope`, `tetto-derivato-dallo-scaglione`: **$650 contro 5 × $61,25 =
+     $306,25** (§5.2 p.37). Difendono una proprietà vera che l'operatore ha deciso di non volere più;
+     cambiarli vuol dire decidere quale invariante sia ora quella giusta — o scende il cap, o
+     l'invariante si riscrive su un'altra grandezza. **Decisione di rischio, non riscrittura.**
+   · **dati vivi** — `categoria-mercato` (12,0% non classificato contro un limite del 2%) e
+     `velocita-mercato` (mediana del board 15,2%): ruotano col board, non col codice.
+   ⚠ **Gli 8 rossi di `c919981` sono stati RISCRITTI, non ammorbiditi** (19/08): le loro fixture non
+   portavano l'età del book, quindi ricevevano `skip/book-non-databile` e non arrivavano al codice che
+   provavano. Fixture con book **databile** + un blocco per file che **difende il gate sul proprio
+   percorso**, ognuno col suo **CONTROLLO**. Prova esaustiva in un posto solo:
+   `lib/maker/bid-databile.test.js` (34/34), che include l'eccezione R6 e verifica **per assenza** che
+   il merge non sia toccato (`decidiLivello` non riceve affatto `rules`, quindi R8 regge).
    ⚠ **`hook-piazzamento` e `policy-permessi` sono USCITI dai rossi** (70/0 e 84/0): erano rossi per due
    percorsi `/root` morti, non per un difetto — §5-bis p.188. ⚠ `tre-fix-sicurezza` compare fra i rossi
    della suite ed è un **timeout**: eseguito da solo fa **42/0** (§5.2 p.42).
