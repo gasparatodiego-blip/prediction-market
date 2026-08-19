@@ -1158,10 +1158,13 @@ test lo asserisce); il cablaggio sta in `agent41` e passa dalle **stesse** funzi
 > `maxOpenNotionalUsd` conta i **fill riconciliati** e **ignora i $147 a riposo** ⇒ il soffitto era
 > `$600 + $147 ≈ $747`. Per questo il cap è sceso a **$150**: `$147 + $150 ≈ $297`, la cifra chiesta.
 > **⚠ MA IL TETTO SI APPLICA ANCHE AGLI ORDINI DI APERTURA, CHE POI NON CI ENTRANO**: il gate confronta
-> `openNotionalUsd + notional`, quindi la gamba più cara del piano ($54,38) smette di essere piazzabile
-> quando i fill riconciliati superano ~$95. **La rotazione si ferma da sola lì, non a $150.**
-> **⚠ E $150 STA SOTTO `3 × tetto per mercato` ($183,75)**: tre test lo dicono e sono **rossi apposta**
-> (§5.2 p.37). Non sono stati ammorbiditi.
+> `openNotionalUsd + notional`, quindi con quel cap la gamba più cara del piano ($54,38) smetteva di
+> essere piazzabile quando i fill riconciliati superavano ~$95 — **la rotazione si fermava da sola lì,
+> non a $150**. È l'osservazione che poi ha portato al cap di $650 e all'invariante di §5.2 p.37.
+> **⚠ IL CAP È $650 DAL 18 AGOSTO, E L'INVARIANTE CHE LO GIUDICA È CAMBIATA IL 19** (§5.2 p.37, chiusa):
+> non `cap ≤ N × tetto per mercato` ma **`cap ≥ esposizione massima raggiungibile`**, cioè N coppie a
+> riposo **più il loro completamento** ($612,50 a N=5). I tre test avevano ragione sulla relazione e
+> torto sulla grandezza; il $150 di questo riquadro è storia.
 > **⚠ UN MERCATO IN GESTIONE DEVE RESTARE ABILITATO AL RIPREZZO**: `restringiAllaSelezione` usa `idsAttivi`
 > (solo i non-in-gestione) per il **piano**, ma la lista del riprezzo tiene **tutti** gli id. Toglierlo
 > farebbe morire la gamba sorella per GTD in ≤ 23 min, cioè **prima** dei 30 che la scala le concede.
@@ -1400,10 +1403,18 @@ resta una riga nel registro di §5-bis.
    lì, quella era l'erosione.
    **⚠ IL DATO C'ERA E LO SCRITTORE LO BUTTAVA**: `reconcileSubscriptions` sottoscrive il token NO da
    sempre (agent34:705, `side:'no'`); era `sampleMidHistory` a guardare solo `meta.tokenId`.
-   **Corretto il 19 agosto**: ogni riga porta ora `no: {…}` col book completo, livelli compresi, e i
-   campi di primo livello restano intatti per i cinque lettori esistenti
-   (`lib/mid-history-due-book.test.js`, 33/33, rosso sul sorgente di ieri). **⚠ Vale dal riavvio di
-   agent34 in avanti: il 18 agosto non si recupera.** ⚠ Costo: la riga quasi raddoppia (~148 →
+   **Corretto il 19 agosto** e **in servizio dal riavvio di agent34** (verificato sulle righe vive: 244
+   righe col campo `no`, 190 coi livelli su entrambi i lati): ogni riga porta `no: {…}` col book
+   completo, e i campi di primo livello restano intatti per i cinque lettori esistenti
+   (`lib/mid-history-due-book.test.js`, 33/33, rosso sul sorgente di ieri). **⚠ Il 18 agosto non si
+   recupera.**
+   **⚠ E «MIGLIOR BID ALTRUI» NON DIVENTA UNA SERIE**: `mid-history` registra il book **grezzo**, che
+   include i NOSTRI ordini. Per R4 non serve — `zoneDepth` salta per costruzione il proprio livello e
+   tutto ciò che sta sotto, quindi la profondità davanti è già «altrui». Restano non rispondibili
+   *quanto del libro era nostro* e il caso di **due nostri ordini vivi sullo stesso lato** (durante un
+   ripristino di gamba), dove il più lontano dal mid verrebbe contato come altrui — cioè l'errore cade
+   nella direzione che rassicura. Chiuderlo vorrebbe dire scrivere i nostri ordini nella riga, e
+   agent34 è il processo **senza credenziali**: è una scelta di superficie. Dettaglio in `APERTI.md` §7. ⚠ Costo: la riga quasi raddoppia (~148 →
    ~285 MB/g su 90 mercati, ~4 GB sui 14 giorni di ritenzione, 9,2 GB liberi). La leva è
    `MID_HISTORY_RETENTION_DAYS`, **non** l'intervallo: 75 s è già ciò che limita la misura.
    **⚠ ALTRI DUE LIMITI**: il feed campiona ogni **75,0 s** (non ~115) contro i 5-10 s di agent40,
@@ -1430,20 +1441,34 @@ resta una riga nel registro di §5-bis.
    scoordinato **non può** farli divergere. Il prezzo: per cambiarlo si tocca `distanza-obiettivo.js` e si
    riavviano **entrambi**. Volendolo per-processo, va aggiunto **a tutti e due insieme**.
 35. **🟡 LA ROTAZIONE TOGLIE IL TETTO SUL NUMERO DI MERCATI ESPOSTI (16 agosto 2026, per decisione).**
-   §4.13: tre quotano, N completano. Restano il tetto per mercato ($61,25), `maxOpenNotionalUsd` ($150) e il
-   kill a $100/giorno. **Non è misurato quanti mercati possano stare in gestione insieme** su book veri:
+   §4.13: tre quotano, N completano. Restano il tetto per mercato ($61,25), `maxOpenNotionalUsd`
+   (**$650** dal 18 agosto, era $150) e il kill a $100/giorno. **Non è misurato quanti mercati possano stare in gestione insieme** su book veri:
    §5-bis p.162 dà il 32,1% dei fill chiusi in 28,6 min mediani, ma su altri wallet. **Da guardare al primo
    giro vivo prima di alzare il cap.**
 36. **🟡 `npm run build` FALLISCE: manca `lucide-react`, causa preesistente (16 agosto 2026).**
    `app/components/ui/Redacted.tsx` lo importa e non è in `package.json`: caduto con la riduzione. Il build
    stampa `✓ Compiled successfully` e muore **dopo**, nel type-check — tutto il JS compila. **Non
    installato**: è una decisione, e il `dashboard` non è nella flotta. Al suo posto: suite e selfcheck.
-37. **🟡 TRE TEST SONO ROSSI PERCHÉ $150 STA SOTTO `3 × TETTO PER MERCATO` — voluto, 16 agosto 2026.**
-   `maxOpenNotionalUsd` $150 contro `3 × $61,25 = $183,75` rende **false** un'invariante difesa da
-   `sette-punti` (una **fotografia del valore**, §5.3), `tetti-per-giro-e-scope` e
-   `tetto-derivato-dallo-scaglione`. Gli ultimi due difendono una **proprietà vera** che l'operatore ha
-   deciso di non volere più. **NON ammorbiditi**: cambiarli richiede decidere quale invariante è ora quella
-   giusta, ed è una decisione di rischio. Il piano di prova gira lo stesso ($147 su tre mercati).
+37. **✅ CHIUSA IL 19 AGOSTO — I TRE TEST AVEVANO RAGIONE SULLA RELAZIONE E TORTO SULLA GRANDEZZA.**
+   Difendevano `maxOpenNotionalUsd ≤ N × tetto per mercato`, «o non morderebbe mai». Ma il gate somma
+   `openNotionalUsd + notional` **anche sugli ordini di apertura**, e `openNotionalUsd` conta i **fill
+   riconciliati**: lo stato peggiore che il bot attraversa lavorando non è «N mercati pieni», è **N
+   coppie a riposo PIÙ il loro completamento**. A N=5: $306,25 + $306,25 = **$612,50**, contro un cap
+   di **$650**. Invariante riscritta su quella grandezza; **il cap resta $650** (decisione
+   dell'operatore).
+   **⚠ NON SI SCENDE A $306**: sarebbe l'errore del 16 agosto rifatto — allora il cap fu portato a $150
+   contro 3 × $61,25 «per farlo mordere», e il tetto **murò la gestione a metà strada**, rifiutando il
+   BUY che completa la coppia e la SELL che liquida la gamba nuda (§5-bis p.168). Un tetto che impedisce
+   di CHIUDERE non è un limite di rischio, è un rischio. **Il freno resta il kill a −$100.**
+   **⚠ UNA SOLA DEFINIZIONE**: `concentration.esposizioneMassimaRaggiungibileUsd(N)`, importata dai
+   quattro chiamanti. `null` su N non leggibile — mai uno zero, che renderebbe l'invariante vera per
+   qualunque cap. Verificato che morda: verde a $650 e $612,50, **rossa a $612,49, $400 e $306,25**, e
+   rossa se N non si legge.
+   **⚠ E `limiti-versionati` ⑥ CONTAVA SOLO IL RIPOSO**: relazione giusta, metà della grandezza.
+   **⚠ `sette-punti` NON fotografa più il valore**: quel mestiere ce l'ha `limiti-versionati.test.js`,
+   che confronta il versionato col disco chiave per chiave — una difesa che non vive nella memoria di
+   chi ha scritto il numero. Due copie significavano solo che una sarebbe invecchiata, ed era
+   invecchiata a $150 per un giorno.
 22. **🟡 IL PIANO SI SVUOTA, E LA CAUSA NON È IL FILTRO DI PROFONDITÀ** (13 agosto 2026). Il cancello che
    decide è `pavimentoPremiante(minSize) > tetto per mercato`: 56 mercati su 102 contro i 5 della
    profondità. ⚠ Rimisurato il 17/08 a $147 (`cancello-a-capitale-piccolo.js`): **40 righe candidabili** su
@@ -1480,17 +1505,14 @@ resta una riga nel registro di §5-bis.
 11. **I ROSSI NOTI RUOTANO NEI NOMI, NON NEL CONTEGGIO.** Chi confronta confronti i **NOMI** (§5-bis
    p.134): cambiano da soli col board, e un membro nuovo non è una regressione — ma va verificato che il
    rosso non tocchi il codice modificato. **Non parte**: `leg-order` (test JS su moduli TypeScript).
-   **Rossi: 5 su 229, verificati il 19/08 su albero COMMITTATO** (erano 12 la mattina del 19, e 10 il
+   **Rossi: 2 su 229, verificati il 19/08 su albero COMMITTATO** (erano 12 la mattina del 19, e 10 il
    17/08 su 209 test — l'elenco di allora non vale piu': `dipendenze-collegate`, `scaduto-senza-rinnovo`,
    `scadenza-ereditata`, `end-of-scale-cycle`, `tetto-e-scoperta`, `cancellazione-riconosciuta` sono
-   verdi). Restano **due famiglie sole, entrambe deliberate**:
-   · **tetto di esposizione** — `sette-punti` (una riga sola: il letterale $150 contro i $650 decisi il
-     18/08), `tetti-per-giro-e-scope`, `tetto-derivato-dallo-scaglione`: **$650 contro 5 × $61,25 =
-     $306,25** (§5.2 p.37). Difendono una proprietà vera che l'operatore ha deciso di non volere più;
-     cambiarli vuol dire decidere quale invariante sia ora quella giusta — o scende il cap, o
-     l'invariante si riscrive su un'altra grandezza. **Decisione di rischio, non riscrittura.**
-   · **dati vivi** — `categoria-mercato` (12,0% non classificato contro un limite del 2%) e
-     `velocita-mercato` (mediana del board 15,2%): ruotano col board, non col codice.
+   verdi). Restano **i due che dipendono dai DATI VIVI**, non dal codice:
+   `categoria-mercato` (12,0% non classificato contro un limite del 2%) e `velocita-mercato` (mediana
+   del board 15,2%) — **ruotano col board**, e vanno riletti come misura, non come regressione.
+   ⚠ **I tre del tetto di esposizione sono CHIUSI il 19/08** (§5.2 p.37): l'invariante è stata riscritta
+   sulla grandezza giusta — `cap ≥ riposo + completamento` — non ammorbidita, e il cap resta $650.
    ⚠ **Gli 8 rossi di `c919981` sono stati RISCRITTI, non ammorbiditi** (19/08): le loro fixture non
    portavano l'età del book, quindi ricevevano `skip/book-non-databile` e non arrivavano al codice che
    provavano. Fixture con book **databile** + un blocco per file che **difende il gate sul proprio

@@ -13,7 +13,7 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 | **cinture** | **1/4 inserite** su agent41, **2/4** su agent40 — lette da `/proc/<pid>/environ` (§10) |
 | **regole concordate** | **10 su 10 in servizio** (§0), **10 su 10 verificate dal banco** |
 | **passi del giro completo** | **26 su 26**, 0 rossi — identico al controllo su HEAD nello stesso worktree |
-| **suite** | **229 test · 223 verdi · 5 ROSSI · 1 non parte** (19/08, albero committato). I 5 sono due famiglie deliberate: **tetto di esposizione** ($650 contro 5 × $61,25) e **dati vivi** (board). Gli 8 rossi di `c919981` sono stati **riscritti sul gate `book-non-databile`**, non ammorbiditi |
+| **suite** | **229 test · 225 verdi · 2 ROSSI · 1 non parte** (19/08, albero committato; erano 12 la mattina). I 2 dipendono dai **dati vivi** (board), non dal codice. Gli 8 di `c919981` sono stati riscritti sul gate `book-non-databile`; i 3 del tetto di esposizione sull'invariante giusta — **`cap ≥ riposo + completamento`**, cap fermo a $650 |
 | **regole che scattano** | **20 statiche + 15 dinamiche su 91**, col cablaggio di produzione |
 | **quanti mercati** | **1**, da `MAKER_MERCATI_CONTEMPORANEI` nell'ambiente di agent41 — ⚠ ma il **perimetro è 2** e si consuma da solo (§10) |
 | **bot** | **UNA CINTURA SOLA**: le due di armamento sono APERTE su istruzione dell'operatore, resta `MANUAL_ORDER_PLACEMENT` (`dry-run` su agent40, **assente** su agent41) · perno vuoto · **zero ordini a libro** · gli ordini si costruiscono, si **firmano** e si fermano un istante prima dell'invio (§10) |
@@ -223,8 +223,9 @@ l'esposizione di un singolo invio.
 
 **(c) DUE mercati** — impiegato **$122,50**, fermo **$24,50 = 16,7%**. Residuo irraggiungibile peggiore
 **TOTALE $90,48**: è per-mercato per costruzione, quindi due mercati aperti sono **due** residui
-possibili. Il tetto sull'esposizione aperta resta **$150** (conta i fill riconciliati, non gli ordini a
-riposo) — cioè con due mercati pieni il margine sul cap è $27,50.
+possibili. ⚠ **Il tetto sull'esposizione aperta era $150 quando questa misura è stata scritta; dal 18
+agosto è $650** (conta i fill riconciliati, non gli ordini a riposo). Il margine che questa riga
+calcolava — $27,50 con due mercati pieni — è storia: a $650 il tetto non morde in questo scenario.
 
 ---
 
@@ -283,7 +284,7 @@ nell'ecosystem e riavviare dal file.
 |---|---|---|---|
 | 1 | ~~**la metà di R6 che morderebbe davvero**~~ — **CHIUSA**: si compra l'altro lato anche oltre 101¢, coi due tetti **in dollari** decisi dall'operatore — mai più del valore della posizione, e mai più di $5. Se nessuno dei due basta, si dichiara e si aspetta la risoluzione | — | — |
 | 2 | ~~**`tre-fix-sicurezza` scade**~~ — **CHIUSO**: limite alzato a 120 s per decisione dell'operatore. Misura 75,75 s e sotto carico concorrente può ancora scadere | — | — |
-| 3 | ~~**i tre rossi voluti di §5.2 p.37**~~ — **CHIUSI**: l'invariante è `capitale impegnato ≤ N × $61,25`, con N dall'ambiente. Le asserzioni erano rovesciate | — | — |
+| 3 | ~~**i tre rossi voluti di §5.2 p.37**~~ — **CHIUSI il 19 agosto, e la chiusura del 18 era sbagliata**: l'invariante scritta allora (`capitale impegnato ≤ N × $61,25`) aveva la relazione giusta e la **grandezza sbagliata**, e infatti i tre sono tornati rossi col cap a $650. La grandezza vera è l'**esposizione massima raggiungibile** — N coppie a riposo **più il loro completamento**, $612,50 a N=5 — perché il gate somma `openNotionalUsd + notional` anche sugli ordini di apertura. Una definizione sola: `concentration.esposizioneMassimaRaggiungibileUsd`. **Cap fermo a $650**: scendere a $306 rifarebbe l'errore del 16 agosto | — | — |
 | 4 | **`pm2 startup` non fatto** | richiede root, `sudo` chiede la password. Al suo posto una riga `@reboot … pm2 resurrect` nella crontab di `bot` | esegui il comando in CLAUDE.md §5.1, poi **togli la riga di cron** — due meccanismi che riaccendono la stessa flotta sono peggio di uno |
 | 5 | **`git push` bloccato — 105 commit locali** | remote HTTPS, nessuna credenziale. I comandi per la chiave SSH sono stati dati; `~/.ssh` non esiste ancora | esegui i sei passi della chiave SSH |
 
@@ -293,11 +294,45 @@ nell'ecosystem e riavviare dal file.
 |---|---|---|
 | 6 | **la sentinella vede il vuoto, non il collasso** | il ramo ③ azzera l'orologio se `ordiniARiposo > 0`: un calo da 23 ordini a 2 è invisibile. La cura è un secondo criterio (calo relativo su finestra) e va tarato su quanto oscilla normalmente il numero di ordini — misura che oggi non esiste |
 | 7 | **R4: sul lato misurabile nessun crollo, sul lato che si è riempito NON SI SA** — misurato il 19 agosto sui book del 18 (`data/ricerca/erosione-18-agosto.md`) | Sulle **vite reali** dei 47 ordini misurabili: a **40% zero scatti e zero letture sotto soglia**, minimo di giornata **58,9%** della baseline. Il fill del 23:17:21 è venuto **dal mid** (profondità piatta a 260 share fino a −2 s, poi +8¢ in un intervallo). ⚠ Il feed campiona ogni **75,0 s** contro i 5-10 s di agent40 ⇒ un crollo più breve di **150 s** è invisibile, i numeri sono un **limite inferiore**; e le **20 gambe sul book NO non hanno dati**, compresa quella riempita. **Soglia non toccata** |
+| 7-bis | **⚠ NON SAPPIAMO SE LA CODA DAVANTI ALLA GAMBA NO SI È ASSOTTIGLIATA FRA LE 23:02 E LE 23:17 del 18 agosto** — ed è la domanda che deciderebbe se R4 serve | Alle 23:17:11 il nostro bid NO era a **72¢ col miglior bid altrui a 63¢**: davanti a noi non c'era **nessuno**, quindi lì R4 non poteva scattare a nessuna soglia (`zoneDepth` su zona vuota non riscalda mai la baseline — «è voluto»). Ma **come** ci siamo ritrovati soli non si sa: fra le 23:02 e le 23:17 **non esiste un solo record col bid altrui**, e se la coda si è assottigliata in quei quindici minuti **quella era esattamente l'erosione che R4 esiste per cogliere**. Non è recuperabile: `mid-history` allora registrava un book solo. **Rifacibile al prossimo fill, non su questo** |
 | 8 | **il book è troncato a 3 livelli** | la profondità davanti è una sottostima, e la baseline pure. Il *rapporto* fra le due — che è ciò che decide — è meno distorto, ma non esente. È anche la ragione per cui «è sparito un livello» è stato buttato |
 | 9 | **la rotazione toglie il tetto sul numero di mercati esposti** | tre quotano, N completano. Non è misurato quanti possano stare in gestione insieme su book veri |
 | 10 | **la cadenza adattativa è sotto-risolta** | agent40 classifica il 99,6% «lenta» mentre `leggiFinestraTutti` vede `rangeMid = 0` sul 48,8%: il conto non torna. Non è la leva |
 | 11 | **che il residuo NASCA** | la via d'uscita esiste (riscatto on-chain, nessun minimo). Resta a monte: le leve sono size e profondità, non un meccanismo nuovo |
 | 12 | **`npm run build` fallisce** | manca `lucide-react`, causa preesistente. Il JS compila, muore nel type-check. Il `dashboard` non è nella flotta ⇒ non serve a nessun processo vivo |
+
+> ### 🔭 DA QUI IN AVANTI QUELLA FINESTRA SAREBBE COPERTA? — sì per R4, no per «il bid altrui»
+> Risposta al 19 agosto, dopo il riavvio di agent34 (verificato sulle righe vive: 244 righe col campo
+> `no`, **190 con i livelli su entrambi i lati**).
+>
+> **✅ COPERTO — la serie che serve a R4.** Ogni riga porta ora il book NO completo, livelli compresi,
+> quindi `book-erosion.zoneDepth` è calcolabile sulla gamba NO esattamente come sulla YES. La misura
+> del 18 agosto, rifatta su una giornata futura, **non avrebbe più il buco che ha adesso**.
+>
+> **❌ NON COPERTO — «miglior bid altrui» NON è una serie separata, e non lo diventa.** `mid-history`
+> registra il book **grezzo del venue**, che **include i nostri ordini**: per separare «altrui» da
+> «nostro» servirebbe sapere quali ordini erano nostri a quell'istante, e la riga non lo dice. Oggi
+> quel numero si trova solo nei record `auto-reprice`, e solo quando il gate «mai primo» lo cita
+> **dentro il testo del motivo** — cioè per caso, non per costruzione.
+>
+> **⚠ MA PER R4 NON SERVE, ed è la parte che va capita per non aggiungere un dato inutile:**
+> `zoneDepth` salta per costruzione il proprio livello e tutto ciò che sta sotto
+> (`if (price <= orderPrice + EPS) continue`), quindi **la profondità davanti è già «altrui»** senza
+> bisogno di sottrarre niente. Il «miglior bid altrui» servirebbe a una domanda diversa — *eravamo noi
+> in cima?* — che si ricava lo stesso confrontando `bestBid` della riga col nostro prezzo, preso dal
+> giornale.
+>
+> **⚠ DUE COSE RESTANO NON RISPONDIBILI, e vanno sapute prima di fidarsi della prossima misura:**
+> ① **quanto del libro era nostro** — non separabile dalla sola riga;
+> ② **due nostri ordini vivi sullo stesso lato a prezzi diversi** (può capitare durante un ripristino
+> di gamba): quello più lontano dal mid verrebbe contato come profondità **altrui**, cioè la misura
+> sbaglierebbe nella direzione che rassicura. Chiuderlo vorrebbe dire scrivere i nostri ordini nella
+> riga, e agent34 è il processo che **non ha credenziali**: è una scelta di superficie, non un dettaglio.
+>
+> **⚠ E LA CADENZA NON È CAMBIATA: 75,0 s.** La finestra 23:02–23:17 sono 15 minuti, cioè ~12 campioni:
+> abbastanza per vedere un assottigliamento **graduale**, non uno più breve di **150 s** (la conferma a
+> due letture). La leva sarebbe `MID_HISTORY_INTERVAL_MS`, e costa disco — che il secondo book ha già
+> quasi raddoppiato (~148 → ~285 MB/giorno).
 
 ---
 
