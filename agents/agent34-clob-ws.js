@@ -1054,52 +1054,96 @@ function inBandDepth(bids, asks, adjMid, bandRadiusC, minSize) {
 // Append one row per market from IN-MEMORY book state only. A value not genuinely known at sample time
 // is null (never a fallback, never a silent carry). src distinguishes a book that got a fresh ws event
 // within the sampling interval ("ws") from one carried forward from an older event ("stale").
-function sampleMidHistory() {
-  const now = Date.now();
+// ── LA FOTOGRAFIA DI UN BOOK ─────────────────────────────────────────────────────────────────────
+// Estratta da `sampleMidHistory` il 19 agosto 2026 per poterla chiamare DUE volte: una per il token
+// YES e una per il NO. Il corpo e' identico a prima, riga per riga — l'unica cosa che cambia e' che
+// adesso l'asset e' un parametro invece di essere `meta.tokenId` cablato.
+function fotografaBook(assetId, meta, now, deps = {}) {
+  // `deps.store` esiste per il test: un banco puo' guidare la funzione con due book DIVERSI sui due
+  // asset e verificare che non si confondano. In produzione nessuno lo passa.
+  const st = deps.store || store;
+  const fr = st.freshness(assetId, STALE_MS, now);
+  const b = st.getBook(assetId);
+  let bestBid = null, bestAsk = null, plainMid = null, adjMid = null;
+  let bidDepthInBand = null, askDepthInBand = null, bandLow = null, bandHigh = null;
+  let levels = null; // per-layer in-band depth; null when there is no band to place layers within
+  if (b) {
+    const bids = parseOrders(b.bids, true);
+    const asks = parseOrders(b.asks, false);
+    bestBid = bids[0] ? bids[0].price : null;
+    bestAsk = asks[0] ? asks[0].price : null;
+    plainMid = (bestBid != null && bestAsk != null) ? Math.round(((bestBid + bestAsk) / 2) * 1e6) / 1e6 : null;
+    const am = adjustedMid(bids, asks, sizeCutoff(meta.minSize), null);
+    adjMid = am != null ? Math.round(am * 1e6) / 1e6 : null;
+    const bandRadiusC = meta.maxSpread != null ? raggioBandaCents(meta.maxSpread) : null;
+    const d = inBandDepth(bids, asks, adjMid, bandRadiusC, meta.minSize);
+    bidDepthInBand = d.bidDepthInBand; askDepthInBand = d.askDepthInBand;
+    bandLow = d.bandLow; bandHigh = d.bandHigh;
+    // Per-level qualifying depth at each reward layer (lib/reward-layers geometry). Same size-cutoff
+    // as the aggregate above. Kept alongside the aggregate fields, never replacing them. Each level
+    // keeps its index; a side whose depth cannot be read is null there, never 0, never dropped.
+    levels = (bandLow != null && bandHigh != null && meta.tick != null)
+      ? levelsInBand(bids, asks, bandLow, bandHigh, meta.tick, meta.minSize)
+      : null;
+  }
+  // "ws" only when the book got a fresh event within the sampling interval; otherwise the values are a
+  // carried-forward book (or none) → "stale", exactly what the flag is for.
+  const src = (b && fr.ageMs != null && fr.ageMs <= MID_HISTORY_INTERVAL_MS) ? 'ws' : 'stale';
+  return { adjMid, plainMid, bestBid, bestAsk, bidDepthInBand, askDepthInBand, bandLow, bandHigh, levels, src };
+}
+
+// ══ IL BOOK «NO» SI SCRIVE, E FINO AL 19 AGOSTO 2026 NON SI SCRIVEVA ═══════════════════════════════
+// Il lato NO e' un CLOB INDIPENDENTE, non lo specchio del lato YES: le due scale hanno prezzi, size e
+// concorrenti diversi, e il bot ci quota sopra una gamba per ciascuno. `reconcileSubscriptions` lo
+// sottoscrive da sempre (`nextAssets.set(meta.tokenIdNo, …, side: 'no')`) e lo store lo tiene — era
+// SOLO QUESTO SCRITTORE a buttarlo via, guardando `meta.tokenId` e nient'altro.
+//
+// ⚠ COSA E' COSTATO. Il 19 agosto, misurando perche' R4 (erosione della profondita' davanti) non fosse
+// mai scattata, il fill del 18 agosto e' risultato NON MISURABILE: era avvenuto sulla gamba NO, e di
+// quel book non esiste una riga su disco. La conclusione «la profondita' non e' crollata» era provata
+// sul lato sbagliato. Il dato passava dal processo ogni pochi secondi e nessuno lo salvava: e' la
+// forma peggiore di «calcolato e mai letto», perche' non lascia nemmeno un buco visibile.
+//
+// LA FORMA E' ADDITIVA, DI PROPOSITO. I campi di primo livello restano ESATTAMENTE quelli di prima e
+// continuano a descrivere il book YES: `lib/mid-history-coverage`, `lib/reward-layered-history`,
+// `lib/rewards/velocita-mercato`, `lib/maker/offset-config` e `allocator` li leggono cosi' e non
+// vanno toccati. Il NO arriva in un oggetto `no: {…}` accanto, piu' `tokenIdNo`. Una riga vecchia
+// senza `no` resta leggibile: chi lo cerca trova `undefined`, che e' «non lo so» — non uno zero.
+//
+// ⚠ IL COSTO E' IL DISCO, e va detto: la riga quasi raddoppia. Misurato prima: ~148 MB/giorno su 90
+// mercati, cioe' ~2,1 GB sui 14 giorni di ritenzione. La leva, se stringe, e'
+// MID_HISTORY_RETENTION_DAYS — NON l'intervallo di campionamento: 75 s e' gia' il fattore che limita
+// la misura dell'erosione (serve un crollo lungo ≥150 s per essere visto), e allargarlo peggiorerebbe
+// proprio la cosa per cui questo book si sta salvando.
+function sampleMidHistory(deps = {}) {
+  // Le tre dipendenze iniettabili servono al test a guidare lo scrittore VERO — quello che gira in
+  // produzione — invece di riscriverne una copia: e' la differenza fra provare la decisione e provare
+  // il cablaggio (§5-bis p.181).
+  const mercati = deps.desired || desired;
+  const now = deps.now != null ? deps.now : Date.now();
   const iso = new Date(now).toISOString();
   let stream;
-  try { stream = midHistoryStreamFor(now); } catch (e) { log('mid-history: stream open failed:', e.message); return; }
+  if (deps.stream) { stream = deps.stream; }
+  else { try { stream = midHistoryStreamFor(now); } catch (e) { log('mid-history: stream open failed:', e.message); return; } }
   let batch = '';
   let n = 0;
-  for (const meta of desired.values()) {
-    const assetId = meta.tokenId;
-    const fr = store.freshness(assetId, STALE_MS, now);
-    const b = store.getBook(assetId);
-    let bestBid = null, bestAsk = null, plainMid = null, adjMid = null;
-    let bidDepthInBand = null, askDepthInBand = null, bandLow = null, bandHigh = null;
-    let levels = null; // per-layer in-band depth; null when there is no band to place layers within
-    if (b) {
-      const bids = parseOrders(b.bids, true);
-      const asks = parseOrders(b.asks, false);
-      bestBid = bids[0] ? bids[0].price : null;
-      bestAsk = asks[0] ? asks[0].price : null;
-      plainMid = (bestBid != null && bestAsk != null) ? Math.round(((bestBid + bestAsk) / 2) * 1e6) / 1e6 : null;
-      const am = adjustedMid(bids, asks, sizeCutoff(meta.minSize), null);
-      adjMid = am != null ? Math.round(am * 1e6) / 1e6 : null;
-      const bandRadiusC = meta.maxSpread != null ? raggioBandaCents(meta.maxSpread) : null;
-      const d = inBandDepth(bids, asks, adjMid, bandRadiusC, meta.minSize);
-      bidDepthInBand = d.bidDepthInBand; askDepthInBand = d.askDepthInBand;
-      bandLow = d.bandLow; bandHigh = d.bandHigh;
-      // Per-level qualifying depth at each reward layer (lib/reward-layers geometry). Same size-cutoff
-      // as the aggregate above. Kept alongside the aggregate fields, never replacing them. Each level
-      // keeps its index; a side whose depth cannot be read is null there, never 0, never dropped.
-      levels = (bandLow != null && bandHigh != null && meta.tick != null)
-        ? levelsInBand(bids, asks, bandLow, bandHigh, meta.tick, meta.minSize)
-        : null;
-    }
-    // "ws" only when the book got a fresh event within the sampling interval; otherwise the values are a
-    // carried-forward book (or none) → "stale", exactly what the flag is for.
-    const src = (b && fr.ageMs != null && fr.ageMs <= MID_HISTORY_INTERVAL_MS) ? 'ws' : 'stale';
+  for (const meta of mercati.values()) {
+    const y = fotografaBook(meta.tokenId, meta, now, deps);
+    // `tokenIdNo` assente ⇒ `no: null`, che dice «questo mercato non ha un secondo book leggibile»,
+    // e si distingue da un `no` con tutti i campi a null, che dice «il book c'e' ma non l'ho letto».
+    const nBook = meta.tokenIdNo ? fotografaBook(meta.tokenIdNo, meta, now, deps) : null;
     batch += JSON.stringify({
       ts: iso,
       marketId: meta.conditionId,
       tokenIdYes: meta.tokenId,
-      adjMid, plainMid, bestBid, bestAsk,
-      bidDepthInBand, askDepthInBand,
-      bandLow, bandHigh,
+      tokenIdNo: meta.tokenIdNo || null,
+      adjMid: y.adjMid, plainMid: y.plainMid, bestBid: y.bestBid, bestAsk: y.bestAsk,
+      bidDepthInBand: y.bidDepthInBand, askDepthInBand: y.askDepthInBand,
+      bandLow: y.bandLow, bandHigh: y.bandHigh,
       tick: meta.tick != null ? meta.tick : null,
-      levels,
-      src,
+      levels: y.levels,
+      src: y.src,
+      no: nBook,
     }) + '\n';
     n++;
   }
@@ -1234,7 +1278,10 @@ module.exports = {
   readOperatorEnabledIds, operatorMarketMeta, unionOperatorMarkets, evictWeakestRewardMarket, sizeCutoff,
   // La corsia delle sottoscrizioni temporanee, esportata per la stessa ragione: il selfcheck la guida con
   // deps iniettate, senza rete e senza toccare data/.
-  unionLeaseMarkets, leaseLaneState: () => ({ dropped: [...leaseDropped], active: [...leaseActiveIds] }),
+  unionLeaseMarkets, leaseLaneState: () => ({ dropped: [...leaseDropped], active: [...leaseActiveIds],
+  // esportate per `mid-history-due-book.test.js`: il test guida lo scrittore vero.
+  fotografaBook, sampleMidHistory,
+}),
   unionTrackedMarkets, trackedLaneState: () => ({ dropped: [...trackedDropped], active: [...trackedActiveIds] }),
   unionPositionMarkets, positionLaneState: () => ({ dropped: [...positionDropped], active: [...positionActiveIds] }),
   unionPlanMarkets, planLaneState: () => ({ dropped: [...planDropped], active: [...planActiveIds], reason: planLaneReason }),

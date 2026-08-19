@@ -1382,18 +1382,33 @@ resta una riga nel registro di §5-bis.
    compri sopra il tetto della coppia, e inventarlo sarebbe un meccanismo nuovo su capitale reale. La
    metà implementata — vendere attraversando, anche sotto il minimo — copre il caso comune. **Serve una
    decisione**: quanto sopra 101¢ si può spendere, e con quale tetto in dollari.
-43. **🟡 R4 NON È MAI SCATTATA PERCHÉ LA PROFONDITÀ NON È MAI CROLLATA — misurato il 19 agosto.**
+43. **🟡 R4: SUL LATO MISURABILE NESSUN CROLLO, SUL LATO CHE SI È RIEMPITO NON SI SA — 19 agosto.**
    Replay sui book del 18 (`data/ricerca/erosione-18-agosto.md`, modulo VERO): sulle **vite reali** dei
    47 ordini misurabili, a **40% ZERO scatti e ZERO letture singole sotto soglia**; il minimo di tutta
    la giornata è **58,9%** della baseline. La soglia non è tarata male, è lontana dai dati. **Il fill
    del 23:17:21 è venuto dal MID**: profondità davanti piatta a 260 share fino a **−2 s**, poi il mid
    salta **+8¢ in un solo intervallo**; il crollo (−72%) arriva **dopo**. Prima soglia che produce
    qualcosa: **60%, 1 scatto in tutta la giornata**; a 80% sono 3.
-   **⚠ TRE LIMITI**: il feed campiona ogni **75,0 s** (non ~115) contro i 5-10 s di agent40, quindi un
-   crollo più breve di **150 s** è invisibile e i numeri sono un **limite inferiore** · `mid-history`
-   registra **un solo book per mercato** e le **20 gambe sul NO non hanno dati**, compresa quella che si
-   è riempita · **18 vite su 47 non riscaldano nemmeno la baseline**. **Non si tocca niente**: serve una
-   giornata con più fill e il feed del book NO.
+   **⚠ MA IL FILL ERA SULLA GAMBA NO, E `mid-history` REGISTRAVA UN SOLO BOOK PER MERCATO**: la
+   conclusione «nessun crollo» è provata sul **lato sbagliato**, e per le **20 gambe NO su 67** non
+   esiste una riga su disco. Cercate le altre fonti: tape (prezzi, non profondità), `auto-reprice`
+   (mid NO e miglior bid altrui a 5 s, ma `depthAheadUsd` è `null` in tutta la finestra), clob-audit,
+   osservatore — **nessuna ha la profondità**. Ciò che si ricava: alle 23:17:11 il nostro bid NO era a
+   72¢ col **miglior bid altrui a 63¢**, cioè **davanti a noi non c'era nessuno** ⇒ lì R4 non avrebbe
+   potuto scattare a nessuna soglia (`zoneDepth` su zona vuota non riscalda mai, «è voluto»). **Resta
+   aperto COME siamo rimasti soli**: fra 23:02 e 23:17 nessun record, e se la coda si è assottigliata
+   lì, quella era l'erosione.
+   **⚠ IL DATO C'ERA E LO SCRITTORE LO BUTTAVA**: `reconcileSubscriptions` sottoscrive il token NO da
+   sempre (agent34:705, `side:'no'`); era `sampleMidHistory` a guardare solo `meta.tokenId`.
+   **Corretto il 19 agosto**: ogni riga porta ora `no: {…}` col book completo, livelli compresi, e i
+   campi di primo livello restano intatti per i cinque lettori esistenti
+   (`lib/mid-history-due-book.test.js`, 33/33, rosso sul sorgente di ieri). **⚠ Vale dal riavvio di
+   agent34 in avanti: il 18 agosto non si recupera.** ⚠ Costo: la riga quasi raddoppia (~148 →
+   ~285 MB/g su 90 mercati, ~4 GB sui 14 giorni di ritenzione, 9,2 GB liberi). La leva è
+   `MID_HISTORY_RETENTION_DAYS`, **non** l'intervallo: 75 s è già ciò che limita la misura.
+   **⚠ ALTRI DUE LIMITI**: il feed campiona ogni **75,0 s** (non ~115) contro i 5-10 s di agent40,
+   quindi un crollo più breve di **150 s** è invisibile e i numeri sono un **limite inferiore** ·
+   **18 vite su 47 non riscaldano nemmeno la baseline**. **Nessuna soglia toccata.**
 42. **🟡 `tre-fix-sicurezza.test.js` SCADE, NON FALLISCE — 17 agosto 2026.** 48-50 s contro il limite di
    60 s di `suite-rossi.js:25`: entra ed esce dai rossi col carico della macchina (49,98 → 48,42 s prima e
    dopo le modifiche del 17, quindi non è una regressione). **Un test che scade è indistinguibile da un test
