@@ -13,7 +13,7 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 | **cinture** | **1/4 inserite** su agent41, **2/4** su agent40 — lette da `/proc/<pid>/environ` (§10) |
 | **regole concordate** | **10 su 10 in servizio** (§0), **10 su 10 verificate dal banco** |
 | **passi del giro completo** | **26 su 26**, 0 rossi — identico al controllo su HEAD nello stesso worktree |
-| **suite** | **229 test · 225 verdi · 2 ROSSI · 1 non parte** (19/08, albero committato; erano 12 la mattina). I 2 dipendono dai **dati vivi** (board), non dal codice. Gli 8 di `c919981` sono stati riscritti sul gate `book-non-databile`; i 3 del tetto di esposizione sull'invariante giusta — **`cap ≥ riposo + completamento`**, cap fermo a $650 |
+| **suite** | **229 test · 226 verdi · 2 ROSSI · 1 non parte** (19/08, albero committato, misurato; erano 12 la mattina). I 2 dipendono dai **dati vivi** (board), non dal codice. Gli 8 di `c919981` sono stati riscritti sul gate `book-non-databile`; i 3 del tetto di esposizione sull'invariante giusta — **`cap ≥ riposo + completamento`**, cap fermo a $650 |
 | **regole che scattano** | **20 statiche + 15 dinamiche su 91**, col cablaggio di produzione |
 | **quanti mercati** | **1**, da `MAKER_MERCATI_CONTEMPORANEI` nell'ambiente di agent41 — ⚠ ma il **perimetro è 2** e si consuma da solo (§10) |
 | **bot** | **UNA CINTURA SOLA**: le due di armamento sono APERTE su istruzione dell'operatore, resta `MANUAL_ORDER_PLACEMENT` (`dry-run` su agent40, **assente** su agent41) · perno vuoto · **zero ordini a libro** · gli ordini si costruiscono, si **firmano** e si fermano un istante prima dell'invio (§10) |
