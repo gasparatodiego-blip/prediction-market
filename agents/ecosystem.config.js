@@ -664,7 +664,7 @@ module.exports = {
         // ripiazzamento puo' diventare un doppione.
         // PER RIAPRIRE servono due cose verdi: letture del venue sane, e `cancel-all` che dichiari il
         // fallimento invece di rispondere `cancelled: 0` come se avesse finito.
-        MANUAL_ORDER_PLACEMENT: 'dry-run',
+        MANUAL_ORDER_PLACEMENT: 'send',   // ⚠ RIAPERTO il 19 agosto 2026, secondo passo: dieci minuti su agent40 in `send` con 846 letture / 0 errori, zero reject-venue sulle cancellazioni, guardiano pulito.
 
         // COME SI DISARMA TUTTO: si cancellano queste righe (e quelle di agent40) e si riavvia dal
         // file. Ogni assenza e' fail-closed per costruzione.
