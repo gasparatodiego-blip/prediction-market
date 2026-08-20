@@ -577,7 +577,6 @@ module.exports = {
         //
         // PER RIARMARLA: si cancella questa riga e si riavvia agent41 DAL FILE
         //   pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler
-        SLOT_STERILE_ARMATO: '0',
 
         // ══ LA MANOPOLA DELLA DISTANZA NELLA BANDA: 0,444 — TEST DELL'OPERATORE, 13/08/2026 ════════
         // Frazione della SEMIAMPIEZZA `v` della banda premiante (`lib/maker/distanza-obiettivo.js`).

@@ -2346,3 +2346,73 @@ percorso di chiusura che passa da `piazzaChiudendo` e **non riceve la deroga**. 
 enumerato tre gradini e questo non è fra loro, quindi resta com'è. Se in futuro si volesse estendere,
 la domanda da porsi è la stessa del gradino 2: la sua gamba `limit` **sta a libro** in attesa, quindi
 meriterebbe lo scoping condizionale, non quello incondizionato.
+
+---
+
+## 30 · 🔁 SLOT_STERILE RIARMATO — N=22, M=180, tetto 5/ora — 20 agosto 2026
+
+### ⚠ Supera una decisione registrata, e va detto per intero
+
+La regola fu **DISARMATA il 18 agosto** (§4.13) perché a `OSSERVAZIONI = 2` (~2-4 min) buttava fuori
+mercati che andavano benissimo — cinque volte lo stesso. **Il riarmo è legittimo solo perché la soglia
+cambia, e la differenza è misurata**: a 4 minuti si uccidono **10 piazzamenti riusciti su 21 (48%)**;
+a 22 minuti scendono a **3 su 21 (14%)**. Non si riarma la stessa regola: si riarma una regola tarata.
+
+**⚠ E non è stata scritta una regola nuova.** Una seconda regola per la stessa decisione sarebbe
+l'antipattern che questo repo evita per principio (§2: *«due interruttori per una decisione sola
+significano che spegnerne uno non la spegne»*). Si è tarato e cablato quello che c'era.
+
+### ⓵ N = 22 minuti, dal vuoto fra due popolazioni
+
+Misura di stasera: 24 h, 1.439 campioni, 719 cicli, **43 episodi di occupazione**.
+
+| | n | valori |
+|---|---|---|
+| **A** · minuti dall'ingresso al **primo ordine**, di chi **ha** piazzato | 21 | 0,0 0,0 0,0 1,0 2,0×5 3,0 7,0 7,0 8,0 8,8 9,0 **11,0 11,0** · 33,0 · 102,1 · 119,1 |
+| **B** · minuti a zero ordini, di chi **non** ha **mai** piazzato | 22 | 5,8 7,9 13,0 13,0 16,0 … mediana **58,0** … max **372,2** |
+
+Le due popolazioni **si sovrappongono**: non esiste una soglia senza costo. Ma in **A** c'è **un solo
+vuoto largo — fra 11,0 e 33,0 minuti** — e i tre oltre il vuoto sono un'altra popolazione. Si sceglie
+**dentro** il vuoto, al suo **punto medio**: `(11,0 + 33,0)/2 = 22`. È la stessa logica con cui l'85%
+del collasso di copertura fu scelto perché il divario era **vuoto** (§5-bis p.142).
+
+**A N=22: 86% dei piazzamenti riusciti preservati, 1.711 minuti morti recuperati su 2.140.**
+
+### ⓶ Intoccabili — regola 9, fail-closed
+
+`conPosizione` · `conOrdini` (**anche un solo ordine**) · `inGestione` (per costruzione fuori da
+`attivi`). **Nessuno di questi guarda il netto**, e non può: la funzione **non accetta affatto un
+netto**, quindi «−$99 contro +$50» non è nemmeno esprimibile. **Posizioni non leggibili ⇒ nessun
+rilascio**, e il motivo nomina la regola 9.
+
+**⚠ E la prima stesura del test era VERDE su una proprietà falsa.** Asseriva
+`dopo(999).azione === 'nessuna'`, ed era verde **anche togliendo la guardia**: dopo un rilascio il
+mercato entra in quarantena, quindi l'ultimo stato dice `nessuna` comunque. Verificato togliendo
+`conPosizione.has(id) continue`: **35/0**. Riscritta cercando un rilascio in **tutta la catena**, ora
+cade — **34/2** senza la guardia sulle posizioni, **35/1** senza quella sugli ordini.
+
+### ⓷ I tre freni
+
+| freno | valore | da dove |
+|---|---|---|
+| **quarantena M** | **180 min** | senza, `0x5e082f0b` sarebbe stato rilasciato **8 volte in 24 h**. Intervalli rilascio→rientro misurati: 18, 30, 34, 54, 100, 130, 352, 352 min. ⚠ **180 non spegne l'oscillazione, la riduce**: sopprime 6 rientri su 8. Per spegnerla servirebbero >352 min, cioè un bando |
+| **tetto orario** | **5** | i 20 rilasci/24 h danno media 0,83/ora e **massimo 4** in una finestra scorrevole di 60 min. Cinque è **uno sopra il picco misurato**: non morde mai su un'ora normale, ferma una tempesta. Finestra **scorrevole**, non ora solare — un ciclo impazzito a cavallo di due ore passerebbe due volte |
+| **cooldown 10 min** | invariato | vive nel trigger a capitale fermo, **fuori** da questa regola: la sostituzione non lo tocca e non lo aggira |
+
+**⚠ La quarantena entra nell'`escludi` della SELEZIONE**, non solo nel modulo: è l'unico posto in cui
+può davvero impedire il rientro. **Si unisce** alla quarantena del venue, non la sostituisce.
+
+### ⓸ Il giornale
+
+`slot-sterile / rilascio-dettaglio`: `minutiAZeroOrdini`, `netto`, `subentrato`, `nettoSubentrato`,
+**`rientroDelloStesso`** e **`utile`**. Un rilascio serve se al suo posto entra **qualcun altro**; se
+dopo la quarantena rientra lo **stesso** evento, non ha spostato niente — ha pagato il churn. Senza
+quel campo i due casi sono indistinguibili e la domanda «la regola è servita?» resta senza risposta.
+In attesa si scrivono separatamente **chi è fermo per quarantena** e **chi per il tetto**.
+
+### ⚠ La causa vera resta il bacino, non lo slot
+
+Ammissibili in 24 h: mediana **8**, p25 **7**, min **4**, e nel **25% dei cicli ≤ 6**. Con 4 slot il
+ricambio pesca fra **~4 alternative**, e `0x5e082f0b` è rientrato 7 volte con netto $0,02-0,03 perché
+**era ancora il migliore rimasto**. Questa regola contiene il sintomo; la cura è quante alternative il
+board offre. `MAKER_MERCATI_CONTEMPORANEI` resta **4** e il soffitto **5**, non toccati.

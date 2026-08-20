@@ -2344,7 +2344,22 @@ async function selezionaMercati(deps = {}) {
 
   const board = deps.leggiBoard ? deps.leggiBoard() : leggiBoardReward();
   const posizioni = deps.leggiPosizioni ? deps.leggiPosizioni() : posizioniPerSelezione();
-  const quarantena = (() => { try { return Object.keys(leggiQuarantena() || {}); } catch { return []; } })();
+  const quarantena = (() => {
+    let base = [];
+    try { base = Object.keys(leggiQuarantena() || {}); } catch { base = []; }
+    // ── ⚠ E LA QUARANTENA DELLO SLOT STERILE ENTRA QUI, O LA REGOLA NON ESISTE ──────────────────
+    // Rilasciare un mercato e lasciarlo rientrare al giro dopo non e' un rilascio: e' churn. Misurato
+    // stasera: senza quarantena `0x5e082f0b` sarebbe rientrato 8 volte su 8 rilasci. Il modulo tiene
+    // l'orologio (`statoLibroVuoto.quarantena`), qui si traduce in un'ESCLUSIONE dalla selezione —
+    // l'unico posto in cui puo' davvero impedire il rientro.
+    // ⚠ Si UNISCE, non si sostituisce: la quarantena del venue e questa sono due cause diverse dello
+    // stesso divieto, e sovrascriverne una cancellerebbe l'altra.
+    const ora = Date.now();
+    const sterili = Object.entries((statoLibroVuoto && statoLibroVuoto.quarantena) || {})
+      .filter(([, t]) => Number.isFinite(t) && (ora - t) < LVPP.QUARANTENA_MS)
+      .map(([id]) => id);
+    return [...new Set([...base, ...sterili])];
+  })();
 
   // ⚠ IL TETTO D'ORIZZONTE ARRIVA DA `horizon.js`, NON DA UNA COSTANTE RICOPIATA (15 agosto 2026).
   // `selezione-mercati` e' puro per costruzione (zero `require`, e un test lo pretende), quindi il
@@ -2668,7 +2683,10 @@ async function selezionaMercati(deps = {}) {
         return { piazzati: [], svuotati: [], leggibile: false, motivo: e && e.message ? e.message : String(e) };
       }
     })();
-    const v = LVPP.valuta({ attivi: attiviOra, ordini: conOrdiniVivi, stato: statoLibroVuoto, ora: Date.now(),
+    // ⚠ LE POSIZIONI SI PASSANO, ED E' LA REGOLA 9: senza, il modulo non puo' sapere chi ha una
+    // posizione aperta o una coppia incompleta, e la sua guardia fail-closed rifiuterebbe di
+    // rilasciare chiunque. Sono le STESSE che la selezione ha appena usato, non una seconda lettura.
+    const v = LVPP.valuta({ attivi: attiviOra, ordini: conOrdiniVivi, posizioni, stato: statoLibroVuoto, ora: Date.now(),
       svuotatiDaNoi: segnali.svuotati, piazzatiConSuccesso: segnali.piazzati });
     statoLibroVuoto = v.statoNuovo;
     // ── ⚠ L'INTERRUTTORE DI DISARMO — 18 agosto 2026, decisione dell'operatore ─────────────────────
@@ -2688,24 +2706,47 @@ async function selezionaMercati(deps = {}) {
       if (v.azione === 'rilascia') {
         annuncia('log', `SLOT STERILE (DISARMATO): avrei rilasciato ${v.daRilasciare.length} mercato/i — ${v.daRilasciare.map((x) => String(x.id).slice(0, 10) + '…').join(', ')}`);
         scrivi({ at: new Date().toISOString(), tipo: 'slot-sterile', esito: 'disarmato', disarmato: true,
-          avrebbeRilasciato: v.daRilasciare.map((x) => ({ id: x.id, osservazioni: x.osservazioni })),
+          avrebbeRilasciato: v.daRilasciare.map((x) => ({ id: x.id, minuti: x.minuti })),
           motivo: 'SLOT_STERILE_ARMATO=0: si registra e non si tocca', pid: process.pid });
       }
     } else if (v.azione === 'rilascia') {
       for (const x of v.daRilasciare) {
         const r = await rilasciaDallaSelezione({ marketId: x.id, motivo: x.motivo });
-        annuncia('log', `SLOT STERILE: ${String(x.id).slice(0, 10)}… occupava un posto da ${x.osservazioni} osservazioni senza ordini a libro — rilasciato`);
+        // ── ⚠ IL RILASCIO UTILE CONTRO QUELLO INUTILE ────────────────────────────────────────────
+        // Un rilascio serve se al suo posto entra QUALCUN ALTRO. Se dopo la quarantena rientra lo
+        // STESSO evento, quel rilascio non ha spostato niente: ha solo pagato il churn. Misurato
+        // stasera: `0x5e082f0b` sarebbe rientrato 8 volte su 8 rilasci a quarantena zero, e 2 volte
+        // su 8 a 180 minuti. Senza questo campo i due casi sono indistinguibili sul giornale, e la
+        // domanda «la regola e' servita?» resta senza risposta anche fra un mese.
+        const subentrato = (d.entranti || []).find((e) => String(e.id).trim().toLowerCase() !== String(x.id).trim().toLowerCase()) || null;
+        const rientroStesso = (d.entranti || []).some((e) => String(e.id).trim().toLowerCase() === String(x.id).trim().toLowerCase());
+        scrivi({ at: new Date().toISOString(), tipo: 'slot-sterile', esito: 'rilascio-dettaglio',
+          marketId: x.id, minutiAZeroOrdini: x.minuti,
+          netto: nettoPerMercato ? (nettoPerMercato[String(x.id).trim().toLowerCase()] ?? null) : null,
+          subentrato: subentrato ? subentrato.id : null,
+          nettoSubentrato: subentrato ? (subentrato.punteggio ?? null) : null,
+          rientroDelloStesso: rientroStesso,
+          utile: !!subentrato && !rientroStesso,
+          motivo: x.dettaglio, pid: process.pid });
+        annuncia('log', `SLOT STERILE: ${String(x.id).slice(0, 10)}… occupava un posto da ${x.minuti} min senza ordini a libro — rilasciato`
+          + (subentrato ? ` · subentra ${String(subentrato.id).slice(0, 10)}…` : ' · NESSUN subentrante')
+          + (rientroStesso ? ' · ⚠ RIENTRO DELLO STESSO: rilascio inutile' : ''));
         scrivi({ at: new Date().toISOString(), tipo: 'slot-sterile',
           esito: r && r.ok !== false ? 'rilasciato' : 'rilascio-fallito',
-          marketId: x.id, osservazioni: x.osservazioni, dettaglio: x.dettaglio,
+          marketId: x.id, minutiAZeroOrdini: x.minuti, dettaglio: x.dettaglio,
           segnaliLeggibili: segnali.leggibile, nonContate: v.nonContate || [],
           errore: r && r.ok === false ? (r.motivo || null) : null, pid: process.pid });
       }
-    } else if (Object.keys(v.conteggi || {}).length) {
-      // Si scrive anche l'ATTESA, o «non ha ancora due osservazioni» sarebbe indistinguibile da «non
-      // ho guardato» — che e' esattamente il silenzio costato quattro volte oggi.
+    } else if (Object.keys(v.zeroDa || {}).length || v.tettoRaggiunto || (v.bloccatiDaQuarantena || []).length) {
+      // Si scrive anche l'ATTESA, o «non ha ancora raggiunto i 22 minuti» sarebbe indistinguibile da
+      // «non ho guardato» — che e' esattamente il silenzio costato quattro volte oggi. E si scrivono
+      // separatamente i due freni: chi e' fermo per QUARANTENA e chi per il TETTO orario, perche' sono
+      // due cause diverse dello stesso «non ho rilasciato».
       scrivi({ at: new Date().toISOString(), tipo: 'slot-sterile', esito: 'in-attesa', motivo: v.motivo,
-        conteggi: v.conteggi, nonContate: v.nonContate || [], segnaliLeggibili: segnali.leggibile, pid: process.pid });
+        zeroDa: v.zeroDa, inQuarantena: v.inQuarantena || [], tettoRaggiunto: v.tettoRaggiunto === true,
+        troncatiDalTetto: (v.troncati || []).map((x) => x.id),
+        bloccatiDaQuarantena: (v.bloccatiDaQuarantena || []).map((x) => x.id),
+        nonContate: v.nonContate || [], segnaliLeggibili: segnali.leggibile, pid: process.pid });
     }
   } catch (e) {
     scrivi({ at: new Date().toISOString(), tipo: 'slot-sterile', esito: 'errore', motivo: e && e.message ? e.message : String(e), pid: process.pid });
