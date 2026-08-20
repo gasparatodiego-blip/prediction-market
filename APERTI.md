@@ -1746,3 +1746,50 @@ fotografa il codice invece della proprietà»: quarta occorrenza nel repo.**
 
 **Suite finale: 231 test · 225 verdi · 5 rossi · 1 non parte** — i cinque sono gli **stessi nomi** del
 commit precedente, tutti verificati rossi anche sull'albero committato.
+
+### Le verifiche dopo il riavvio — 20 agosto 2026, **11:34:09Z**
+
+Flotta riavviata dal file, **11/11 online**. Escluse le righe di fixture di `agent44` (`cid` a byte
+ripetuti e `0xababababab`), che il riavvio fa girare di nuovo fuori dal suo cron delle 03:07.
+
+| # | verifica | esito |
+|---|---|---|
+| **1** | `ignota` nell'adozione | **0** — si prosegue |
+| **3** | 🟢 **`reject-doppione-identico` nei 30 minuti** | **ZERO episodi, zero righe.** Al tasso di prima (18 episodi / 10,01 h = **1,80/ora**) se ne attendevano **~0,90**. Il difetto non si è più presentato |
+| **4** | capitale al lavoro | **7,2%** ($107,06 su $1.491,36), contro il **3,6%** di prima: **raddoppiato**. Tasso di premio da **$0,06/g a $5,67/g** |
+| **5** | `\|mid − prezzo\|` | sotto |
+| **6** | simmetria · tetto · onTop · reject-venue | size **56,7 su entrambe le gambe** di `0xcc9b67d438` e **56** su entrambe di `0xd4e77ba6` · massimi **$53,69** e **$53,37** contro $61,25, **zero sfondamenti** · **`onTop:true` = 0** · **`reject-venue` = 0** · posizioni **0** |
+
+**⓹ La distanza, e chi ha deciso il prezzo.** 26 piazzamenti accettati nella finestra:
+
+| mercato | banda `v` | obiettivo | misurato | ha deciso |
+|---|---|---|---|---|
+| `0xd4e77ba6` | 4,5¢ | 2,052¢ | **2,15¢** | **pavimento** (mai-primo darebbe 0,15¢) |
+| `0xcc9b67d438` | 5,5¢ | **2,508¢** | **2,55 – 2,6¢** | **pavimento** (mai-primo darebbe 0,1¢) |
+
+⚠ Su `0xcc9b67d438` l'obiettivo è **2,508¢ e non 2,052¢**, ed è corretto: `distanzaC = frazione × v`, e
+quel mercato ha banda **5,5¢** invece di 4,5¢. Il `0.456` produce 2,05¢ **sulla banda modale**; su bande
+diverse produce distanze diverse a **parità di punteggio** `S`. **In tutti e 26 i casi `spostato: true` e
+`onTop: false`**: il pavimento allontana dal mid, mai-primo resta soddisfatto per costruzione.
+
+**⓶ Il perimetro: 4 slot pieni, 2 mercati con ordini, 4 ordini** — contro l'obiettivo di 4 × 2 = 8.
+`postiNonAssegnati: []`, 2-ter sta filtrando **7** mercati.
+
+I due selezionati senza ordini — `0xaede8a0b` e `0x39b1401a20` — hanno **la stessa causa, ed è il
+gemello già dichiarato in §21**, non qualcosa emerso adesso. Dal giornale
+`data/realloc-scheduler.jsonl`, campo `motivo` verbatim:
+
+```
+0xaede8a0b3e  riconciliazione-copertura / da-coprire
+   motivo: mancano 2 gamba/e e il mercato e' quotabile adesso: si ripiazza
+0xaede8a0b3e  ripristino-gamba / non-tentato
+   motivo: nessuna riga nel piano salvato per questo mercato: si dichiara e NON si ricalcola
+0x39b1401a20  (identico, entrambi i record)
+```
+
+e dal mini-ciclo: `il piano salvato ha 1213 minuti (limite 60)` → `nessuna azione — nessun mercato del
+piano ha spazio sufficiente adesso`.
+
+**Il piano salvato ha 20,2 ore** e `ripristinaGamba` (`agent41:1452`) pretende una riga lì dentro. È il
+gemello dichiarato prima del riavvio e lasciato intatto per istruzione: **è ciò che tiene il libro a 4
+ordini invece di 8**, ed è la prossima cosa da correggere se si vuole il perimetro pieno.
