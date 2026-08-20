@@ -1871,3 +1871,97 @@ ordini, e per entrambi il piano vecchio degrada la *qualità* dell'azione, non l
 
 Il mini-ciclo (`:2626`) legge il piano salvato ma **ricalcola già da sé** quando è più vecchio di
 60 minuti (`il piano salvato ha 1213 minuti (limite 60)`): non ha il difetto.
+
+### Le verifiche dopo il riavvio — 20 agosto 2026, **13:35:34Z**
+
+Flotta riavviata dal file, **11/11 online**, `pm2 save` fatto.
+
+| # | verifica | esito |
+|---|---|---|
+| **1** | `ignota` nell'adozione | **0** — *«4 ordine/i provatamente nostri adottati all'avvio»*, 0 invisibili |
+| **4** | `doppione-identico` nei 30 min | **ZERO episodi, zero righe** — come nella finestra precedente |
+| **5** | capitale al lavoro · in banda | **4,9%** ($73,40 su $1.491,36) · in banda **$73,44** |
+| **7** | simmetria · tetto · onTop · reject-venue | `0xd4e77ba6` **56/56** (Δt 49,9 s) · `0xb5b33b8c` **21/21** (Δt 1,1 s) — **entrambe simmetriche** · massimi **$53,37** e **$19,91** contro $61,25, **zero sfondamenti** · `onTop:true` **0** · `reject-venue` **0** · posizioni **0** |
+
+**⓺ La distanza, e quale dei due vincoli ha deciso** — e **non è lo stesso sui due mercati**:
+
+| mercato | prezzo | mid | distanza | mai-primo darebbe | ha deciso |
+|---|---|---|---|---|---|
+| `0xd4e77ba6` yes | 0,842 | 0,8635 | **2,15¢** | 0,15¢ | **il pavimento** |
+| `0xd4e77ba6` no | 0,115 | 0,1365 | **2,15¢** | 0,15¢ | **il pavimento** |
+| `0xb5b33b8c` yes | 0,689 | 0,712 | **2,30¢** | **2,30¢** | **mai-primo** |
+| `0xb5b33b8c` no | 0,265 | 0,288 | **2,30¢** | **2,30¢** | **mai-primo** |
+
+Il pavimento è un **minimo**: il prezzo finisce al più lontano fra «0,456 × v» e «un tick dietro il
+miglior bid altrui». Su `0xb5b33b8c` l'obiettivo del pavimento è 2,052¢ ma un tick dietro il concorrente
+cade già a 2,30¢, cioè **più lontano** — quindi lì decide mai-primo, e la manopola non morde. È il caso
+che l'operatore aveva previsto («sui mercati dove mai-primo sopprime l'inseguimento è atteso»).
+
+**⓶ ORDINI A LIBRO: 4, su 2 mercati — l'obiettivo di 8 NON è raggiunto.**
+
+| mercato | ordini | yes | no | nozionale |
+|---|---|---|---|---|
+| `0xd4e77ba6` | 2 | ✅ | ✅ | $53,37 |
+| `0xb5b33b8c` | 2 | ✅ | ✅ | $19,91 |
+| `0x39b1401a20` | **0** | ❌ | ❌ | — |
+| *(quarto slot)* | — | — | — | `postiNonAssegnati: [{scaglione:'alto', posti:1}]` |
+
+**⚠ Ma la causa delle due gambe mancanti NON è più «nessuna riga nel piano salvato»: la correzione ha
+funzionato.** Zero righe col messaggio vecchio dal riavvio. La causa vera, dal giornale
+(`data/realloc-scheduler.jsonl`, `ripristino-gamba/non-tentato`, ×15, ultima 14:05:13):
+
+```
+ricalcolato il piano, e il mercato resta non quotabile — netto-negativo:
+reward troppo basso rispetto al costo: netto $-30.09/g al meglio
+```
+
+`0x39b1401a20` **non va quotato**: l'allocatore lo valuta a **netto −$30/giorno** nel suo punto
+migliore. Prima questo fatto era invisibile, nascosto dietro «manca dal piano». Le 8 gambe non si
+raggiungono perché **il board non offre 4 mercati che valga la pena quotare**, non perché un lettore
+si ferma.
+
+### 🔴 ⓷ IL CONTENIMENTO NON REGGE — sforo di **15×**, dichiarato e NON corretto
+
+| | |
+|---|---|
+| ricalcoli nella finestra | **15 in 30 minuti** |
+| intervalli | mediano **118 s**, min 31 s, max 128 s ⇒ **uno per ciclo** |
+| tasso | **30/ora ⇒ 720/giorno** |
+| sostenuto quando ho chiesto la ratifica | ~48/giorno (2/ora) |
+| **sforo** | **15×** — ed è **esattamente la cifra dell'incidente del 16 agosto (720)** |
+
+**L'argomento su cui l'operatore ha ratificato il ribaltamento era SBAGLIATO, ed è mio.** Sostenevo che
+la scala di raffreddamento (0·5·10·20·30 min) limitasse i ricalcoli a ~48/giorno. Non lo fa, e la
+ragione è in **`lib/maker/ripristino-gambe.js:139`**:
+
+```js
+if (a.tentato !== true) return mem;   // ← memoria INVARIATA
+```
+
+`memoriaDopo` incrementa `fallimenti` **solo su un tentativo vero**. Il rifiuto del ricalcolo torna
+`tentato: false`, quindi `fallimenti` resta **0**, quindi `attesaMs(0) = 0`, quindi la scala concede un
+tentativo **a ogni ciclo**. Le due asserzioni che avevo scritto provavano il caso giusto (`coperto` e
+`non-quotabile` non ricalcolano) ma **non** quello che conta: un mercato `da-coprire` che fallisce
+ripetutamente. Il test era verde e la proprietà falsa.
+
+**Il costo vero**: ogni ricalcolo è un processo figlio da 13-22 s ⇒ **2,6-4,4 ore di CPU al giorno** per
+un solo mercato che l'allocatore dichiara a netto −$30/g. Con più mercati in quello stato il memo per
+giro li accorpa, quindi il tetto resta ~720/giorno, non ×N.
+
+**Non corretto in questo giro, per istruzione.** La cura naturale è far contare come fallimento anche
+il rifiuto post-ricalcolo — cioè passare `tentato: true` quando il ricalcolo è stato effettivamente
+eseguito, o aggiungere un contatore separato per i ricalcoli a vuoto, sul modello di
+`RICALCOLO_VUOTO_RAFFREDDAMENTO_MS` che il mini-ciclo ha già. È una decisione dell'operatore.
+
+### Il premio — le tre grandezze, separate e senza confronti derivati
+
+| | |
+|---|---|
+| finestra | 13:35:51Z → 14:06:53Z |
+| durata | **0,517 h** (32 campioni) |
+| premio **assoluto** | **$0,4424** (da $3,9698 a $4,4122, stesso giorno UTC: nessun azzeramento in mezzo) |
+| capitale in banda **medio** | **$73,46** (min $73,27 · max $73,68) |
+| copertura | 0,9675 → 0,9687 |
+
+**Nessun tasso $/giorno e nessun confronto con le finestre precedenti**: con 2 mercati e la misura §24
+ancora solo proposta, quel numero varia di un fattore ~900 col mix e non misurerebbe la modifica.
