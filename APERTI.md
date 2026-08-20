@@ -1601,3 +1601,148 @@ dopo. Non corretto, per istruzione.
 
 **⚠ E `reject-doppione-identico` ha già colpito 3 volte in 19 minuti** dal riavvio: il difetto di §20 ⓸
 continua a togliere gambe dal libro, ed è la ragione per cui il capitale al lavoro è al **3,6%**.
+
+---
+
+## 23 · 🔴 `doppione-identico` DOPO IL CANCEL — diagnosi e correzione, 20 agosto 2026
+
+### La diagnosi, prima del codice
+
+| domanda | risposta letta |
+|---|---|
+| **file e riga del confronto** | `lib/maker/manual-order.js:898` — `gemellaEsistente(ordini, {...})` dentro `valutaNozionaleMercato`; il rifiuto esce a **:901** |
+| **quale insieme viene interrogato** | `listManualOrders({marketId, userId})` → **`adapter.listOpenOrders()`**, cioè **il VENUE**. ⚠ **NON è una cache né un file di stato**: è la vista degli ordini aperti del CLOB, letta in quel momento |
+| **in quale istante rispetto alla cancellazione** | **DOPO.** `replaceManualOrder` fa STEP 1 `cancel` (confermato) e poi STEP 2 `placeManualOrder`, che rilegge l'elenco. Misurato: `manual-cancel ok` **07:07:48.705** → `manual-place reject` **07:07:48.778**, cioè **73 ms** |
+
+**È una corsa con la consistenza eventuale del venue**, non un dato stantio nostro: in 73 ms la vista
+degli ordini aperti del CLOB non ha ancora recepito la cancellazione, quindi l'ordine appena tolto è
+ancora nell'elenco, e su un `expiry-refresh` — che ripiazza **allo stesso prezzo** — è identico per
+definizione.
+
+### 🔧 Il rimedio esisteva già e non era cablato
+
+`escludiOrderId` è nato il **17 agosto** (§5.2 p.38) per questo identico motivo. Il **precontrollo** di
+`replaceManualOrder` lo passa correttamente (`escludiOrderId: orderId`, `:1998`) e infatti **non
+rifiuta mai**. Ma `placeManualOrder` lo legge da `spec.sostituisceOrderId` (`:1476`) — e in **tutto il
+repo** quel campo era **letto in un punto e scritto in NESSUNO**.
+
+**⚠ Non è la firma «protezione su un ramo, assente sul gemello» che si sospettava.** È la classe
+**«dep dichiarata e mai iniettata ⇒ valore di difetto che nessuno ha chiesto»** — la **quinta**
+occorrenza in questo repo (`readDepth`, `signerProvider`, `{file}`, `deps.stato` con `||`, e ora
+questa). Il ramo restituiva `null`, cioè *«non escludere niente»*, e nessun test se ne accorgeva perché
+il precontrollo — che ha la dep cablata — passava sempre.
+
+La correzione è una riga: `sostituisceOrderId: orderId` nella chiamata di STEP 2 (`:2060`).
+
+**⚠ NON allenta il gate.** Si esclude **esattamente** l'id che questo percorso ha appena cancellato, uno
+solo e nominato. Un secondo ordine identico davvero a libro ha un altro id, resta nell'insieme, e
+continua a essere rifiutato — è un'asserzione del test, non una frase. L'esclusione è anche
+aritmeticamente corretta sulla somma a riposo: quell'ordine non è più a riposo.
+
+### Il costo misurato
+
+**18 episodi in 10,01 ore = 1,80/ora**, per **$619,09** di nozionale tolto dal libro.
+
+| | |
+|---|---|
+| `fromPrice === toPrice` | **18 su 18** — sono **tutti** rinnovi proattivi `expiry-refresh`. Nessun altro trigger lo produce |
+| per mercato | `0xd4e77ba6` 8 · `0xa34edb6c` 4 · `0xbb86d7eb` 3 · `0x1f1c6390` 1 · `0xfd583ce7` 1 · `0x12dc2b61` 1 |
+| il peggiore | **09:16:59, `0x12dc2b61` NO**: gamba fuori e **mai rientrata**, poi il mercato è caduto del tutto |
+
+**⚠ CORREZIONE A UN NUMERO CHE AVEVO DATO**: avevo detto «3 colpi in 19 minuti dal riavvio». Erano
+**3 righe di giornale di UN SOLO episodio** — ogni episodio ne scrive tre (`auto-reprice`,
+`manual-place`, `manual-replace`). Dopo il riavvio delle 10:40 l'episodio è stato **uno**, alle
+10:49:08. Il tasso vero è **1,80 episodi/ora**, non 9/ora.
+
+### 🧬 Il gemello — cercato su tutti i percorsi che ripiazzano
+
+`placeManualOrder` ha **4 chiamanti** in tutto il repo. Percorso per percorso:
+
+| percorso | cancella prima? | stesso difetto? |
+|---|---|---|
+| **`replaceManualOrder` STEP 2** (`manual-order.js:2060`) | **sì** | **SÌ — corretto** |
+| `auto-reprice` reprice + `expiry-refresh` (`agent40:1907`) | via `replaceManualOrder` | **coperto dalla stessa correzione** |
+| `ripristinaGamba` → riduzione della gamba viva (`agent41:1504`) | via `replaceManualOrder` | **coperto dalla stessa correzione** |
+| `decideRimpiazzo` — la gamba eseguita torna a libro (`agent40:1509`) | **no**: la vecchia gamba è sparita per **FILL**, non per una nostra cancellazione | no — non c'è nessuna corsa col nostro cancel |
+| `auto-close` / `piazzaChiudendo` (`agent40:1465`) | n/a | no — le chiusure passano `chiudePosizione: true` e **saltano `valutaNozionaleMercato` per intero** (`:1473`) |
+| `mm-tracking` (`agent40:2207`) | via `replaceManualOrder` | coperto; ⚠ e comunque **inerte**, nessun mercato configurato |
+| ramo `gemellaDaCancellare` dentro `placeManualOrder` (`:1478`) | sì, ma **dopo** che il gate ha già deciso | no — il confronto è già avvenuto sulla stessa lettura |
+
+**Tutti i percorsi di SOSTITUZIONE passano da `replaceManualOrder`**: la correzione di una riga li
+copre tutti e tre. Nessun percorso è stato lasciato indietro, e nessuno è stato toccato oltre quello.
+
+**Prova**: `lib/maker/doppione-dopo-cancel.test.js`, **12 asserzioni**, che difende la **proprietà** e
+non un id — e che **va ROSSO (10/2) sul sorgente senza la correzione**, verificato rimuovendola e
+rimettendola.
+
+---
+
+## 24 · 📐 COSA SERVIREBBE PER CONFRONTARE DUE FINESTRE A DISTANZA DIVERSA — solo proposta
+
+**Il problema, misurato in §20 ⓵.** Il confronto fra 3,45¢ e 2,55¢ non è calcolabile perché il tasso di
+premio è governato da **quali mercati stanno a libro** (da **$0,04/g** a **$35,89/g** dentro la stessa
+finestra, un fattore ~900) mentre la manopola può al massimo produrre un **3,45×**
+(`S = ((v−s)/v)²`: 0,0544 a 3,45¢ contro 0,1878 a 2,55¢). L'effetto è sommerso dal rumore della
+composizione di un fattore ~260.
+
+`data/stima-campioni.json` registra `{t, r, c}` — istante, tasso $/giorno, capitale in banda — **tutti
+aggregati sull'intero portafoglio**. Da lì la scomposizione non è recuperabile: due finestre con
+mercati diversi non sono confrontabili, e nessuna aritmetica a valle può rimediare.
+
+### ⚠ Il dato serve già e viene BUTTATO
+
+`lib/maker/operator-board.js:496-500` calcola, **a ogni campione**, un array `estPerMarket`:
+
+```js
+perMarket.push({ marketId, title, inBandCapitalUsd: r2(capital), estUsdPerDay: est.estUsdPerDay });
+```
+
+`agent40:2461` lo riceve dentro `sum` e passa a `registraCampione` **solo i due totali**
+(`sum.estGrossUsdPerDay`, `sum.committedInBandUsd`). Il per-mercato viene calcolato e scartato nella
+stessa funzione. **Non è un dato da produrre: è un dato da non buttare.**
+
+### Cosa registrare, e dove
+
+**Dove**: `lib/maker/stima-integrata.js`, `registraCampione` (`:106`) — il record `{t, r, c}` diventa
+`{t, r, c, m: [...]}`, una voce per mercato. Il chiamante da cambiare è **uno solo**, `agent40:2461`.
+
+| campo | da dove viene già | perché serve |
+|---|---|---|
+| `i` — marketId (troncato) | `estPerMarket[].marketId` | **è la chiave del confronto**: permette di misurare lo STESSO mercato nelle due finestre, che è l'unico modo di togliere di mezzo il mix |
+| `r` — $/giorno di quel mercato | `estPerMarket[].estUsdPerDay` | il numeratore per mercato |
+| `c` — capitale in banda di quel mercato | `estPerMarket[].inBandCapitalUsd` | il denominatore: senza, «$/g» non è normalizzabile |
+| `s` — distanza dal mid in centesimi | **NON registrato oggi**: c'è su ogni riga `manual-place` (`inCoda.distanzaMidC`) ma non nel campione | è la variabile indipendente. Senza `s` si sa quanto si è guadagnato, non **a che distanza** |
+| `v` — semi-banda premiante | `rewardsMaxSpread` del board | `S` dipende dal **rapporto** `s/v`: 2,5¢ su banda 4,5¢ e su banda 3,0¢ sono due punteggi diversi |
+
+Con questi cinque campi il confronto diventa una regressione di `r/c` su `s/v` **dentro lo stesso
+mercato**, e il mix sparisce per costruzione invece di essere corretto a posteriori.
+
+**Costo**: ~190 byte in più per campione su 61,9 attuali ⇒ **~71 KB/giorno contro ~17**, con passo 5
+minuti e 4-5 mercati. Trascurabile contro i 67-82 MB/giorno del giornale maker.
+
+**⚠ Due cose da NON fare, e sono quelle che rovinerebbero la misura:**
+- **non sommare `s` fra mercati**: una distanza media su mercati con bande diverse non è una distanza.
+  Il campione deve restare per-mercato fino al calcolo finale;
+- **non registrare `0` quando un mercato non è scorabile**: `estGrossUsdPerDay` è già `null` in quel
+  caso, e la stessa regola deve valere per voce — uno zero direbbe «non maturavo», che è un'altra
+  affermazione (§4.12).
+
+**Non implementato in questo giro**, per istruzione. Il valore: senza, ogni prossima modifica alla
+distanza sarà valutata sullo stesso confronto non confrontabile che ha prodotto il «4,7×» di stamattina.
+
+### ⚠ Un rosso nuovo era mio, e l'ho RISCRITTO sulla proprietà — non ammorbidito
+
+`riprezzo-atomico.test.js` è diventato rosso con la correzione, e il codice era **giusto**.
+L'asserzione era il letterale `/idempotencyKey: chiaveRimpiazzo \}, deps\)/`, che ancorava anche la
+**graffa di chiusura**: aggiungere un qualunque altro campo a quella chiamata la faceva fallire, anche
+un campo che con la chiave non c'entra niente. La proprietà che difende — *«allo STEP 2 si spedisce la
+VARIABILE già precontrollata, non una chiave ricalcolata»* — **è rimasta vera per tutto il tempo**.
+
+Riscritta come `/placeManualOrder\(\{[^}]*idempotencyKey: chiaveRimpiazzo[^}]*\}, deps\)/s`, e
+**verificato che morde ancora**: sostituendo la variabile con una derivazione fresca il test torna
+rosso (32/1). È la seconda asserzione di questo stesso file a cadere per la stessa ragione — la prima,
+sul `require` di `concentration`, era già stata riscritta il 16 agosto. **Classe §5.3, «test che
+fotografa il codice invece della proprietà»: quarta occorrenza nel repo.**
+
+**Suite finale: 231 test · 225 verdi · 5 rossi · 1 non parte** — i cinque sono gli **stessi nomi** del
+commit precedente, tutti verificati rossi anche sull'albero committato.
