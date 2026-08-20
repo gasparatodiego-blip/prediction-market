@@ -1532,3 +1532,29 @@ a essere rifornito e `0x5e082f0b` non lo è mai stato.
 un piano vecchio può riabilitare un mercato che la selezione ha già rilasciato.
 
 Entrambi lasciati come sono, per istruzione.
+
+---
+
+## 22 · 📏 LA DISTANZA DA 2,55¢ A 2,05¢ — 20 agosto 2026, decisione dell'operatore
+
+| | |
+|---|---|
+| **formula** | `distanzaC = frazione × v` — `lib/maker/distanza-obiettivo.js:227`, funzione `distanzaObiettivoCents` |
+| **banda** | `v = 4,5¢` (banda premiante modale, **non toccata**) |
+| **valore vecchio** | **`0.556`** ⇒ 0,556 × 4,5 = **2,50¢** |
+| **valore nuovo** | **`0.456`** ⇒ 0,456 × 4,5 = **2,052¢** |
+| **dove** | `agents/ecosystem.config.js:346` (agent40) e **`:617`** (agent41) — *entrambi*, o i due processi che decidono un prezzo divergono (§5.1) |
+| **punteggio** | `S = ((v−s)/v)²` passa da **0,1975** a **0,2959**, cioè **+49,8%** a parità di capitale |
+
+`MAKER_MERCATI_CONTEMPORANEI` **resta `'4'`** (riga 521), non toccato.
+Il pavimento di profondità e ogni parametro della regola 4 **non sono stati toccati**: se il cancello
+rifiuta un mercato è atteso, si dichiara e non si aggira.
+
+**⚠ La frazione è un PAVIMENTO, non un bersaglio**: il prezzo può solo allontanarsi dal mid, quindi
+«mai primo sul libro» resta intatto per costruzione. `FRAZIONE_MASSIMA = 0,95` continua a valere come
+tetto (0,456 è ben sotto).
+**⚠ `distanza-2c.test.js` resta rosso con le STESSE 3 asserzioni letterali su `0.95`** (45 verdi, 3
+rossi, identico a prima della modifica). L'asserzione che conta — *«e TUTTI i valori COINCIDONO (una
+divergenza qui è la classe D1)»* — è **VERDE**: i due processi dichiarano lo stesso `0.456`. Le tre
+rosse fotografano un valore invece di difendere una proprietà (§5.3), e vanno **riscritte sulla
+proprietà, non ammorbidite**: è una modifica autorizzata a parte, non fatta in questo giro.

@@ -341,8 +341,9 @@ module.exports = {
         // e resta ben sotto i 23 minuti della scadenza GTD: un feed davvero morto viene comunque
         // scoperto molto prima che gli ordini invecchino.
         MAKER_MID_STANTIO_TIMEOUT_MS: '120000',
-        // ⚠ 0,95 → 0,556 il 20 agosto 2026, decisione dell'operatore: 0,556 × v(4,5¢) = 2,5¢ dal mid.
-        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.556',
+        // ⚠ 0,556 → 0,456 il 20 agosto 2026, decisione dell'operatore: 0,456 × v(4,5¢) = 2,05¢ dal mid
+        // (`distanzaC = frazione × v`, lib/maker/distanza-obiettivo.js:227). Prima era 0,95 (bordo esterno).
+        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.456',
         // ══ GRADINO 1 · MAKER_MODE APERTA — 18 agosto 2026, istruzione dell'operatore ══════════════
         // «apri MAKER_MODE, fermati, poi MAKER_ADAPTER_DRYRUN. MANUAL_ORDER_PLACEMENT non si tocca.»
         //
@@ -611,8 +612,9 @@ module.exports = {
         // dichiarata in nessun blocco di questo file, quindi i due processi che decidono un prezzo
         // leggono lo stesso difetto e non possono divergere per un riavvio scoordinato — che è
         // esattamente il rischio che la manopola qui sotto porta con sé.
-        // ⚠ 0,95 → 0,556 il 20 agosto 2026, decisione dell'operatore: 0,556 × v(4,5¢) = 2,5¢ dal mid.
-        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.556',
+        // ⚠ 0,556 → 0,456 il 20 agosto 2026, decisione dell'operatore: 0,456 × v(4,5¢) = 2,05¢ dal mid
+        // (`distanzaC = frazione × v`, lib/maker/distanza-obiettivo.js:227). Prima era 0,95 (bordo esterno).
+        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.456',
 
         // ══ LE QUATTRO CINTURE DI ARMAMENTO — SCRITTE IL 16 AGOSTO 2026, NON ANCORA IN SERVIZIO ═════
         // ⚠ QUESTE RIGHE ARMANO IL PIAZZAMENTO DI ORDINI VERI CON CAPITALE REALE, e questo e' il
