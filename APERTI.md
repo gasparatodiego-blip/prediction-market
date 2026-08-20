@@ -2416,3 +2416,46 @@ Ammissibili in 24 h: mediana **8**, p25 **7**, min **4**, e nel **25% dei cicli 
 ricambio pesca fra **~4 alternative**, e `0x5e082f0b` è rientrato 7 volte con netto $0,02-0,03 perché
 **era ancora il migliore rimasto**. Questa regola contiene il sintomo; la cura è quante alternative il
 board offre. `MAKER_MERCATI_CONTEMPORANEI` resta **4** e il soffitto **5**, non toccati.
+
+### Il riarmo arriva al processo solo con `delete` + `start` — 20 agosto, 19:5xZ
+
+⚠ **Togliere `SLOT_STERILE_ARMATO` dall'ecosystem NON lo toglie dal processo.** Riavviata la flotta
+dal file, il processo era nuovo (pid 597080, avviato 19:32:25) **e la variabile era ancora nel suo
+`environ` col valore `'0'`** ⇒ `armata = false` ⇒ la regola continuava a misurare senza toccare niente.
+È la trappola di **§5.2 p.2**: *«`--update-env` **fonde**, non sostituisce, e l'unica rimozione è
+`pm2 delete` + `pm2 start`»*.
+
+Completato con `pm2 delete agent41-realloc-scheduler` + `pm2 start … --only agent41-realloc-scheduler`.
+Verificato su `/proc/600078/environ`: **`SLOT_STERILE_ARMATO` ASSENTE** ⇒ la regola è **ARMATA**.
+
+**⚠ La lezione, per chi disarma o riarma qualcosa in futuro**: la convenzione «assente ⇒ armata» è
+giusta, ma un `restart` non la può realizzare. Un riarmo per rimozione di variabile richiede
+**sempre** `delete` + `start`, e va verificato su `/proc`, mai sul file.
+
+---
+
+## 31 · ⬆️ MERCATI DA 4 A 5 — 20 agosto 2026
+
+`MAKER_MERCATI_CONTEMPORANEI: '4' → '5'` in `agents/ecosystem.config.js:530`. Nient'altro.
+
+**Verificato PRIMA di scrivere**, contro l'invariante di §5.2 p.37
+(`concentration.esposizioneMassimaRaggiungibileUsd`, importata dai quattro chiamanti):
+
+| grandezza | valore | atteso | |
+|---|---|---|---|
+| esposizione massima raggiungibile a N=5 | **$612,50** | $612,50 | ✅ |
+| cap `maxOpenNotionalUsd` | **$650** | $650 | ✅ |
+| **margine** | **$37,50** | $37,50 | ✅ |
+| ordini attesi | **10** | 10 | ✅ |
+| capitale a riposo | **$306,25** | $306,25 | ✅ |
+| `MAX_MERCATI_CONTEMPORANEI` | **5** | resta 5 | ✅ |
+| `quotaScaglioni(4)` → `(5)` | `{basso:1, alto:3}` → `{basso:1, alto:4}` | nessuno scaglione perde posti | ✅ |
+
+**⚠ N=5 è il massimo che il cap consente**: a N=6 l'esposizione sarebbe **$735**, cioè **$85 oltre** i
+$650. Che il soffitto valga 5 non è una coincidenza — è quel conto (§28).
+Il tetto per ordine non dipende da N: la gamba più cara quotabile vale **$60,63** contro il cap safety
+di $80.
+
+**⚠ E lo scaglione «basso» resta a UN posto anche a N=5**: `quotaScaglioni` dà `[basso:1, alto:n−1]` a
+qualunque `n`. Gli 8 candidati `minSize ≤ 20` misurati stasera continuano a competere per un posto solo:
+alzare MERCATI aggiunge posti **«alto»**, non allarga lo scaglione basso. Resta la decisione aperta di §28.

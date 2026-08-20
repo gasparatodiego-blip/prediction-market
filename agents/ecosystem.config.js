@@ -517,8 +517,17 @@ module.exports = {
         // ⚠ E il tetto di esposizione cumulativa e' passato a $650 (`data/safety-risk-limits.json`,
         // gitignored): a $320 il gate avrebbe smesso di piazzare a meta' strada, perche' confronta
         // `openNotionalUsd + notional` anche sulle aperture. Il freno vero resta il kill a −$100.
-        // ⚠ 5 → 4 il 20 agosto 2026, decisione dell'operatore. Il SOFFITTO resta 5 in selezione-mercati.js.
-        MAKER_MERCATI_CONTEMPORANEI: '4',
+        // ⚠ 5 → 4 il 20 agosto 2026, poi 4 → 5 la sera stessa, decisione dell'operatore.
+        // Il SOFFITTO resta 5 in `selezione-mercati.js` (`MAX_MERCATI_CONTEMPORANEI`): questo e' il
+        // valore in servizio, quello e' il massimo esprimibile — e a 5 coincidono.
+        // ⚠ VERIFICATO PRIMA DI SCRIVERE, contro l'invariante di §5.2 p.37
+        // (`concentration.esposizioneMassimaRaggiungibileUsd`, importata dai quattro chiamanti):
+        //     esposizione massima raggiungibile a N=5 = $612,50  (5 coppie a riposo + il loro
+        //     completamento) contro il cap `maxOpenNotionalUsd` di $650 ⇒ margine $37,50.
+        //     10 ordini attesi, $306,25 di capitale a riposo.
+        // ⚠ N=5 E' IL MASSIMO CHE IL CAP CONSENTE: a N=6 l'esposizione sarebbe $735, cioe' $85 oltre.
+        // Non e' una coincidenza che il soffitto valga 5 — v. APERTI.md §28.
+        MAKER_MERCATI_CONTEMPORANEI: '5',
         // ── DICHIARATA, NON PIÙ SOLO EREDITATA (4 agosto 2026) ────────────────────────────────────
         // Qui la fragilità è REALE, a differenza del caso di agent40: agent41 NON ha il caricatore di
         // .env scritto a mano che agent40 ha in testa al file (verificato: `grep -c "Load .env"` → 0).
