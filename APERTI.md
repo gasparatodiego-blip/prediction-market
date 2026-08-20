@@ -2116,3 +2116,98 @@ cablaggio**: l'allocatore lo rifiuta perché non conviene.
 **⓸** `ignota` **0** · gambe **simmetriche su tutti e quattro** i mercati piazzati (56/56 · 56,5/56,5 ·
 57,1/57,1 · 56,1/56,1) · massimi **$53,67** contro $61,25, **zero sfondamenti** · `onTop:true` **0** ·
 `reject-venue` **0** · posizioni **0** · capitale in banda **$160,73**.
+
+---
+
+## 27 · ⚖️ LO SPODESTAMENTO DI UN OCCUPANTE IN PERDITA — 20 agosto 2026
+
+### Il fatto
+
+Due slot su quattro erano tenuti da mercati a netto **negativo** — `0x39b1401a20` a **−$24,92/g** e
+`0xd4e77ba6` a **−$0,08/g** — mentre `0x8485c27249` a **+$3,70/g**, che l'allocatore **sceglie**,
+restava fuori. La causa era la condizione ③ della riclassificazione nella sua forma assoluta:
+*«l'occupante ha ordini a riposo ⇒ intoccabile»* (`selezione-mercati.js`, blocco 3-bis).
+
+### La soglia scelta: **il SEGNO**, e perché
+
+Un occupante con ordini a riposo può essere spodestato **solo** quando il suo netto è
+**strettamente negativo** e quello dello sfidante **strettamente positivo**.
+
+**Perché il segno e non un numero in dollari.** Un netto negativo significa che quel mercato **costa**
+invece di rendere: il reward non copre il costo avverso modellato. Cancellargli gli ordini **non
+rinuncia a un guadagno, interrompe una perdita** — ed è l'unico caso in cui togliere capitale dal libro
+è inequivocabilmente giusto. Pretendere lo sfidante **positivo** evita di scambiare una perdita con una
+perdita minore, che pagherebbe il churn per restare in perdita. Una soglia in dollari avrebbe richiesto
+un numero che nessuno ha misurato; il cambio di segno è il confine naturale e **senza parametri**.
+
+**⚠ L'isteresi resta, per intero.** `spodestaAbbastanza` è valutata **prima** del segno: su un
+occupante a −$24,92 il margine vale `max($0,50, $6,23) = $6,23`, quindi lo sfidante deve superare
+−$18,69. Non è uno sconto, e l'oscillazione a 120 s resta impossibile. Provato: uno sfidante a
+**+$0,30** contro un occupante a −$0,10 **non** spodesta (margine $0,50); a **+$0,90** sì.
+
+### I vincoli non negoziabili
+
+**⚠ REGOLA 9 — posizione aperta o coppia incompleta restano intoccabili a qualunque netto.** Per
+costruzione un mercato con posizione è `inGestione` e quindi fuori dagli `attivi` (§4.13), ma la
+condizione è ora scritta **esplicitamente** (`conPosizione.has(occ.id)`) — e adesso serve davvero,
+perché ③ non è più un divieto assoluto e questa è l'unica cosa che separa *«cancello ordini a riposo»*
+da *«abbandono una gamba riempita»*. Provato a **−$99 contro +$50**: non si spodesta.
+
+**⚠ Gli ordini si cancellano ESPLICITAMENTE, e prima di rilasciare.** `rilasciaDallaSelezione` tocca
+solo `setAutoReprice`: senza cancellazione quegli ordini resterebbero a libro fino alla GTD — fino a
+23 minuti di capitale su un mercato dichiarato in perdita. L'ordine conta: rilasciare per primo
+spegnerebbe il riprezzo togliendo a chi resta la possibilità di gestirli se la cancellazione fallisse.
+
+**⚠ Un `reject-venue` sulla cancellazione ANNULLA lo scambio, in modo atomico e dichiarato**:
+l'occupante **non** viene rilasciato, lo sfidante **non** entra, e lo stato torna com'era
+(`spodestamento-annullato` nel giornale + `annuncia('error', …)`). Rilasciare a metà lascerebbe un
+mercato con ordini vivi e nessuno che se ne considera proprietario — la forma di §5-bis p.44.
+**Fail-closed anche sulla lettura**: libro del mercato non leggibile ⇒ scambio annullato.
+
+**Prove**: `lib/maker/spodesta-netto-negativo.test.js`, **21 asserzioni**, e **16/5 sul sorgente non
+corretto** (verificato rimettendo `if (haOrdini) return false;`).
+
+---
+
+## 28 · ⛔ MERCATI A 8 — FERMATO: sfora il cap di esposizione. NON applicato.
+
+### La simulazione, prima di applicare
+
+| N | quota | ordini attesi | capitale a riposo max | **esposizione max** | vs cap **$650** | budget coda |
+|---|---|---|---|---|---|---|
+| 4 (oggi) | basso:1 alto:3 | 8 | $245,00 | $490,00 | **OK**, margine $160,00 | $25,06 |
+| 5 (soffitto attuale) | basso:1 alto:4 | 10 | $306,25 | $612,50 | **OK**, margine $37,50 | $33,41 |
+| **6** | basso:1 alto:5 | 12 | $367,50 | **$735,00** | **SFORA di $85,00** | $41,76 |
+| **7** | basso:1 alto:6 | 14 | $428,75 | **$857,50** | **SFORA di $207,50** | $50,11 |
+| **8** | basso:1 alto:7 | 16 | $490,00 | **$980,00** | **SFORA di $330,00** | $58,47 |
+
+### ⚠ Il margine residuo a 8 mercati NON è $650 − $490
+
+La premessa *«8 × $61,25 = $490 contro $650»* misura il **solo capitale a riposo**. L'invariante di
+rischio stabilita il 19 agosto (§5.2 p.37) è **`cap ≥ riposo + completamento`**, perché
+`evaluateLimits` somma `openNotionalUsd + notional` **anche sugli ordini di apertura** e
+`openNotionalUsd` conta i **fill riconciliati**. Lo stato peggiore che il bot attraversa lavorando è
+**N coppie a riposo PIÙ il loro completamento** = `2 × N × $61,25`. A N=8: **$980**, non $490.
+Il numero viene da `concentration.esposizioneMassimaRaggiungibileUsd(N)`, la funzione importata dai
+quattro chiamanti — non da un'aritmetica riscritta qui.
+
+**N massimo che rispetta $650: N ≤ 5.** Il soffitto `MAX_MERCATI_CONTEMPORANEI = 5` **non è un numero
+tondo: è esattamente il massimo che il cap consente**, ed è per questo che alzarlo a 8 richiede prima
+una decisione sul cap.
+
+**Gli altri due limiti non dipendono da N**: tetto per ordine — la gamba più cara quotabile vale
+`$61,25 × 0,97/0,98 = $60,63` contro il cap safety di **$80**; perdita giornaliera **−$100**, che è un
+kill sul realizzato.
+
+### La quota degli scaglioni a max=8
+
+**`quotaScaglioni` dà `[basso:1, alto:n−1]` a QUALUNQUE `n`**: il posto «basso» resta **uno solo**.
+Sul board di adesso ci sono **29 ammissibili, 8 dei quali `minSize ≤ 20`** ⇒ a max=8 resterebbero
+**7 candidati «basso» scartati** con `quota-scaglione-piena`, **esattamente come a max=4**. Alzare
+MERCATI **non** apre lo scaglione basso: aggiunge solo posti «alto». Gli scarti di 2-ter restano **4**
+a ogni N (il budget sale da $25,06 a $58,47 ma non raggiunge il pavimento $61,25 dei `minSize 50`).
+
+**⇒ NON APPLICATO**, per la condizione di stop dell'operatore. `MAKER_MERCATI_CONTEMPORANEI` resta
+**4** e `MAX_MERCATI_CONTEMPORANEI` resta **5**. Per andare oltre 5 servono, nell'ordine: una decisione
+sul cap di esposizione ($980 a N=8, cioè +$330), e una sulla quota degli scaglioni se si vuole che i
+`minSize 20` smettano di essere 7 su 8 scartati.

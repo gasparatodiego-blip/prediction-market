@@ -2472,14 +2472,77 @@ async function selezionaMercati(deps = {}) {
   // ⚠ `rilasciaDallaSelezione` tocca solo `setAutoReprice`: spegne l'INGRESSO, non l'uscita. Un
   // mercato spodestato non ha ordini vivi (condizione ③) ne' gambe in attesa (condizione ④), ma se ne
   // acquisisse fra questo istante e il prossimo giro, la regola di copertura di §4.8 lo gestisce lo stesso.
+  //
+  // ══ E SE LO SPODESTATO HA ORDINI A RIPOSO, SI CANCELLANO QUI — 20 agosto 2026 ══════════════════
+  // Da oggi un occupante in PERDITA puo' essere spodestato anche con ordini a libro (§27). Ma
+  // `rilasciaDallaSelezione` tocca solo `setAutoReprice`: senza una cancellazione esplicita quegli
+  // ordini resterebbero a libro fino alla GTD — fino a 23 minuti di capitale su un mercato che il
+  // modello dichiara in perdita, e uno spodestamento silenzioso invece che dichiarato.
+  //
+  // ⚠ SI CANCELLA PRIMA DI RILASCIARE, e l'ordine conta: rilasciare per primo spegne il riprezzo e
+  // toglie a chi resta la possibilita' di gestire quegli ordini se la cancellazione fallisse.
+  //
+  // ⚠ UN RIFIUTO DEL VENUE FERMA LO SCAMBIO, per intero e in modo atomico: l'occupante NON viene
+  // rilasciato, lo sfidante NON entra, e lo stato torna com'era. Rilasciare a meta' lascerebbe un
+  // mercato con ordini vivi e nessuno che se ne considera proprietario — la forma di §5-bis p.44.
   const spodestati = [];
+  const scambiFalliti = new Map();          // idOccupante → { voce, idSfidante, motivo }
   for (const s of (d.spodestati || [])) {
+    let cancellati = null;
+    if (s.aveviOrdini === true) {
+      cancellati = { chiesti: 0, riusciti: 0, falliti: [] };
+      let elenco = null;
+      try {
+        const o = await (deps.listOrders || (() => listManualOrders({ marketId: s.id })))();
+        elenco = (o && o.ok !== false && Array.isArray(o.orders)) ? o.orders : null;
+      } catch (e) { elenco = null; cancellati.errore = e && e.message ? e.message : String(e); }
+      if (!elenco) {
+        // ⚠ FAIL-CLOSED: non si spodesta un mercato di cui non si riesce a leggere il libro.
+        scambiFalliti.set(s.id, { voce: (d.statoNuovo.selezionati[s.sostituitoDa] ? null : null),
+          idSfidante: s.sostituitoDa, motivo: `ordini non leggibili${cancellati.errore ? `: ${cancellati.errore}` : ''}` });
+        spodestati.push({ ...s, scritto: false, annullato: true, cancellati,
+          error: 'scambio annullato: ordini del mercato spodestato non leggibili' });
+        continue;
+      }
+      const nrm = (v) => String(v || '').trim().toLowerCase();
+      const miei = elenco.filter((o) => nrm(o.conditionId || o.marketId) === nrm(s.id));
+      cancellati.chiesti = miei.length;
+      for (const o of miei) {
+        let c = null;
+        try { c = await (deps.cancella || cancelManualOrder)({ orderId: o.orderId, marketId: s.id }, 'riallocatore · spodestamento'); }
+        catch (e) { c = { ok: false, reason: e && e.message ? e.message : String(e) }; }
+        if (c && c.ok === true) cancellati.riusciti += 1;
+        else cancellati.falliti.push({ orderId: o.orderId, motivo: (c && c.reason) || 'motivo ignoto' });
+      }
+      if (cancellati.falliti.length) {
+        scambiFalliti.set(s.id, { idSfidante: s.sostituitoDa,
+          motivo: `${cancellati.falliti.length}/${cancellati.chiesti} cancellazioni rifiutate dal venue` });
+        scrivi({ tipo: 'selezione-mercati', esito: 'spodestamento-annullato', marketId: s.id,
+          sostituitoDa: s.sostituitoDa, cancellati, netto: s.netto, nettoNuovo: s.nettoNuovo,
+          motivo: 'il venue ha rifiutato almeno una cancellazione: lo scambio e\' annullato per intero' });
+        annuncia('error', `⚠ SPODESTAMENTO ANNULLATO ${s.id.slice(0, 12)}…:`
+          + ` ${cancellati.falliti.length}/${cancellati.chiesti} cancellazioni rifiutate dal venue`
+          + ` — l'occupante resta, lo sfidante non entra`);
+        spodestati.push({ ...s, scritto: false, annullato: true, cancellati,
+          error: 'scambio annullato: cancellazione rifiutata dal venue' });
+        continue;
+      }
+    }
     const r = await rilasciaDallaSelezione({ marketId: s.id, motivo: 'spodestato' });
-    spodestati.push({ ...s, scritto: !!(r && r.ok), error: (r && r.error) || null });
+    spodestati.push({ ...s, scritto: !!(r && r.ok), annullato: false, cancellati, error: (r && r.error) || null });
   }
 
   const entrati = [];
+  const nrmId = (v) => String(v || '').trim().toLowerCase();
+  const sfidantiAnnullati = new Set([...scambiFalliti.values()].map((x) => nrmId(x.idSfidante)).filter(Boolean));
   for (const e of d.entranti) {
+    // ⚠ ATOMICITA' DELLO SCAMBIO: se la cancellazione dell'occupante non e' riuscita, lo sfidante non
+    // entra. Farlo entrare comunque significherebbe avere due mercati per uno slot solo.
+    if (sfidantiAnnullati.has(nrmId(e.id))) {
+      entrati.push({ ...e, riga: undefined, aperto: false,
+        motivo: 'scambio annullato: la cancellazione degli ordini dello spodestato non e\' riuscita' });
+      continue;
+    }
     const abilita = ({ marketId }) => setAutoReprice({ scope: 'market', marketId, enabled: true,
       by: 'riallocatore · selezione automatica',
       reason: `scelto dalla selezione automatica: minSize ${e.minSize} · ${e.oreAllaScadenza != null ? e.oreAllaScadenza.toFixed(1) + ' h alla risoluzione' : 'scadenza non dichiarata'} · stima ${e.punteggio.toFixed(3)} (${e.fontePunteggio})` });
@@ -2499,6 +2562,13 @@ async function selezionaMercati(deps = {}) {
   // slot per sempre senza mai ricevere un ordine — capitale fermo prodotto dalla contabilita'.
   const statoDaSalvare = { ...d.statoNuovo, selezionati: { ...d.statoNuovo.selezionati } };
   for (const e of entrati) if (!e.aperto) delete statoDaSalvare.selezionati[e.id];
+  // ⚠ E LO SCAMBIO ANNULLATO SI ANNULLA ANCHE NELLO STATO: l'occupante torna dov'era. Senza questa
+  // riga il mercato sparirebbe dalla selezione pur restando abilitato al riprezzo e con i suoi ordini
+  // ancora a libro — esattamente lo stato orfano che la cancellazione doveva evitare.
+  for (const [idOcc] of scambiFalliti) {
+    const vecchia = (stato.stato && stato.stato.selezionati && stato.stato.selezionati[idOcc]) || null;
+    if (vecchia) statoDaSalvare.selezionati[idOcc] = vecchia;
+  }
 
   const salvato = SELS.scriviStato(statoDaSalvare, { by: 'agent41 · selezione automatica',
     reason: `${entrati.filter((x) => x.aperto).length} entrati, ${usciti.length} usciti, ${d.liberati.length} slot liberati` });
