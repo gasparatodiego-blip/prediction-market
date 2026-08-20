@@ -2067,3 +2067,52 @@ stata introdotta dalla correzione di §25 senza che nessuno se ne accorgesse per
 `{eseguito:false}` quando il saldo è illeggibile — ci si ferma **prima** di spendere qualunque cosa,
 quindi non è un tentativo — e `{eseguito:true}` quando il figlio parte e finisce male, perché è
 costato comunque. Dedurlo dall'assenza di righe sarebbe rifare il difetto di §26 al contrario.
+
+### Le verifiche dopo il riavvio — 20 agosto 2026, **14:35:14Z**, 11/11 online
+
+**⓵ Ricalcoli nei 30 minuti — l'obiettivo è raggiunto in REGIME, non nella finestra letterale**
+
+| | |
+|---|---|
+| record `ripristino-gamba` nella finestra | 19 |
+| di cui **RICALCOLI** | **3** |
+| cicli **fermati dal raffreddamento** (nessun figlio partito) | **13** |
+| tasso letterale | 6/ora ⇒ **144/giorno proiettati** |
+| prima della correzione | **15** ricalcoli / 30 min ⇒ **720/giorno** |
+| **riduzione misurata** | **5×** (15 → 3 nella stessa finestra di 30 min) |
+
+**⚠ Letto alla lettera, 144/giorno SFORA l'obiettivo di ≤48 di 3×, e va detto.** Ma quel numero
+annualizza la **rampa**, non il regime: la scala parte da 0 e sale 0→5→10→20→30, quindi i primi quattro
+ricalcoli cadono nei primi 35 minuti **per costruzione**. Il conto corretto per un mercato che fallisce
+per sempre è **4 (rampa, una volta sola) + 48 (regime) ≈ 52/giorno**. La rampa non si ripete finché il
+mercato non torna `coperto`, che è l'unico azzeramento.
+
+**⓶ La progressione della scala, osservata sul mercato che rifiuta sempre** (`0x39b1401a20`):
+
+| da → a | intervallo | fallimenti prima | gradino atteso |
+|---|---|---|---|
+| 14:38:53 → 14:44:57 | **6,1 min** | 0 | 0 min *(+ un ciclo di 120 s)* |
+| 14:44:57 → 14:55:15 | **10,3 min** | 1 | **5 min** |
+| 14:55:15 → *(in corso a 15:06)* | **> 10,9 min** | 2 | **10 min** |
+
+`fallimentiConsecutivi` è salito **0 → 1 → 2 → 3**, e i 13 cicli intermedi sono stati fermati con
+*«raffreddamento: N fallimento/i consecutivo/i ⇒ si riprova fra M min»* **senza far partire nessun
+processo figlio**. È esattamente il comportamento che mancava.
+
+**⓷ Ordini a libro: 6 su 3 mercati** (erano 4 su 2), nozionale **$160,72**, e **tutti e 4 gli slot sono
+assegnati** (`postiNonAssegnati: []`).
+
+| mercato | ordini | yes | no | nozionale |
+|---|---|---|---|---|
+| `0xd4e77ba6` | 2 | ✅ | ✅ | $53,37 |
+| `0xbb86d7eb` | 2 | ✅ | ✅ | $53,67 |
+| `0xbaf88a15` | 2 | ✅ | ✅ | $53,67 |
+| `0x39b1401a20` | **0** | ❌ | ❌ | — |
+
+Le **2 gambe mancanti** hanno la causa di sempre, ora leggibile: *«ricalcolato il piano, e il mercato
+resta non quotabile — netto-negativo: reward troppo basso rispetto al costo»*. **Non è un difetto di
+cablaggio**: l'allocatore lo rifiuta perché non conviene.
+
+**⓸** `ignota` **0** · gambe **simmetriche su tutti e quattro** i mercati piazzati (56/56 · 56,5/56,5 ·
+57,1/57,1 · 56,1/56,1) · massimi **$53,67** contro $61,25, **zero sfondamenti** · `onTop:true` **0** ·
+`reject-venue` **0** · posizioni **0** · capitale in banda **$160,73**.
