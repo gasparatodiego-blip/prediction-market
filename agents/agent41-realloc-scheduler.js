@@ -2281,6 +2281,21 @@ async function selezionaMercati(deps = {}) {
   const codaLungaGiorni = (() => {
     try { return require('../lib/rewards/horizon').LONG_TAIL_DAYS; } catch { return null; }
   })();
+  // ⚠ 2-ter · LA CAPIENZA DELLA QUOTA, NON LA SUA ESISTENZA — 20 agosto 2026. `codaLungaGiorni` dice
+  // alla selezione DOVE comincia la coda; questi tre le dicono QUANTO la coda puo' ricevere, cioe' la
+  // stessa aritmetica che `budgetCodaLungaUsd` (allocator.js:264) applica poi davvero. Senza, la
+  // selezione ammetteva mercati che l'allocatore non poteva finanziare in nessuna configurazione:
+  // `0x5e082f0b` ha tenuto uno slot per 79 minuti senza una sola riga di giornale. Ognuno viene dalla
+  // sua UNICA fonte e si INIETTA (il modulo e' puro); uno che manca lascia la regola non applicata.
+  const codaLungaFrazione = (() => {
+    try { return require('../lib/rewards/horizon').LONG_TAIL_CAP_FRAC; } catch { return null; }
+  })();
+  const tettoPerMercatoUsd = (() => {
+    try { return require('../lib/rewards/concentration').MARKET_CAP_FIXED_USD; } catch { return null; }
+  })();
+  const pavimentoPremiante = (() => {
+    try { return require('../lib/rewards/concentration').pavimentoPremiante; } catch { return null; }
+  })();
 
   // ── LA LIVENESS DEL BOOK, COME CANCELLO DI SELEZIONE — 18 agosto 2026 ──────────────────────────
   // Un mercato che non si puo' PREZZARE non si puo' quotare: non deve occupare uno slot. La soglia
@@ -2327,6 +2342,7 @@ async function selezionaMercati(deps = {}) {
   const d = SELM.decidiSelezione({
     board, stato: stato.stato, posizioni, ora: Date.now(), escludi: quarantena, orizzonteMassimoOre,
     nettoPerMercato, conOrdiniVivi, max: quanti.quanti, codaLungaGiorni, bookVivi,
+    codaLungaFrazione, tettoPerMercatoUsd, pavimentoPremiante,
   });
   if (!d.ok) {
     annuncia('log', `selezione automatica: nessuna decisione — ${d.motivo}`);
@@ -2407,6 +2423,7 @@ async function selezionaMercati(deps = {}) {
     // questa riga, un giro in cui il vincolo morde e' indistinguibile da un giro in cui non c'era
     // niente di meglio — ed e' proprio la domanda che il 18 agosto e' rimasta senza risposta.
     scartatiPerCodaLunga: d.scartatiPerCodaLunga || [],
+    scartatiPerCodaLungaSottoPavimento: d.scartatiPerCodaLungaSottoPavimento || [],
     // ── ⚠ I TRE CAMPI DIAGNOSTICI CHE `decidiSelezione` CALCOLAVA E NESSUNO LEGGEVA ────────────────
     // Trovati il 18 agosto cercando perche' il quinto slot non si riempisse: il record del giornale
     // portava `occupati 4 | ammissibili 6 | entrati 0` e nient'altro, quindi la domanda «perche' quel

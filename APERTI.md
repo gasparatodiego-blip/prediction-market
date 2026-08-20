@@ -1153,3 +1153,382 @@ toccare agent40 e quindi un riavvio. **Da fare a finestra chiusa.**
 non ricostruibile dal giornale. La redazione protegge un id che nella stessa riga di `manual-place`
 compare **in chiaro** come `marketRef` — cioè non protegge niente e costa una misura. Anche questa a
 finestra chiusa.
+
+---
+
+## 16 · ✅ VERIFICA DI CONFORMITÀ ALLE DIECI REGOLE — sull'intera finestra di osservazione
+
+**Sola lettura, 20 agosto 2026.** Finestra `2026-08-19T15:21:42Z → 2026-08-20T04:09:37Z` (**12,80 h**),
+**776 campioni** del registro esterno (gap mediano 60,1 s, massimo 70,7 s) + **72.154 righe** del
+giornale maker + 385 record di selezione. Nessuna modifica, nessun riavvio, nessun ordine.
+
+**Ciò che rende metà di questa verifica priva di soggetto: ZERO FILL.** 330 righe in
+`safety-fills.jsonl`, tutte `nofill`; **zero posizioni** in tutti i 776 campioni; `residui-scoperti.json`
+vuoto. Le regole 5, 6, 7 e il Livello 0 della 8 non hanno avuto un solo caso da giudicare — non sono
+state rispettate né violate, **non sono state esercitate**.
+
+### I due difetti veri, entrambi registrati e NON corretti
+
+**① IL FRENO DEI 30 SECONDI NON ESISTE SUL TRIGGER 3.** `minIntervalMs` è controllato
+in tre punti — `lib/maker/auto-reprice.js:349` (inseguimento del mid), `:567` (rinnovo proattivo),
+`:765` (uscita dalla banda) — e **non nel blocco del TRIGGER 3** (`:626-680`, «siamo diventati i primi
+sul libro»), che ritorna `reprice` senza consultarlo. Misurato: **18 spostamenti sotto i 30 s sulla
+stessa gamba, minimo 4,8 s**. La sequenza che lo mostra, su `0xf816a089…`, gamba YES:
+
+```
+18:01:03.302  auto-reprice/trigger  inseguimento del mid: … → da 0.912 a 0.919
+18:01:08.273  auto-reprice/trigger  il libro si è mosso e questo ordine è ora il migliore del suo lato:
+                                     … spostandosi da 0.919 a 0.918
+```
+Cinque secondi. Nei minuti intorno il freno **funziona** e lo dichiara (`skip-rate-limited`, «questa
+gamba e' stata mossa 28s fa — si attende il minimo di 30s»): non è rotto, è **assente su un ramo solo**.
+⚠ Costo: due cancel+place invece di uno, cioè due finestre scoperte e due posti di rate limit. Non
+allarga nessun limite di rischio — «mai primo sul libro», banda e tetti restano davanti.
+
+**② IL TETTO PER MERCATO È STATO SFONDATO PER ~2 MINUTI, DA UN DOPPIO RIPREZZO SULLO STESSO `orderId`.**
+Il 19 agosto alle **17:46:10** su `0xa34edb6c…` lo stesso ordine a riposo (`0xc257068f…`) è stato
+sostituito **due volte nello stesso giro** — una volta per `manual-cancel`+`manual-place` @0.807, una
+per `manual-replace` @0.808 — lasciando **due gambe NO** a libro: **$97,33 contro il tetto di $61,25**
+(3 ordini sul mercato, `{"yes":1,"no":2}`). Visto da entrambe le fonti del registro. Si è risolto da
+solo alle **17:48:10** (`manual-cancel/ok` su `0x635412…`), ma nel frattempo il motore ha **fermato 12
+rinnovi dovuti** dichiarando `tetto-mercato: il mercato arriverebbe a $97.33`.
+⚠ **È la stessa classe del difetto del 16 agosto documentato a `auto-reprice.js:1229-1240`** (due
+`manual-replace` sullo stesso `orderId`), che il LOCK di mercato doveva chiudere. Il LOCK **c'è e ha
+retto** — le due sostituzioni stanno dentro lo stesso `bulk-allocate` — quindi il varco non è la
+concorrenza fra cicli: è che **dentro un solo giro due percorsi diversi hanno agito sullo stesso ordine**.
+⚠ Il tetto ha fatto il suo mestiere **a valle** (ha rifiutato i rinnovi) e **non** a monte: nessuno ha
+impedito il secondo piazzamento. Episodio unico in 12,8 ore: 1 su 326 piazzamenti.
+
+### I tre reperti minori
+
+**③ `lib/maker/cancel-all.js` intestazione — D7.** Dice «DISARMED BUILD: no real cancel credentials are
+wired here … calling cancelAllOrders() right now is safe». **Non è più vero**:
+`agents/agent43-guardian.js:495-496` costruisce i `credsProviders` veri e li passa. Il commento
+descrive una versione disarmata che non esiste, sulla superficie di cancellazione del kill.
+
+**④ `auto-reprice/cancelled-top-of-book` porta una causa che non è il top-of-book.** Tutte e 3 le
+occorrenze della finestra hanno `reason`: «rinnovo NON dovuto: una gamba sola a riposo e ZERO posizioni
+su entrambi i token, confermato dopo 2389s» — cioè la **gamba orfana**. Nome dell'esito e causa
+scritta descrivono due meccanismi diversi: chi conta gli esiti conta la cosa sbagliata.
+
+**⑤ Tre famiglie di esito di rifiuto senza `reason`**: `manual-cancel/noop` (31),
+`manual-replace/reject-doppione-identico` (28), `postOrder/reject-idempotent` (9). Il nome dell'esito è
+autodescrittivo, quindi non sono «non ha funzionato senza motivo» — ma sono le sole righe della
+finestra in cui la causa vive nel nome e non nel campo.
+
+### Cinture mai invocate nella finestra — l'inventario
+
+| cintura | stato | perché |
+|---|---|---|
+| **TRIGGER 4 · erosione della profondità** | **0 scatti** | soglia 40% lontana dai dati (§5.2 p.43); `sospensioni-erosione.json` assente |
+| **profondità davanti (`depthMultiple`)** | **spenta su TUTTI i mercati** | nessun mercato ha `depthMultiple` configurato ⇒ `depthMultipleN = null` ⇒ `prezzoInCoda` senza protezione. 0 righe «ARRETRATO PER PROFONDITÀ» |
+| `lib/maker/quantita-davanti.js` | **zero chiamanti**, nel repo intero | non committato, nessun `require` lo nomina |
+| scala d'urgenza sullo scoperto | 0 | zero posizioni: nessun soggetto |
+| presa di profitto | 0 | idem |
+| merge Livello 0 · riscatto on-chain | 0 | idem |
+| sblocco progressivo / gradino 6 | 0 | nessun blocco strutturale rilevato |
+| slot sterile | 379 misure, **0 azioni** | disarmata per configurazione (§4.13) |
+| guardiano perdite | **vivo, misura ogni 30 s** | PnL −$58,82 (−3,79%) contro soglia −5% / −$77,51 |
+
+### Ciò che è NON VERIFICABILE, e quale registro manca
+
+- **Quanti ordini ci fossero al venue** — `data/venue-orders.json` contiene solo `{marketId: {at}}`:
+  **nessun conteggio, nessun prezzo, nessuna size**. La lettura autorevole può confermare *quali
+  mercati* hanno ordini, mai *quanti*. Il difetto ② è stato visto dalla ricostruzione; la lettura vera
+  non avrebbe potuto vederlo. Già registrato in §15, resta aperto.
+- **Quale TRIGGER ha prodotto ogni `auto-reprice/sent`** — le righe `sent` non portano il campo
+  `trigger` (che esiste e vive solo in `data/maker-auto-reprice-state.json`, sovrascritto). La
+  classificazione qui sopra è stata ricostruita accoppiando `sent` con il `trigger` immediatamente
+  precedente sullo stesso millisecondo: funziona, ma è una giunzione, non un dato.
+- **Il cooldown di 10 minuti e la quiete di 180 secondi sulla rotazione NON ESISTONO** in
+  `lib/maker/selezione-mercati.js`: le sole guardie sono l'isteresi `max($0,50/g, 25%)`
+  (`SPODESTA_MARGINE_USD_GIORNO`/`_FRAZIONE`, righe 184-185) e le tre condizioni ①②③④ di riga 828-834.
+  Non è una violazione: è una regola che il codice non ha mai avuto.
+
+---
+
+## 20 · 📋 REFERTO DEL TEST A 2,55¢ — chiuso in anticipo, 20 agosto 2026
+
+**Finestra `06:35:19Z → 10:12Z`, 3,6 h, 218 campioni dell'osservatore + 20.364 righe di giornale.**
+Escluse **22** righe di fixture di `agent44` (i `cid` a byte ripetuti fra 06:35:19 e 06:37:30 — non le
+sei che avevo contato: la scansione ne ha scritte 22 su cinque `cid` finti, non su uno).
+
+### ⓵ Il tasso di premio — **il confronto 4,7× era sbagliato, e la correzione lo rovescia**
+
+Il premio di `data/osservazione-24h.jsonl` è **cumulativo per GIORNO e azzera a 00:00Z**. La finestra a
+3,45¢ scavalca la mezzanotte: chi la misura come differenza fra primo e ultimo campione ottiene un
+numero senza senso. Si somma per segmenti di giorno.
+
+| | **A · 3,45¢** (manopola 0.95) | **B · 2,55¢** (manopola 0.556) |
+|---|---|---|
+| finestra | 19T15:21:42 → 20T06:34:34 · **15,215 h** | 20T06:35:34 → 20T10:09:41 · **3,568 h** |
+| segmenti | 19/08 $0,7894→$7,2844 = **+$6,4950**<br>20/08 $0→$1,8748 = **+$1,8748** | 20/08 $1,8805→$3,1460 = **+$1,2655** |
+| premio totale | **$8,3698** | **$1,2655** |
+| capitale in banda (integrale/durata) | medio **$129,84** (min 45,92 · max 209,71) | medio **$116,97** (min 53,15 · max 159,63) |
+| tasso grezzo | $13,203/giorno | $8,511/giorno |
+| **normalizzato** | **$10,169 /g per $100 in banda** | **$7,277 /g per $100 in banda** |
+
+**Rapporto B/A = 0,72×.** Non 4,7×. Il 4,7× nasceva dal confronto fra un tasso grezzo di due ore e un
+`$3,12/g` di provenienza non verificata, calcolato con un altro metodo su una finestra che scavalcava
+la mezzanotte. **Era un numero non confrontabile, e l'ho presentato come un confronto.**
+
+**⚠ MA NEMMENO LO 0,72× MISURA LA MANOPOLA, e questa è la conclusione vera.** Il tasso è governato da
+**quali mercati stanno a libro**, non dalla distanza. Dentro la sola finestra B:
+
+| mercati a libro | `tassoUltimoUsdGiorno` |
+|---|---|
+| con `0xe798f9e4` | **$30,75 – $35,89/g** |
+| con `0xbb86d7eb` (inizio finestra) | $8,01 – $8,12/g |
+| senza nessuno dei due | **$0,04 – $0,76/g** |
+
+**Un fattore ~900 fra i mercati, contro un fattore 3,45× che la manopola potrebbe al massimo produrre**
+(`S = ((v−s)/v)²`: 0,0544 a 3,45¢ contro 0,1878 a 2,55¢). L'effetto della manopola è sommerso dal
+rumore della composizione del portafoglio di un fattore ~260. **Con questi dati la domanda non è
+rispondibile**, e nessuna delle due finestre la può rendere tale.
+
+**⚠ Il dato che servirebbe NON ESISTE**: `data/stima-campioni.json` registra `{t, r, c}` — istante,
+tasso, copertura — **aggregati**, senza scomposizione per mercato. Una misura pulita richiede il premio
+**per mercato**, o due gambe sullo stesso mercato alle due distanze. Non è raccolto da nessuno.
+
+### ⓶ Il pavimento di profondità — **non è peggiorato: −12%**
+
+Righe `profondita-insufficiente`, tutti i mercati, confronto a parità di durata (3,61 h):
+
+| | righe | /ora | di cui `0xd4e77ba6` |
+|---|---|---|---|
+| **PRE** (3,61 h prima del riavvio) | 758 | **209,9** | 642 (84,7%) |
+| **POST** (dal riavvio a adesso) | 669 | **185,3** | 549 (82,1%) |
+| differenza | | **−24,6/ora (−12%)** | |
+
+Sulle 91,65 h di copertura precedenti la media è 77,3/ora, ma quelle ore hanno mercati diversi: il
+confronto che vale è quello a parità di durata e di mercati. **La manopola non ha aumentato i rifiuti
+del cancello di profondità.** Il gate è dominato da un mercato solo, `0xd4e77ba6`, che da solo fa
+**3.695 righe su 5.334** dal 19 agosto.
+
+### ⓷ Fill, posizioni, tetti, conteggi
+
+| | |
+|---|---|
+| **fill** (anche parziali) | **ZERO.** `data/safety-fills.jsonl`: tutte le righe `nofill`. Giornale maker: nessuna riga a tema fill |
+| **posizioni aperte** | **0 in tutti i 218 campioni** (`posizioni.leggibile: true`, `n: 0`) |
+| **coppie incomplete da posizione** | **nessuna**, per conseguenza |
+| **sfondamenti del tetto $61,25** | **ZERO.** Massimi: `0xe798f9e4` $53,67 · `0xd4e77ba6` $53,14 · `0x12dc2b61` $52,92 · `0xbb86d7eb` $52,55. Totale massimo **$159,63** (07:34:38) |
+| **`reject-venue`** | **0** |
+| **`onTop:true`** | **0** |
+| **TRIGGER 3 (`top-of-book`)** | **0 scatti** — quindi 0 spostamenti sotto 30 s da lì |
+| **spostamenti sotto 30 s sulla stessa gamba** | **0** su 53 piazzamenti accettati. Intervallo minimo **109,9 s** |
+| **campioni-mercato asimmetrici** | **35** — `0x12dc2b61` 26, `0xd4e77ba6` 9 |
+
+**⚠ Il conteggio degli spostamenti sotto 30 s va fatto sulla chiave `(marketRef, requested.book)`.**
+Chiave sbagliata due volte: senza `marketRef` (le righe `manual-replace` non ce l'hanno) si fondono
+mercati diversi; senza `requested.book` si fondono le **due gambe della stessa coppia**, che vengono
+piazzate a 0,4-0,7 s di distanza per costruzione — e allora si contano 22 falsi positivi. Con la chiave
+giusta: **zero**.
+
+### ⓸ 🔴 `doppione-identico` — il difetto TOGLIE GAMBE DAL LIBRO, due volte, e una non è tornata
+
+È il «doppio percorso cancel+place / manual-replace sullo stesso `orderId`» già noto. **La conseguenza
+misurata è nuova.** Due episodi, identici nella forma:
+
+```
+07:07:47.095  auto-reprice  trigger  book=yes  0xd4e77ba6
+   proactive renewal: 180s of venue-side life left → re-place at the SAME price 0.831
+07:07:48.705  manual-cancel   ok                          ← il vecchio ordine È CANCELLATO
+07:07:48.778  manual-place    reject-doppione-identico    ← il nuovo è RIFIUTATO
+   esiste gia' un ordine IDENTICO su questo token e lato (0x8928eaa634…, 0.831×56)
+07:07:57.563  order-vanished  cancelled-by-system  0x8928eaa634…   ← ed era proprio quello
+```
+
+`0x8928eaa634…` **è l'ordine appena cancellato**: il cancello del doppione ha confrontato il rimpiazzo
+con il proprio predecessore. Esito `{ok:false, oldCancelled:true, replaced:false, newOrderId:null}`, e
+il bot lo dichiara per intero — *«al momento non c'è nessun ordine a riposo per questa gamba»*.
+
+**La collisione è STRUTTURALE, non accidentale**: `expiry-refresh` ripiazza **allo stesso prezzo** per
+resettare la GTD (`fromPrice 0.831 → toPrice 0.831`), quindi il nuovo ordine è *identico per
+definizione*. Ogni volta che la vista degli ordini propri non è ancora aggiornata fra il `cancel` e il
+`place`, il gate del doppione rifiuta. E la vista **non è letta dal venue**:
+`ownOrders: {origine: "passati dal chiamante", venueLetto: false, autorevole: true}`.
+
+| quando | mercato | gamba | conseguenza |
+|---|---|---|---|
+| 07:07:48 | `0xd4e77ba6` | yes | gamba fuori, rientrata al ciclo successivo |
+| **09:16:59** | `0x12dc2b61` | **no** | **gamba fuori e MAI PIÙ RIENTRATA** |
+
+Dal 09:17:44 `0x12dc2b61` risulta `yes=1 no=0` per **26 campioni consecutivi**; poi cade anche la YES e
+il mercato esce dal libro. **`data/venue-orders.json` alle 10:13:53 elenca un mercato solo**,
+`0xd4e77ba6`. È questa la causa del decadimento del libro da 6 ordini/3 mercati a 2 ordini/1 mercato, e
+quindi del crollo del premio a $0,04/giorno nell'ultima ora e mezza.
+
+**⚠ Non corretto in questo giro, per istruzione dell'operatore.** Ma va detto che non è cosmetico: è la
+prima causa misurata di gambe perse in questa finestra.
+
+### ⓹ La classifica dell'ultima selezione — **il bot è ancorato ai tre mercati peggiori**
+
+Ricalcolata con `valutaAmmissibilita` del modulo vero sul board di `data/liquidity-rewards.json`
+(132 righe), perché **`data/selezione-mercati-audit.jsonl` NON registra la scomposizione**: scrive
+`valutati: 132` e `ammissibili: 7`, e dei 125 scartati non conserva né il cancello né il premio.
+
+| cancello della regola 2 | mercati |
+|---|---|
+| `minsize-oltre-soglia` (> 50) | **59** |
+| `famiglia-meteo` | **37** |
+| `scadenza-troppo-vicina` (< 24 h) | **26** |
+| `scadenza-oltre-orizzonte-piano` | 1 |
+| `scadenza-non-determinabile` | 1 |
+| **AMMISSIBILI** | **8** |
+
+**I primi 10 non ammessi valgono $2.457,08/giorno di premio lordo**; tutti i 124 non ammessi sommano
+**$8.607,54/giorno**. I primi cinque sono tutti `scadenza-troppo-vicina` a **1,8 ore** — mercati orari
+che il pavimento delle 24 h esclude per costruzione (regola 2, voluta).
+
+**Ma il problema non sono gli esclusi: sono gli ammissibili che il bot non prende.**
+
+| ammissibile | lordo/giorno | minSize | ore | tenuto? |
+|---|---|---|---|---|
+| `0x1cf96ff2` | **$90,94** | 20 | 445,8 | ❌ |
+| `0xaede8a0b` | **$65,02** | 20 | 37,7 | ✅ (appena entrato) |
+| `0xb5b33b8c` | **$51,59** | 20 | 29,8 | ❌ |
+| `0x7fd71c48` | $16,44 | 20 | 1813,8 | ❌ |
+| `0xb98ab55a` | $10,26 | 20 | 277,8 | ❌ |
+| `0x5e082f0b` | $2,86 | 50 | 3181,8 | ✅ |
+| `0x12dc2b61` | $2,57 | 50 | 1717,8 | ✅ |
+| `0xd4e77ba6` | **$0,21** | 50 | 3181,8 | ✅ |
+
+**Tre dei quattro slot sono occupati dai mercati numero 6, 7 e 8 su 8**, mentre il primo ($90,94/g) e il
+terzo ($51,59/g) restano liberi. La causa è l'isteresi di spodestamento (`max($0,50/g, 25%)`) unita alla
+regola «non si spodesta chi ha ordini vivi»: gli occupanti hanno sempre ordini vivi, quindi **non
+vengono mai spodestati**, e il bot resta ancorato a $0,21/giorno con $90,94/giorno a disposizione. È un
+lucchetto, non una scelta: chi è dentro ci resta perché è dentro.
+
+**⚠ La classifica vera usa il NETTO del knapsack, non il lordo** — e il netto sottrae la concorrenza. Il
+divario di 400× sul lordo è comunque troppo grande perché il netto lo possa spiegare, ma il netto per
+mercato **non è persistito da nessuna parte** (`nettiIniettati: 5` è un conteggio, non i valori). Questa
+è una misura da fare, non una conclusione da trarre.
+
+---
+
+## 21 · 🔧 `0x5e082f0b` SELEZIONATO E MAI NEL PIANO — diagnosi e riparazione, 20 agosto 2026
+
+### La traccia: dove nasce il piano, con quale chiave, e dove il mercato si perde
+
+| | |
+|---|---|
+| **chi scrive** | `agents/agent41-realloc-scheduler.js:773` `scriviUltimoPiano()`, chiamato **da un punto solo**, riga **699**, dentro il ciclo pesante da 6 h |
+| **dove** | `data/realloc-ultimo-piano.json` |
+| **con quale chiave** | **`marketId`** (`CAMPI_RIGA[0]`, riga 767), confrontato normalizzato (`trim`+`toLowerCase`) a riga **1611-1612** da `rigaDi(id)` |
+| **chi NON scrive** | il **mini-ciclo da 120 s**: decisione esplicita e commentata alle righe **736-739** — «un piano calcolato su sei ore di storico non deve poter sostituire la memoria di uno calcolato su quarantotto» |
+| **stato del file** | scritto **`2026-08-19T15:25:00Z`**, cioè **19 ore fa**, 2 righe: `0xd4e77ba6` e `0xa34edb6c` — e il secondo **non è più selezionato da ieri** |
+
+### 🔴 **NON è un campo mancante. È la stessa regola scritta due volte, in due unità, con due semantiche**
+
+Il mercato **arriva** a `calcolaPianoFuoriProcesso`: `restringiAllaSelezione` (riga 554) lo include,
+perché è in `idsAttivi`. Si perde **dentro l'allocatore**, a `lib/rewards/allocator.js:1126`,
+`reasonCode: 'quota-coda-lunga'`.
+
+**L'aritmetica, che è il cuore della cosa.** `budgetCodaLungaUsd` (`allocator.js:264-270`) concede alla
+coda lunga `capitaleCorto × f/(1−f)` con `f = LONG_TAIL_CAP_FRAC = 0,12`, cioè **13,64 centesimi per
+ogni dollaro di fascia corta**. Perché `0x5e082f0b` (`minSize 50`, pavimento premiante **$61,25**)
+riceva un solo dollaro servirebbe una fascia corta da **$449,17**. Il capitale libero del mini-ciclo è
+**$56**. La quota vale **$7,64**.
+
+**E le due regole si contraddicono esattamente:**
+
+| | la SELEZIONE (`selezione-mercati.js:728`, blocco 2-bis) | l'ALLOCATORE (`allocator.js:712`) |
+|---|---|---|
+| domanda | **esiste** un mercato attivo in fascia corta? (qualitativa) | quanto capitale ha la fascia corta? (quantitativa) |
+| corto assente | ⇒ **esclude** il lungo | ⇒ quota **spenta** (riga 740), il lungo prenderebbe tutto |
+| corto presente | ⇒ **ammette** il lungo | ⇒ quota **applicata**, e lo affama |
+
+**Quando una dice sì, l'altra dice no.** Il mercato è ammesso solo nella configurazione in cui non può
+essere finanziato — e infatti nel giornale maker, in 3,6 ore di perimetro, **non esiste una sola riga
+che lo nomini**: non è stato rifiutato, non è mai stato proposto. Ha tenuto uno slot su quattro per
+79 minuti (e oltre) senza poterlo riempire.
+
+**⚠ Ed è un ciclo, non uno stato**: `0x5e082f0b` è uscito per `coda-lunga-senza-fascia-corta` alle
+07:14:52 ed è **rientrato alle 07:16:21**, 89 s dopo; uscito alle 09:16:47, rientrato alle 09:18:20.
+Esce quando la fascia corta sparisce, rientra appena ne compare un'altra — e in mezzo non riceve mai
+capitale. Stessa forma del deadlock del 13 agosto (§5-bis p.120) e di quello del 18 (2-bis): **due
+regole che non si parlano**, e nessuno dei due moduli sbagliato da solo.
+
+### Gli altri mercati nella stessa condizione
+
+Ricalcolato sul board vivo (132 righe) con `valutaAmmissibilita` e `pavimentoPremiante` veri:
+
+| mercato | lordo/g | minSize | ore | coda lunga? | finanziabile? |
+|---|---|---|---|---|---|
+| `0x5e082f0b` | $2,86 | 50 | 3.181 | sì | **NO** |
+| `0x12dc2b61` | $2,57 | 50 | 1.717 | sì | **NO** |
+| `0xd4e77ba6` | $0,21 | 50 | 3.181 | sì | **NO** |
+| `0xaede8a0b` | $65,02 | 20 | 37,7 | no (fascia corta) | sì |
+
+**Tre slot su quattro erano occupati da mercati che l'allocatore non può finanziare in nessuna
+configurazione.** `0xd4e77ba6` e `0x12dc2b61` avevano ordini a libro solo perché ce li avevano da
+prima e vivevano di **rinnovi** — e un rinnovo non passa dall'allocatore. Il piano non li ha mai
+ripianificati: nei 3,6 h di finestra le uniche righe allocate sono `0xbb86d7eb` e `0xe798f9e4`,
+**entrambe di fascia corta**.
+
+### 🔩 La riparazione — cancello **2-ter**, `lib/maker/selezione-mercati.js`
+
+Alla selezione mancava la **capienza** della quota, non la sua esistenza. Il cancello nuovo esclude un
+candidato di coda lunga quando il suo pavimento premiante è **provabilmente** irraggiungibile:
+
+```
+budget massimo della coda = (slot − 1) × tetto per mercato × f/(1−f)
+                          = 3 × $61,25 × 0,12/0,88 = $25,06
+minSize 20 ⇒ pavimento $24,50 ≤ $25,06  ⇒ passa
+minSize 50 ⇒ pavimento $61,25 >  $25,06  ⇒ ESCLUSO
+```
+
+**⚠ È un limite SUPERIORE e provabile, non una stima**: il knapsack non alloca a un mercato più del
+tetto, e almeno uno slot lo occupa il lungo di cui si sta decidendo. Se nemmeno quel massimo raggiunge
+il pavimento, il mercato non è finanziabile in **nessuna** configurazione — non «difficilmente».
+
+**⚠ Tutto INIETTATO, e assente ⇒ regola non applicata.** Il modulo è puro (zero `require`, un test lo
+asserisce): `codaLungaFrazione` da `horizon.LONG_TAIL_CAP_FRAC`, `tettoPerMercatoUsd` da
+`concentration.MARKET_CAP_FIXED_USD`, `pavimentoPremiante` da `concentration` — ognuno dalla sua
+**unica** fonte, nessuno ricopiato (il reperto D1 non è esprimibile).
+**⚠ E il pavimento non calcolabile NON esclude**, al contrario del resto della selezione: qui
+l'esclusione toglie capitale dal libro, e non si toglie capitale su un numero che non si è letto.
+
+**⚠ GLI STESSI GUARDIANI DI 2-bis, nessuno nuovo**: chi ha **ordini a riposo è intoccabile**; lista
+degli ordini **non leggibile ⇒ non si libera nessuno**; i mercati **in gestione** non sono in `attivi`
+e non vengono nemmeno guardati. Verificato sul board vivo: `0xd4e77ba6` — il peggiore di tutti,
+$0,21/g — **NON viene liberato**, perché ha ordini a libro. Il guardiano funziona.
+
+**Prova, prima e dopo, sullo stato vero:**
+
+| | tenuti | liberati |
+|---|---|---|
+| prima | `0xd4e77ba6` `0x12dc2b61` `0xaede8a0b` `0x5e082f0b` | — |
+| dopo | `0xd4e77ba6` `0xaede8a0b` | `0x12dc2b61`, `0x5e082f0b` (`coda-lunga-sotto-il-pavimento`) |
+
+Lo scarto va a verbale in una lista **separata** (`scartatiPerCodaLungaSottoPavimento`, nel giornale di
+selezione): 2-bis guarda l'**esistenza** di una fascia corta, 2-ter la sua **capienza**, e fonderle
+renderebbe illeggibile quale delle due ha deciso.
+
+### ⚠ La conseguenza va detta per intero: **i due slot liberati NON si riempiono**
+
+`postiNonAssegnati: [{scaglione: "alto", posti: 2}]`. La composizione a 4 slot è **1 «basso» (≤20) +
+3 «alto» (≤50)**; il posto «basso» è occupato da `0xaede8a0b`, e i quattro candidati migliori del board
+— **`0x1cf96ff2` a $90,94/g**, `0xb5b33b8c` a $51,59/g, `0x7fd71c48`, `0xb98ab55a` — sono **tutti
+`minSize 20`**, quindi tutti scartati con `quota-scaglione-piena` sullo scaglione «basso». I 3 posti
+«alto» possono ospitare solo `minSize ≤ 50`, e ogni candidato «alto» del board è coda lunga.
+
+**Non è una regressione introdotta da 2-ter**: quei due slot producevano $0,00 dal piano anche prima.
+Ma il vincolo che morde adesso è **la quota degli scaglioni**, ed è una decisione esplicita
+dell'operatore (§4.13: «uno scaglione vuoto non si riempie col vicino», perché sostituire porterebbe il
+capitale da $147 a $183,75). **Non l'ho toccata.** Con la selezione ancorata a $0,21/g e $90,94/g in
+attesa dietro un vincolo di composizione, è la prossima decisione da prendere.
+
+### 🧬 Il gemello — **dichiarato, NON corretto in questo giro**
+
+**`agent41:1610` + `:1452` — `ripristinaGamba` legge il piano SALVATO e non applica nessun controllo di
+coda lunga.** Gli basta che esista una riga con quel `marketId`: se il mercato sta nel piano di 19 ore
+fa, la gamba torna a libro; se è stato selezionato adesso, no. È il motivo per cui `0xd4e77ba6` continua
+a essere rifornito e `0x5e082f0b` non lo è mai stato.
+
+**`agent41:3367` — il gradino 4 della scala di sblocco (`ripara-precondizioni`)** chiama
+`preparaMercatoNuovo` su **ogni** `marketId` del piano salvato, **senza nessun controllo di selezione**:
+un piano vecchio può riabilitare un mercato che la selezione ha già rilasciato.
+
+Entrambi lasciati come sono, per istruzione.
