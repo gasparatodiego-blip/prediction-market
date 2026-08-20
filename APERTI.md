@@ -2271,3 +2271,78 @@ più lunga prima di dire se conviene.
 **⓻** gambe **simmetriche** su entrambi i mercati piazzati nella finestra (56,5/56,5 e 57,1/57,1) ·
 **zero sfondamenti** di $61,25 · `onTop:true` **0** · `reject-venue` **0** · `doppione-identico` **0** ·
 posizioni aperte **0**.
+
+---
+
+## 29 · 🔓 LA DEROGA DI BANDA SULLA SCALA D'USCITA — 20 agosto 2026
+
+### Il fatto, e perché era un difetto e non una regola
+
+Su **456.339 righe** di giornale (15-20 agosto): **29 rifiuti bloccanti** con causa `OUT_OF_BAND`, di
+cui **24 con `source: auto-close-on-fill`** — cioè la scala d'uscita ordinaria. Due attese vere di
+**7,4 e 6,2 minuti** in cui l'uscita non è mai partita.
+
+`OUT_OF_BAND` è un gate **nostro**, non del venue: `adapter.js:764` lo dice per esteso — *«says "this
+order earns no reward", not "the venue will refuse it"»*. E `fill-strategy.js:263` lo tratta **già**
+come non bloccante (`!codes.every(c => c === 'OUT_OF_BAND')`): **la strategia voleva uscire, il gate di
+piazzamento la rifiutava lo stesso** perché nessuno gli passava la deroga. `allowOutOfBand: true`
+arrivava solo da `mm-tracking` (motore inerte) e dalla chiusura d'emergenza R10
+(`agent41:2080, 2252, 2310`). **Terza occorrenza in un giorno** di «dep dichiarata e mai iniettata».
+
+### ⓵ Lo scoping per gradino — dove ciascuno costruisce la spec
+
+| gradino | file:riga | deroga | perché |
+|---|---|---|---|
+| **1** — taker immediato | `auto-close.js:1746` (`t.taker === true`) | **SÌ** | deve uscire subito, il premio non c'entra |
+| **2** — acquisto a riposo, 30 min | `auto-close.js:1746` (`t.taker === false`) | **solo se `t.fuoriBanda === true`** | quell'ordine sta a libro **per** maturare premio: metterlo fuori banda quando un prezzo in banda esiste è aspettare mezz'ora senza incassare |
+| **3** — vendita, scala d'urgenza 30/60/240 min | `auto-close.js:2797` | **SÌ** | è un'uscita, non una quotazione |
+
+**⚠ Il predicato del gradino 2 non è nuovo: `t.fuoriBanda` era già calcolato** poche righe sopra e
+finiva **solo nella nota testuale** dell'audit. Adesso decide. `true` = il tetto della coppia è più
+stretto della banda, quindi nessun prezzo in banda lo rispetta; `false` = un prezzo in banda esiste ed
+è quello che si sta usando ⇒ **niente deroga**; **assente ⇒ niente deroga** (fail-closed: non si concede
+un'esenzione su un dato che non si è letto).
+
+### ⓶ I confini — la deroga solleva ESCLUSIVAMENTE il gate di banda
+
+`splitVerdict` (`venue-rules.js:159`) declassa il **solo** codice `OUT_OF_BAND`. Tutto il resto vive
+fuori da quella funzione e resta davanti, **provato con asserzioni**:
+
+| limite | esito con la deroga attiva |
+|---|---|
+| `PRICE_OUT_OF_RANGE` · `OFF_TICK` · `RULES_UNREADABLE` | **restano bloccanti** |
+| `BELOW_MIN_SIZE` | **resta bloccante** (serve `allowBelowMinSize`, che non si passa) |
+| verdetto assente o malformato | **rifiuta** (fail-closed, `venue-rules.js:148`) |
+| tetto della coppia 101¢ · cap safety per ordine $80 · tetto per mercato $61,25 | **non ricevono `allowOutOfBand`** — asserito per assenza sul sorgente |
+| cap di esposizione $650 · regola 6 | vivono in `evaluateLimits` / `provaChiusura`, fuori da `splitVerdict` |
+
+### ⓷ L'asserzione di cablaggio
+
+Dopo **tre** occorrenze in un giorno della stessa classe (`sostituisceOrderId`, `pianoFresco`,
+`allowOutOfBand`), il test verifica sul **codice** — non sui commenti — che auto-close **inietti** il
+campo, e che le iniezioni siano **esattamente due**, una per sito.
+
+**Verificato che morde, su due forme di difetto distinte:**
+- togliendo entrambe le iniezioni (il difetto originale) ⇒ **26/3**, `{iniezioni: 0}`
+- rendendo il gradino 2 indiscriminato (`return true`) ⇒ **27/2**
+
+### ⓸ Il giornale — `deroga-banda-usata`
+
+Una riga dedicata per ogni ordine che passa **grazie** alla deroga, con `gradino`, mercato, lato,
+prezzo, `mid`, **`distanzaMidC`** e `minutiScoperto`.
+
+**⚠ Si scrive solo quando la deroga è SERVITA DAVVERO**: la riga nasce dalla presenza di
+`bandAdvisory` — la stringa che il gate emette quando declassa `OUT_OF_BAND`. Se è assente, l'ordine
+era dentro la banda e la deroga non ha cambiato niente. **Contare queste righe conta le deroghe, non
+gli ordini.**
+**⚠ La distanza si LEGGE dall'avviso**, non si ricalcola: è il numero che il gate ha davvero usato.
+**⚠ Campi non disponibili ⇒ `null`**: al gradino 1/2 i minuti di scoperta non sono in quello scope e si
+scrive `null` invece di dedurli; al gradino 3 esistono (`urgenza.minuti`) e si registrano.
+
+### ⚠ Un quarto percorso che NON ho toccato, e lo dichiaro
+
+**`auto-close.js:1791`, la CHIUSURA RAPIDA** (taker + limit che comprano la gamba mancante) è un quarto
+percorso di chiusura che passa da `piazzaChiudendo` e **non riceve la deroga**. L'operatore ha
+enumerato tre gradini e questo non è fra loro, quindi resta com'è. Se in futuro si volesse estendere,
+la domanda da porsi è la stessa del gradino 2: la sua gamba `limit` **sta a libro** in attesa, quindi
+meriterebbe lo scoping condizionale, non quello incondizionato.
