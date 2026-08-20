@@ -1558,3 +1558,46 @@ rossi, identico a prima della modifica). L'asserzione che conta — *«e TUTTI i
 divergenza qui è la classe D1)»* — è **VERDE**: i due processi dichiarano lo stesso `0.456`. Le tre
 rosse fotografano un valore invece di difendere una proprietà (§5.3), e vanno **riscritte sulla
 proprietà, non ammorbidite**: è una modifica autorizzata a parte, non fatta in questo giro.
+
+### Le sette verifiche dopo il riavvio — 20 agosto 2026, **10:40:24Z**, dati letti
+
+Flotta riavviata **dal file** (`pm2 restart agents/ecosystem.config.js` + `pm2 save`), **11 processi
+online**. ⚠ Escluse dai conteggi le righe di fixture di `agent44` su `cid` a byte ripetuti
+(`cid_7c7c7c…`, `cid_cdcdcd…`) fra 10:40:39 e 10:41:05: **tutte `dry-run-validated` o
+`reject-end-of-scale`, zero ordini veri**.
+
+| # | verifica | esito |
+|---|---|---|
+| **1** | adozione dei pre-esistenti | **`ignota` = 0.** `preesistenti-adottati`: *«2 ordine/i provatamente nostri adottati all'avvio invece di essere resi invisibili»*, 0 lasciati invisibili |
+| **2** | env da `/proc/<pid>/environ` | agent40 (pid 526898) **`0.456`** · agent41 (pid 526921) **`0.456`** — **identici**, nessuna divergenza D1. `MAKER_MERCATI_CONTEMPORANEI=4` su **agent41**, che è il suo unico posto (R1); assente su agent40, agent34 e agent43 ed è corretto |
+| **3** | `\|mid − prezzo\|` | `0xd4e77ba6` **yes 2,15¢** · **no 2,15¢**. **Ha deciso il PAVIMENTO** su entrambe: l'obiettivo chiede 2,052¢ e il gate mai-primo avrebbe dato **0,15¢** (un tick dietro il miglior bid altrui). Il prezzo è stato **mosso via** dal mid: `0.147 → 0.122` (NO), `spostato: true`, `alBordo: false`, margine dal bordo applicato e non ceduto |
+| **4** | perimetro vs libro | **2 selezionati** (`0xd4e77ba6`, `0xaede8a0b`), **1 con ordini**, **2 ordini totali** — contro l'obiettivo dichiarato di 4 × 2 = 8. Cause sotto |
+| **5** | gambe simmetriche | **sì**: yes `0.831 × 56` e no `0.122 × 56`, **stessa size (56)**, 9,1 s di distanza |
+| **6** | tetto per mercato | `0xd4e77ba6` **$53,37** contro $61,25. **Zero sfondamenti** |
+| **7** | `onTop:true` | **0** (e `reject-venue` **0**) |
+
+**⚠ Il punto 4 non raggiunge 8 ordini, e le due cause sono entrambe già dichiarate sopra.**
+
+**① Due slot su quattro sono vuoti perché 2-ter li ha liberati e la composizione non li riempie.** La
+selezione delle 10:44:01Z, la prima dopo il riavvio, ha fatto esattamente ciò che era stato provato
+offline: `liberati: 0x12dc2b61, 0x5e082f0b — coda-lunga-sotto-il-pavimento`,
+`postiNonAssegnati: [{scaglione: "alto", posti: 2}]`, `entrati: []`. Il vincolo che morde è la **quota
+degli scaglioni** (§4.13), non toccata.
+
+**② `0xaede8a0b` è selezionato, quotabile, e non riceve ordini — per il GEMELLO dichiarato in §21.**
+Dai log di agent41, verbatim e ripetuto a ogni ciclo:
+
+```
+copertura 0xaede8a0b3e…: da-coprire (0/2 gambe) — mancano 2 gamba/e e il mercato e' quotabile adesso: si ripiazza
+ripristino 0xaede8a0b3e…: nessuna riga nel piano salvato per questo mercato: si dichiara e NON si ricalcola
+mini-ciclo: ricalcolo leggero — il piano salvato ha 1171 minuti (limite 60)
+mini-ciclo: nessuna azione — nessun mercato del piano ha spazio sufficiente adesso
+CAPITALE AL LAVORO · $53.37 su $1491.36 = 3.6% · obiettivo 95% · mancano $1363.42
+```
+
+È `agent41:1452` — `ripristinaGamba` pretende una riga nel piano **SALVATO**, che ha **1.171 minuti
+(19,5 ore)** e non lo contiene. Il difetto era stato **dichiarato prima del riavvio**, non scoperto
+dopo. Non corretto, per istruzione.
+
+**⚠ E `reject-doppione-identico` ha già colpito 3 volte in 19 minuti** dal riavvio: il difetto di §20 ⓸
+continua a togliere gambe dal libro, ed è la ragione per cui il capitale al lavoro è al **3,6%**.
