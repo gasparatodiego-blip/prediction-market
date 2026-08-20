@@ -341,7 +341,8 @@ module.exports = {
         // e resta ben sotto i 23 minuti della scadenza GTD: un feed davvero morto viene comunque
         // scoperto molto prima che gli ordini invecchino.
         MAKER_MID_STANTIO_TIMEOUT_MS: '120000',
-        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95',
+        // ⚠ 0,95 → 0,556 il 20 agosto 2026, decisione dell'operatore: 0,556 × v(4,5¢) = 2,5¢ dal mid.
+        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.556',
         // ══ GRADINO 1 · MAKER_MODE APERTA — 18 agosto 2026, istruzione dell'operatore ══════════════
         // «apri MAKER_MODE, fermati, poi MAKER_ADAPTER_DRYRUN. MANUAL_ORDER_PLACEMENT non si tocca.»
         //
@@ -515,7 +516,8 @@ module.exports = {
         // ⚠ E il tetto di esposizione cumulativa e' passato a $650 (`data/safety-risk-limits.json`,
         // gitignored): a $320 il gate avrebbe smesso di piazzare a meta' strada, perche' confronta
         // `openNotionalUsd + notional` anche sulle aperture. Il freno vero resta il kill a −$100.
-        MAKER_MERCATI_CONTEMPORANEI: '5',
+        // ⚠ 5 → 4 il 20 agosto 2026, decisione dell'operatore. Il SOFFITTO resta 5 in selezione-mercati.js.
+        MAKER_MERCATI_CONTEMPORANEI: '4',
         // ── DICHIARATA, NON PIÙ SOLO EREDITATA (4 agosto 2026) ────────────────────────────────────
         // Qui la fragilità è REALE, a differenza del caso di agent40: agent41 NON ha il caricatore di
         // .env scritto a mano che agent40 ha in testa al file (verificato: `grep -c "Load .env"` → 0).
@@ -609,7 +611,8 @@ module.exports = {
         // dichiarata in nessun blocco di questo file, quindi i due processi che decidono un prezzo
         // leggono lo stesso difetto e non possono divergere per un riavvio scoordinato — che è
         // esattamente il rischio che la manopola qui sotto porta con sé.
-        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95',
+        // ⚠ 0,95 → 0,556 il 20 agosto 2026, decisione dell'operatore: 0,556 × v(4,5¢) = 2,5¢ dal mid.
+        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.556',
 
         // ══ LE QUATTRO CINTURE DI ARMAMENTO — SCRITTE IL 16 AGOSTO 2026, NON ANCORA IN SERVIZIO ═════
         // ⚠ QUESTE RIGHE ARMANO IL PIAZZAMENTO DI ORDINI VERI CON CAPITALE REALE, e questo e' il
