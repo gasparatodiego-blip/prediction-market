@@ -2211,3 +2211,63 @@ a ogni N (il budget sale da $25,06 a $58,47 ma non raggiunge il pavimento $61,25
 **4** e `MAX_MERCATI_CONTEMPORANEI` resta **5**. Per andare oltre 5 servono, nell'ordine: una decisione
 sul cap di esposizione ($980 a N=8, cioè +$330), e una sulla quota degli scaglioni se si vuole che i
 `minSize 20` smettano di essere 7 su 8 scartati.
+
+### Le verifiche dopo il riavvio — 20 agosto 2026, **15:56:14Z**, 11/11 online
+
+**⓵ `ignota` = 0** — *«6 ordine/i provatamente nostri adottati all'avvio»*, 0 invisibili.
+
+**⓸ 🟢 LA MODIFICA A HA SCATTATO IN PRODUZIONE, ed è il caso esatto che doveva sbloccare.**
+
+| quando | spodestato | netto | sfidante | netto | margine | ordini | cancellazioni |
+|---|---|---|---|---|---|---|---|
+| **16:00:34** | `0xd4e77ba6` | **−$0,08/g** | `0x17c40b9e7a` | **+$2,73/g** | $0,50 | **sì** | **2 chieste, 2 riuscite, 0 fallite** |
+| 16:12:32 | `0x17c40b9e7a` | +$2,73/g | `0x771c8fa997` | +$14,94/g | $0,68 | no | — |
+
+Il primo è **precisamente il caso che prima era impossibile**: occupante in perdita **con ordini a
+riposo**, spodestato, ordini cancellati esplicitamente, `annullato: false`, `scritto: true`. Nessun
+`reject-venue`, quindi il ramo di annullamento non è stato esercitato in produzione (lo è nei test).
+
+**⓷ Nessun netto negativo è più tenuto**: i quattro slot sono su **+$39,69 · +$30,00 · +$22,82 ·
++$14,94** (punteggio all'ultimo ingresso). ⚠ Il netto **corrente** non è persistito da nessuna parte —
+sono i valori all'ingresso, non di adesso (è la lacuna di §24, ancora solo proposta).
+
+**⓹ ⚠ RICALCOLI: 10 nei 30 minuti ⇒ 480/giorno. SFORA l'obiettivo di ≤48 di 10×, e va detto.**
+Ma la ripartizione cambia il significato:
+
+| mercato | ricalcoli | intervalli (min) | `fallimentiConsecutivi` |
+|---|---|---|---|
+| `0xeec0c5bab0` | 3 | **5,9 · 10,4** | 0,1,2 |
+| `0x17c40b9e7a` | 2 | **6,0** | 0,1 |
+| `0xc60053f1f0` | 2 | **5,9** | 0,1 |
+| `0x771c8fa997` | 2 | **6,0** | 0,1 |
+| `0xbb86d7eb72` | 1 | — | 0 |
+
+**Per mercato la scala regge esattamente**: 5,9 / 6,0 / 10,4 minuti sono i gradini 5 e 10, e
+`fallimenti` sale 0→1→2. Su 48 record di `ripristino-gamba`, **30 sono stati fermati dal
+raffreddamento**. Il 480/giorno è la **somma su 5 mercati diversi**, non un mercato che gira a vuoto:
+il tetto della scala è **per mercato**, e l'aggregato scala col numero di mercati che falliscono
+insieme. **La MODIFICA A ha aumentato quel numero**, perché ogni spodestamento porta dentro un mercato
+nuovo che deve costruirsi le gambe.
+
+**⓶ ⓺ ⚠ E IL LIBRO SI È RIDOTTO, non ingrandito.**
+
+| | prima del riavvio (15:18) | adesso (16:26) |
+|---|---|---|
+| ordini | 6 | **3** |
+| mercati con ordini | 3 | **2** |
+| nozionale | $160,72 | **$59,32** |
+| capitale al lavoro | 10,8% | **4,0%** |
+
+`0xbaf88a1521` 2/2 ($53,67) · `0xbb86d7eb72` **1/2** (solo `no`, $5,65) · `0xeec0c5bab0` e
+`0xc60053f1f0` **0/2**. Zero posizioni aperte, zero sfondamenti del tetto.
+
+**Il churn della selezione sta smontando il libro più in fretta di quanto lo ricostruisca**: due
+spodestamenti in 30 minuti cancellano 2 ordini ciascuno, e il mercato entrante impiega più cicli a
+riceverne — con la scala di raffreddamento che, correttamente, rallenta ogni tentativo. La modifica A
+fa ciò che doveva (nessun netto negativo occupa più uno slot), ma **il suo effetto netto in questa
+finestra è meno capitale a libro**, non di più. È il costo del churn, e va misurato su una finestra
+più lunga prima di dire se conviene.
+
+**⓻** gambe **simmetriche** su entrambi i mercati piazzati nella finestra (56,5/56,5 e 57,1/57,1) ·
+**zero sfondamenti** di $61,25 · `onTop:true` **0** · `reject-venue` **0** · `doppione-identico` **0** ·
+posizioni aperte **0**.
