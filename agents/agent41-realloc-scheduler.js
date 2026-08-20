@@ -1470,8 +1470,11 @@ async function ripristinaGamba({ id, v, riga, ora, deps, pianoFresco = null }) {
       return { tentato: false, motivo: 'nessuna riga nel piano salvato e nessun ricalcolo disponibile su questo percorso' };
     }
     const p = await pianoFresco();
-    if (p && p.errore) return { tentato: false, motivo: `nessuna riga nel piano salvato, e il piano fresco non e' disponibile: ${p.errore}` };
-    if (!p) return { tentato: false, motivo: 'nessuna riga nel piano salvato, e il ricalcolo non ha prodotto nessun piano' };
+    // ⚠ SOLO IL MARCATORE ESPLICITO dice «non eseguito». Dedurlo dall'assenza di righe sarebbe
+    // rifare il difetto di §26 al contrario: un figlio partito e finito male e' comunque costato.
+    const eseguito = !(p && p.eseguito === false);
+    if (p && p.errore) return { ricalcolato: eseguito, tentato: false, motivo: `nessuna riga nel piano salvato, e il piano fresco non e' disponibile: ${p.errore}` };
+    if (!p) return { ricalcolato: eseguito, tentato: false, motivo: 'nessuna riga nel piano salvato, e il ricalcolo non ha prodotto nessun piano' };
     rigaUsata = ((p && p.rows) || [])
       .find((r) => String(r.marketId || '').trim().toLowerCase() === id) || null;
     ricalcolata = !!rigaUsata;
@@ -1681,17 +1684,20 @@ async function riconciliaCopertura(deps = {}) {
   const pianoFresco = deps.pianoFresco || (async () => {
     if (_fresco !== undefined) return _fresco;
     _fresco = null;
+    // ⚠ `eseguito` DICE SE IL PROCESSO FIGLIO E' PARTITO, e non si deduce: e' cio' da cui dipende se
+    // la scala di raffreddamento sale (§26). Un saldo illeggibile ferma PRIMA di spendere qualunque
+    // cosa — quindi non e' un tentativo; un figlio che parte e fallisce E' un tentativo, ed e' costato.
     const s = await (deps.leggiSaldo || leggiSaldo)();
     const cap = s && Number.isFinite(s.usd) ? s.usd : null;
     if (cap == null || cap <= 0) {
-      _fresco = { errore: `saldo non leggibile (${(s && s.motivo) || 'motivo ignoto'})` };
+      _fresco = { eseguito: false, errore: `saldo non leggibile (${(s && s.motivo) || 'motivo ignoto'})` };
       return _fresco;
     }
     try {
       const p = await (deps.pianoLeggero || pianoLeggero)({ capital: cap, maxPerMarketUsd: capPerMarketUsd(cap) });
-      _fresco = p || null;
+      _fresco = p || { eseguito: true, errore: 'il ricalcolo non ha prodotto nessun piano' };
     } catch (e) {
-      _fresco = { errore: `il ricalcolo del piano e' fallito: ${e && e.message ? e.message : String(e)}` };
+      _fresco = { eseguito: true, errore: `il ricalcolo del piano e' fallito: ${e && e.message ? e.message : String(e)}` };
     }
     return _fresco;
   });
@@ -1805,7 +1811,12 @@ async function riconciliaCopertura(deps = {}) {
       annuncia('log', `ripristino ${id.slice(0, 12)}…: ${r.motivo}`);
     }
     const memoria = RIP.memoriaDopo({ stato: v.stato, memoria: _ripristino.get(id) || null,
-      tentato: r.tentato, riuscito: r.riuscito, ora });
+      tentato: r.tentato, riuscito: r.riuscito,
+      // ⚠ UN RICALCOLO ESEGUITO E' UN TENTATIVO AVVENUTO, anche se non ha prodotto un piazzamento:
+      // e' un processo figlio da 13-22 s. Senza questo flag la scala non saliva mai e si ricalcolava
+      // a ogni ciclo — 720/giorno misurati. `ricalcolato` = rifatto e mercato ancora fuori;
+      // `ricalcolata` = rifatto e la riga c'era. Entrambi vogliono dire «il figlio e' partito».
+      ricalcoloEseguito: r.ricalcolato === true || r.ricalcolata === true, ora });
     if (memoria == null) _ripristino.delete(id); else _ripristino.set(id, memoria);
   }
   // ⚠ LA MEMORIA DEI MERCATI CHE NON SONO PIU' ATTIVI SI BUTTA, o un mercato che rientra fra sei ore

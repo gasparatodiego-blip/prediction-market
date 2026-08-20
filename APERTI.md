@@ -1965,3 +1965,105 @@ eseguito, o aggiungere un contatore separato per i ricalcoli a vuoto, sul modell
 
 **Nessun tasso $/giorno e nessun confronto con le finestre precedenti**: con 2 mercati e la misura §24
 ancora solo proposta, quel numero varia di un fattore ~900 col mix e non misurerebbe la modifica.
+
+---
+
+## 26 · 🔴 IL CONTENIMENTO DEL RICALCOLO — il difetto e la correzione, 20 agosto 2026
+
+### Il fatto, misurato sul bot vivo
+
+**15 ricalcoli in 30 minuti** (intervallo mediano **118 s**, cioè **uno per ciclo**) ⇒ **30/ora ⇒
+720/giorno**, contro i **~48/giorno** che avevo sostenuto chiedendo la ratifica del ribaltamento di
+§25. **Sforo 15×, ed è la stessa identica cifra dell'incidente del 16 agosto** (§5-bis p.171).
+Estesa a tutto il periodo dal riavvio: **17 ricalcoli in 0,57 h = 713/giorno**, tutti su un mercato
+solo (`0x39b1401a20`).
+
+**L'argomento su cui l'operatore ha ratificato era mio, ed era sbagliato.**
+
+### La causa — `lib/maker/ripristino-gambe.js:139`
+
+```js
+if (a.tentato !== true) return mem;   // ← memoria INVARIATA
+```
+
+`memoriaDopo` incrementava `fallimenti` **solo su un tentativo di PIAZZAMENTO**. Quando
+`ripristinaGamba` ricalcola il piano e l'allocatore risponde «non quotabile», l'esito è
+`tentato: false` — non si è piazzato niente — quindi `fallimenti` restava **0**, `attesaMs(0)` valeva
+**0**, e la scala concedeva un nuovo tentativo **a ogni ciclo**. Ma un **processo figlio da 13-22 s era
+stato eseguito**. *«Non ho piazzato» non è «non ho fatto niente».*
+
+Osservabile nel giornale: 17 record `ripristino-gamba/non-tentato` con `ricalcolato: true` e
+**`fallimentiConsecutivi: 0` in ognuno**.
+
+### La correzione — i tre casi, distinti esplicitamente
+
+| caso | cosa è successo | memoria |
+|---|---|---|
+| **①** ricalcolo **non eseguito** (riga già nel piano salvato · scala che nega · nessun ricalcolo disponibile) | niente che costi | **INVARIATA**, la scala non sale |
+| **②** ricalcolo **eseguito, esito negativo** (piano rifatto, mercato ancora non quotabile) | un figlio da 13-22 s è partito | **FALLIMENTO**: la scala sale 0→5→10→20→30 |
+| **③** ricalcolo **eseguito con successo** (riga trovata) | si prosegue al piazzamento | decidono `tentato`/`riuscito` come sempre |
+
+`memoriaDopo` riceve un ingresso nuovo, **`ricalcoloEseguito`**, e la guardia diventa
+`if (a.tentato !== true && a.ricalcoloEseguito !== true) return mem;`. Il caso ② cade nel ramo `+1`
+esistente senza bisogno di un caso a parte, perché `riuscito` non è `true`.
+
+**⚠ L'azzeramento vero NON è toccato**: `coperto` osservato continua a cancellare la memoria, e resta
+l'unico azzeramento. Un mercato che torna quotabile riparte dal gradino zero.
+
+**⚠ E il cablaggio è la metà che conta**: agent41 passa
+`ricalcoloEseguito: r.ricalcolato === true || r.ricalcolata === true`. Senza, la correzione della
+funzione pura sarebbe **inerte** — la classe «dep dichiarata e mai iniettata», **quinta e sesta**
+occorrenza in questo repo, entrambe incontrate oggi. Un'asserzione la difende sul **codice**, non sui
+commenti.
+
+### Il tetto che ne deriva, e adesso è ASSERITO
+
+```
+ciclo 120 s        ⇒ 720 cicli/giorno
+tetto della scala  ⇒ 30 min ⇒ 86.400 / 1.800 = 48 tentativi/giorno
+```
+
+**48/giorno è ora un'asserzione del test**, non una frase in un commento — ed è esattamente ciò che il
+ribaltamento di §25 pretendeva e che non era mai stato scritto.
+
+### ⚠ Le due asserzioni precedenti erano VERDI SU UNA PROPRIETÀ FALSA
+
+Il blocco ⑥ di `ripristino-ricalcola.test.js` provava che su `coperto` e su `non-quotabile` il ricalcolo
+non parte. **Vero, e irrilevante**: il caso che conta è un `da-coprire` che **fallisce ripetutamente**,
+ed era proprio quello non contenuto. Riscritte nel blocco **⑥-bis**, che verifica i tre casi uno per
+uno, la **progressione** della scala (`[0,5,10,20,30,30]` minuti) e il tetto di 48/giorno.
+
+**Verificato che mordono**: rimessa la riga vecchia, il test va **25/3** con
+`gradini: [0,0,0,0,0,0]` — cioè riproduce esattamente la patologia misurata. Rimosso il cablaggio in
+agent41, va **28/1**.
+
+### Le 4 gambe mancanti al momento della diagnosi — due cause diverse, nessuna è «l'ordine è morto»
+
+| | gambe | causa |
+|---|---|---|
+| `0x39b1401a20` | 2 | **(b)** piano **ricalcolato**, e l'allocatore lo rifiuta: *«netto-negativo: reward troppo basso rispetto al costo: netto $-36.35/g al meglio»*. **Zero righe `manual-place` in tutto il giornale**: non è mai stato piazzato niente, quindi non è (c) |
+| quarto slot | 2 | **(a)** nessun mercato: i 9 ammissibili sono esauriti — 3 tenuti + 3 `quota-scaglione-piena` (tutti scaglione *basso*) + 3 `coda-lunga-sotto-il-pavimento`. **Nessun candidato *alto* residuo**, e lo slot libero è *alto* |
+
+Il mercato senza ordini è nel perimetro dalle **11:21:16Z** con punteggio 21,95, minSize 50, 28,6 h alla
+scadenza. **Non è un difetto di cablaggio**: è il board che non offre 4 mercati che valga la pena
+quotare. La correzione di §25 ha reso questo fatto **leggibile**; prima era nascosto dietro «manca dal
+piano».
+
+### ⚠ E il banco non era ermetico — trovato dalla suite, non dal ragionamento
+
+Riscrivendo la scala, `ripristino-gambe-scatta` è diventato rosso e il codice era giusto: il suo
+`giro()` non iniettava `pianoFresco`, quindi dal 20 agosto il ramo di difetto faceva partire un
+**`pianoLeggero` VERO** — un processo figlio da 13-22 s sul board vivo — e **toccava lo stato di
+produzione**. La suite l'ha detto per nome: `⚠ STATO TOCCATO: data/maker-auto-reprice.json,
+data/maker-manual-mode.json`. Il ricalcolo vero incrementava poi i fallimenti e falsava il blocco ⑧
+del banco, che partiva già a un fallimento.
+
+Iniettato `pianoFresco` nel banco (`eseguito: false`, che è anche semanticamente giusto: lì nessun
+ricalcolo avviene, quindi la scala non deve salire per causa sua). Verificato: dopo, i due file non
+cambiano più. **È la stessa classe di §5.3 «una suite che scrive sullo stato di produzione»**, e qui è
+stata introdotta dalla correzione di §25 senza che nessuno se ne accorgesse per un giro.
+
+**⚠ E `eseguito` è ESPLICITO, non dedotto.** Il piano fresco dichiara se il figlio è partito:
+`{eseguito:false}` quando il saldo è illeggibile — ci si ferma **prima** di spendere qualunque cosa,
+quindi non è un tentativo — e `{eseguito:true}` quando il figlio parte e finisce male, perché è
+costato comunque. Dedurlo dall'assenza di righe sarebbe rifare il difetto di §26 al contrario.
