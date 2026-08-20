@@ -1793,3 +1793,81 @@ piano ha spazio sufficiente adesso`.
 **Il piano salvato ha 20,2 ore** e `ripristinaGamba` (`agent41:1452`) pretende una riga lì dentro. È il
 gemello dichiarato prima del riavvio e lasciato intatto per istruzione: **è ciò che tiene il libro a 4
 ordini invece di 8**, ed è la prossima cosa da correggere se si vuole il perimetro pieno.
+
+---
+
+## 25 · 🔧 IL GEMELLO DI §21 CHIUSO — `ripristinaGamba` ricalcola, 20 agosto 2026
+
+### La diagnosi, prima del codice
+
+| | |
+|---|---|
+| **chi scrive il piano** | `agent41:699`, **un punto solo**, dentro il **ciclo pesante da 6 h** → `scriviUltimoPiano` (`:773`) → `data/realloc-ultimo-piano.json`, chiave `marketId` |
+| **chi lo legge pretendendolo** | `agent41:1452` `ripristinaGamba` (si fermava) · `agent41:3461` `ripara-precondizioni` (gradino 4 della scala di sblocco) · `agent41:3472` `risveglia-feed` (gradino 5) |
+| **stato misurato** | scritto **2026-08-19T15:25:00Z**, cioè **1.257 minuti (21 ore) fa**, 2 righe: `0xd4e77ba6` e `0xa34edb6c` — **e il secondo non è più nemmeno selezionato** |
+
+### ⚠ La causa È la differenza di cadenza, e per questo la correzione va sul LETTORE
+
+**Misurato:** la selezione ha girato **24 volte in 48 minuti** (~ogni 2 min, a ogni controllo del
+capitale fermo); il piano si scrive **ogni 6 ore**. Fra una scrittura e l'altra la selezione può
+cambiare **~180 volte**. Un mercato che entra in selezione alle 11:47 non compare nel piano salvato
+fino al prossimo ciclo pesante, cioè **fino a ore dopo** — pur essendo nel perimetro e giudicato
+`da-coprire` con *«il mercato e' quotabile adesso: si ripiazza»*.
+
+**Scrivere il piano più spesso NON è la correzione**: costerebbe 13-22 s di processo figlio ogni
+120 s, ed è esattamente ciò che il commento di `agent41:725-740` esclude — *«un piano calcolato su sei
+ore di storico non deve poter sostituire la memoria di uno calcolato su quarantotto»*. La memoria del
+ciclo pesante resta sua: il lettore si **ricalcola un piano per sé**, e non lo salva.
+
+### La correzione
+
+Quando la riga manca, `ripristinaGamba` chiede un piano **fresco** invece di fermarsi.
+
+**⚠ Non è una scorciatoia, e questo era il vincolo.** Il ricalcolo chiama **`pianoLeggero`**, cioè lo
+**stesso** percorso del mini-ciclo: passa da `calcolaPianoFuoriProcesso` → `restringiAllaSelezione`
+(quindi l'universo è già l'insieme **selezionato**, dove regola 2 e **cancello 2-ter** hanno già
+deciso) e poi da **tutti** i filtri dell'allocatore — orizzonte, quota della coda lunga, tetto di
+categoria sui book vuoti, tetto di credibilità, **pavimento di profondità** e **tetto per mercato
+$61,25** (`capPerMarketUsd`, importato, non ricopiato). *«Leggero» vuol dire meno storico, non meno
+regole.* Nessun parametro della regola 4 è stato toccato.
+
+**⚠ Il rifiuto ora dice la CAUSA VERA.** `piano.candidates` porta per ogni mercato valutato
+`status`/`reasonCode`/`reason` dell'allocatore, e il motivo li riporta:
+
+```
+ricalcolato il piano, e il mercato resta non quotabile — quota-coda-lunga: scade fra 132.6 g,
+oltre i 7 del P90 misurato: la coda lunga del piano e' gia' al 12% del capitale
+```
+
+Dire «manca dal piano» quando la verità è «la sua profondità non è verificata» è la classe **D7** — un
+motivo che descrive il **lettore** invece del **fatto** — e manda a cercare il difetto nel posto
+sbagliato. Un mercato **assente dai candidati** riceve un motivo diverso ancora
+(*«non è stato nemmeno valutato»*), perché è un fatto diverso da «scartato».
+
+**⚠ Costo contenuto, su due freni che esistevano già.** Il ricalcolo è un processo figlio da 13-22 s:
+si fa **pigramente** al primo mercato senza riga e si **memoizza per l'intero giro** (`_fresco`); e
+sopra c'è già la **scala di raffreddamento** di `ripristino-gambe` (`RIP.valutaRipristino`, subito · 5 ·
+10 · 20 · 30 min di tetto), che decide **se** tentare. Senza quella si ricalcolerebbe ogni 120 s per
+sempre. **Saldo illeggibile ⇒ nessun ricalcolo e si dichiara**: un piano su un capitale indovinato
+deciderebbe delle *size* su un numero che nessuno ha letto.
+
+A verbale finiscono `ricalcolata` (la riga veniva da un ricalcolo) e `ricalcolato` (si è ricalcolato e
+il mercato resta fuori): senza, sul giornale di domani «rimessa» non distinguerebbe *«il piano ce
+l'aveva»* da *«il piano era vecchio e si è rifatto»*, che è la domanda a cui questa correzione risponde.
+
+**Prova**: `lib/maker/ripristino-ricalcola.test.js`, **18 asserzioni** sul **cablaggio** attraverso la
+`ripristinaGamba` vera, e **6/12 sul sorgente senza la correzione** — verificato rimettendo il vecchio
+`return` e togliendolo.
+
+### 🧬 Gli altri lettori del piano salvato — dichiarati, NON toccati
+
+Non stanno sul percorso di quotazione: nessuno dei due impedisce a un mercato selezionato di ricevere
+ordini, e per entrambi il piano vecchio degrada la *qualità* dell'azione, non la blocca.
+
+| lettore | cosa fa col piano vecchio | perché non è stato toccato |
+|---|---|---|
+| `agent41:3461` **`ripara-precondizioni`** (gradino 4 della scala di sblocco) | riscrive le precondizioni sui `marketId` del piano salvato, **senza nessun controllo di selezione né di coda lunga**: un piano di 21 ore può riabilitare un mercato che la selezione ha già rilasciato | è la **scala di sblocco**, non il ciclo di copertura. E il **gradino 1** (`ricostruisci-piano`) gira **prima** e chiama `controlloCapitaleFermo`, che il piano lo ricalcola già |
+| `agent41:3472` **`risveglia-feed`** (gradino 5) | rissemina la corsia calda del raccoglitore dalle righe del piano salvato; piano vuoto ⇒ `{rows: []}` | non piazza e non abilita niente: semina priorità di **lettura** per agent34 |
+
+Il mini-ciclo (`:2626`) legge il piano salvato ma **ricalcola già da sé** quando è più vecchio di
+60 minuti (`il piano salvato ha 1213 minuti (limite 60)`): non ha il difetto.

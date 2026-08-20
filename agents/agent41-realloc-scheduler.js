@@ -1437,7 +1437,7 @@ const _ripristino = new Map();        // conditionId → {ultimoTentativo, falli
 // **prima si riduce, poi si piazza** — perche' il gate somma il nozionale a riposo: piazzare per primo
 // incontrerebbe ancora il tetto vecchio. Se la riduzione fallisce NON si piazza: due gambe asimmetriche
 // sono peggio di una gamba sola.
-async function ripristinaGamba({ id, v, riga, ora, deps }) {
+async function ripristinaGamba({ id, v, riga, ora, deps, pianoFresco = null }) {
   // ⚠ IL CAMPO E' `id`, NON `conditionId` — e questa riga l'ha sbagliato alla prima stesura, cioe' la
   // quinta occorrenza della classe «nome sbagliato ⇒ valore di difetto che nessuno ha chiesto»
   // (§5.3). `some` su un campo inesistente e' sempre `false`, quindi il precontrollo non vedeva mai
@@ -1449,17 +1449,53 @@ async function ripristinaGamba({ id, v, riga, ora, deps }) {
     memoria: _ripristino.get(id) || null });
   if (!d.tenta) return { tentato: false, motivo: d.motivo };
 
-  if (!riga) return { tentato: false, motivo: 'nessuna riga nel piano salvato per questo mercato: si dichiara e NON si ricalcola' };
-  const g = gambeDiUnaRiga(riga, riga.computedDefaultOffsetTicks);
+  // ── ⚠ MANCA LA RIGA: SI RICALCOLA, NON CI SI FERMA — 20 agosto 2026 ──────────────────────────
+  //
+  // Qui c'era `return {tentato:false, motivo:'…si dichiara e NON si ricalcola'}`, e teneva fuori dal
+  // libro mercati SELEZIONATI e giudicati «quotabili adesso» solo perche' il piano su disco era
+  // vecchio di ore (misurato: 1.257 minuti). La causa e' la differenza di cadenza fra chi scrive il
+  // piano (ciclo pesante, 6 h) e chi seleziona (ogni giro): vedi la nota estesa in
+  // `riconciliaCopertura`. Adesso si chiede un piano FRESCO — lo stesso `pianoLeggero` del
+  // mini-ciclo, con tutti i suoi cancelli — e solo se nemmeno quello produce una riga ci si ferma.
+  //
+  // ⚠ E IL RIFIUTO DICE LA CAUSA VERA. `piano.candidates` porta, per ogni mercato valutato,
+  // `status`/`reasonCode`/`reason` dell'allocatore: `quota-coda-lunga`, `min-size`,
+  // `profondita-sottile`, `orizzonte`, `profondita-non-verificata`… Dichiarare «manca dal piano»
+  // quando la verita' e' «la sua profondita' non e' verificata» e' la classe D7 — un motivo che
+  // descrive il lettore invece del fatto — e manda a cercare il difetto nel posto sbagliato.
+  let rigaUsata = riga;
+  let ricalcolata = false;
+  if (!rigaUsata) {
+    if (typeof pianoFresco !== 'function') {
+      return { tentato: false, motivo: 'nessuna riga nel piano salvato e nessun ricalcolo disponibile su questo percorso' };
+    }
+    const p = await pianoFresco();
+    if (p && p.errore) return { tentato: false, motivo: `nessuna riga nel piano salvato, e il piano fresco non e' disponibile: ${p.errore}` };
+    if (!p) return { tentato: false, motivo: 'nessuna riga nel piano salvato, e il ricalcolo non ha prodotto nessun piano' };
+    rigaUsata = ((p && p.rows) || [])
+      .find((r) => String(r.marketId || '').trim().toLowerCase() === id) || null;
+    ricalcolata = !!rigaUsata;
+    if (!rigaUsata) {
+      // La causa VERA, dalla bocca dell'allocatore. Se il mercato non compare nemmeno fra i candidati
+      // vuol dire che non e' arrivato a essere valutato, e anche quello e' un fatto diverso da «manca».
+      const c = ((p && p.candidates) || [])
+        .find((x) => String(x.marketId || '').trim().toLowerCase() === id) || null;
+      const causa = c
+        ? `${c.reasonCode || c.status || 'scartato'}: ${c.reason || 'senza motivo dichiarato'}`
+        : 'il mercato non compare fra i candidati del piano ricalcolato: non e\' stato nemmeno valutato';
+      return { tentato: false, ricalcolato: true, motivo: `ricalcolato il piano, e il mercato resta non quotabile — ${causa}` };
+    }
+  }
+  const g = gambeDiUnaRiga(rigaUsata, rigaUsata.computedDefaultOffsetTicks);
   if (g.scarto || !g.rows) {
-    return { tentato: false, motivo: `gambe non costruibili: ${(g.scarto && g.scarto.motivo) || 'nessuna riga costruita'}` };
+    return { ricalcolata, tentato: false, motivo: `gambe non costruibili: ${(g.scarto && g.scarto.motivo) || 'nessuna riga costruita'}` };
   }
   // I due token del mercato sono la tabella di traduzione token → book: `valutaCopertura` risponde in
   // token (sono gli ordini a portarlo), `gambeDiUnaRiga` produce righe con `book`. Vengono dalla
   // STESSA riga di board che ha alimentato il giudizio, non da una seconda lettura.
   const sel = RIP.gambeDaMandare({ gambe: g.rows, mancanti: v.mancanti,
     tokenIdYes: v.tokenIdYes, tokenIdNo: v.tokenIdNo });
-  if (!sel.righe.length) return { tentato: false, motivo: sel.motivo };
+  if (!sel.righe.length) return { ricalcolata, tentato: false, motivo: sel.motivo };
 
   // ── LA SIZE DELLA COPPIA, DECISA UNA VOLTA SOLA PER TUTTE E DUE LE GAMBE ────────────────────────
   // ⚠ IL TETTO INIETTATO E' `MARKET_CAP_FIXED_USD` E NON `capPerMarketUsd(capitale)`, ed e' voluto: qui
@@ -1471,8 +1507,8 @@ async function ripristinaGamba({ id, v, riga, ora, deps }) {
     .filter((o) => String((o && (o.marketId || o.conditionId)) || '').trim().toLowerCase() === id);
   const dim = COPS.dimensionaCoppia({ gambe: g.rows, ordiniVivi: ordiniQui,
     tokenIdYes: v.tokenIdYes, tokenIdNo: v.tokenIdNo,
-    tettoUsd: MARKET_CAP_FIXED_USD, minSizeShares: riga.minSizeShares });
-  if (!dim.ok) return { tentato: false, motivo: `coppia non dimensionabile: ${dim.motivo}`, dimensione: dim };
+    tettoUsd: MARKET_CAP_FIXED_USD, minSizeShares: rigaUsata.minSizeShares });
+  if (!dim.ok) return { ricalcolata, tentato: false, motivo: `coppia non dimensionabile: ${dim.motivo}`, dimensione: dim };
   // ⚠ LE DUE LETTURE DEVONO CONCORDARE, e se non concordano non si agisce. `gambeDaMandare` decide QUALI
   // lati mandare partendo da `v.mancanti` (il giudizio di copertura); `dimensionaCoppia` guarda gli ordini
   // vivi per conto proprio. Sono due osservazioni della stessa cosa: se dicono lati diversi, una delle due
@@ -1480,7 +1516,7 @@ async function ripristinaGamba({ id, v, riga, ora, deps }) {
   const latiDaMandare = [...new Set(sel.righe.map((r) => String(r.book)))].sort().join('+');
   const latiSenzaGamba = [...new Set(dim.daPiazzare.map((r) => String(r.book)))].sort().join('+');
   if (latiDaMandare !== latiSenzaGamba) {
-    return { tentato: false, dimensione: dim,
+    return { ricalcolata, tentato: false, dimensione: dim,
       motivo: `le due letture non concordano su quali lati manchino (copertura: ${latiDaMandare || 'nessuno'}, ordini vivi: ${latiSenzaGamba || 'nessuno'}): non si piazza su una lettura vecchia` };
   }
   const righeDaPiazzare = sel.righe.map((r) => ({ ...r, size: dim.size }));
@@ -1492,7 +1528,7 @@ async function ripristinaGamba({ id, v, riga, ora, deps }) {
   // c'e' l'istante in cui la coppia e' piu' piccola del piano. Un riprezzo che entrasse in quella finestra
   // rimetterebbe la gamba viva alla size di prima e l'asimmetria tornerebbe.
   if (!LOCK.prendi(id, { da: 'ripristino-gambe', ora }).preso) {
-    return { tentato: false, motivo: 'lucchetto non ottenuto fra il giudizio e l\'invio', dimensione: dim };
+    return { ricalcolata, tentato: false, motivo: 'lucchetto non ottenuto fra il giudizio e l\'invio', dimensione: dim };
   }
   let ref = null;
   const ridotte = [];
@@ -1515,7 +1551,7 @@ async function ripristinaGamba({ id, v, riga, ora, deps }) {
         // verrebbe rifiutata dal gate (nel migliore dei casi) o accettata su un totale che nessuno ha
         // autorizzato. Una gamba sola e' uno stato che il bot sa gestire; due asimmetriche no.
         ref = { ok: false, placed: 0, reason: `riduzione della gamba viva non riuscita (${(rr && rr.gate) || 'senza gate'}): non si piazza la gamba nuova`, results: [] };
-        return { tentato: true, riuscito: false, messe: 0, righe: righeDaPiazzare.length,
+        return { ricalcolata, tentato: true, riuscito: false, messe: 0, righe: righeDaPiazzare.length,
           gate: [(rr && rr.gate) || 'riduzione-non-riuscita'], motiviRifiuto: [(rr && rr.reason) || ''].filter(Boolean),
           dimensione: dim, ridotte,
           motivo: `coppia NON ricostruita: la riduzione della gamba viva da ${r.daSize} a ${dim.size} share e' stata rifiutata`
@@ -1555,7 +1591,7 @@ async function ripristinaGamba({ id, v, riga, ora, deps }) {
     : [];
   const gate = [...new Set(rifiuti.map((x) => String((x && (x.gate || x.outcome)) || '')).filter(Boolean))];
   const motiviRifiuto = [...new Set(rifiuti.map((x) => String((x && x.reason) || '')).filter(Boolean))].slice(0, 3);
-  return { tentato: true, riuscito: messe > 0, messe, righe: righeDaPiazzare.length,
+  return { ricalcolata, tentato: true, riuscito: messe > 0, messe, righe: righeDaPiazzare.length,
     gate, motiviRifiuto, dimensione: dim, ridotte,
     motivo: messe > 0
       ? `coppia ricostruita: ${messe} gamba/e a ${dim.size} share`
@@ -1610,6 +1646,55 @@ async function riconciliaCopertura(deps = {}) {
   const pianoSalvato = (deps.leggiPiano || leggiUltimoPiano)();
   const rigaDi = (id) => ((pianoSalvato && pianoSalvato.righe) || [])
     .find((r) => String(r.marketId || '').trim().toLowerCase() === id) || null;
+
+  // ── ⚠ IL PIANO FRESCO, QUANDO QUELLO SALVATO NON HA LA RIGA — 20 agosto 2026 ────────────────────
+  //
+  // IL FATTO. `ripristinaGamba` pretendeva una riga nel piano SALVATO e, non trovandola, si fermava
+  // con «si dichiara e NON si ricalcola». Misurato: il piano su disco aveva **1.257 minuti (21 ore)**
+  // e conteneva 2 righe, di cui una (`0xa34edb6c`) NEMMENO PIU' SELEZIONATA — mentre `0xaede8a0b` e
+  // `0x39b1401a20` erano selezionati, nel perimetro, giudicati `da-coprire` e «quotabili adesso», e
+  // restavano senza un solo ordine. Libro a 4 contro un obiettivo di 8.
+  //
+  // ⚠ LA CAUSA E' UNA DIFFERENZA DI CADENZA, ed e' per questo che la correzione va sul LETTORE e non
+  // sullo scrittore: il piano lo scrive SOLO il ciclo pesante (`:699`, ogni 6 h), mentre la selezione
+  // gira a ogni controllo del capitale fermo — **24 volte in 48 minuti**, misurato. Fra una scrittura
+  // e l'altra la selezione puo' cambiare ~180 volte. Scrivere il piano a ogni giro costerebbe 13-22 s
+  // di processo figlio ogni 120 s ed e' esattamente cio' che il commento di `:725-740` esclude: «un
+  // piano calcolato su sei ore di storico non deve poter sostituire la memoria di uno calcolato su
+  // quarantotto». Quindi non si tocca la memoria del ciclo pesante — si ricalcola per SE'.
+  //
+  // ⚠ NON E' UNA SCORCIATOIA: si chiama `pianoLeggero`, cioe' lo STESSO percorso del mini-ciclo, che
+  // passa da `calcolaPianoFuoriProcesso` e quindi da `restringiAllaSelezione` (regola 2 e cancello
+  // 2-ter gia' applicati a monte, perche' l'universo e' l'insieme SELEZIONATO) e da tutti i filtri
+  // dell'allocatore: orizzonte, quota della coda lunga, tetto di categoria sui book vuoti, tetto di
+  // credibilita', pavimento di profondita' e **tetto per mercato**. «Leggero» vuol dire meno storico,
+  // non meno regole. Il piano NON viene salvato: `scriviUltimoPiano` resta del solo ciclo pesante.
+  //
+  // ⚠ UNA VOLTA SOLA PER GIRO, E SOLO SE SERVE. Il calcolo e' un processo figlio da 13-22 s: si fa
+  // pigramente al primo mercato che non ha riga e si riusa per tutti gli altri dello stesso giro.
+  // A monte c'e' gia' il raffreddamento della scala di `ripristino-gambe` (`RIP.valutaRipristino`),
+  // che decide SE tentare: senza quello si ricalcolerebbe ogni 120 s per sempre.
+  //
+  // ⚠ SALDO ILLEGGIBILE ⇒ NIENTE RICALCOLO, e si dichiara. Un piano costruito su un capitale
+  // indovinato deciderebbe delle SIZE su un numero che nessuno ha letto.
+  let _fresco;                       // undefined = mai tentato in questo giro · null = tentato e fallito
+  const pianoFresco = deps.pianoFresco || (async () => {
+    if (_fresco !== undefined) return _fresco;
+    _fresco = null;
+    const s = await (deps.leggiSaldo || leggiSaldo)();
+    const cap = s && Number.isFinite(s.usd) ? s.usd : null;
+    if (cap == null || cap <= 0) {
+      _fresco = { errore: `saldo non leggibile (${(s && s.motivo) || 'motivo ignoto'})` };
+      return _fresco;
+    }
+    try {
+      const p = await (deps.pianoLeggero || pianoLeggero)({ capital: cap, maxPerMarketUsd: capPerMarketUsd(cap) });
+      _fresco = p || null;
+    } catch (e) {
+      _fresco = { errore: `il ricalcolo del piano e' fallito: ${e && e.message ? e.message : String(e)}` };
+    }
+    return _fresco;
+  });
   let scoperti = 0;
   for (const id of (sel.idsAttivi || [])) {
     const riga = (board || []).find((r) => String(r.conditionId || '').trim().toLowerCase() === id) || null;
@@ -1692,6 +1777,11 @@ async function riconciliaCopertura(deps = {}) {
         id,
         v: { ...v, tokenIdYes: riga && riga.tokenId, tokenIdNo: riga && riga.tokenIdNo },
         riga: rigaDi(id), ora,
+        // ⚠ IL PIANO FRESCO SI PASSA COME FUNZIONE, NON COME PIANO GIA' CALCOLATO. Calcolarlo qui
+        // vorrebbe dire pagarne 13-22 s a ogni giro anche quando tutte le righe ci sono — cioe' quasi
+        // sempre. Passandolo pigro, il costo si paga solo se un mercato non ha riga E la scala di
+        // `ripristino-gambe` ha gia' deciso di tentare, ed e' memoizzato per l'intero giro.
+        pianoFresco,
         // ⚠ GLI ORDINI VIVI SI PASSANO, NON SI RILEGGONO. Sono gli STESSI su cui `valutaCopertura` ha
         // appena giudicato: una seconda lettura potrebbe divergere, e la divergenza qui deciderebbe la
         // size di una coppia — cioe' sarebbe capitale deciso su due fotografie diverse.
@@ -1699,6 +1789,10 @@ async function riconciliaCopertura(deps = {}) {
       });
       esito.ripristini.push({ id, ...r, referto: undefined });
       scrivi({ tipo: 'ripristino-gamba', esito: r.tentato ? (r.riuscito ? 'rimessa' : 'rifiutata') : 'non-tentato',
+        // ⚠ SI REGISTRA SE LA RIGA VENIVA DAL PIANO SALVATO O DA UN RICALCOLO: senza, sul giornale di
+        // domani «rimessa» non distingue «il piano ce l'aveva» da «il piano era vecchio e si e'
+        // rifatto», che e' esattamente la domanda a cui questa correzione risponde.
+        ricalcolata: r.ricalcolata === true, ricalcolato: r.ricalcolato === true,
         marketId: id, mancanti: v.mancanti, messe: r.messe || 0, gate: r.gate || null, motiviRifiuto: r.motiviRifiuto || null, motivo: r.motivo,
         // La coppia decisa e le riduzioni eseguite finiscono a verbale: senza, «rimessa» non dice a che
         // size, e la simmetria — che e' la proprieta' che questa correzione difende — non e' verificabile
