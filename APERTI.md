@@ -2459,3 +2459,126 @@ di $80.
 **⚠ E lo scaglione «basso» resta a UN posto anche a N=5**: `quotaScaglioni` dà `[basso:1, alto:n−1]` a
 qualunque `n`. Gli 8 candidati `minSize ≤ 20` misurati stasera continuano a competere per un posto solo:
 alzare MERCATI aggiunge posti **«alto»**, non allarga lo scaglione basso. Resta la decisione aperta di §28.
+
+---
+
+## 32 · 🔍 IL LEDGER DEI FILL ERA CIECO — la causa, e la prima metà della cura, 21 agosto 2026
+
+### Il fatto
+
+Il ledger conteneva **5 fill e ZERO SELL** dal 31 luglio, mentre il venue dichiara **561,90 share
+comprate e 1.167,53 vendute**. `runFifo` non chiude mai niente: `openNotionalUsd` **sale e non scende**
+($77,73 contro posizioni reali **zero**) e `realisedDailyPnl` vale **$0 per costruzione**.
+
+**⚠ Due difese sono cieche**: il **cap di esposizione cumulativa $650** legge $77,73 contro un reale
+~$0, e il **kill sulla perdita giornaliera −$100** legge sempre $0 — **non può scattare**. Restano sani
+il tetto per mercato, il cap per ordine e il guardiano sul drawdown, che leggono il venue e non questo
+registro (verificato per assenza).
+
+### La causa
+
+Le due sole prove positive erano **`size_matched`** — che pretende l'ordine **ancora aperto** — e
+**`/trades`**. Un ordine riempito per intero sparisce dagli ordini aperti, e **`/trades` non riporta i
+fill maker**: misurato, **53 trade in tre settimane su 51 token distinti**, con le SELL su token che i
+BUY non toccano mai. Restava `gone-and-no-trades` ⇒ **`nofill` su un ordine davvero eseguito**.
+
+**⚠ `/trades` restituisce 53 righe a qualunque limite** (provati 100, 500, 1000): è tutto ciò che il
+venue espone. **I fill maker dal 16 agosto non sono recuperabili da nessuna fonte.**
+
+### ① La cura — la posizione è prova quanto un trade
+
+`lib/safety/reconcile-fills.js`, ramo `positions-contradict-no-trades`. **Il ramo esisteva già e non
+decideva**: il commento del 31 luglio aveva la diagnosi giusta — *«/positions mostra le share subito,
+/trades è in ritardo»* — e concludeva *«non risolvere niente»*. Ma aspettare che `/trades` recuperi non
+funziona quando **non recupera mai**.
+
+Quattro vincoli, tutti provati:
+
+| | |
+|---|---|
+| **solo BUY** | una posizione che *compare* prova un acquisto; una vendita si prova con una posizione che *cala*, e questo ramo non vede la storia. Registrarla da qui aprirebbe uno **short fantasma** (`fills.js:169`) |
+| **prezzo = quello dell'ordine** | per un maker è **esatto**, non una stima: un limite a riposo si riempie al proprio prezzo |
+| **niente doppioni** | si confronta la size della posizione con `recordedTS` (token+lato, la contabilità di §5 p.72) e si registra **solo il delta** |
+| **mai più della size dell'ordine** | la posizione può venire da giri precedenti o da ordini non nostri |
+
+**Fail-closed invariato**: posizioni non leggibili ⇒ nessun fill; posizioni lette e **vuote** ⇒ `nofill`,
+non fill; senza `/trades` il ramo non si raggiunge affatto.
+
+### ⛔ Il cancello NON è passato: ② e ⑦ restano fermi
+
+Riconciliazione **a secco** sullo stato vero:
+
+```
+sentOrders 1239 · ledger 1239 · ordini vivi 0 · trades 53 · POSIZIONI 0
+⇒ toRecord 0 · da /positions 0 · toNoFill 0 · stillUnknown 0
+```
+
+**Zero aperture catturate** — non perché il meccanismo non funzioni, ma perché **al venue non c'è
+nessuna posizione e nessun ordine vivo**: tutto è già stato fuso o venduto, e ogni `sentOrder` è già
+risolto. **Non esistono lotti che le SELL e i merge possano chiudere**, quindi registrarli adesso li
+farebbe cadere su 5 lotti BUY orfani e `runFifo` li convertirebbe in **short** — il danno che ① esiste
+per prevenire.
+
+**⚠ ① è in servizio ma INERTE finché il bot non riparte**: agirà solo quando una posizione comparirà
+mentre un ordine è vivo. Non è validabile su dati vivi oggi — è provata solo dai test.
+
+**Difetto aperto, dichiarato e non corretto**: le **324 righe `nofill` su token con attività reale al
+venue** (26,3% di 1.234, ricostruite via `idempotencyKey → execution-audit.intent.market`, perché
+`recordNoFill` **non salva il tokenId**). ① le impedisce da adesso in avanti; quelle già scritte
+restano sbagliate. **Nessuna riscrittura storica**, come da istruzione.
+
+---
+
+## 33 · ⚖️ IL TETTO DELLA COPPIA NON È DERIVABILE — non cambiato, 21 agosto 2026
+
+Le **5 coppie fuse dal 16 agosto**, col costo ricostruito dagli ultimi prezzi ordinati su ciascun lato:
+
+| quando | mercato | size | YES | NO | **coppia** | margine |
+|---|---|---|---|---|---|---|
+| 20/08 14:19 | `0xb5b33b8c86` | 20,24 | 0,713 | 0,331 | **104,4¢** | −$0,89 |
+| 20/08 21:25 | `0xac3ee33885` | 13,89 | 0,370 | 0,640 | **101,0¢** | −$0,14 |
+| 20/08 22:07 | `0xc7dee846e0` | 56,50 | 0,320 | 0,690 | **101,0¢** | −$0,57 |
+| 20/08 22:35 | `0xc7dee846e0` | 54,40 | 0,320 | 0,700 | **102,0¢** | −$1,09 |
+| 21/08 00:11 | `0x70620889af` | 57,10 | 0,440 | 0,580 | **102,0¢** | −$1,14 |
+
+**Tutte e cinque sopra la pari. Totale −$3,83.** Il sospetto dell'operatore è confermato: un tetto a
+101¢ su un merge che rende 100¢ autorizza per costruzione operazioni in perdita.
+
+**Ma il tetto NON si tocca, perché tre cose mancano:**
+
+1. **Sono prezzi ORDINATI, non eseguiti** — il ledger è cieco (§32), e dove esiste un riscontro diverge
+   (`0,3064` eseguito contro `0,320` ordinato).
+2. **Il gas non è registrato** — `observed` del merge porta `book size negRisk transactionID
+   transactionHash stato`, **nessun campo gas**; i fill hanno `feeKnown: false`. Il break-even vero è
+   `100¢ − gas/share`, e il sottraendo non esiste.
+3. **Manca il controfattuale** — il tetto governa il **completamento**, non l'apertura: pagare 101¢
+   perde 1¢/share, ma l'alternativa è restare con una **gamba nuda**. §4.6 documenta che 99¢ rifiutava
+   il 58,8% delle uscite che il mercato offre. Con 5 coppie non so quanto sarebbero costate le nude.
+
+⚠ **I due vincoli restano intatti**: il tetto **non si applica al merge** (regola 8, `decidiLivello`
+risponde `merge` prima di ogni guardia sul prezzo), e la deroga della **regola 6** sul residuo sotto il
+minimo non è stata toccata.
+
+---
+
+## 34 · ✅ IL CANCELLO DELLE 24 ORE FUNZIONA — nessuna correzione, 21 agosto 2026
+
+`lib/maker/selezione-mercati.js:331` (`fine - adesso < ORIZZONTE_MINIMO_MS`), scadenza da `scadenzaMs`
+(`:284`): `endDate || endDateClob || endDateGamma`. **«Non determinabile» esclude correttamente**
+(`:319`) — verificato, non dedotto.
+
+I tre mercati dei merge sono entrati con **26,70 · 26,19 · 25,72 ore** alla scadenza:
+
+```
+endDate 2026-08-21T23:59:00Z · endDateClob 2026-08-21T00:00:00Z · endDateGamma 2026-08-21T23:59:00Z
+```
+
+Alle 21:17 del 20/08, il 21/08 23:59 è **26,7 ore** avanti: **il cancello ha fatto il suo mestiere sul
+dato che ha**. E preferire `endDate` a `endDateClob` è corretto: il troncamento a mezzanotte è
+**dimostrabile** (`troncaAMezzanotteUTC(23:59) === 00:00`), e §4.7 in quel caso prescrive l'ora vera di
+Gamma.
+
+**La causa è che il campo non esiste**: *«within 12 hours»* sta nel **titolo**, non in un campo. Il venue
+espone la **scadenza del mercato** (fine giornata), non l'orizzonte implicito della domanda.
+**Dichiarato, non applicato.** ⚠ Derivare l'orizzonte dal titolo con una regex sarebbe indovinare su
+capitale reale: non lo propongo.
