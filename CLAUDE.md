@@ -890,9 +890,18 @@ uscita è un gruppo di una.
 
 **agent24** ogni **15 minuti esatti**: dorme il *resto* del periodo (`SCAN_INTERVAL_MS − durata`, con un
 pavimento di 60 s) e **cronometra** la fase di profondità, dichiarando a ogni scansione il tetto che
-starebbe nel periodo a quel ritmo. `REWARD_MAX_CLOB_MARKETS = 150` — **è già il massimo**: 2,74-3,91
-s/mercato misurati, e il vincolo è `tempo_scansione < periodo`; al ritmo peggiore il valore corretto
-sarebbe più **basso**. `ETA_BOARD_MAX_MS = 25 min` sta sopra il periodo ma sotto il doppio, così una
+starebbe nel periodo a quel ritmo. **`REWARD_MAX_CLOB_MARKETS = 300` dal 21 agosto 2026** (era 150), e il
+numero viene dal cronometro: i libri si prendono in **blocco** (`POST /books`, `lib/rewards/libri-batch`),
+che toglie **due delle ~4,1 chiamate accodate per mercato** e porta il costo da 2,74-3,80 a **1,40-2,47
+s/mercato** ⇒ 300 mercati in **7,0-12,4 min**, dentro il periodo anche al ritmo peggiore. **400 sforerebbe**
+(9,3-16,5 min) e 1.556 e' fuori scala (36-64 min). ⚠ **IL COLLO NON SONO I LIBRI, E' `MAX_RPS = 1.5`**: la
+coda `httpGet` e' SERIALIZZATA, quindi le sei chiamate per mercato che sembrano parallele scorrono a 667 ms
+l'una, mentre un `GET /book` misurato costa **24-152 ms** e i **3.112 libri dell'intero universo censito
+costano 2,4 s e 64 MB**. Chi vuole andare oltre 300 deve guardare `MAX_RPS` e le altre quattro chiamate per
+mercato (`prices-history` ×2, `tick-size`, `markets/<cid>`), non il batch. ⚠ **UN LIBRO CHE MANCA ESCLUDE IL
+MERCATO, RUMOROSAMENTE**: prima un `status !== 200` restituiva `emptyBook:true, Qmin:0`, cioe' **concorrenza
+zero**, cioe' la quota stimata MASSIMA — un mercato non letto si presentava come il **migliore del board**.
+Adesso `analizzaLibro` distingue `assente` da `emptyBook` e il ciclo salta il mercato dichiarandolo. `ETA_BOARD_MAX_MS = 25 min` sta sopra il periodo ma sotto il doppio, così una
 scansione saltata per intero resta visibile.
 
 **⚠ Il costo di una scansione si stima sugli elementi che PROCESSA, non su quelli che sopravvivono ai
@@ -1403,6 +1412,19 @@ resta una riga nel registro di §5-bis.
    quasi insensibili alla size. Dove morde davvero e' il regime a concorrenza sottile (§5-bis p.167:
    168 share), e su questo board non c'e' nessun ammissibile li'.
 
+55. **🔴 IL TETTO DEL BOARD E' IL PRIMO DI TRE CANCELLI, E DA SOLO NON APRE NIENTE — 21 agosto.**
+   Allargare la vista (150 → 300) rende i mercati **visibili alla selezione**, ma perche' uno entri
+   davvero servono altri due passaggi che **non sono stati toccati**: ① il piano scarta chi ha
+   `profondita: 'non-verificata'` (`allocator.js:1133`), e la verifica vuole **campioni websocket**, che
+   esistono solo per i mercati che agent34 sottoscrive — **95 mercati / 190 asset** all'ultima lettura,
+   con la corsia dichiarata a **60** in §4.7; ② il **netto** che ordina e spodesta nasce da quel piano,
+   quindi un mercato senza copertura ws non ha netto e `ordinaCandidati` lo mette **dopo** tutti quelli
+   che ce l'hanno. Misurato adesso in produzione: `valutati 114 · ammissibili 29 · nettiIniettati 29`;
+   con 294 ammissibili la corsia ws non puo' coprirli tutti. ⚠ **E il vertice della vista larga e' fatto
+   proprio di quei mercati**: 13 dei 20 migliori per premio atteso hanno concorrenza ZERO, cioe' il caso
+   che il cancello ① esiste per rifiutare. **NON CORRETTO**: la leva e' la corsia del feed (e il suo
+   tetto), non il tetto del board, ed e' una decisione dell'operatore — alzare la corsia significa piu'
+   sottoscrizioni ws e piu' `mid-history` su disco (§5.2 p.43: ~285 MB/g su 90 mercati).
 54. **🔴 IL TOTALE DEL GUARDIANO NON E' ATOMICO: LE DUE FONTI HANNO FRESCHEZZE DIVERSE — 21 agosto.**
    `valutaCapitale` somma **saldo** (cache 45 s) e **posizioni** (snapshot di agent40, tollerato fino a
    180 s). Durante una chiusura/merge il capitale e' «in volo» e le due fonti raccontano due istanti
@@ -1686,6 +1708,29 @@ problema è già stato incontrato vale più del racconto di come. Il dettaglio i
 e nei commit citati nei sorgenti.
 
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
+
+**203** · LA VISTA DEL BOARD DA 150 A 300, E IL COLLO CHE NON ERANO I LIBRI — 21 agosto.
+Regola per intero in §4.7. **La misura che ribalta la premessa**: `POST /books` porta **3.112 libri (tutto
+l'universo censito) in 2,4 s e 64 MB, 6 mancanti**; un `GET /book` costa **24-152 ms**. Quindi dei
+2,74-3,80 s/mercato cronometrati la rete e' il 5-20%: il resto e' `MAX_RPS = 1.5` su una coda
+**serializzata**. Il batch toglie 2 delle ~4,1 chiamate accodate per mercato ⇒ **1,40-2,47 s/mercato** ⇒
+**300 mercati in 7,0-12,4 min** dentro il periodo; **400 sfora** al ritmo peggiore.
+**LA MEMORIA NON E' IL VINCOLO, MISURATA E NON DEDOTTA**: il figlio del piano su board sintetici di
+**20/114/300/400/800** righe fatte di mercati veri da' **481/473/487/487/474 MB** di picco (VmHWM) in
+40,6-47,1 s — pendenza per candidato **~0**, esattamente come D-C aveva concluso sulla finestra di
+giornale (§5-bis p.201). Tetto di heap 952 MB.
+**IL DIFETTO CHIUSO PER STRADA**: `measureBookDepth` su `status !== 200` restituiva
+`emptyBook:true, Qmin:0` — **concorrenza zero, cioe' la quota stimata MASSIMA**: un mercato di cui NON
+avevamo letto il libro si presentava come il migliore del board, e piu' si allarga la vista piu' spesso
+sarebbe successo. Ora `analizzaLibro` separa **`assente`** da **`emptyBook`** e il ciclo lo esclude
+dichiarandolo; `libri-batch` non ha nessun valore di ripiego da confondere.
+⚠⚠ **E IL GUADAGNO PROMESSO NON ARRIVA DA QUESTO CANCELLO** — v. §5.2 p.55: sul board allargato **13 dei
+20 migliori per premio atteso hanno concorrenza in banda ZERO**, e sono esattamente i libri di cui
+`allocator.js:1133` rifiuta di credere lo zero (`profondita: 'non-verificata'` ⇒ scartato). Simulazione a
+secco con le funzioni VERE: premio atteso del piano scelto **$150,36/g a tetto 150 contro $102,09/g a
+300** — cioe' col ripiego di ordinamento la vista larga peggiora, perche' si riempie di libri vuoti.
+Prove: `lib/rewards/vista-board.test.js` **21/0**, **6 rosse** sul comportamento vecchio. Referto:
+`data/ricerca/vista-board-simulazione.json`.
 
 **202** · D-D · IL RIFERIMENTO DEL GUARDIANO NON NASCEVA DA UN CAPITALE MAI ESISTITO — 21 agosto.
 `riferimentoUsd: 1550.17633` fissato il 16/08 19:28:00.990Z da **una lettura sola**: saldo $1.493,07

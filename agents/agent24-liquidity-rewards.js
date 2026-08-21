@@ -69,7 +69,37 @@ const NEAR_EXPIRY_DAYS  = 14;    // markets closing within → force HIGH vol
 const GAMMA_PAGE_SIZE   = 100;
 const MAX_PAGES         = 21;    // offset 0..2000 (21 × 100)
 const MAX_CLOB_MARKETS  = Number(process.env.REWARD_MAX_CLOB_MARKETS) > 0
-  ? Number(process.env.REWARD_MAX_CLOB_MARKETS) : 150;   // vedi il blocco qui sotto: tarato sul MISURATO
+  ? Number(process.env.REWARD_MAX_CLOB_MARKETS) : 300;   // 150 → 300 il 21/08/2026: vedi il blocco qui sotto
+// ══ 150 → 300, E IL COLLO NON ERANO I LIBRI — 21 agosto 2026 ═══════════════════════════════════════
+// ⚠ IL COLLO E' `MAX_RPS`, NON LA RETE, e va detto prima di tutto il resto. La coda `httpGet` di questo
+// file e' SERIALIZZATA (`_drain`): le sei chiamate per mercato che sembrano parallele scorrono in fila a
+// `1000/MAX_RPS = 667 ms` l'una. Misurato il 21/08 contro il venue: un `GET /book` costa **24-152 ms**.
+// Quindi dei 2,74-3,80 s/mercato cronometrati, la rete e' il 5-20% e il resto e' freno nostro.
+//
+// COSA CAMBIA IL BATCH. `POST /books` toglie DUE delle ~4,1 chiamate accodate per mercato (il rapporto
+// fra i 2,74 s misurati e i 667 ms del freno), e costa quasi nulla: **3.112 libri in 2,4 s, 64 MB di
+// picco, 6 mancanti** — cioe' i libri dell'INTERO universo censito (1.556 mercati) in due secondi e
+// mezzo. Restano le altre quattro chiamate per mercato (`prices-history` ×2, `tick-size`,
+// `markets/<cid>`), e sono loro a fissare il tetto.
+//
+// L'ARITMETICA DEL TETTO, sui numeri cronometrati e non su una formula:
+//   · oggi  ~4,1 chiamate/mercato × 667 ms = 2,74 s/mercato (misura migliore) … 3,80 (peggiore)
+//   · col batch ~2,1 chiamate/mercato      = 1,40 s/mercato (migliore) … 2,47 (peggiore)
+//   · 300 mercati ⇒ **7,0-12,4 min**, dentro il periodo di 15 min anche al ritmo peggiore
+//   · 400 mercati ⇒ 9,3-16,5 min, cioe' SFORA al ritmo peggiore ⇒ scartato
+//   · 1.556 mercati ⇒ 36-64 min, fuori scala di un ordine di grandezza
+//
+// ⚠ LA MEMORIA NON E' IL VINCOLO, ED E' STATO MISURATO INVECE CHE DEDOTTO. Il figlio del piano, con
+// board sintetici di 20/114/300/400/800 righe costruiti da mercati veri: **481 / 473 / 487 / 487 / 474
+// MB** di picco (VmHWM), durata 40,6-47,1 s. La pendenza per candidato e' ~0 — il consumo e' la
+// finestra di giornale (§5-bis p.201), non il numero di candidati. Tetto di heap 952 MB.
+//
+// ⚠⚠ E IL GUADAGNO NON ARRIVA DA QUI, o non ancora: vedi §5.2 p.55. Allargare la vista rende quei
+// mercati VISIBILI alla selezione, ma il piano scarta chi ha `profondita: 'non-verificata'`
+// (`allocator.js:1133`) — e la verifica vuole campioni websocket, che esistono solo per i mercati che
+// agent34 sottoscrive. Misurato sul board allargato: **13 dei 20 migliori per premio atteso hanno
+// concorrenza in banda ZERO**, cioe' sono esattamente i libri di cui quel cancello rifiuta di credere
+// lo zero. Il tetto del board e' il primo di tre cancelli, non l'unico.
 // ── IL TAGLIO PER NUMERO: 120 → NESSUNO → 400 → 150, E IL NUMERO ORA VIENE DA UN CRONOMETRO ─────
 // Due errori di stima in mezza giornata, sullo stesso numero, ed entrambi hanno fermato i piazzamenti.
 //
@@ -118,6 +148,7 @@ const FAST_SLICE_HOURS  = Number(process.env.REWARD_FAST_SLICE_HOURS) > 0
 // una copertura parziale silenziosa e' peggio di una dichiarata.
 const FAST_MAX_PAGES    = Number(process.env.REWARD_FAST_MAX_PAGES) > 0
   ? Number(process.env.REWARD_FAST_MAX_PAGES) : 120;
+const { scaricaLibri } = require('../lib/rewards/libri-batch');
 const GAP_SHARE_THRESH  = 0.20;  // ≥20% estimated share at $500 → band is thinly covered
 
 // ── Rate-limited HTTP queue ───────────────────────────────────────────────────
@@ -394,13 +425,21 @@ async function getScadenzaClob(conditionId) {
 //   existingDepthUsd  — dollar notional (price×size) of in-band orders (UI display only)
 //   Qbids, Qasks, Qmin — quadratic competitor scores (used for share estimation)
 //   mid               — size-cutoff-adjusted midpoint
-async function measureBookDepth(tokenId, rewardsMaxSpread, minSize, fallbackMid) {
-  try {
-    const r = await httpGet(`https://clob.polymarket.com/book?token_id=${tokenId}`);
-    if (r.status !== 200 || !r.data) {
-      return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, emptyBook: true, Qbids: 0, Qasks: 0, Qmin: 0 };
-    }
-
+// ⚠ LA LETTURA E L'ANALISI SONO DUE COSE, e separarle e' cio' che rende possibile il batch: l'analisi
+// non sa da dove venga il libro, quindi vale identica per un libro preso uno alla volta e per uno
+// arrivato in un lotto di 200. Nessuna aritmetica e' stata ricopiata — questa E' quella di prima.
+//
+// ⚠ E `assente` NON E' `emptyBook`. Un libro vuoto e' una misura (nessuno quota: la concorrenza e'
+// zero, e zero e' giusto); un libro non letto non e' la misura di niente. Prima erano lo stesso ramo:
+// un `status !== 200` restituiva `emptyBook: true, Qmin: 0`, cioe' **concorrenza zero**, cioe' la quota
+// stimata MASSIMA — un mercato di cui non avevamo letto il libro si presentava come il migliore del
+// board. Adesso l'assenza si dichiara e il chiamante esclude il mercato.
+function analizzaLibro(raw, rewardsMaxSpread, minSize, fallbackMid) {
+  if (!raw) {
+    return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, assente: true, emptyBook: false, Qbids: 0, Qasks: 0, Qmin: 0 };
+  }
+  {
+    const r = { data: raw };
     const bids = (r.data.bids || [])
       .map(b => ({ price: parseFloat(b.price), size: parseFloat(b.size) }))
       .filter(b => b.price > 0 && b.size > 0)
@@ -412,7 +451,8 @@ async function measureBookDepth(tokenId, rewardsMaxSpread, minSize, fallbackMid)
       .sort((a, b) => a.price - b.price);
 
     if (!bids.length && !asks.length) {
-      return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, emptyBook: true, Qbids: 0, Qasks: 0, Qmin: 0 };
+      // Il venue HA risposto e non c'e' nessuno: questo zero e' una misura, e resta zero.
+      return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, assente: false, emptyBook: true, Qbids: 0, Qasks: 0, Qmin: 0 };
     }
 
     const bestBid  = bids.length ? bids[0].price : fallbackMid - 0.01;
@@ -439,13 +479,25 @@ async function measureBookDepth(tokenId, rewardsMaxSpread, minSize, fallbackMid)
       bestBid:          realBestBid,
       bestAsk:          realBestAsk,
       existingDepthUsd,
+      assente:          false,
       emptyBook:        false,
       Qbids:            qs.Qbids,
       Qasks:            qs.Qasks,
       Qmin:             qs.Qmin,
     };
+  }
+}
+
+/** La lettura UNO ALLA VOLTA, che resta per chi non passa dal lotto. Un fallimento e' `assente`. */
+async function measureBookDepth(tokenId, rewardsMaxSpread, minSize, fallbackMid) {
+  try {
+    const r = await httpGet(`https://clob.polymarket.com/book?token_id=${tokenId}`);
+    if (r.status !== 200 || !r.data) return analizzaLibro(null, rewardsMaxSpread, minSize, fallbackMid);
+    return analizzaLibro(r.data, rewardsMaxSpread, minSize, fallbackMid);
   } catch (e) {
-    return { mid: fallbackMid, existingDepthUsd: 0, bookSpread: null, error: e.message, Qbids: 0, Qasks: 0, Qmin: 0 };
+    const v = analizzaLibro(null, rewardsMaxSpread, minSize, fallbackMid);
+    v.error = e.message;
+    return v;
   }
 }
 
@@ -608,6 +660,42 @@ function fmtUsd(d) {
 }
 
 // ── Main scan ─────────────────────────────────────────────────────────────────
+// ── CHI ENTRA NELLA SCANSIONE, ESTRATTA PER POTER ESSERE PROVATA ─────────────────────────────────
+// Era inline dentro `scan()`, quindi la regola che decide **cosa il bot vede** non aveva un test che
+// potesse chiamarla. Estratta il 21 agosto 2026 insieme all'allargamento del tetto: la logica non e'
+// cambiata di una riga, solo la sua raggiungibilita'.
+//
+// ⚠ LA SOGLIA DI COMPATIBILITA' E' FISSA E NON LEGGE IL CAPITALE, di proposito:
+// `capitale-al-lavoro.test.js` difende che la SCOPERTA resti disaccoppiata da capitale, interruttore e
+// allowlist, cosi' agent24 gira H24 indipendente dallo stato del conto. Si usa `minSize <= 100`, che
+// copre i tre scaglioni bassi del venue (20/50/100) — cioe' tutto cio' che un capitale ragionevole per
+// questo bot puo' raggiungere — invece del tetto vero, che cambia col saldo.
+const MIN_SIZE_ALLA_PORTATA = 100;
+function sceltiPerLaScansione(markets, { tetto = MAX_CLOB_MARKETS, log = null } = {}) {
+  const QUOTA_COMPATIBILI = Math.floor(tetto / 2);
+  const minSizeDi = (m) => {
+    const v = Number(m && (m.rewardsMinSize
+      || (m.clobRewards && m.clobRewards[0] && m.clobRewards[0].rewardsMinSize)));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+  const compat = [];
+  const resto = [];
+  for (const m of markets) {
+    const ms = minSizeDi(m);
+    // `minSize` non leggibile ⇒ resta nella classifica normale: non si promuove su un'incognita.
+    (ms != null && ms <= MIN_SIZE_ALLA_PORTATA ? compat : resto).push(m);
+  }
+  const scelti = compat.slice(0, QUOTA_COMPATIBILI);
+  const presi = new Set(scelti);
+  for (const m of markets) {
+    if (scelti.length >= tetto) break;
+    if (!presi.has(m)) { scelti.push(m); presi.add(m); }
+  }
+  if (log) log(`  quota di scansione: ${Math.min(compat.length, QUOTA_COMPATIBILI)}/${QUOTA_COMPATIBILI} posti riservati a mercati con minSize <= ${MIN_SIZE_ALLA_PORTATA}`
+    + ` (ne esistono ${compat.length} sui ${markets.length} premiati) · gli altri ${tetto - Math.min(compat.length, QUOTA_COMPATIBILI)} restano alla classifica per montepremi`);
+  return scelti.slice(0, tetto);
+}
+
 async function scan() {
   const t0 = Date.now();
   console.log(`\n[${new Date().toISOString()}] agent24: scanning Polymarket liquidity rewards…`);
@@ -652,36 +740,37 @@ async function scan() {
   // allowlist, così agent24 gira H24 indipendente dallo stato del conto. Si usa `minSize <= 100`, che
   // copre i tre scaglioni bassi del venue (20/50/100) — cioè tutto ciò che un capitale ragionevole per
   // questo bot può raggiungere — invece del tetto vero, che cambia col saldo.
-  const MIN_SIZE_ALLA_PORTATA = 100;
-  const QUOTA_COMPATIBILI = Math.floor(MAX_CLOB_MARKETS / 2);
-  const minSizeDi = (m) => {
-    const v = Number(m && (m.rewardsMinSize
-      || (m.clobRewards && m.clobRewards[0] && m.clobRewards[0].rewardsMinSize)));
-    return Number.isFinite(v) && v > 0 ? v : null;
-  };
-  const toProcess = (() => {
-    const compat = [];
-    const resto = [];
-    for (const m of markets) {
-      const ms = minSizeDi(m);
-      // `minSize` non leggibile ⇒ resta nella classifica normale: non si promuove su un'incognita.
-      (ms != null && ms <= MIN_SIZE_ALLA_PORTATA ? compat : resto).push(m);
-    }
-    const scelti = compat.slice(0, QUOTA_COMPATIBILI);
-    const presi = new Set(scelti);
-    for (const m of markets) {
-      if (scelti.length >= MAX_CLOB_MARKETS) break;
-      if (!presi.has(m)) { scelti.push(m); presi.add(m); }
-    }
-    console.log(`  quota di scansione: ${Math.min(compat.length, QUOTA_COMPATIBILI)}/${QUOTA_COMPATIBILI} posti riservati a mercati con minSize <= ${MIN_SIZE_ALLA_PORTATA}`
-      + ` (ne esistono ${compat.length} sui ${markets.length} premiati) · gli altri ${MAX_CLOB_MARKETS - Math.min(compat.length, QUOTA_COMPATIBILI)} restano alla classifica per montepremi`);
-    return scelti.slice(0, MAX_CLOB_MARKETS);
-  })();
+  const toProcess = sceltiPerLaScansione(markets, { tetto: MAX_CLOB_MARKETS, log: (t) => console.log(t) });
   console.log(`  Processing top ${toProcess.length} of ${markets.length} reward markets for CLOB depth`
     + ` (tetto ${MAX_CLOB_MARKETS}, tarato sul MISURATO — la durata reale è cronometrata qui sotto)`);
 
   let results = [];
   const t0Profondita = Date.now();
+
+  // ── I LIBRI IN BLOCCO, PRIMA DEL CICLO ────────────────────────────────────────────────────────
+  // ⚠ PERCHE' QUI E NON DENTRO IL CICLO: la coda HTTP di questo file e' SERIALIZZATA a
+  // `MAX_RPS = 1.5`, quindi le sei chiamate per mercato che sembrano parallele (`Promise.all`)
+  // scorrono in fila a 667 ms l'una. Due di quelle sei sono i libri: toglierle costa **1,33 s per
+  // mercato** in meno, ed e' cio' che porta il tetto sostenibile del board da ~150 a ~300.
+  // Misurato il 21 agosto 2026: `POST /books` restituisce **200 libri in 154 ms** (576 KB), contro
+  // 2 × 667 ms di solo freno.
+  //
+  // ⚠ NON PASSA DALLA CODA `httpGet`, e non e' una scorciatoia: quella coda esiste per non
+  // martellare il venue con richieste PICCOLE e numerose, e qui si fa l'opposto — poche richieste
+  // grandi. 16 POST invece di 600 GET e' meno carico per il venue, non di piu'.
+  //
+  // ⚠ UN LIBRO CHE MANCA ESCLUDE IL MERCATO, RUMOROSAMENTE. Vedi `libri-batch`: la concorrenza a
+  // zero produce la quota stimata MASSIMA, quindi un mercato non letto si presenterebbe come il
+  // migliore del board — e piu' si allarga la vista, piu' spesso succederebbe.
+  const tokenDaLeggere = [];
+  for (const m of toProcess) { if (m.tokenId) tokenDaLeggere.push(m.tokenId); if (m.tokenIdNo) tokenDaLeggere.push(m.tokenIdNo); }
+  const t0Libri = Date.now();
+  const LIBRI = await scaricaLibri(tokenDaLeggere, { log: (t) => console.log(t) });
+  console.log(`  libri in blocco: ${LIBRI.libri.size}/${LIBRI.voluti} token in ${((Date.now() - t0Libri) / 1000).toFixed(1)}s`
+    + ` (${LIBRI.lotti.riusciti}/${LIBRI.lotti.totali} lotti${LIBRI.lotti.ritentati ? `, ${LIBRI.lotti.ritentati} ritentati` : ''}`
+    + `${LIBRI.lotti.falliti ? `, ${LIBRI.lotti.falliti} FALLITI` : ''})`
+    + `${LIBRI.mancanti.size ? ` · ${LIBRI.mancanti.size} token senza libro: i loro mercati verranno ESCLUSI` : ''}`);
+  const esclusiSenzaLibro = [];
 
   for (const m of toProcess) {
     const fallbackMid = m.lastTradePrice
@@ -694,11 +783,20 @@ async function scan() {
     // qualifying depth (and thus the per-side reward math) genuinely differs. 24h
     // volatility is identical for both tokens (NO = 1 − YES ⇒ Var(NO) = Var(YES)), so
     // we fetch it once and reuse it — exact, saves a call. NO book only when tokenIdNo.
-    const [book, bookNo, vol, stab, tickSize, scadenzaClob] = await Promise.all([
-      measureBookDepth(m.tokenId, m.rewardsMaxSpread, m.rewardsMinSize, fallbackMid),
-      m.tokenIdNo
-        ? measureBookDepth(m.tokenIdNo, m.rewardsMaxSpread, m.rewardsMinSize, 1 - fallbackMid)
-        : Promise.resolve(null),
+    // ⚠ IL LIBRO NON SI CHIEDE PIU' QUI: e' gia' arrivato nel lotto. `measureBookDepth` resta e
+    // funziona, ma su questo percorso non viene piu' chiamato — l'analisi e' la stessa funzione.
+    const book   = analizzaLibro(LIBRI.libri.get(String(m.tokenId)) || null, m.rewardsMaxSpread, m.rewardsMinSize, fallbackMid);
+    const bookNo = m.tokenIdNo
+      ? analizzaLibro(LIBRI.libri.get(String(m.tokenIdNo)) || null, m.rewardsMaxSpread, m.rewardsMinSize, 1 - fallbackMid)
+      : null;
+    // ⚠ ESCLUSIONE RUMOROSA, NON VALUTAZIONE A ZERO. Basta che manchi UN lato: la posa e' bilaterale,
+    // e un mercato di cui conosciamo mezzo libro non e' un mercato che sappiamo valutare.
+    if (book.assente || (bookNo && bookNo.assente)) {
+      esclusiSenzaLibro.push({ conditionId: m.conditionId, question: String(m.question || '').slice(0, 70),
+        lato: book.assente ? (bookNo && bookNo.assente ? 'entrambi' : 'yes') : 'no' });
+      continue;
+    }
+    const [vol, stab, tickSize, scadenzaClob] = await Promise.all([
       measure24hVolatility(m.tokenId),
       // Separate 7d window for the stability score. NOT derived from the 24h call — a 13-point
       // sample cannot measure stillness (see measurePriceStability). Same token: NO = 1 − YES, so
@@ -816,6 +914,15 @@ async function scan() {
     + (perMercato ? ` · a questo ritmo il tetto che sta nel periodo è ~${Math.floor((SCAN_INTERVAL_MS / 1000) * 0.6 / perMercato)}` : '')
     + (oltre ? '  ⚠ LA FASE HA SUPERATO IL PERIODO: il board invecchia oltre la cadenza dichiarata,'
       + ' abbassare REWARD_MAX_CLOB_MARKETS' : ''));
+  // ⚠ L'ESCLUSIONE SI DICHIARA, SEMPRE, ANCHE QUANDO E' ZERO. Un mercato che sparisce dal board perche'
+  // non ne abbiamo letto il libro non deve poterlo fare in silenzio: e' la differenza fra «il venue non
+  // ha risposto» e «quel mercato non c'e' piu'», e sono due cose che si affrontano in modi diversi.
+  console.log(`  esclusi per libro MANCANTE: ${esclusiSenzaLibro.length}`
+    + (esclusiSenzaLibro.length
+      ? ' — ' + esclusiSenzaLibro.slice(0, 8).map((x) => `${String(x.conditionId).slice(0, 10)}…(${x.lato})`).join(' ')
+        + (esclusiSenzaLibro.length > 8 ? ` +${esclusiSenzaLibro.length - 8}` : '')
+        + ' · NON valutati a zero: un libro non letto non e\' concorrenza zero'
+      : ' (tutti i libri richiesti sono arrivati)'));
 
   // ── IL BONUS «MERCATO NUOVO» — CABLATO QUI, E SOLO QUI ──────────────────────────────────────────
   // Il modulo esisteva dall'11 agosto 2026 con `BONUS_ATTIVO = true`, ma NESSUN consumatore lo chiamava:
@@ -1131,4 +1238,8 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { fetchRewardMarkets, FAST_WINDOW_DAYS, FAST_SLICE_HOURS, FAST_MAX_PAGES, MAX_PAGES, GAMMA_PAGE_SIZE };
+// ⚠ `analizzaLibro`, `computeLevels` e `sceltiPerLaScansione` sono esportati perche' la simulazione a
+// secco e i test usino LE FUNZIONI VERE invece di ricopiarle: una copia che diverge e' il reperto D1, e
+// qui divergerebbe proprio sul numero che decide quali mercati il bot guarda.
+module.exports = { fetchRewardMarkets, FAST_WINDOW_DAYS, FAST_SLICE_HOURS, FAST_MAX_PAGES, MAX_PAGES, GAMMA_PAGE_SIZE,
+  analizzaLibro, computeLevels, sceltiPerLaScansione, MAX_CLOB_MARKETS, MIN_SIZE_ALLA_PORTATA };

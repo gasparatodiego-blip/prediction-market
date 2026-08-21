@@ -1,0 +1,460 @@
+{
+ "lettoAl": "2026-08-21T19:43:44.351Z",
+ "popolazione": 1556,
+ "libri": {
+  "chiesti": 600,
+  "ottenuti": 600,
+  "mancanti": 0,
+  "secondi": 0.4,
+  "lotti": {
+   "totali": 3,
+   "riusciti": 3,
+   "falliti": 0,
+   "ritentati": 0,
+   "errori": []
+  }
+ },
+ "stato": {
+  "selezionati": 5,
+  "conOrdiniVivi": 6,
+  "posizioni": 0
+ },
+ "risultati": {
+  "150": {
+   "valutati": 150,
+   "ammissibili": 147,
+   "esclusiSenzaLibro": 0,
+   "ok": true,
+   "motivo": null,
+   "tenuti": [
+    "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+    "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8"
+   ],
+   "entranti": [
+    "0x22132c8d29ab07a9c265fc935823d869ba5352e4d2a433e1c548fb52964c51f6",
+    "0x3049d072a42344ba8da038d8a90ed5849a7a4513865a310ce7d0fbcdb8d150b6",
+    "0x3b3c34070998239df383c3c8ca137183068ceedc01cd6867ceb2ec8ee2d6cfe6"
+   ],
+   "uscenti": [
+    "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+    "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+    "0x55a5a4b50b7947482e95af8f638fa0b8d9a46740c5cd04c6799443e83565176a"
+   ],
+   "spodestati": [],
+   "liberati": [
+    "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+    "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+    "0x55a5a4b50b7947482e95af8f638fa0b8d9a46740c5cd04c6799443e83565176a"
+   ],
+   "postiNonAssegnati": [],
+   "premioAttesoUsdG": 150.3611,
+   "scelti": [
+    "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+    "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+    "0x22132c8d29ab07a9c265fc935823d869ba5352e4d2a433e1c548fb52964c51f6",
+    "0x3049d072a42344ba8da038d8a90ed5849a7a4513865a310ce7d0fbcdb8d150b6",
+    "0x3b3c34070998239df383c3c8ca137183068ceedc01cd6867ceb2ec8ee2d6cfe6"
+   ],
+   "top20": [
+    {
+     "id": "0xde7d4dd2ec5dfdd3d59c1456c1bcea1102c3a0075ce8a8575bf18d27d341365f",
+     "q": "Will Brazil's Q2 2026 GDP growth rate (QoQ) be between 0.3",
+     "premio": 101.8365,
+     "minSize": 20,
+     "ore": 273.6,
+     "concorrenza": 26,
+     "montepremi": 122
+    },
+    {
+     "id": "0x23ff21fc91a4aa9af85e9c0018b378ee937b9ecec3e3fbacc9b00513267e12aa",
+     "q": "Will \"To Catch a Cheater\" be the #2 US Netflix movie this ",
+     "premio": 91.3981,
+     "minSize": 20,
+     "ore": 105.6,
+     "concorrenza": 9,
+     "montepremi": 98
+    },
+    {
+     "id": "0x893eebb392e85b6684e261727fa812f8f792ec5537270bef900e47f761070fc9",
+     "q": "Will Brazil's Q2 2026 GDP growth rate (QoQ) be between 0.0",
+     "premio": 78,
+     "minSize": 20,
+     "ore": 273.6,
+     "concorrenza": 0,
+     "montepremi": 78
+    },
+    {
+     "id": "0xcc4f957294d0a3dd7a5550fa962b43ed609701a91de95df268bbb52387b01794",
+     "q": "Will OpenAI’s valuation be between $800B and $900B at the ",
+     "premio": 67.53,
+     "minSize": 20,
+     "ore": 249.6,
+     "concorrenza": 15,
+     "montepremi": 75
+    },
+    {
+     "id": "0xd278837ca4cd612b4c34b17093fab601246a823eb9e6a18aac7754a8e3afae92",
+     "q": "Will the Ornn A100 Index be between $1.00 and $1.25 on Aug",
+     "premio": 63.1736,
+     "minSize": 20,
+     "ore": 249.6,
+     "concorrenza": 283,
+     "montepremi": 200
+    },
+    {
+     "id": "0x48637c23fc3a1026fc16d712f59aa9224bb9845f34f1510e31911c45dc6f7c60",
+     "q": "Will UMich Consumer Sentiment be between 52.0 and 54.9 in ",
+     "premio": 61.9409,
+     "minSize": 20,
+     "ore": 159.6,
+     "concorrenza": 2,
+     "montepremi": 63
+    },
+    {
+     "id": "0xe7cc5b557207cd1da28e04ec25bc7ac7cf969dbcd2f44a665244ad431dfc2493",
+     "q": "Will Bradley Barcola join Liverpool?",
+     "premio": 55.4799,
+     "minSize": 20,
+     "ore": 277.6,
+     "concorrenza": 18,
+     "montepremi": 63
+    },
+    {
+     "id": "0xc0389e3f6ad0e8b502f750f829a55e8e7e7829c316c342781711b8811a71cf2a",
+     "q": "Will Grüne win between 5% and 7% of all valid second votes",
+     "premio": 52.3134,
+     "minSize": 20,
+     "ore": 393.6,
+     "concorrenza": 4,
+     "montepremi": 54
+    },
+    {
+     "id": "0x6e934c20dfd9b339bf70b859aea0385ca339eb0fad119dee72d907c1a0379ef8",
+     "q": "Will Russia target Kyiv on August 23, 2026?",
+     "premio": 50,
+     "minSize": 20,
+     "ore": 57.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x9307b13d732185ca9bc037468a5f69eff5a48e83f3e1d1214bc8f47de3fd1400",
+     "q": "Will Nvidia say \"Gaming\" during earnings call?",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x4c99941dab5a5f2dba384c4402dde3bbb9a6d8403109e2fd09addf728ccc42ac",
+     "q": "Will Andy Burnham say \"Speaker\" 10+ times during the next ",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0xc1b9502b864117791410c3deeb38ee1ee91890b7abbd3a625305d3589eeb0660",
+     "q": "Will Andy Burnham say \"Oil\" or \"Gas\" or \"Gasoline\" during ",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0xb7f1e1ceb0cd8a6693b20f8cb417ec95fff0dc9c6c3d74a00cfb902fa6af2e22",
+     "q": "Will Andy Burnham say \"Starmer\" during the next PMQ?",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0xaa457f723ac2994c765550da57493417ab0f923bb2292e9742693aa798c29271",
+     "q": "Will Andy Burnham say \"Trump\" during the next PMQ?",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x54e499c20d5b606e45ff1b6a2f804597fe4c86415639628f1ad255261756c7a5",
+     "q": "Will \"Blue\" be said during the next episode of the Lemonad",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x2ab1a2efe599d6388f6058ebe0c6ff2f0c27e8f95071d25246e1ed4159beb5d2",
+     "q": "Will Ulta say \"Holiday\" during earnings call?",
+     "premio": 50,
+     "minSize": 20,
+     "ore": 153.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0xb2f805e6342a779612c4f740802cff5e4901024267f6591be6f43013adfa703d",
+     "q": "Will Leavitt say \"Russia\" or \"Ukraine\" during the next Whi",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 249.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x3049d072a42344ba8da038d8a90ed5849a7a4513865a310ce7d0fbcdb8d150b6",
+     "q": "Will Leavitt say \"Hormuz\" or \"Strait\" during the next Whit",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 249.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x22132c8d29ab07a9c265fc935823d869ba5352e4d2a433e1c548fb52964c51f6",
+     "q": "Will Trump say \"Tango\" in August?",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 249.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x3b3c34070998239df383c3c8ca137183068ceedc01cd6867ceb2ec8ee2d6cfe6",
+     "q": "Will Trump say \"Central Casting\" in August?",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 249.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    }
+   ],
+   "righeConLevels": 150
+  },
+  "300": {
+   "valutati": 300,
+   "ammissibili": 294,
+   "esclusiSenzaLibro": 0,
+   "ok": true,
+   "motivo": null,
+   "tenuti": [
+    "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+    "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+    "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0"
+   ],
+   "entranti": [
+    "0x22132c8d29ab07a9c265fc935823d869ba5352e4d2a433e1c548fb52964c51f6",
+    "0x3049d072a42344ba8da038d8a90ed5849a7a4513865a310ce7d0fbcdb8d150b6"
+   ],
+   "uscenti": [
+    "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+    "0x55a5a4b50b7947482e95af8f638fa0b8d9a46740c5cd04c6799443e83565176a"
+   ],
+   "spodestati": [],
+   "liberati": [
+    "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+    "0x55a5a4b50b7947482e95af8f638fa0b8d9a46740c5cd04c6799443e83565176a"
+   ],
+   "postiNonAssegnati": [],
+   "premioAttesoUsdG": 102.0891,
+   "scelti": [
+    "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+    "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+    "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+    "0x22132c8d29ab07a9c265fc935823d869ba5352e4d2a433e1c548fb52964c51f6",
+    "0x3049d072a42344ba8da038d8a90ed5849a7a4513865a310ce7d0fbcdb8d150b6"
+   ],
+   "top20": [
+    {
+     "id": "0xde7d4dd2ec5dfdd3d59c1456c1bcea1102c3a0075ce8a8575bf18d27d341365f",
+     "q": "Will Brazil's Q2 2026 GDP growth rate (QoQ) be between 0.3",
+     "premio": 101.8365,
+     "minSize": 20,
+     "ore": 273.6,
+     "concorrenza": 26,
+     "montepremi": 122
+    },
+    {
+     "id": "0x23ff21fc91a4aa9af85e9c0018b378ee937b9ecec3e3fbacc9b00513267e12aa",
+     "q": "Will \"To Catch a Cheater\" be the #2 US Netflix movie this ",
+     "premio": 91.3981,
+     "minSize": 20,
+     "ore": 105.6,
+     "concorrenza": 9,
+     "montepremi": 98
+    },
+    {
+     "id": "0x893eebb392e85b6684e261727fa812f8f792ec5537270bef900e47f761070fc9",
+     "q": "Will Brazil's Q2 2026 GDP growth rate (QoQ) be between 0.0",
+     "premio": 78,
+     "minSize": 20,
+     "ore": 273.6,
+     "concorrenza": 0,
+     "montepremi": 78
+    },
+    {
+     "id": "0xcc4f957294d0a3dd7a5550fa962b43ed609701a91de95df268bbb52387b01794",
+     "q": "Will OpenAI’s valuation be between $800B and $900B at the ",
+     "premio": 67.53,
+     "minSize": 20,
+     "ore": 249.6,
+     "concorrenza": 15,
+     "montepremi": 75
+    },
+    {
+     "id": "0xd278837ca4cd612b4c34b17093fab601246a823eb9e6a18aac7754a8e3afae92",
+     "q": "Will the Ornn A100 Index be between $1.00 and $1.25 on Aug",
+     "premio": 63.1736,
+     "minSize": 20,
+     "ore": 249.6,
+     "concorrenza": 283,
+     "montepremi": 200
+    },
+    {
+     "id": "0x48637c23fc3a1026fc16d712f59aa9224bb9845f34f1510e31911c45dc6f7c60",
+     "q": "Will UMich Consumer Sentiment be between 52.0 and 54.9 in ",
+     "premio": 61.9409,
+     "minSize": 20,
+     "ore": 159.6,
+     "concorrenza": 2,
+     "montepremi": 63
+    },
+    {
+     "id": "0xe7cc5b557207cd1da28e04ec25bc7ac7cf969dbcd2f44a665244ad431dfc2493",
+     "q": "Will Bradley Barcola join Liverpool?",
+     "premio": 55.4799,
+     "minSize": 20,
+     "ore": 277.6,
+     "concorrenza": 18,
+     "montepremi": 63
+    },
+    {
+     "id": "0xc0389e3f6ad0e8b502f750f829a55e8e7e7829c316c342781711b8811a71cf2a",
+     "q": "Will Grüne win between 5% and 7% of all valid second votes",
+     "premio": 52.3134,
+     "minSize": 20,
+     "ore": 393.6,
+     "concorrenza": 4,
+     "montepremi": 54
+    },
+    {
+     "id": "0x6e934c20dfd9b339bf70b859aea0385ca339eb0fad119dee72d907c1a0379ef8",
+     "q": "Will Russia target Kyiv on August 23, 2026?",
+     "premio": 50,
+     "minSize": 20,
+     "ore": 57.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x9307b13d732185ca9bc037468a5f69eff5a48e83f3e1d1214bc8f47de3fd1400",
+     "q": "Will Nvidia say \"Gaming\" during earnings call?",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x4c99941dab5a5f2dba384c4402dde3bbb9a6d8403109e2fd09addf728ccc42ac",
+     "q": "Will Andy Burnham say \"Speaker\" 10+ times during the next ",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0xc1b9502b864117791410c3deeb38ee1ee91890b7abbd3a625305d3589eeb0660",
+     "q": "Will Andy Burnham say \"Oil\" or \"Gas\" or \"Gasoline\" during ",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0xb7f1e1ceb0cd8a6693b20f8cb417ec95fff0dc9c6c3d74a00cfb902fa6af2e22",
+     "q": "Will Andy Burnham say \"Starmer\" during the next PMQ?",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0xaa457f723ac2994c765550da57493417ab0f923bb2292e9742693aa798c29271",
+     "q": "Will Andy Burnham say \"Trump\" during the next PMQ?",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x54e499c20d5b606e45ff1b6a2f804597fe4c86415639628f1ad255261756c7a5",
+     "q": "Will \"Blue\" be said during the next episode of the Lemonad",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 129.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x2ab1a2efe599d6388f6058ebe0c6ff2f0c27e8f95071d25246e1ed4159beb5d2",
+     "q": "Will Ulta say \"Holiday\" during earnings call?",
+     "premio": 50,
+     "minSize": 20,
+     "ore": 153.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0xb2f805e6342a779612c4f740802cff5e4901024267f6591be6f43013adfa703d",
+     "q": "Will Leavitt say \"Russia\" or \"Ukraine\" during the next Whi",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 249.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x3049d072a42344ba8da038d8a90ed5849a7a4513865a310ce7d0fbcdb8d150b6",
+     "q": "Will Leavitt say \"Hormuz\" or \"Strait\" during the next Whit",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 249.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x22132c8d29ab07a9c265fc935823d869ba5352e4d2a433e1c548fb52964c51f6",
+     "q": "Will Trump say \"Tango\" in August?",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 249.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    },
+    {
+     "id": "0x3b3c34070998239df383c3c8ca137183068ceedc01cd6867ceb2ec8ee2d6cfe6",
+     "q": "Will Trump say \"Central Casting\" in August?",
+     "premio": 50,
+     "minSize": 30,
+     "ore": 249.6,
+     "concorrenza": 0,
+     "montepremi": 50
+    }
+   ],
+   "righeConLevels": 300
+  }
+ }
+}
