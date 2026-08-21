@@ -105,6 +105,7 @@ const { valutaPerditaGiornaliera } = require('../lib/maker/kill-perdita-giornali
 // attraversando (il presidio dei 60 minuti) e da cui passa gia' il merge. Un ingresso nuovo, non una
 // strada nuova. `chiusura-di-emergenza` e' puro e non ha nessun `require`: il suo selfcheck lo prova.
 const { classifica: classificaChiusura } = require('../lib/maker/chiusura-di-emergenza');
+const { componiAvviso, inviaAvviso } = require('../lib/maker/allarme-guardiano');
 const { resolveLimits } = require('../lib/safety/risk-limits');
 const { readUsage } = require('../lib/safety/usage');
 const UTENTE_OPERATORE = process.env.MAKER_OPERATOR_USER || 'operator';
@@ -587,7 +588,28 @@ async function spazzaEFerma({ motivo, causa, dettagli = {}, now, stateFile, scri
     });
   } catch (e) { log('latch NON scritta:', e.message); }
 
-  return { ordiniCancellati: evento.ordiniCancellati, results, evento, botFermato, chiusura };
+  // ── L'AVVISO A UNA PERSONA, PER ULTIMO E SENZA POTERE ──────────────────────────────────────────
+  // ⚠ STA QUI E NON PIU' IN ALTO, ed e' la parte che conta: cancellazione, FERMA, referto e latch sono
+  // gia' avvenuti. Un avviso che non parte non cambia una riga di cio' che e' successo sul venue, e non
+  // puo' ritardarlo. Il `catch` e' la seconda cintura: `inviaAvviso` gia' non solleva mai.
+  // Il costo misurato del silenzio: 6h06m di bot fermo dopo lo scatto del 20/08 (§5-bis p.202).
+  let avviso = { inviato: false, motivo: 'non tentato' };
+  try {
+    const testo = componiAvviso({
+      causa: causa || 'drawdown', motivo, pnl, capitale, baseline, at: now,
+      ordiniCancellati: evento.ordiniCancellati,
+      mercati: evento.venues.flatMap((v) => (v.markets || []).map((m) => m.market)).filter(Boolean),
+      botFermato: botFermato.ok === true,
+      chiusura: chiusura ? { daFondere: chiusura.daFondere.length, daVendere: chiusura.daVendere.length, lasciate: chiusura.lasciate.length } : null,
+    });
+    avviso = await (deps.inviaAvviso || inviaAvviso)(testo);
+    log(avviso.inviato ? 'avviso inviato' : `avviso NON inviato: ${avviso.motivo}`);
+  } catch (e) {
+    avviso = { inviato: false, motivo: (e && e.message) || String(e) };
+    log('avviso NON inviato:', avviso.motivo);
+  }
+
+  return { ordiniCancellati: evento.ordiniCancellati, results, evento, botFermato, chiusura, avviso };
 }
 
 async function loop() {
