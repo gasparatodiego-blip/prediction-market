@@ -1380,16 +1380,37 @@ resta una riga nel registro di §5-bis.
 > **p.28 i due commenti a 110¢ in `auto-close.js`** → corretti il 16/08 nello stesso commit che porta
 > il tetto unico a 101¢ (§5-bis p.165), il reperto D7 non esiste più.
 
-49. **🔴 IL NUMERO CHE DECIDE DAVVERO PORTA ANCORA LA STESSA FAMIGLIA DI DIFETTO — 21 agosto 2026.**
-   `lib/rewards/realistic-estimate.js:269` fa **`sizeShares = (capitalUsd / 2) / clampPrice(mid)`**,
-   cioe' la forma `(C/2)/mid` che l'intestazione di `lib/rewards/size-da-capitale.js` dichiara
-   **sbagliata** («assume che ENTRAMBI i lati costino `mid`. Vero solo a mid = 0,50»). Da li' passano
-   `placementShareFactor` e `credibleShareFactor`, quindi il **netto del knapsack** — cioe' proprio il
-   numero che ordina i candidati **e** decide gli spodestamenti (§4.13). La correzione di D1 ha chiuso
-   il ripiego lordo; **questo e' il canale principale e resta aperto.** ⚠ Non corretto per istruzione,
-   e la correzione non e' meccanica: `allocator.js:800` usa gia' `capitale/(1−2d)` quando
-   `rowPairCostUsd` c'e', quindi le due meta' della stessa catena non concordano e va deciso quale
-   vince. **Da quantificare prima di toccarlo**, con lo stesso metodo di §5-bis p.198.
+49. **✅ CHIUSA IL 21 AGOSTO — E LA DIAGNOSI DI STAMATTINA ERA SBAGLIATA, VA DETTO PER INTERO.**
+   Avevo scritto che da `realistic-estimate.js:269` «passa il netto, cioe' il numero che ordina i
+   candidati e decide gli spodestamenti». **Non e' vero, e chi riapre non rifaccia quel ragionamento.**
+   `placementShareFactor` e `credibleShareFactor` sono **esportate** e ricevono `sizeShares` come
+   PARAMETRO: `allocate.js:149-151` passa la PROPRIA size, che viene da
+   `curve.shareForCapital(..., pairCostUsd)` — gia' corretta, e con `usePairCost` acceso per difetto
+   nel piano di produzione (`allocator.js:1495`, `opts.usePairCost !== false`). La `sizeShares` della
+   riga 269 e' **locale a `realisticEstimate`** e non raggiunge mai l'obiettivo.
+   **LA CATENA VERA, misurata**: obiettivo `allocate.js:455` → `net.js:80 shareForCapital` →
+   `level.net5m` → `allocator.js:970 bestNetPerDay` → `agent41:1357 nettoPerMercato` → selezione.
+   Stima `allocator.js:841 realisticEstimate` → `realisticByTick` → `realisticBestPerDay`.
+   **Prova**: l'impronta delle cinque funzioni esportate e' **identica prima e dopo**
+   (`8cfcada9dcc566b6`), e le due size coincidono ora al bit (divario 0 o 7,11·10⁻¹⁵).
+   ⚠ **MA :269 NON ERA SOLO DISPLAY**, ed e' l'altra meta' della correzione: `realisticBestPerDay`
+   ordina le righe in **`trigger-capitale-fermo.scegliMercato:317`** (quale mercato riceve la prossima
+   tranche a capitale fermo, ogni 120 s) e `totals.realisticPerDay` alimenta il **trigger di VALORE**
+   del ciclo 6 h (`realloc-cycle.confrontoDiValore`). Due decisioni, non due numeri da mostrare.
+   **Quanto si sposta, misurato sul board vivo (29 ammissibili)**: **uno scambio adiacente su 29**
+   (posizioni 6-7, righe distanti $0,0001/g) e **la prima scelta NON cambia**. Il motivo e' che i due
+   fattori sono RAPPORTI di quote: con una concorrenza di migliaia di share contro le nostre ~64 sono
+   quasi insensibili alla size. Dove morde davvero e' il regime a concorrenza sottile (§5-bis p.167:
+   168 share), e su questo board non c'e' nessun ammissibile li'.
+
+50. **🟡 `1 − 2d` HA ANCORA UNA TERZA COPIA, NELLA CORSIA DEL BACKTEST — 21 agosto 2026.**
+   `scripts/rewards-replay/lib/allocate.js:387` (`pairCostForMarket`) riscrive `1 − 2d` invece di
+   importare `size-da-capitale.costoCoppiaAllaDistanza`. Oggi i due numeri **coincidono** (verificato:
+   stessa guardia `d >= 0.5`, stesso arrotondamento a 9 cifre), quindi non c'e' divergenza da misurare —
+   ma sono due copie, cioe' il reperto D1 in attesa. **Non corretta di proposito**: quel file e' la
+   corsia del backtest e ogni driver storico ci passa; toccarlo puo' muovere serie storiche che esistono
+   per essere confrontate, e la decisione e' dell'operatore, non della patch.
+
 48. **🟡 `flatUserShare` (KALSHI) HA LO STESSO DENOMINATORE E NON E' STATA TOCCATA — 21 agosto 2026.**
    `lib/rewardScore.js` `flatUserShare` divide ancora per il mid. Kalshi **non pubblica ne' banda ne'
    formula**: quella funzione rispecchia il modello OSSERVATO di agent25, e cambiarne il denominatore
@@ -1626,6 +1647,29 @@ problema è già stato incontrato vale più del racconto di come. Il dettaglio i
 e nei commit citati nei sorgenti.
 
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
+
+**199** · D1 · L'ULTIMA COPIA: LA STIMA REALISTICA DIVIDEVA PER IL MID — 21 agosto.
+`realistic-estimate.js:269` faceva `(C/2)/mid`, la forma che l'intestazione di `size-da-capitale`
+dichiara SBAGLIATA da 1'12 agosto. Corretta in `C / (1 − 2d)`.
+**⚠ IL `/2` NON ERA UNA CONVENZIONE DEL CHIAMANTE**, ed e' la differenza col gemello di stamattina: in
+`reward-price-row` era il CHIAMANTE a dimezzare e la correzione andava fatta li'; qui `capitalUsd` e'
+gia' il TOTALE (`allocate.js:167`, `capital: 2 * sizeUsd`) e il `/2` era interno alla formula sbagliata,
+quindi sparisce con lei. **Nessun chiamante toccato**, e un blocco del test lo verifica invece di
+prometterlo.
+**LE DUE META' DELLA CATENA ORA CONCORDANO AL BIT**: obiettivo `curve.shareForCapital(..., pairCostUsd)`
+e stima `sharePerLato(capitale, pairCost)` danno la stessa size, divario 0 o 7,11·10⁻¹⁵.
+**⚠ `1 − 2d` VIVE ADESSO IN UN POSTO SOLO**: `size-da-capitale.costoCoppiaAllaDistanza`, importata da
+`realistic-estimate` e da `rewardScore` (che ci ha rinunciato alla propria copia scritta ieri). Restava
+una terza copia in `allocate.js:387` (`pairCostForMarket`): **non toccata**, e' la corsia del backtest,
+dichiarata in §5.2 p.50.
+**⚠ NESSUN RIAVVIO, E NON PER PRUDENZA**: il piano nasce in un **processo figlio** che rilegge il codice
+da disco (§5.3), quindi la correzione e' entrata in servizio da sola. I quattro agent vivi caricano
+`rewardScore` e `size-da-capitale` in memoria, ma la modifica al primo e' numericamente identica
+(delega alla SSOT) e al secondo e' **solo additiva**: comportamento in-process invariato. **Nessun
+ordine e' diventato PRE-ESISTENTE.**
+Prove: `stima-realistica-denominatore.test.js` **20/20**, rosso sul sorgente di ieri sull'asserzione ①.
+Suite **231 verdi / 7 rossi**, gli **stessi 7** di prima e non otto. `rewards-realistic-estimate-selfcheck`
+47/47.
 
 **198** · D1 · IL PUNTEGGIO DIVIDEVA IL CAPITALE PER IL MID, NON PER IL COSTO DELLA COPPIA — 21 agosto.
 `lib/rewardScore.js` convertiva capitale→share con `capital/mid` mentre il piazzamento usa
