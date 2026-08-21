@@ -1,0 +1,104 @@
+{
+ "lettoAl": "2026-08-21T15:04:15.761Z",
+ "quanti": 5,
+ "nettiPrima": 9,
+ "nettiDopo": 22,
+ "prima": {
+  "ok": true,
+  "motivo": null,
+  "tenuti": [
+   {
+    "id": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+    "question": "Will 1 Fed rate cut happen in 2026?",
+    "motivo": "ammissibile",
+    "dettaglio": "minSize 50 (alto) · economy · 3152.9 h alla risoluzione",
+    "oreAllaScadenza": 3152.9289552777777,
+    "minSize": 50
+   },
+   {
+    "id": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+    "question": "Will the Republican Party control the House after the 2026 Midterm elections?",
+    "motivo": "ammissibile",
+    "dettaglio": "minSize 50 (alto) · elections · 1760.9 h alla risoluzione",
+    "oreAllaScadenza": 1760.9289552777777,
+    "minSize": 50
+   },
+   {
+    "id": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+    "question": "Will no Fed rate cuts happen in 2026?",
+    "motivo": "ammissibile",
+    "dettaglio": "minSize 50 (alto) · economy · 3152.9 h alla risoluzione",
+    "oreAllaScadenza": 3152.9289552777777,
+    "minSize": 50
+   },
+   {
+    "id": "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+    "question": "Will a team from LCK (South Korea) win LoL Worlds 2026?",
+    "motivo": "ammissibile",
+    "dettaglio": "minSize 20 (basso) · esports · 3152.9 h alla risoluzione",
+    "oreAllaScadenza": 3152.9289552777777,
+    "minSize": 20
+   },
+   {
+    "id": "0xd5d9fc47718bd553592d126b1fa5e87183d27f3936975b0c04cc0f2dec1f1bb4",
+    "question": "Will the Democratic Party control the House after the 2026 Midterm elections?",
+    "motivo": "ammissibile",
+    "dettaglio": "minSize 50 (alto) · elections · 1760.9 h alla risoluzione",
+    "oreAllaScadenza": 1760.9289552777777,
+    "minSize": 50
+   }
+  ],
+  "entranti": [],
+  "spodestati": [],
+  "liberati": []
+ },
+ "dopo": {
+  "ok": true,
+  "motivo": null,
+  "tenuti": [
+   {
+    "id": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+    "question": "Will 1 Fed rate cut happen in 2026?",
+    "motivo": "ammissibile",
+    "dettaglio": "minSize 50 (alto) · economy · 3152.9 h alla risoluzione",
+    "oreAllaScadenza": 3152.9289552777777,
+    "minSize": 50
+   },
+   {
+    "id": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+    "question": "Will the Republican Party control the House after the 2026 Midterm elections?",
+    "motivo": "ammissibile",
+    "dettaglio": "minSize 50 (alto) · elections · 1760.9 h alla risoluzione",
+    "oreAllaScadenza": 1760.9289552777777,
+    "minSize": 50
+   },
+   {
+    "id": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+    "question": "Will no Fed rate cuts happen in 2026?",
+    "motivo": "ammissibile",
+    "dettaglio": "minSize 50 (alto) · economy · 3152.9 h alla risoluzione",
+    "oreAllaScadenza": 3152.9289552777777,
+    "minSize": 50
+   },
+   {
+    "id": "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+    "question": "Will a team from LCK (South Korea) win LoL Worlds 2026?",
+    "motivo": "ammissibile",
+    "dettaglio": "minSize 20 (basso) · esports · 3152.9 h alla risoluzione",
+    "oreAllaScadenza": 3152.9289552777777,
+    "minSize": 20
+   },
+   {
+    "id": "0xd5d9fc47718bd553592d126b1fa5e87183d27f3936975b0c04cc0f2dec1f1bb4",
+    "question": "Will the Democratic Party control the House after the 2026 Midterm elections?",
+    "motivo": "ammissibile",
+    "dettaglio": "minSize 50 (alto) · elections · 1760.9 h alla risoluzione",
+    "oreAllaScadenza": 1760.9289552777777,
+    "minSize": 50
+   }
+  ],
+  "entranti": [],
+  "spodestati": [],
+  "liberati": []
+ }
+}

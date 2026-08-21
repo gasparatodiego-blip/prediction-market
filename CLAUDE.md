@@ -1403,6 +1403,16 @@ resta una riga nel registro di §5-bis.
    quasi insensibili alla size. Dove morde davvero e' il regime a concorrenza sottile (§5-bis p.167:
    168 share), e su questo board non c'e' nessun ammissibile li'.
 
+51. **🟡 LO `scaglione` SALVATO NELLO STATO PUO' DIVERGERE DA QUELLO CALCOLATO — 21 agosto 2026.**
+   `selezione-mercati` rifiuta lo scambio quando `v.scaglione !== occ.voce.scaglione`: il primo e'
+   **ricalcolato** dal `rewardsMinSize` corrente, il secondo e' **congelato** in
+   `data/selezione-mercati.json` all'ingresso. Se il venue cambia `rewardsMinSize`, o se cambia
+   `MAKER_MERCATI_CONTEMPORANEI` (a N=1 i secchi diventano UNO e si chiama `alto`), un occupante resta
+   con un secchio che non esiste piu' e **diventa non spodestabile in silenzio**. Trovato dal test di
+   p.200 che falliva, non dalla rilettura. **Non corretto**: cambia il comportamento della rotazione.
+52. **🟡 `lib/maker/quantita-davanti.js` NON HA CHIAMANTI — 19 agosto 2026, non tracciato da git.**
+   E' la forma che §4.14 chiama «una cintura senza chiamanti e' peggio di nessuna, perche' me la fa
+   contare». **Non toccato.**
 50. **🟡 `1 − 2d` HA ANCORA UNA TERZA COPIA, NELLA CORSIA DEL BACKTEST — 21 agosto 2026.**
    `scripts/rewards-replay/lib/allocate.js:387` (`pairCostForMarket`) riscrive `1 − 2d` invece di
    importare `size-da-capitale.costoCoppiaAllaDistanza`. Oggi i due numeri **coincidono** (verificato:
@@ -1559,6 +1569,12 @@ resta una riga nel registro di §5-bis.
 11. **I ROSSI NOTI RUOTANO NEI NOMI, NON NEL CONTEGGIO.** Chi confronta confronti i **NOMI** (§5-bis
    p.134): cambiano da soli col board, e un membro nuovo non è una regressione — ma va verificato che il
    rosso non tocchi il codice modificato. **Non parte**: `leg-order` (test JS su moduli TypeScript).
+   ⚠ **IL CONTEGGIO DEL 19/08 ERA INVECCHIATO: il 21/08 la suite dà 240 test · 231 verdi · 8 ROSSI ·
+   1 non parte.** Gli 8 sono stati verificati **uno per uno anche sul sorgente PRE-correzione D-A**
+   (agent41 riportato a HEAD e rieseguiti): **rossi anche prima, stessi nomi, nessuno introdotto**.
+   Sono `dipendenze-mai-iniettate` · `distanza-2c` · `end-of-scale-cycle` · `tetti-per-giro-e-scope` ·
+   `tre-fix-sicurezza` (timeout, §5.2 p.42) · `categoria-mercato` · `tetto-derivato-dallo-scaglione` ·
+   `tetto-e-scoperta`. **Chi confronta confronti i NOMI, e li rilegga: il numero qui sotto è storia.**
    **Rossi: 2 su 229, verificati il 19/08 su albero COMMITTATO** (erano 12 la mattina del 19, e 10 il
    17/08 su 209 test — l'elenco di allora non vale piu': `dipendenze-collegate`, `scaduto-senza-rinnovo`,
    `scadenza-ereditata`, `end-of-scale-cycle`, `tetto-e-scoperta`, `cancellazione-riconosciuta` sono
@@ -1647,6 +1663,31 @@ problema è già stato incontrato vale più del racconto di come. Il dettaglio i
 e nei commit citati nei sorgenti.
 
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
+
+**200** · D-A · LA SELEZIONE ORDINAVA CON UNA CIFRA DA MOSTRARE — 21 agosto. `agent41:1357` costruiva
+la mappa dei netti da `bestNetPerDay`, che `net-per-day.js:80` **annulla** senza fill osservati
+(`nessun-fill-osservato`): un mercato mai quotato non ha fill, quindi non ha netto, e
+`spodestaAbbastanza` rifiuta un netto `null`. **Non una soglia: una maschera di visualizzazione usata
+come ingresso di una decisione.** Ora si usa `bestObiettivoPerDay` con ripiego su `bestNetPerDay` —
+la forma IDENTICA gia' adottata l'8 agosto in `collector-priority.js:185`, non una seconda forma.
+**MISURATO col runner VERO sul board del 21/08**: classificabili **9 → 22** su 22 ammissibili; i 13 che
+si sbloccano hanno tutti `nessun-fill-osservato`; sui 9 in comune il divario e' **0 su 9** — non cambia
+un valore, toglie una maschera. **⚠ IL FILL OSSERVATO NON SI PERDE**: `bestObiettivoPerDay` E'
+`best.net5m`, cioe' lordo meno il costo di adverse selection misurato (`net.js:93`: zero fill ⇒ costo
+zero KNOWN), e quattro occupanti su cinque stanno infatti a netto NEGATIVO. **⚠ ZERO SPODESTAMENTI**
+alla simulazione a secco, prima e dopo: a tenere e' l'isteresi di **$0,50/g** piu' lo scaglione
+(l'unico sfidante che la supera e' `basso`, gli occupanti negativi sono `alto`). Il guadagno si vede
+**quando uno slot si libera** — 37 volte nelle 24 h precedenti: senza la correzione lo slot veniva
+ripreso dal mercato appena uscito o da uno a netto negativo. **⚠ Nessun ordine toccato.**
+⚠ La selezione NON era ferma del tutto: 12 spodestamenti nelle 24 h precedenti, fra i mercati CON
+storico. Congelata era la **candidatura di chi non ne ha**, oggi 13 su 22.
+Prove: `lib/maker/selezione-ordina-a-priori.test.js` **15/0**, che fa girare `decidiSelezione` VERA e
+**fallisce sul criterio vecchio** (asserzione ②) e sul **sorgente** vecchio (blocco ⑥, commenti
+filtrati). Referto: `data/ricerca/d-a-riparazione-21-agosto.md`.
+⚠ Scrivendo il test sono cadute due trappole, entrambe prese dal test e non dalla rilettura: con
+`max: 1` lo `slotCorti` vale 0 ⇒ la coda lunga ha budget 0 e ogni candidato oltre 7 giorni finisce in
+`scartatiPerCodaLungaSottoPavimento`; e a `max: 1` il secchio unico si chiama **`alto`**, quindi uno
+`scaglione` stantio nello stato blocca lo scambio in silenzio (§5.2 p.51).
 
 **199** · D1 · L'ULTIMA COPIA: LA STIMA REALISTICA DIVIDEVA PER IL MID — 21 agosto.
 `realistic-estimate.js:269` faceva `(C/2)/mid`, la forma che l'intestazione di `size-da-capitale`

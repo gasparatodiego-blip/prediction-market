@@ -1,0 +1,1036 @@
+{
+ "lettoAl": "2026-08-21T14:58:56.903Z",
+ "capitale": 1494.782785,
+ "ammissibili": 24,
+ "candidati": 114,
+ "conVecchio": 9,
+ "conNuovo": 22,
+ "righe": [
+  {
+   "id": "0xb24ae6117a3b68c79c085aa102a5054073dbd5c131db1774f1e41230ad7d67bf",
+   "q": "24–27 — Will the number of Democratic House members who retire in 2026 be between 24 and 27 inclusive?",
+   "occupante": false,
+   "vecchio": 2.259180754507104,
+   "nuovo": 2.259180754507104,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+   "q": "1 (25 bps) — Will 1 Fed rate cut happen in 2026?",
+   "occupante": true,
+   "vecchio": 0.02635769860481684,
+   "nuovo": 0.02635769860481684,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+   "q": "Republican Party — Will the Republican Party control the House after the 2026 Midterm elections?",
+   "occupante": true,
+   "vecchio": 0.0034514128367445548,
+   "nuovo": 0.0034514128367445548,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+   "q": "LCK (South Korea) — Will a team from LCK (South Korea) win LoL Worlds 2026?",
+   "occupante": true,
+   "vecchio": null,
+   "nuovo": 0.036164639867421584,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988",
+   "q": "Avengers: Doomsday — Will Avengers: Doomsday have the best domestic opening weekend in 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.05880688092528297,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+   "q": "Spider-Man: Brand New Day — Will Spider-Man: Brand New Day have the best domestic opening weekend in 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.22383656945941868,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0x307a1ed89d60b61002dd5bbf00e1408c5ed2ab3fcdb056191ca7ef9bc34d38f3",
+   "q": "Democratic Party — Will the Democratic Party control the Senate after the 2026 Midterm elections?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.006972951737171529,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0x86bfb53af7250a40928975c551d12c185b762fa4ce0b40c6a64a50c946d72587",
+   "q": "Republican Party — Will the Republican Party control the Senate after the 2026 Midterm elections?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.008716622744019738,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0xe5acfef8707df2e25a99a6e4d9568d033fa063b006022f68375ab3bbcf376818",
+   "q": "Swedish Social Democratic Party (S) — Will the Swedish Social Democratic Party (S) win the most seats in the 2026 Swedish parliamentary election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.044971247653438844,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0x938e6a0a011f9534ffd2d86c65dde3aeb7c66ad06cee29ead70b832179c3b6de",
+   "q": "Bad Bunny — Will Bad Bunny be the top artist for 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.12480112328142447,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0x3fd189cac9280dfc49a07115581e8d4c9e0b7e1c1e8580a44e9ff3d74e39cf2d",
+   "q": "Mike Rogers (R) — Will the Republicans win the Michigan Senate race in 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.04340344014581509,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0xbfeb6d4cf3eab6071e204219b0647c8224d63a12778df467311b5f2a4b3a5bd4",
+   "q": "Abdul El-Sayed (D) — Will the Democrats win the Michigan Senate race in 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.016802354883641655,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0xcede29c8af89d8bd2118088768dcee36736ed43af143e70d59f60d7b365a98ef",
+   "q": "LPL (China) — Will a team from LPL (China) win LoL Worlds 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.032064366926292616,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0x30f729ef18553d8956bfd7ae7a1e96dbad07e2476160239b23ec10e6cdc5f01b",
+   "q": "Rodri — Will Rodri win the 2026 Ballon d'Or?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.010050423084786276,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0x16c63b7cc37f012b9f59ee164ec03877914c701d06d48291ae8d6fc08a088b0d",
+   "q": "Democrats Sweep — 2026 Balance of Power: D Senate, D House",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.009035041686875646,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0xe0d9f508a249e0070db06eb7d1e1fb17eb23c963f6fb722c4c3f81e23240c1cd",
+   "q": "2 (50 bps) — Will 2 Fed rate cuts happen in 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": 0.007776477161712139,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0x18b1c135d0a40c5894da9412e77311827d9caf16cf4cd6591b247a34730af919",
+   "q": "J.D. Vance — Will J.D. Vance win the 2028 Republican presidential nomination?",
+   "occupante": false,
+   "vecchio": 0.04163704987833712,
+   "nuovo": 0.04163704987833712,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xd5d9fc47718bd553592d126b1fa5e87183d27f3936975b0c04cc0f2dec1f1bb4",
+   "q": "Democratic Party — Will the Democratic Party control the House after the 2026 Midterm elections?",
+   "occupante": true,
+   "vecchio": -0.043418792910907764,
+   "nuovo": -0.043418792910907764,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+   "q": "Harry Kane — Will Harry Kane win the 2026 Ballon d'Or?",
+   "occupante": false,
+   "vecchio": -0.050394399711818416,
+   "nuovo": -0.050394399711818416,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "q": "0 (0 bps) — Will no Fed rate cuts happen in 2026?",
+   "occupante": true,
+   "vecchio": -0.06272774714462738,
+   "nuovo": -0.06272774714462738,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+   "q": "Lamine Yamal — Will Lamine Yamal win the 2026 Ballon d'Or?",
+   "occupante": false,
+   "vecchio": -0.20386049942804474,
+   "nuovo": -0.20386049942804474,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x21ad31a46bfaa51650766eff6dc69c866959e32d965ffb116020e37694b6317d",
+   "q": "Marco Rubio — Will Marco Rubio win the 2028 Republican presidential nomination?",
+   "occupante": false,
+   "vecchio": -0.23993994517287662,
+   "nuovo": -0.23993994517287662,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x4d79d3068bdc6bbb2101462561d64c54773947d9c776d1ad637655c60ecbe5b9",
+   "q": "20–23 — Will the number of Democratic House members who retire in 2026 be between 20 and 23 inclusive?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0xdbe93b5a701f36076a560fa4b9ba59e365a6e8e2ea6a83764640010657277ca4",
+   "q": "Gadi Eizenkot — Will Gadi Eizenkot be the next Prime Minister of Israel?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": "nessun-fill-osservato",
+   "fills": null
+  },
+  {
+   "id": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+   "q": "Fed rate hike in 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xcd2640464754b9a894ffec98ac11554fdd507ea89ca01237eabb3a6de4a606e6",
+   "q": "Kimi Antonelli — Will Kimi Antonelli be the 2026 F1 Drivers' Champion?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x15d2e66dcf1d63c5695d6d0e9e2f8e06dd246d00fd5dfc254f2b22baa33bfa1b",
+   "q": "Mitch McConnell steps down from Senate before his term ends?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x3849e1d62e0807801913d3e2427e8caf3cc6dd1c8ef42d8d5c08c6f9c449dc5e",
+   "q": "No IPO by December 31, 2026 — Will OpenAI not IPO by December 31, 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x7fd2f50352ef2c9e7b462a46b893792d7a6bf510bf0bc2e1f07f85b1ea1e8ca8",
+   "q": "$500M — Extended FDV above $500M one day after launch?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x2cefe6009ea518f77b8a82714e54c0af1d0f25e99b37d4861f4a5d3ebbf142d3",
+   "q": "Lewis Hamilton — Will Lewis Hamilton be the 2026 F1 Drivers' Champion?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xf53d2cf86bf4ea3c6a0bfb739cc0dded28001dde6eee5f90b8bb6716ce33571a",
+   "q": "December 31, 2026 — Will OpenAI launch a new consumer hardware product by December 31, 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xcb2dcf1ce5b85f4355b423ee084785f13d34007c13c0fb55bec2a62f4e1ffde3",
+   "q": "Tram Nguyen — Will Tram Nguyen be the Democratic nominee for MA-06?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x66f5b8203ee1c36b993af623fd7f9ef7271dd87b3aebf6df508048ad4b563432",
+   "q": "December 31, 2026 — Will OpenAI IPO by December 31 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x0a26a2aeaee92f943b6a5649c4a096766f07675c6c710527fca730bd1e395797",
+   "q": "Will a new country join the Abraham Accords before 2027?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xd66eadbd64b3e815e31c7994470b44fe15c7ef1146f78937d0cfaa4c04fcfda7",
+   "q": "Tom Tiffany (R) — Will the Republicans win the Wisconsin governor race in 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xd2481bf85502225a8cfe44cdb7156dc3d8c4e73dc3b287c3177549ceb151f29a",
+   "q": "Dan Koh — Will Dan Koh be the Democratic nominee for MA-06?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xd1796c09d0d6f876f8580086ae9808ec991784e3a74b25a1830a25de71a78c96",
+   "q": "December 31 — Netanyahu out by end of 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x7844ad013088564a11d5d4d3b1766c57ad936a55247f0ae1efe28180d7285af3",
+   "q": "OpenAI — OpenAI IPO before 2027?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x46c8159431f59839061bb4abe8795ff8c0ebf6b612451e303ebe7f34697f3f35",
+   "q": "December 31, 2026 — Will GPT-6 be released by December 31, 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xbaf88a1521837fb1397fac1d182a348e81ae40ceeffed990c0cb49183051beb5",
+   "q": "Transgender — Will Trump say \"Transgender\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xe798f9e467761109f1eb11ada6f2cfe95b7ef40c366186099a10a83b7d6b7767",
+   "q": "Bitcoin / Crypto / Cryptocurrency — Will Trump say \"Bitcoin / Crypto / Cryptocurrency\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x6d244daa9ac01837aa4f16ab3b989c21458dcdf8e7417aa2f7221e35d4df7779",
+   "q": "Seth Moulton — Will Seth Moulton be the Democratic nominee for Senate in Massachusetts?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x5db999fad322cea2914535aae5517060c3f80ad6d8c0231cde2124a434d16846",
+   "q": "Will the U.S. invade Iran before 2027?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xdf8e2dc5860027decbe6164555c3c1c9645c3bd33e16b9dc57ca87125047d4a8",
+   "q": "Luiz Inácio Lula da Silva — Will Luiz Inácio Lula da Silva win the 2026 Brazilian presidential election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x747dc809fb79e1b05be09c42d6179459a58de2ef3e40f02484a4e1260f741f75",
+   "q": "December 31 — Will the US confirm that aliens exist before 2027?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x8126317d621047fb13d508a2651eecc8d38305904671822a62309c5aabd353aa",
+   "q": "Marine Le Pen — Will Marine Le Pen win the 2027 French presidential election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x1a01bf78f56a507fcb666d564d8c8b91b0750679163ed6e96746102c9b7d285d",
+   "q": "Flávio Bolsonaro — Will Flávio Bolsonaro win the 2026 Brazilian presidential election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x7ad403c3508f8e3912940fd1a913f227591145ca0614074208e0b962d5fcc422",
+   "q": "JD Vance — Will JD Vance win the 2028 US Presidential Election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xe6bcc2f1dd025ce5e1833190f7c60a71171c94f805df55b9ab0ded695ec93565",
+   "q": "Alexandria Ocasio-Cortez — Will Alexandria Ocasio-Cortez win the 2028 Democratic presidential nomination?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x46f2f457e14ee9021ebd0ef4c27eacd98fdceaf7f2938b484e2551e9e3275ae8",
+   "q": "Édouard Philippe — Will Édouard Philippe win the 2027 French presidential election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x6bd56627aa21311850825edb27e53434a0e17a4f782be0086bc07f71eee00d0d",
+   "q": "December 31, 2026 — Putin out as President of Russia by December 31, 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xbb4d51e6364066d92eb6f9b8413dd7193de70966736044463b205834805a1f3b",
+   "q": "Will the Iranian regime fall before 2027?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x0f49db97f71c68b1e42a6d16e3de93d85dbf7d4148e3f018eb79e88554be9f75",
+   "q": "Gavin Newsom — Will Gavin Newsom win the 2028 Democratic presidential nomination?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x74dba1ce1ae9dd535414e85f2d9ab5ea32c0fb1acc9b7130b67e6d91217e24e1",
+   "q": "Jon Ossoff — Will Jon Ossoff win the 2028 Democratic presidential nomination?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xd9fb1184af0064e5e34b129f5b79afa5a17b7e32f2953ab05efed82315fee6d4",
+   "q": "Will China invade Taiwan by end of 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x15f442103bfad36b0dcc569d9698b4d020d12a2c935b9ac9050bb190a9238ec6",
+   "q": "Saudi Arabia — Will Saudi Arabia join the Abraham Accords before 2027?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xf232b565995e4b3a3e7fa6cef775eeff1cecd20ad7c013cb9fc8dadabfe279a9",
+   "q": "Alexandria Ocasio-Cortez — Will Alexandria Ocasio-Cortez win the 2028 US Presidential Election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x174ea87d011bfd0b230efc45e0b4d0756d38af91f0ffbab70013a582603c2be8",
+   "q": "Jean-Luc Mélenchon — Will Jean-Luc Mélenchon win the 2027 French presidential election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x2053d8515f1b8cbeea4ccdb56e60e89c2617e43a8660d95166b8e71d27865277",
+   "q": "Marco Rubio — Will Marco Rubio win the 2028 US Presidential Election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x51f624dbbf14f9edb575fef1be6f7a303751de70783fa144fce27b957452c803",
+   "q": "Zelenskyy out as Ukraine president by end of 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x176e84015b1cc54d470836ef1d8a60753e17fa232d9b55e9aa8dde580d03f436",
+   "q": "Friedrich Merz out as Chancellor of Germany before 2027?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x61600d487069f99e775307a0655c1a79f26e4fc6d8d1ba66790c64d78d0beba2",
+   "q": "Jon Ossoff — Will Jon Ossoff win the 2028 US Presidential Election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x4567b275e6b667a6217f5cb4f06a797d3a1eaf1d0281fb5bc8c75e2046ae7e57",
+   "q": "Gavin Newsom — Will Gavin Newsom win the 2028 US Presidential Election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x909659c9436228e2be56d5582ba6188166f2f8bf3c596335512c8f2e380d01ec",
+   "q": "Kamala Harris — Will Kamala Harris win the 2028 Democratic presidential nomination?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xa467b14d51f01b957109d9cbb1d6c124fab2a089d52ed8f471d23c2812e743b7",
+   "q": "Xi Jinping out before 2027?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x4167e22670f31e5f93d132f78108f3fae809bd15cadf78983eff096845ed1415",
+   "q": "Ukraine signs peace deal with Russia before 2027?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x3b32ef6897c33e7cac03641f3b16f25de3bbba86c48193ae7250b81bd5dc8e36",
+   "q": "10-12 — Will Democratic House incumbents not win in between ten and twelve nominating elections in the 2026 cycle?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x88b2827dd9bb9b3ebd4f229561a7606bd2bbdedbf3dfbb9c563e1e7dd2673747",
+   "q": "$1B — Variational FDV above $1B one day after launch?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x92d9b1b2184185bcd2f636f8b1c00d2e8900037541c5530b31cd241a2eab239b",
+   "q": "7-9 — Will Democratic House incumbents not win in between seven and nine nominating elections in the 2026 cycle?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xcc59c2569d30b4b86993f3ff17bb900fffc56e7d98f1a5b02793fc9c133db99a",
+   "q": "$300M — Extended FDV above $300M one day after launch?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xe34a08b2a8d0f9e5033dc1bc1ee153509e414196c3e8044d5e99b64b974eeea6",
+   "q": "Israel x Turkey military clash before 2027?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xfbd0a65112e26d9a2a68dc47f8a95c6c14d22650cb4837c5429b546726661b71",
+   "q": "David Crowley (D) — Will the Democrats win the Wisconsin governor race in 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x5d0a813b85c02c0c4cd8664527dce359889c359826786293a568a13ddbcef64a",
+   "q": "WTI Crude Oil (WTI) Up or Down on August 21?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xc3ca3f9410c811f95c84d3de145a0660641fa482a3b35501167d10da2f54e6c5",
+   "q": "Hell 10+ times — Will Trump say \"Hell\" 10+ times during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xad7db45074f0b37d8d02eff7e720ef7cdd7e9929676a835d482850056d200a12",
+   "q": "Border 10+ times — Will Trump say \"Border\" 10+ times during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xd778e75da4b48857507c8929901acde7118450a7c78842b3711ba4f116bb73ef",
+   "q": "Biden 5+ times — Will Trump say \"Biden\" 5+ times during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x63ff5cbb601f8c374b150a155d211fe6998b8065d4ea2ad1e6d7cacfc8b6ba22",
+   "q": "Hottest 2+ times — Will Trump say \"Hottest\" 2+ times during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xb2570790f3e0ffc9ae307065909250e74fcfe0cded10150a0cd54ee116789d3d",
+   "q": "No No No — Will Trump say \"No No No\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x55723d6228e782efba2596bcdd433f796f49572caa6751ab592b965272229f12",
+   "q": "Blockade — Will Trump say \"Blockade\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xeec0c5bab06321f2fe7db1686caa9ba124e723e656375eb7518b4f9cc0103d6c",
+   "q": "Venezuela — Will Trump say \"Venezuela\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xf41d7ae4bc047dc510473afecd79edbe5dbc027f6d4084b0c340ca5d829f306f",
+   "q": "Disability — Will Trump say \"Disability\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x94ec90006fce9c6f5bb1fdc5b8f6c58ac6faacdddcdb5256fd54dc4a93ef8137",
+   "q": "Legacy — Will Trump say \"Legacy\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x41c74496c62b743489af29190daa77401b041d9f610e894058183742d7c7cc74",
+   "q": "Kavanaugh — Will Trump say \"Kavanaugh\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x49779ebfe4d948f6da4480a29ba74cec6dbc4db7966f388499145bc42d502e08",
+   "q": "Phone — Will Trump say \"Phone\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xf606277fedb444927935b50c5fcdb67f3d4d8462ac5bf4bf645dd4901791cae1",
+   "q": "Weightlifting / Weightlifter — Will Trump say \"Weightlifting / Weightlifter\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x771c8fa99750d7cdd261ac38dbe823d3f4ef0e09068a33547305d773babd608b",
+   "q": "Kamala — Will Trump say \"Kamala\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x9f9f4ca86334fcf6b099e8c1395e9cb73c388cc345f19deafd7e6290ad5ba789",
+   "q": "Afford / Affordable / Affordability — Will Trump say \"Afford / Affordable / Affordability\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xcaff8f6a94ad8b54120c4b9d20d77fac7a5c8e3e8af30cc100e2fbc75d899b47",
+   "q": "Barack Hussein Obama — Will Trump say \"Barack Hussein Obama\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xcc9b67d43890ea35ae020a65e78f00d581af96586003080a587438222715718c",
+   "q": "260-279 — Will Elon Musk post 260-279 tweets from August 14 to August 21, 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xbd549c211a4b156b03a37401348ffaf6b8fcce0182e3bb48f58179ccd1fc4094",
+   "q": "$800M — Variational FDV above $800M one day after launch?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x39b1401a201899d8aa624058cb5aeef98a94e116e2c022364d583eb65a32b714",
+   "q": "240-259 — Will Elon Musk post 240-259 tweets from August 14 to August 21, 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x8a2f94ada7d5aefc0358a6d11653789d916ff8dcd1110dd5618ed804738142e0",
+   "q": "Anthropic 5+ times — Will \"Anthropic\" be said 5+ times during the next episode of the All-In Podcast?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x134e8817c2220b9971284bcba30679d354343c8d81c6b3c5b0f8c0bbdaa71955",
+   "q": "SpaceX 3+ times — Will \"SpaceX\" be said 3+ times during the next episode of the All-In Podcast?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xecadb13f7a4e7c033a722d05ea610cffe09544e71de9ad9fefcfdc9ecd6acf4b",
+   "q": "Communist / Communism — Will Trump say \"Communist / Communism\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x8485c272494323fa75d9738443c1ae3275a242e6e607846992ab198c3a10d37a",
+   "q": "Oil / Gas / Gasoline — Will Trump say \"Oil / Gas / Gasoline\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x6bfe71e892e5387166bb87090cc65db221a3bdaf0faa91a4533bd2ec350cd18a",
+   "q": "Save America Act — Will Trump say \"Save America Act\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x1ae9686546cfa0b409d4c4fced4be4d9b41874d8e4a5c81cf91994b2124928dd",
+   "q": "MAGA / Make America Great Again — Will Trump say \"MAGA / Make America Great Again\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x17c40b9e7a212ef432ef270aefb106fc712f4705b3dc9e87766179411a5d01ca",
+   "q": "Stock Market — Will Trump say \"Stock Market\" during his rally with Darline Graham?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x91ffc54d7020c2cac36dd77e61ec744bec85b653c51c5c001b28f85fb9a62474",
+   "q": "Job 8+ times — Will JD Vance say \"Job\" 8+ times during his remarks in Ohio?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x3514f231139fe281acfa5899afa662a70a69a0c0b4354e1360f64c02fcd8392b",
+   "q": "Trump 5+ times — Will JD Vance say \"Trump\" 5+ times during his remarks in Ohio?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xcbeda21c5b99e89b38f27bae6ad1b26009de089d00d9caf0b81d4b0e8f3d94f4",
+   "q": "God 4+ times — Will JD Vance say \"God\" 4+ times during his remarks in Ohio?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x4e1b25f195573b71762f1b61a82a4bb9a810c1800ac47474d061134e7c2726f6",
+   "q": "Far Left — Will JD Vance say \"Far Left\" during his remarks in Ohio?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x789a27c5e6b27b2879339d6c3d7727624ce2110c32c7364a03fa768e94946494",
+   "q": "Wife — Will JD Vance say \"Wife\" during his remarks in Ohio?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xebe960039c93d8820e4646682b9529ffa31cbce89e2e9ece03bc30c522c292bc",
+   "q": "Oil / Gas / Gasoline — Will JD Vance say \"Oil / Gas / Gasoline\" during his remarks in Ohio?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x7f8af22401fbf3c0c8eec3d8135308d41aa49b290b4499fc9ce7ebee31a064e1",
+   "q": "$88 — WTI Crude Oil (WTI) closes above $88 on August 21?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x8524463f0ffa636cf9b2ec82cbe4ba3cd26e7b91bedb120a3e9e9db2c0ee5962",
+   "q": "$87 — WTI Crude Oil (WTI) closes above $87 on August 21?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xb8913858ff921bd06eba75595cfb19b074bd60f0f9c975a76349dfad84f04e55",
+   "q": "$86 — WTI Crude Oil (WTI) closes above $86 on August 21?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x0f4153f812b6b8236eb4025ef8d3b24041595b43022d85c3f290d4fa69c77fc4",
+   "q": "$85 — WTI Crude Oil (WTI) closes above $85 on August 21?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xa5ecee2071c830e9320cd25c8b071fa97fc840430d3e4649db2fd40db9b3a2c0",
+   "q": "Gold (XAUUSD) Up or Down on August 21?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0xe17f7300a2c923037a479402108031e636ff877c97a404c8cadee88d7f9e5fd8",
+   "q": "Natural Gas (NG) Up or Down on August 21?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x4808488e54a414ee180be47feebba96166cad42fff4cc5c363733c42b6357d4e",
+   "q": "Ed Markey — Will Ed Markey be the Democratic nominee for Senate in Massachusetts?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x7fdfdf3089f2926e189998489f530a1a4b3f90ee8d2d52f81d8774757f8ca762",
+   "q": "Dave Bronson — Will Dave Bronson advance from the 2026 Alaska Governor primary election?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x0c45c17e88dcf6e6ff1efa93de5fd227c688ccf14dc368ce8c62f4304fcfd270",
+   "q": "US Dollar Index (DXY) Up or Down on August 21?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  },
+  {
+   "id": "0x72050dbe80b1e5d4455b891feefcf3bb00863be9f516a25f72384f54cdf0ac4f",
+   "q": "180-199 — Will Ted Cruz post 180-199 posts from August 14 to August 21, 2026?",
+   "occupante": false,
+   "vecchio": null,
+   "nuovo": null,
+   "assente": null,
+   "fills": null
+  }
+ ]
+}

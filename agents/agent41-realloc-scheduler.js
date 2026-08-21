@@ -1351,10 +1351,36 @@ async function nettiDeiCandidati(board, orizzonteMassimoOre) {
         horizonFilter: true, onlyMarketIds: ammissibili,
       }));
     });
+    // ── SU QUALE NUMERO SI ORDINA, E PERCHE' NON PIU' `bestNetPerDay` (21 agosto 2026) ────────────
+    // `bestNetPerDay` e' una cifra da MOSTRARE: `net-per-day.js:80` la annulla quando nessun fill e'
+    // stato osservato (`nessun-fill-osservato`), perche' un netto senza fill non e' MISURATO. Giusto
+    // per una card; sbagliato per una DECISIONE, e qui decideva: un mercato mai quotato non produce
+    // fill, quindi non ha netto, e `spodestaAbbastanza` rifiuta un netto `null` («un netto che non si
+    // sa non spodesta e non si fa spodestare»). Con gli slot pieni la classifica restava congelata sui
+    // mercati gia' dentro, per sempre — non per una soglia, per una maschera di visualizzazione.
+    //
+    // MISURATO sul board del 21 agosto (data/ricerca/d-a-simulazione-a-secco.json), attraverso QUESTO
+    // stesso runner: dei 22 ammissibili classificabili, `bestNetPerDay` ne popolava **9**;
+    // `bestObiettivoPerDay` ne popola **22**. I 13 che si sbloccano hanno tutti e 13 il motivo
+    // `nessun-fill-osservato`. Sui 9 in comune i due numeri sono **identici** (divario 0 su 9): non si
+    // sta cambiando un valore, si sta togliendo una maschera.
+    //
+    // ⚠ NON SI BUTTA IL FILL OSSERVATO. `bestObiettivoPerDay` E' `best.net5m`, cioe' lordo MENO il
+    // costo di adverse selection misurato sui fill veri (`net.js:93`: zero fill ⇒ costo zero, un
+    // KNOWN e non un unknown). Chi ha storico continua a pagarlo — infatti quattro occupanti stanno a
+    // netto NEGATIVO. Cambia solo che chi non ha storico riceve la stima a priori invece di `null`.
+    //
+    // ⚠ E' LA STESSA CORREZIONE, NELLA STESSA FORMA, gia' fatta l'8 agosto in
+    // `lib/rewards/collector-priority.js:185` — ripiego su `bestNetPerDay` compreso, per i piani di
+    // formato vecchio e per i chiamanti che costruiscono i candidati a mano. Due forme diverse della
+    // stessa scelta sarebbero il reperto D1.
+    const criterio = (c) => (fin(c.bestObiettivoPerDay) ? c.bestObiettivoPerDay
+      : (fin(c.bestNetPerDay) ? c.bestNetPerDay : null));
     const mappa = {};
     for (const c of (piano && piano.candidates) || []) {
       const id = String(c.marketId || '').trim().toLowerCase();
-      if (id && fin(c.bestNetPerDay)) mappa[id] = c.bestNetPerDay;
+      const v = criterio(c);
+      if (id && v !== null) mappa[id] = v;
     }
     _netti = { at: ora, mappa };
     return mappa;

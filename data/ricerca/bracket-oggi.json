@@ -1,0 +1,446 @@
+{
+ "lettoAl": "2026-08-21T14:45:46.740Z",
+ "giorni": 14,
+ "n": 54,
+ "zero": 33,
+ "perGiorno": {
+  "q25": 0,
+  "mediana": 0,
+  "q75": 0.5771428571428572,
+  "max": 178.56571428571428
+ },
+ "righe": [
+  {
+   "wallet": "0x895838e426ad0458a4938f7f2580b62c3a5d656d",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x9de6461495bd48520077608ac9ef012a6eabe7f0",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x839f591af24da3f1322de4620ca54e053418d3f5",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x0db98a11b12ab30fc1e43ea9c9b63df50849a4a8",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xd71776a8d4fddeb3c150c4607b3f8bec31213b85",
+   "pagamenti": 10,
+   "usd": 20.31,
+   "giorniDistinti": 10,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x0275ac8f6793cc3ffe90dc1095330e240622b936",
+   "pagamenti": 8,
+   "usd": 13.71,
+   "giorniDistinti": 8,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x98ac23b264a9eb7fb0b50258086f11868a6240d9",
+   "pagamenti": 11,
+   "usd": 106.62,
+   "giorniDistinti": 9,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xf0578c221843ccc43761d15a6e04ac3f3112ab54",
+   "pagamenti": 16,
+   "usd": 975.76,
+   "giorniDistinti": 14,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x4aea779b14c7c8dad013ee16a432661f7652faae",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x1bf561a7bcc510ed14484dfebc54c477f5c9ff5e",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xa5c7114b3c17cc6b64afd5883eaabc7272497e7b",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x977f071bb5699b80d8032f1a50409648c14f0981",
+   "pagamenti": 1,
+   "usd": 5.64,
+   "giorniDistinti": 1,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x040750c77dd98a2b67ddcc266fa98453f4cfbcfd",
+   "pagamenti": 10,
+   "usd": 90.22,
+   "giorniDistinti": 9,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xac644516c9791125f448871d1fbe32ce8c76866e",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xcd73809735f8a76552295611f8171a67f9f5f7ad",
+   "pagamenti": 10,
+   "usd": 181.25,
+   "giorniDistinti": 8,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x14a01800f651e682a7918302ebd80006eb98d8e3",
+   "pagamenti": 14,
+   "usd": 254.56,
+   "giorniDistinti": 13,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xfc926e7492e752a8c270a32a7da69b0ee62927c9",
+   "pagamenti": 17,
+   "usd": 2499.92,
+   "giorniDistinti": 15,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x4a883ac38d3ea44033b65eefd417ce0b75e07190",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xe5b1377410ddd77dc3bf6fd5172e13fdc31330b2",
+   "pagamenti": 12,
+   "usd": 342.21,
+   "giorniDistinti": 10,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x51aa6b8fbd20aed3c4037056c0f3f841d7adb50e",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xc90151ca931761870dddd89bfc84cd80bdfd0c1d",
+   "pagamenti": 14,
+   "usd": 31.66,
+   "giorniDistinti": 14,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x3be56dec80a7ec937580b5a4daec22fb5e31f7fe",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x72b2d0ffab41c12727fdfe52e530320d50325548",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x3cd2bccc76e77916da8350289a456c75d239c545",
+   "pagamenti": 18,
+   "usd": 388.3,
+   "giorniDistinti": 15,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xde9cc24c0f13cf956a4a8ea947a5fe3b85b7b1d6",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x396665c13f6ae03bbcaaf710d2364071152bbe5f",
+   "pagamenti": 2,
+   "usd": 6.7,
+   "giorniDistinti": 2,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x0fa9ba2fd8585033b93367bd1032f74d3efa22eb",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x0325cdd441e451c887cde20621567584fa8c16e7",
+   "pagamenti": 1,
+   "usd": 1.08,
+   "giorniDistinti": 1,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xdb24bf3df1ea39f30a2bb7ecb9bbd8dfc990496b",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xd6df99cedecd9ae5cf7b9f830a5d8ca59cc0d71d",
+   "pagamenti": 16,
+   "usd": 266.39,
+   "giorniDistinti": 12,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x07ee6c054c1c6934ca618b7420a304f5b9b38dfe",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x9182ab8157689aa8fdb58aeca518e3fbed0b3368",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x15bbce8ac228aac2d406ede4d54fc62de66922b3",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x0ff9c15c5e8505c58b267cfe78b8f24e0506414c",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xdc394af7800ffe029351559f714e7cbd1e378ad8",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xbffe0ec796fa44bdb8b32908478c694a5566fe20",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xeda9da7fe9a6992128f5008ddbd7156cef74f624",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x16dac303d32dcc54171f3dc47c56bebf0e56ef29",
+   "pagamenti": 3,
+   "usd": 8.08,
+   "giorniDistinti": 3,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x92c7f6219053e1ad67779f7f4fe30cb0007b89f5",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x91ad42250b9c63ddc516905fdb16f5293ea6a5ca",
+   "pagamenti": 1,
+   "usd": 1.03,
+   "giorniDistinti": 1,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x184b4b04ea85411bd81eaca8b29c22df1fd367b2",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xd10a59fcc18955eeaebd06d1234cc3bd1e3fb9cd",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xd053b972f41216230108a6b90edf390f27b5a385",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x53059e9bd59ac40a6f907878a014d784e9bc57b6",
+   "pagamenti": 1,
+   "usd": 1.19,
+   "giorniDistinti": 1,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x00cdea4d807710807cdbc54ad34cfafcd992c0ae",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x33739438875aee79e98a26f87320d984f0703716",
+   "pagamenti": 2,
+   "usd": 3.34,
+   "giorniDistinti": 2,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xbc29b9e3a4c89d55c8a0629008ccaece830eb3b6",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xe9dcebc368efa90a5c7ceec819571cada34c4e23",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xde7c31e34d1e0e6663454298d409e50cc2aac5d2",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xd5a61951e34204cb0cdefde635ab65f96914f76d",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xf18c3ac5ad26ba302c36882ef530762ce9cd18c1",
+   "pagamenti": 9,
+   "usd": 1059.07,
+   "giorniDistinti": 5,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x9047e6829b426c5b8eeda77c00ce763b6ca07663",
+   "pagamenti": 7,
+   "usd": 17.1,
+   "giorniDistinti": 7,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0xfd022428bbc38a5280094c3734fef09cefe7fb6a",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  },
+  {
+   "wallet": "0x70ad3c12fa92a97e1c387ab594e645d940a3f1df",
+   "pagamenti": 0,
+   "usd": 0,
+   "giorniDistinti": 0,
+   "capitale": null,
+   "ok": true
+  }
+ ]
+}

@@ -1,0 +1,208 @@
+{
+ "lettoAl": "2026-08-21T14:43:15.388Z",
+ "righe": 992,
+ "curve": {
+  "universo VERO, nessun cap": [
+   {
+    "capitale": 268,
+    "premio": 182.7633
+   },
+   {
+    "capitale": 500,
+    "premio": 260.552
+   },
+   {
+    "capitale": 1000,
+    "premio": 384.2836
+   },
+   {
+    "capitale": 1495,
+    "premio": 481.0564
+   },
+   {
+    "capitale": 3000,
+    "premio": 701.9559
+   },
+   {
+    "capitale": 6000,
+    "premio": 1001.2713
+   },
+   {
+    "capitale": 12000,
+    "premio": 1414.1725
+   },
+   {
+    "capitale": 30000,
+    "premio": 2161.4186
+   },
+   {
+    "capitale": 100000,
+    "premio": 3355.423
+   },
+   {
+    "capitale": 1000000,
+    "premio": 5046.5021
+   },
+   {
+    "capitale": 100000000,
+    "premio": 5436
+   }
+  ],
+  "universo VERO, cap $61,25 + 5 mercati": [
+   {
+    "capitale": 268,
+    "premio": 172.3589
+   },
+   {
+    "capitale": 500,
+    "premio": 176.9554
+   },
+   {
+    "capitale": 1000,
+    "premio": 176.9554
+   },
+   {
+    "capitale": 1495,
+    "premio": 176.9554
+   },
+   {
+    "capitale": 3000,
+    "premio": 176.9554
+   },
+   {
+    "capitale": 6000,
+    "premio": 176.9554
+   },
+   {
+    "capitale": 12000,
+    "premio": 176.9554
+   },
+   {
+    "capitale": 30000,
+    "premio": 176.9554
+   },
+   {
+    "capitale": 100000,
+    "premio": 176.9554
+   },
+   {
+    "capitale": 1000000,
+    "premio": 176.9554
+   },
+   {
+    "capitale": 100000000,
+    "premio": 176.9554
+   }
+  ],
+  "universo VERO, cap $61,25, illimitati": [
+   {
+    "capitale": 268,
+    "premio": 181.9924
+   },
+   {
+    "capitale": 500,
+    "premio": 257.6879
+   },
+   {
+    "capitale": 1000,
+    "premio": 378.2614
+   },
+   {
+    "capitale": 1495,
+    "premio": 469.1725
+   },
+   {
+    "capitale": 3000,
+    "premio": 637.0625
+   },
+   {
+    "capitale": 6000,
+    "premio": 825.5344
+   },
+   {
+    "capitale": 12000,
+    "premio": 1000.8348
+   },
+   {
+    "capitale": 30000,
+    "premio": 1178.4135
+   },
+   {
+    "capitale": 100000,
+    "premio": 1240.5667
+   },
+   {
+    "capitale": 1000000,
+    "premio": 1240.5667
+   },
+   {
+    "capitale": 100000000,
+    "premio": 1240.5667
+   }
+  ],
+  "solo BOARD (i 22 visti), cap $61,25+5": [
+   {
+    "capitale": 268,
+    "premio": 10.0259
+   },
+   {
+    "capitale": 500,
+    "premio": 10.3311
+   },
+   {
+    "capitale": 1000,
+    "premio": 10.3311
+   },
+   {
+    "capitale": 1495,
+    "premio": 10.3311
+   },
+   {
+    "capitale": 3000,
+    "premio": 10.3311
+   },
+   {
+    "capitale": 6000,
+    "premio": 10.3311
+   },
+   {
+    "capitale": 12000,
+    "premio": 10.3311
+   },
+   {
+    "capitale": 30000,
+    "premio": 10.3311
+   },
+   {
+    "capitale": 100000,
+    "premio": 10.3311
+   },
+   {
+    "capitale": 1000000,
+    "premio": 10.3311
+   },
+   {
+    "capitale": 100000000,
+    "premio": 10.3311
+   }
+  ]
+ },
+ "perCinque": {
+  "universo VERO, nessun cap": {
+   "capitale": 19.16,
+   "asintoto": 5436
+  },
+  "universo VERO, cap $61,25 + 5 mercati": {
+   "capitale": 19.16,
+   "asintoto": 176.9554
+  },
+  "universo VERO, cap $61,25, illimitati": {
+   "capitale": 19.16,
+   "asintoto": 1240.5667
+  },
+  "solo BOARD (i 22 visti), cap $61,25+5": {
+   "capitale": 49.512857779024934,
+   "asintoto": 10.3311
+  }
+ }
+}
