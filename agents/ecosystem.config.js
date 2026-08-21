@@ -528,6 +528,20 @@ module.exports = {
         // ⚠ N=5 E' IL MASSIMO CHE IL CAP CONSENTE: a N=6 l'esposizione sarebbe $735, cioe' $85 oltre.
         // Non e' una coincidenza che il soffitto valga 5 — v. APERTI.md §28.
         MAKER_MERCATI_CONTEMPORANEI: '5',
+        // ── LA QUOTA DELLA CODA LUNGA — 12% → 50%, 21 agosto 2026, decisione dell'operatore ────────
+        // Alle 05:00Z il board offriva 7 ammissibili TUTTI di coda lunga (1.699-3.163 h): sei a
+        // `minSize 50`, pavimento $61,25, contro una quota che al 12% valeva $33,41. Il cancello 2-ter
+        // li scartava tutti e sei e il bot teneva 1 slot su 5.
+        //   p=0,12 ⇒ 4 x $61,25 x 0,12/0,88 = $33,41   ⇒ 1 candidato su 7 passa
+        //   p=0,50 ⇒ 4 x $61,25 x 1,00      = $245,00  ⇒ 7 su 7, 5 slot riempibili
+        // Esposizione massima a 5 mercati: $612,50 contro il cap di $650 (§5.2 p.37), margine $37,50.
+        // ⚠ AUMENTO DI RISCHIO DICHIARATO: 0,50 e' QUATTRO VOLTE la frazione misurata (10,4%). Sopra i
+        // 7 giorni la chiusura e' a redeem nel 94% dei casi, quindi meta' del piano puo' restare
+        // immobilizzata fino alla risoluzione. Restano intatti tetto per mercato, slot, cap e kill.
+        // ⚠ STA SOLO QUI, su agent41: e' l'unico processo che seleziona e che pianifica (il figlio del
+        // piano eredita questo ambiente). Metterla anche su agent40 la renderebbe due numeri.
+        // ⚠ Fuori da [0,05 · 0,75] o illeggibile ⇒ si torna alla frazione MISURATA del 12%.
+        MAKER_QUOTA_CODA_LUNGA: '0.5',
         // ── DICHIARATA, NON PIÙ SOLO EREDITATA (4 agosto 2026) ────────────────────────────────────
         // Qui la fragilità è REALE, a differenza del caso di agent40: agent41 NON ha il caricatore di
         // .env scritto a mano che agent40 ha in testa al file (verificato: `grep -c "Load .env"` → 0).

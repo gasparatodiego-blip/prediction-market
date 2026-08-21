@@ -2582,3 +2582,92 @@ Gamma.
 espone la **scadenza del mercato** (fine giornata), non l'orizzonte implicito della domanda.
 **Dichiarato, non applicato.** ⚠ Derivare l'orizzonte dal titolo con una regex sarebbe indovinare su
 capitale reale: non lo propongo.
+
+---
+
+## 35 · ⬆️ LA QUOTA DELLA CODA LUNGA DAL 12% AL 50% — 21 agosto 2026
+
+### Il fatto
+
+Alle 05:00Z il board offriva **7 mercati ammissibili, TUTTI di coda lunga** (1.699–3.163 ore, cioè
+71–132 giorni). Sei a `minSize 50` ⇒ pavimento premiante **$61,25**, contro una quota che al 12% valeva
+`4 × $61,25 × 0,12/0,88 = $33,41`. Il cancello **2-ter** li scartava tutti e sei, e il bot teneva
+**1 slot su 5** — l'unico `minSize 20` del board.
+
+### ⓵ Un solo punto di configurazione
+
+**`lib/rewards/horizon.js:176`.** Nessuna copia letterale altrove: `allocator.js:700` e `agent41:2411`
+la **importano**. Verificato con `grep` su tutto il repo.
+
+⚠ Ma era una **costante di sorgente**, non leggibile da `/proc`. Ora è una manopola col pattern già
+presente in quel file (`leggiTetto` per `MAKER_MAX_HORIZON_DAYS`):
+
+```
+LONG_TAIL_CAP_FRAC_MISURATA = 0.12          ← il difetto, la frazione MISURATA
+MAKER_QUOTA_CODA_LUNGA                       ← la manopola, clamp [0,05 · 0,75]
+LONG_TAIL_CAP_FRAC = leggiQuotaCodaLunga()   ← si legge una volta, al caricamento
+```
+
+Fuori dai limiti o illeggibile ⇒ **si torna al 12%**: un `.env` sbagliato non può allargare una quota
+di rischio. Dichiarata **su agent41 e basta** — l'unico processo che seleziona e pianifica (il figlio
+del piano ne eredita l'ambiente); metterla anche su agent40 la renderebbe due numeri.
+
+### ⓶ La simulazione a secco, prima di scrivere
+
+| id | minSize | scagl. | ore | pavimento | p=0,12 | **p=0,50** |
+|---|---|---|---|---|---|---|
+| `0x12dc2b6172` · `0x5e082f0b57` · `0xd4e77ba6f2` | 50 | alto | 1699–3163 | $61,25 | scarta | **PASSA** |
+| `0xd5d9fc4771` · `0x4e4f77e7db` · `0x80b3af88cb` | 50 | alto | 1771–2635 | $61,25 | scarta | **PASSA** |
+| `0xddcb215d8c` | 20 | basso | 1795 | $24,50 | PASSA | PASSA |
+
+**Quota: $33,41 → $245,00** — esattamente `4 × $61,25`. Candidati che superano 2-ter: **1 → 7**.
+**Slot riempibili: 1 → 5.** Esposizione massima se tutti si riempiono: **$612,50 contro il cap di $650**,
+margine **$37,50**.
+
+**⚠ La quota residua dello scaglione corto NON scende**, ed è la ragione per cui alzare `p` è sicuro su
+quel lato: `planAllocation` serve la fascia corta **per prima con il budget pieno**
+(`knapsack(corte, budgetUnits)`) e solo dopo concede alla coda `capitaleCorto × p/(1−p)`, **limitato al
+residuo** (`allocator.js:264-270`). La coda prende da ciò che avanza, non da ciò che il corto ha preso.
+Il mercato `minSize 20` già a libro non è toccato.
+
+### ⚠ È un aumento di rischio dichiarato
+
+**0,50 è quattro volte la frazione MISURATA** (10,4% di ingressi oltre il P90) e oltre il 15% che il
+selfcheck difendeva. Sopra i 7 giorni la chiusura è a **redeem nel 94% dei casi misurati**, quindi metà
+del piano può restare immobilizzata fino alla risoluzione. Restano a limitare l'esposizione, e **non
+sono stati toccati**: tetto per mercato $61,25, 5 slot, cap cumulativo $650, kill a −$100.
+
+### ⓷ Gli invarianti, riverificati uno per uno
+
+| | letto | esito |
+|---|---|---|
+| tetto per mercato | $61,25 | **intatto** |
+| cap per ordine (safety) | $80 | **intatto** |
+| cap di esposizione | $650 | **intatto** |
+| perdita giornaliera | $100 | **intatto** |
+| `MAX_MERCATI_CONTEMPORANEI` | 5 | **intatto** |
+| `quotaScaglioni(5)` | `basso:1, alto:4` | **intatta** |
+| SLOT_STERILE | 22 min · 180 · 5/ora | **intatto** |
+| esposizione max a N=5 | **$612,50 ≤ $650** | margine $37,50 |
+| guardiano sul drawdown | legge saldo+posizioni dal venue | **non dipende dalla quota** |
+
+### ⚠ Il selfcheck è stato RISCRITTO sulla proprietà, non ammorbidito
+
+`horizon.js` asseriva *«con una quota di capitale sotto il 15%»* — cioè **fotografava la decisione del
+12%** invece di difendere una proprietà, e a 0,50 sarebbe diventato rosso su una scelta legittima.
+Adesso difende il **dominio** (`0 < p < 1`, fuori dal quale `budgetCodaLungaUsd` restituisce `null`),
+che il **difetto resti 12%**, e che il lettore sia **fail-closed** su env illeggibili o fuori limite.
+Selfcheck **33/33**.
+
+### ⚠ Un difetto trovato leggendo — dichiarato, NON corretto
+
+**2-ter e l'allocatore non concordano quando la fascia corta è VUOTA.** L'allocatore ha una valvola
+(`allocator.js:740`): `lunghe.length && corte.length === 0 ⇒ codaBudgetUsd = null`, cioè **la coda
+prende tutto**. Il cancello 2-ter invece applica sempre la formula statica `(slot−1) × tetto × p/(1−p)`,
+**anche quando non esiste nessuna fascia corta** — cioè è restrittivo proprio nella situazione di
+stanotte, in cui l'allocatore non avrebbe limitato niente. Alzare `p` aggira il sintomo; la causa è che
+2-ter non conosce la valvola. **Non l'ho corretto.**
+
+**Prove**: `lib/maker/quota-coda-lunga.test.js`, **29 asserzioni sull'ARITMETICA** (la p critica è
+calcolata, non scritta), e rosso su tre forme di difetto: **27/2** se la quota torna costante, **26/3**
+se il lettore perde il clamp, **27/2** se la manopola sparisce dall'ecosystem.
