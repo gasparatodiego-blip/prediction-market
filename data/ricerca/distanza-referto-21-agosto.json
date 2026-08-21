@@ -1,0 +1,782 @@
+{
+ "generatoIl": "2026-08-21T09:34:30.599Z",
+ "ordiniLettiIl": "2026-08-21T09:29:41.823Z",
+ "bookGeneratoIl": "2026-08-21T09:34:29.386Z",
+ "boardGeneratoIl": "2026-08-21T09:23:33.102Z",
+ "premessa": {
+  "mercatiAttesi": 5,
+  "mercatiTrovati": 4,
+  "gambeAttese": 10,
+  "gambeTrovate": 8,
+  "nozionaleAtteso": 268.38,
+  "nozionaleTrovato": 214.62
+ },
+ "mercati": [
+  {
+   "id": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+   "titolo": "Will 1 Fed rate cut happen in 2026?",
+   "v": 4.5,
+   "minSize": 50,
+   "tick": 0.01,
+   "monte": 66,
+   "midY": 0.095,
+   "size": 56.5,
+   "midFuoriRange": true,
+   "QbidsAltrui": 23988.1,
+   "QasksAltrui": 59415.89,
+   "Qcomp": 23988.1,
+   "nostri": [
+    {
+     "lato": "NO",
+     "prezzo": 0.88,
+     "prezzoYes": 0.12,
+     "spazio": "ask",
+     "size": 56.5,
+     "distanzaC": 2.5
+    },
+    {
+     "lato": "YES",
+     "prezzo": 0.07,
+     "prezzoYes": 0.07,
+     "spazio": "bid",
+     "size": 56.5,
+     "distanzaC": 2.5
+    }
+   ]
+  },
+  {
+   "id": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+   "titolo": "Fed rate hike in 2026?",
+   "v": 4.5,
+   "minSize": 50,
+   "tick": 0.01,
+   "monte": 50,
+   "midY": 0.495,
+   "size": 56.5,
+   "midFuoriRange": false,
+   "QbidsAltrui": 43578.21,
+   "QasksAltrui": 94289.64,
+   "Qcomp": 43578.21,
+   "nostri": [
+    {
+     "lato": "YES",
+     "prezzo": 0.47,
+     "prezzoYes": 0.47,
+     "spazio": "bid",
+     "size": 56.5,
+     "distanzaC": 2.5
+    },
+    {
+     "lato": "NO",
+     "prezzo": 0.48,
+     "prezzoYes": 0.52,
+     "spazio": "ask",
+     "size": 56.5,
+     "distanzaC": 2.5
+    }
+   ]
+  },
+  {
+   "id": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+   "titolo": "Will the Republican Party control the House after the 2026 Midterm elections?",
+   "v": 4.5,
+   "minSize": 50,
+   "tick": 0.01,
+   "monte": 50,
+   "midY": 0.115,
+   "size": 56.5,
+   "midFuoriRange": false,
+   "QbidsAltrui": 38879.75,
+   "QasksAltrui": 103320.83,
+   "Qcomp": 38879.75,
+   "nostri": [
+    {
+     "lato": "NO",
+     "prezzo": 0.86,
+     "prezzoYes": 0.14,
+     "spazio": "ask",
+     "size": 56.5,
+     "distanzaC": 2.5
+    },
+    {
+     "lato": "YES",
+     "prezzo": 0.09,
+     "prezzoYes": 0.09,
+     "spazio": "bid",
+     "size": 56.5,
+     "distanzaC": 2.5
+    }
+   ]
+  },
+  {
+   "id": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "titolo": "Will no Fed rate cuts happen in 2026?",
+   "v": 4.5,
+   "minSize": 50,
+   "tick": 0.001,
+   "monte": 116,
+   "midY": 0.8645,
+   "size": 56,
+   "midFuoriRange": false,
+   "QbidsAltrui": 53869.88,
+   "QasksAltrui": 74266.26,
+   "Qcomp": 53869.88,
+   "nostri": [
+    {
+     "lato": "NO",
+     "prezzo": 0.114,
+     "prezzoYes": 0.886,
+     "spazio": "ask",
+     "size": 56,
+     "distanzaC": 2.15
+    },
+    {
+     "lato": "YES",
+     "prezzo": 0.843,
+     "prezzoYes": 0.843,
+     "spazio": "bid",
+     "size": 56,
+     "distanzaC": 2.15
+    }
+   ]
+  }
+ ],
+ "oggi": {
+  "righe": [
+   {
+    "id": "0x5e082f0b57f4",
+    "titolo": "Will 1 Fed rate cut happen in 2026?",
+    "monte": 66,
+    "Qcomp": 23988.1,
+    "size": 56.5,
+    "distBidC": 2.5,
+    "distAskC": 2.5,
+    "Sbid": 0.1975,
+    "Sask": 0.1975,
+    "Qu": 11.16,
+    "quota": 0.000465,
+    "rewardGiorno": 0.0307
+   },
+   {
+    "id": "0x80b3af88cb99",
+    "titolo": "Fed rate hike in 2026?",
+    "monte": 50,
+    "Qcomp": 43578.21,
+    "size": 56.5,
+    "distBidC": 2.5,
+    "distAskC": 2.5,
+    "Sbid": 0.1975,
+    "Sask": 0.1975,
+    "Qu": 11.16,
+    "quota": 0.000256,
+    "rewardGiorno": 0.0128
+   },
+   {
+    "id": "0x4e4f77e7dbf4",
+    "titolo": "Will the Republican Party control the House after the 2026 Midterm elections?",
+    "monte": 50,
+    "Qcomp": 38879.75,
+    "size": 56.5,
+    "distBidC": 2.5,
+    "distAskC": 2.5,
+    "Sbid": 0.1975,
+    "Sask": 0.1975,
+    "Qu": 11.16,
+    "quota": 0.000287,
+    "rewardGiorno": 0.0143
+   },
+   {
+    "id": "0xd4e77ba6f29f",
+    "titolo": "Will no Fed rate cuts happen in 2026?",
+    "monte": 116,
+    "Qcomp": 53869.88,
+    "size": 56,
+    "distBidC": 2.15,
+    "distAskC": 2.15,
+    "Sbid": 0.2727,
+    "Sask": 0.2727,
+    "Qu": 15.27,
+    "quota": 0.0002834,
+    "rewardGiorno": 0.0329
+   }
+  ],
+  "totaleGiorno": 0.0907
+ },
+ "tabella": [
+  {
+   "distanzaChiestaC": 0.63,
+   "totaleIdeale": 0.3055,
+   "totaleReale": 0.2183,
+   "righe": [
+    {
+     "id": "0x5e082f0b57f4",
+     "titolo": "Will 1 Fed rate cut happen in 2026?",
+     "monte": 66,
+     "Qcomp": 23988.1,
+     "frazioneChiesta": 0.14,
+     "ideale": {
+      "Sbid": 0.7396,
+      "Sask": 0.7396,
+      "Qu": 41.79,
+      "quota": 0.001739,
+      "rewardGiorno": 0.1148
+     },
+     "reale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0010457,
+      "rewardGiorno": 0.069
+     },
+     "prezzoYes": 0.08,
+     "distYesC": 1.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.89,
+     "distNoC": 1.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0x80b3af88cb99",
+     "titolo": "Fed rate hike in 2026?",
+     "monte": 50,
+     "Qcomp": 43578.21,
+     "frazioneChiesta": 0.14,
+     "ideale": {
+      "Sbid": 0.7396,
+      "Sask": 0.7396,
+      "Qu": 41.79,
+      "quota": 0.000958,
+      "rewardGiorno": 0.0479
+     },
+     "reale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0005759,
+      "rewardGiorno": 0.0288
+     },
+     "prezzoYes": 0.48,
+     "distYesC": 1.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.49,
+     "distNoC": 1.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0x4e4f77e7dbf4",
+     "titolo": "Will the Republican Party control the House after the 2026 Midterm elections?",
+     "monte": 50,
+     "Qcomp": 38879.75,
+     "frazioneChiesta": 0.14,
+     "ideale": {
+      "Sbid": 0.7396,
+      "Sask": 0.7396,
+      "Qu": 41.79,
+      "quota": 0.0010736,
+      "rewardGiorno": 0.0537
+     },
+     "reale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0006454,
+      "rewardGiorno": 0.0323
+     },
+     "prezzoYes": 0.1,
+     "distYesC": 1.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.87,
+     "distNoC": 1.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0xd4e77ba6f29f",
+     "titolo": "Will no Fed rate cuts happen in 2026?",
+     "monte": 116,
+     "Qcomp": 53869.88,
+     "frazioneChiesta": 0.14,
+     "ideale": {
+      "Sbid": 0.7396,
+      "Sask": 0.7396,
+      "Qu": 41.42,
+      "quota": 0.0007683,
+      "rewardGiorno": 0.0891
+     },
+     "reale": {
+      "Sbid": 0.732,
+      "Sask": 0.732,
+      "Qu": 40.99,
+      "quota": 0.0007603,
+      "rewardGiorno": 0.0882
+     },
+     "prezzoYes": 0.858,
+     "distYesC": 0.65,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.129,
+     "distNoC": 0.65,
+     "motivoNo": "behind-best"
+    }
+   ]
+  },
+  {
+   "distanzaChiestaC": 1,
+   "totaleIdeale": 0.2499,
+   "totaleReale": 0.2009,
+   "righe": [
+    {
+     "id": "0x5e082f0b57f4",
+     "titolo": "Will 1 Fed rate cut happen in 2026?",
+     "monte": 66,
+     "Qcomp": 23988.1,
+     "frazioneChiesta": 0.2222,
+     "ideale": {
+      "Sbid": 0.6049,
+      "Sask": 0.6049,
+      "Qu": 34.18,
+      "quota": 0.0014228,
+      "rewardGiorno": 0.0939
+     },
+     "reale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0010457,
+      "rewardGiorno": 0.069
+     },
+     "prezzoYes": 0.08,
+     "distYesC": 1.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.89,
+     "distNoC": 1.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0x80b3af88cb99",
+     "titolo": "Fed rate hike in 2026?",
+     "monte": 50,
+     "Qcomp": 43578.21,
+     "frazioneChiesta": 0.2222,
+     "ideale": {
+      "Sbid": 0.6049,
+      "Sask": 0.6049,
+      "Qu": 34.18,
+      "quota": 0.0007837,
+      "rewardGiorno": 0.0392
+     },
+     "reale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0005759,
+      "rewardGiorno": 0.0288
+     },
+     "prezzoYes": 0.48,
+     "distYesC": 1.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.49,
+     "distNoC": 1.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0x4e4f77e7dbf4",
+     "titolo": "Will the Republican Party control the House after the 2026 Midterm elections?",
+     "monte": 50,
+     "Qcomp": 38879.75,
+     "frazioneChiesta": 0.2222,
+     "ideale": {
+      "Sbid": 0.6049,
+      "Sask": 0.6049,
+      "Qu": 34.18,
+      "quota": 0.0008783,
+      "rewardGiorno": 0.0439
+     },
+     "reale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0006454,
+      "rewardGiorno": 0.0323
+     },
+     "prezzoYes": 0.1,
+     "distYesC": 1.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.87,
+     "distNoC": 1.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0xd4e77ba6f29f",
+     "titolo": "Will no Fed rate cuts happen in 2026?",
+     "monte": 116,
+     "Qcomp": 53869.88,
+     "frazioneChiesta": 0.2222,
+     "ideale": {
+      "Sbid": 0.6049,
+      "Sask": 0.6049,
+      "Qu": 33.88,
+      "quota": 0.0006285,
+      "rewardGiorno": 0.0729
+     },
+     "reale": {
+      "Sbid": 0.5878,
+      "Sask": 0.5878,
+      "Qu": 32.92,
+      "quota": 0.0006106,
+      "rewardGiorno": 0.0708
+     },
+     "prezzoYes": 0.854,
+     "distYesC": 1.05,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.125,
+     "distNoC": 1.05,
+     "motivoNo": "behind-best"
+    }
+   ]
+  },
+  {
+   "distanzaChiestaC": 1.5,
+   "totaleIdeale": 0.1837,
+   "totaleReale": 0.1819,
+   "righe": [
+    {
+     "id": "0x5e082f0b57f4",
+     "titolo": "Will 1 Fed rate cut happen in 2026?",
+     "monte": 66,
+     "Qcomp": 23988.1,
+     "frazioneChiesta": 0.3333,
+     "ideale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0010457,
+      "rewardGiorno": 0.069
+     },
+     "reale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0010457,
+      "rewardGiorno": 0.069
+     },
+     "prezzoYes": 0.08,
+     "distYesC": 1.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.89,
+     "distNoC": 1.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0x80b3af88cb99",
+     "titolo": "Fed rate hike in 2026?",
+     "monte": 50,
+     "Qcomp": 43578.21,
+     "frazioneChiesta": 0.3333,
+     "ideale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0005759,
+      "rewardGiorno": 0.0288
+     },
+     "reale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0005759,
+      "rewardGiorno": 0.0288
+     },
+     "prezzoYes": 0.48,
+     "distYesC": 1.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.49,
+     "distNoC": 1.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0x4e4f77e7dbf4",
+     "titolo": "Will the Republican Party control the House after the 2026 Midterm elections?",
+     "monte": 50,
+     "Qcomp": 38879.75,
+     "frazioneChiesta": 0.3333,
+     "ideale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0006454,
+      "rewardGiorno": 0.0323
+     },
+     "reale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 25.11,
+      "quota": 0.0006454,
+      "rewardGiorno": 0.0323
+     },
+     "prezzoYes": 0.1,
+     "distYesC": 1.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.87,
+     "distNoC": 1.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0xd4e77ba6f29f",
+     "titolo": "Will no Fed rate cuts happen in 2026?",
+     "monte": 116,
+     "Qcomp": 53869.88,
+     "frazioneChiesta": 0.3333,
+     "ideale": {
+      "Sbid": 0.4444,
+      "Sask": 0.4444,
+      "Qu": 24.89,
+      "quota": 0.0004618,
+      "rewardGiorno": 0.0536
+     },
+     "reale": {
+      "Sbid": 0.4298,
+      "Sask": 0.4298,
+      "Qu": 24.07,
+      "quota": 0.0004465,
+      "rewardGiorno": 0.0518
+     },
+     "prezzoYes": 0.849,
+     "distYesC": 1.55,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.12,
+     "distNoC": 1.55,
+     "motivoNo": "behind-best"
+    }
+   ]
+  },
+  {
+   "distanzaChiestaC": 2.05,
+   "totaleIdeale": 0.1224,
+   "totaleReale": 0.0935,
+   "righe": [
+    {
+     "id": "0x5e082f0b57f4",
+     "titolo": "Will 1 Fed rate cut happen in 2026?",
+     "monte": 66,
+     "Qcomp": 23988.1,
+     "frazioneChiesta": 0.4556,
+     "ideale": {
+      "Sbid": 0.2964,
+      "Sask": 0.2964,
+      "Qu": 16.75,
+      "quota": 0.0006977,
+      "rewardGiorno": 0.046
+     },
+     "reale": {
+      "Sbid": 0.1975,
+      "Sask": 0.1975,
+      "Qu": 11.16,
+      "quota": 0.000465,
+      "rewardGiorno": 0.0307
+     },
+     "prezzoYes": 0.07,
+     "distYesC": 2.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.88,
+     "distNoC": 2.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0x80b3af88cb99",
+     "titolo": "Fed rate hike in 2026?",
+     "monte": 50,
+     "Qcomp": 43578.21,
+     "frazioneChiesta": 0.4556,
+     "ideale": {
+      "Sbid": 0.2964,
+      "Sask": 0.2964,
+      "Qu": 16.75,
+      "quota": 0.0003842,
+      "rewardGiorno": 0.0192
+     },
+     "reale": {
+      "Sbid": 0.1975,
+      "Sask": 0.1975,
+      "Qu": 11.16,
+      "quota": 0.000256,
+      "rewardGiorno": 0.0128
+     },
+     "prezzoYes": 0.47,
+     "distYesC": 2.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.48,
+     "distNoC": 2.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0x4e4f77e7dbf4",
+     "titolo": "Will the Republican Party control the House after the 2026 Midterm elections?",
+     "monte": 50,
+     "Qcomp": 38879.75,
+     "frazioneChiesta": 0.4556,
+     "ideale": {
+      "Sbid": 0.2964,
+      "Sask": 0.2964,
+      "Qu": 16.75,
+      "quota": 0.0004306,
+      "rewardGiorno": 0.0215
+     },
+     "reale": {
+      "Sbid": 0.1975,
+      "Sask": 0.1975,
+      "Qu": 11.16,
+      "quota": 0.000287,
+      "rewardGiorno": 0.0143
+     },
+     "prezzoYes": 0.09,
+     "distYesC": 2.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.86,
+     "distNoC": 2.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0xd4e77ba6f29f",
+     "titolo": "Will no Fed rate cuts happen in 2026?",
+     "monte": 116,
+     "Qcomp": 53869.88,
+     "frazioneChiesta": 0.4556,
+     "ideale": {
+      "Sbid": 0.2964,
+      "Sask": 0.2964,
+      "Qu": 16.6,
+      "quota": 0.000308,
+      "rewardGiorno": 0.0357
+     },
+     "reale": {
+      "Sbid": 0.2964,
+      "Sask": 0.2964,
+      "Qu": 16.6,
+      "quota": 0.000308,
+      "rewardGiorno": 0.0357
+     },
+     "prezzoYes": 0.844,
+     "distYesC": 2.05,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.115,
+     "distNoC": 2.05,
+     "motivoNo": "behind-best"
+    }
+   ]
+  },
+  {
+   "distanzaChiestaC": 2.5,
+   "totaleIdeale": 0.0816,
+   "totaleReale": 0.0804,
+   "righe": [
+    {
+     "id": "0x5e082f0b57f4",
+     "titolo": "Will 1 Fed rate cut happen in 2026?",
+     "monte": 66,
+     "Qcomp": 23988.1,
+     "frazioneChiesta": 0.5556,
+     "ideale": {
+      "Sbid": 0.1975,
+      "Sask": 0.1975,
+      "Qu": 11.16,
+      "quota": 0.000465,
+      "rewardGiorno": 0.0307
+     },
+     "reale": {
+      "Sbid": 0.1975,
+      "Sask": 0.1975,
+      "Qu": 11.16,
+      "quota": 0.000465,
+      "rewardGiorno": 0.0307
+     },
+     "prezzoYes": 0.07,
+     "distYesC": 2.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.88,
+     "distNoC": 2.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0x80b3af88cb99",
+     "titolo": "Fed rate hike in 2026?",
+     "monte": 50,
+     "Qcomp": 43578.21,
+     "frazioneChiesta": 0.5556,
+     "ideale": {
+      "Sbid": 0.1975,
+      "Sask": 0.1975,
+      "Qu": 11.16,
+      "quota": 0.000256,
+      "rewardGiorno": 0.0128
+     },
+     "reale": {
+      "Sbid": 0.1975,
+      "Sask": 0.1975,
+      "Qu": 11.16,
+      "quota": 0.000256,
+      "rewardGiorno": 0.0128
+     },
+     "prezzoYes": 0.47,
+     "distYesC": 2.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.48,
+     "distNoC": 2.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0x4e4f77e7dbf4",
+     "titolo": "Will the Republican Party control the House after the 2026 Midterm elections?",
+     "monte": 50,
+     "Qcomp": 38879.75,
+     "frazioneChiesta": 0.5556,
+     "ideale": {
+      "Sbid": 0.1975,
+      "Sask": 0.1975,
+      "Qu": 11.16,
+      "quota": 0.000287,
+      "rewardGiorno": 0.0143
+     },
+     "reale": {
+      "Sbid": 0.1975,
+      "Sask": 0.1975,
+      "Qu": 11.16,
+      "quota": 0.000287,
+      "rewardGiorno": 0.0143
+     },
+     "prezzoYes": 0.09,
+     "distYesC": 2.5,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.86,
+     "distNoC": 2.5,
+     "motivoNo": "behind-best"
+    },
+    {
+     "id": "0xd4e77ba6f29f",
+     "titolo": "Will no Fed rate cuts happen in 2026?",
+     "monte": 116,
+     "Qcomp": 53869.88,
+     "frazioneChiesta": 0.5556,
+     "ideale": {
+      "Sbid": 0.1975,
+      "Sask": 0.1975,
+      "Qu": 11.06,
+      "quota": 0.0002053,
+      "rewardGiorno": 0.0238
+     },
+     "reale": {
+      "Sbid": 0.1878,
+      "Sask": 0.1878,
+      "Qu": 10.52,
+      "quota": 0.0001952,
+      "rewardGiorno": 0.0226
+     },
+     "prezzoYes": 0.839,
+     "distYesC": 2.55,
+     "motivoYes": "behind-best",
+     "prezzoNo": 0.11,
+     "distNoC": 2.55,
+     "motivoNo": "behind-best"
+    }
+   ]
+  }
+ ]
+}

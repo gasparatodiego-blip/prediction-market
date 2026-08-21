@@ -1,0 +1,683 @@
+{
+ "finestra": {
+  "da": "2026-08-15T09:29:41.823Z",
+  "a": "2026-08-21T09:29:41.823Z"
+ },
+ "totali": {
+  "stampe": 1162,
+  "campioni": 21485,
+  "nonGiudicabili": 2
+ },
+ "perDistanzaTot": {
+  "1": {
+   "raggiunto": 47,
+   "sfondato": 3,
+   "fillGiornoMinimo": 3,
+   "fillGiornoMassimo": 47
+  },
+  "0.05": {
+   "raggiunto": 105,
+   "sfondato": 21,
+   "fillGiornoMinimo": 21,
+   "fillGiornoMassimo": 105
+  },
+  "0.1": {
+   "raggiunto": 105,
+   "sfondato": 21,
+   "fillGiornoMinimo": 21,
+   "fillGiornoMassimo": 105
+  },
+  "0.15": {
+   "raggiunto": 105,
+   "sfondato": 21,
+   "fillGiornoMinimo": 21,
+   "fillGiornoMassimo": 105
+  },
+  "0.2": {
+   "raggiunto": 71,
+   "sfondato": 10,
+   "fillGiornoMinimo": 10,
+   "fillGiornoMassimo": 71
+  },
+  "0.25": {
+   "raggiunto": 68,
+   "sfondato": 8,
+   "fillGiornoMinimo": 8,
+   "fillGiornoMassimo": 68
+  },
+  "0.3": {
+   "raggiunto": 52,
+   "sfondato": 5,
+   "fillGiornoMinimo": 5,
+   "fillGiornoMassimo": 52
+  },
+  "0.4": {
+   "raggiunto": 48,
+   "sfondato": 3,
+   "fillGiornoMinimo": 3,
+   "fillGiornoMassimo": 48
+  },
+  "0.5": {
+   "raggiunto": 47,
+   "sfondato": 3,
+   "fillGiornoMinimo": 3,
+   "fillGiornoMassimo": 47
+  },
+  "0.63": {
+   "raggiunto": 47,
+   "sfondato": 3,
+   "fillGiornoMinimo": 3,
+   "fillGiornoMassimo": 47
+  },
+  "0.75": {
+   "raggiunto": 47,
+   "sfondato": 3,
+   "fillGiornoMinimo": 3,
+   "fillGiornoMassimo": 47
+  },
+  "1.25": {
+   "raggiunto": 46,
+   "sfondato": 2,
+   "fillGiornoMinimo": 2,
+   "fillGiornoMassimo": 46
+  },
+  "1.5": {
+   "raggiunto": 46,
+   "sfondato": 2,
+   "fillGiornoMinimo": 2,
+   "fillGiornoMassimo": 46
+  },
+  "2.05": {
+   "raggiunto": 13,
+   "sfondato": 0,
+   "fillGiornoMinimo": 0,
+   "fillGiornoMassimo": 13
+  },
+  "2.5": {
+   "raggiunto": 13,
+   "sfondato": 0,
+   "fillGiornoMinimo": 0,
+   "fillGiornoMassimo": 13
+  }
+ },
+ "mercati": [
+  {
+   "id": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+   "titolo": "Will 1 Fed rate cut happen in 2026?",
+   "tick": 0.01,
+   "campioniBook": 6678,
+   "stampeTape": 203,
+   "nonGiudicabili": 1,
+   "perDistanza": {
+    "1": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "0.05": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "0.1": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "0.15": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "0.2": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "0.25": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "0.3": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "0.4": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "0.5": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "0.63": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "0.75": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "1.25": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "1.5": {
+     "raggiunto": 5,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 472,
+     "prezziNostri": [
+      0.11
+     ]
+    },
+    "2.05": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "2.5": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    }
+   }
+  },
+  {
+   "id": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+   "titolo": "Fed rate hike in 2026?",
+   "tick": 0.01,
+   "campioniBook": 6676,
+   "stampeTape": 489,
+   "nonGiudicabili": 0,
+   "perDistanza": {
+    "1": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "0.05": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "0.1": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "0.15": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "0.2": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "0.25": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "0.3": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "0.4": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "0.5": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "0.63": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "0.75": {
+     "raggiunto": 42,
+     "sfondato": 3,
+     "volumeRaggiuntoShares": 17327,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "1.25": {
+     "raggiunto": 41,
+     "sfondato": 2,
+     "volumeRaggiuntoShares": 17109.6,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "1.5": {
+     "raggiunto": 41,
+     "sfondato": 2,
+     "volumeRaggiuntoShares": 17109.6,
+     "prezziNostri": [
+      0.47,
+      0.48,
+      0.49,
+      0.5,
+      0.51
+     ]
+    },
+    "2.05": {
+     "raggiunto": 13,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 1180.4,
+     "prezziNostri": [
+      0.5,
+      0.51
+     ]
+    },
+    "2.5": {
+     "raggiunto": 13,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 1180.4,
+     "prezziNostri": [
+      0.5,
+      0.51
+     ]
+    }
+   }
+  },
+  {
+   "id": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+   "titolo": "Will the Republican Party control the House after the 2026 Midterm elections?",
+   "tick": 0.01,
+   "campioniBook": 1453,
+   "stampeTape": 22,
+   "nonGiudicabili": 1,
+   "perDistanza": {
+    "1": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.05": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.1": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.15": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.2": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.25": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.3": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.4": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.5": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.63": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.75": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "1.25": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "1.5": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "2.05": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "2.5": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    }
+   }
+  },
+  {
+   "id": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "titolo": "Will no Fed rate cuts happen in 2026?",
+   "tick": 0.001,
+   "campioniBook": 6678,
+   "stampeTape": 448,
+   "nonGiudicabili": 0,
+   "perDistanza": {
+    "1": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.05": {
+     "raggiunto": 58,
+     "sfondato": 18,
+     "volumeRaggiuntoShares": 22217.9,
+     "prezziNostri": [
+      0.851,
+      0.853,
+      0.854,
+      0.855,
+      0.856,
+      0.857,
+      0.858,
+      0.859,
+      0.86,
+      0.861,
+      0.862,
+      0.863,
+      0.865,
+      0.866
+     ]
+    },
+    "0.1": {
+     "raggiunto": 58,
+     "sfondato": 18,
+     "volumeRaggiuntoShares": 22217.9,
+     "prezziNostri": [
+      0.851,
+      0.853,
+      0.854,
+      0.855,
+      0.856,
+      0.857,
+      0.858,
+      0.859,
+      0.86,
+      0.861,
+      0.862,
+      0.863,
+      0.865,
+      0.866
+     ]
+    },
+    "0.15": {
+     "raggiunto": 58,
+     "sfondato": 18,
+     "volumeRaggiuntoShares": 22217.9,
+     "prezziNostri": [
+      0.851,
+      0.853,
+      0.854,
+      0.855,
+      0.856,
+      0.857,
+      0.858,
+      0.859,
+      0.86,
+      0.861,
+      0.862,
+      0.863,
+      0.865,
+      0.866
+     ]
+    },
+    "0.2": {
+     "raggiunto": 24,
+     "sfondato": 7,
+     "volumeRaggiuntoShares": 5767.8,
+     "prezziNostri": [
+      0.852,
+      0.856,
+      0.857,
+      0.858,
+      0.859,
+      0.86,
+      0.861,
+      0.862,
+      0.864
+     ]
+    },
+    "0.25": {
+     "raggiunto": 21,
+     "sfondato": 5,
+     "volumeRaggiuntoShares": 4876.2,
+     "prezziNostri": [
+      0.852,
+      0.856,
+      0.857,
+      0.858,
+      0.859,
+      0.862,
+      0.864
+     ]
+    },
+    "0.3": {
+     "raggiunto": 5,
+     "sfondato": 2,
+     "volumeRaggiuntoShares": 742.3,
+     "prezziNostri": [
+      0.855,
+      0.858
+     ]
+    },
+    "0.4": {
+     "raggiunto": 1,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 42.5,
+     "prezziNostri": [
+      0.859
+     ]
+    },
+    "0.5": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.63": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "0.75": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "1.25": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "1.5": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "2.05": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    },
+    "2.5": {
+     "raggiunto": 0,
+     "sfondato": 0,
+     "volumeRaggiuntoShares": 0,
+     "prezziNostri": []
+    }
+   }
+  }
+ ]
+}

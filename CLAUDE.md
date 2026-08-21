@@ -1380,6 +1380,39 @@ resta una riga nel registro di §5-bis.
 > **p.28 i due commenti a 110¢ in `auto-close.js`** → corretti il 16/08 nello stesso commit che porta
 > il tetto unico a 101¢ (§5-bis p.165), il reperto D7 non esiste più.
 
+49. **🔴 IL NUMERO CHE DECIDE DAVVERO PORTA ANCORA LA STESSA FAMIGLIA DI DIFETTO — 21 agosto 2026.**
+   `lib/rewards/realistic-estimate.js:269` fa **`sizeShares = (capitalUsd / 2) / clampPrice(mid)`**,
+   cioe' la forma `(C/2)/mid` che l'intestazione di `lib/rewards/size-da-capitale.js` dichiara
+   **sbagliata** («assume che ENTRAMBI i lati costino `mid`. Vero solo a mid = 0,50»). Da li' passano
+   `placementShareFactor` e `credibleShareFactor`, quindi il **netto del knapsack** — cioe' proprio il
+   numero che ordina i candidati **e** decide gli spodestamenti (§4.13). La correzione di D1 ha chiuso
+   il ripiego lordo; **questo e' il canale principale e resta aperto.** ⚠ Non corretto per istruzione,
+   e la correzione non e' meccanica: `allocator.js:800` usa gia' `capitale/(1−2d)` quando
+   `rowPairCostUsd` c'e', quindi le due meta' della stessa catena non concordano e va deciso quale
+   vince. **Da quantificare prima di toccarlo**, con lo stesso metodo di §5-bis p.198.
+48. **🟡 `flatUserShare` (KALSHI) HA LO STESSO DENOMINATORE E NON E' STATA TOCCATA — 21 agosto 2026.**
+   `lib/rewardScore.js` `flatUserShare` divide ancora per il mid. Kalshi **non pubblica ne' banda ne'
+   formula**: quella funzione rispecchia il modello OSSERVATO di agent25, e cambiarne il denominatore
+   senza una formula del venue a cui ancorarsi sarebbe speculativo. Il confine e' **fissato da
+   un'asserzione** (blocco ⑧ di `rewardScore-denominatore.test.js`), cosi' l'omissione resta una scelta
+   leggibile e non una svista.
+47. **🟡 `reward-layered.js:188` PASSA UN BUDGET PER LATO A UNO SCORER CHE ORA VUOLE IL TOTALE — 21/08.**
+   `perSideSizeUsd` e' per lato **e** ogni gamba viene dimensionata al proprio prezzo
+   (`sizeUsd/bidPrice`, `sizeUsd/askPrice`), quindi quel modello produce **share DIVERSE sui due lati**:
+   `quadraticUserShare`, che assume la posa simmetrica, non e' mai stato lo scorer giusto per lui —
+   disallineamento **preesistente**, non introdotto qui. Nessun chiamante di produzione
+   (`perSideSizeUsd` compare solo nel `.d.ts`), e il `dashboard` non e' nella flotta. Non corretto: la
+   scelta fra «passare il totale» e «cambiare modello» ha bisogno di una decisione, non di una patch.
+46. **🟡 `reward-gating.ts:59` LEGGE UN CAMPO CHE NESSUNO SCRIVE — 21 agosto 2026.**
+   `!!m.levels[capitalKey]?.aboveMin`, ma `agent24.computeLevels:553` **non copia mai `aboveMin` dentro
+   `levels[C]`** (lo calcola `estimateCapitalLevelRange` e lo lascia al livello superiore). Il gate vale
+   quindi **sempre `false`**. Difetto preesistente, indipendente da D1; superficie del pannello.
+45. **🟡 IL RILEVATORE «STATO TOCCATO» DELLA SUITE NON DISTINGUE CHI HA SCRITTO — 21 agosto 2026.**
+   `suite-rossi.js` ha segnalato `data/selezione-mercati.json` come toccato, ma quel file lo riscrive
+   **agent41 ogni 120 s** per mestiere: il rilevatore guarda l'mtime e non l'autore, quindi su flotta
+   accesa e' **sempre** positivo e non puo' piu' segnalare il caso vero (un test che scrive nello stato
+   di produzione, §5 punto 1). Verificato che lo stato e' sano: `by: agent41 · selezione automatica`.
+
 44. **🟡 LA META' DI R6 CHE MORDEREBBE DAVVERO NON E' IMPLEMENTATA — 18 agosto 2026.** «Anche oltre
    101¢» vale per **comprare l'altro lato** e sbloccare un residuo col merge. Non esiste un percorso che
    compri sopra il tetto della coppia, e inventarlo sarebbe un meccanismo nuovo su capitale reale. La
@@ -1593,6 +1626,36 @@ problema è già stato incontrato vale più del racconto di come. Il dettaglio i
 e nei commit citati nei sorgenti.
 
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
+
+**198** · D1 · IL PUNTEGGIO DIVIDEVA IL CAPITALE PER IL MID, NON PER IL COSTO DELLA COPPIA — 21 agosto.
+`lib/rewardScore.js` convertiva capitale→share con `capital/mid` mentre il piazzamento usa
+`size-da-capitale.sharePerLato` (`capital/pairCost`): due formule per la stessa domanda, ultima copia
+sopravvissuta della famiglia che §5-bis aveva gia' chiuso in `minSizeVerdict` e in `net.js`.
+**Il denominatore giusto viene dal VENUE, non dalla simmetria col piazzamento**: il venue scora SHARE,
+e una posa bilaterale simmetrica a `s` centesimi costa `(mid − s/100) + (1 − mid − s/100) = 1 − 2s/100`
+per share — **il mid si cancella**. `capital/mid` e' la size di una posa UNILATERALE: finanzia un lato
+e ne scora due, e su un mid fuori da [0,10 · 0,90] quella posa varrebbe ZERO — cioe' l'errore era
+massimo (**9,56×** misurato su «1 Fed rate cut», mid 0,095) esattamente dove la posa non prenderebbe
+niente. Fattori sui 4 mercati a libro: **9,56× · 8,10× · 1,92× · 1,10×**; la stima viva passava da
+**$1,3389/g** a un valore coerente con la formula del venue sul book vero (**$0,0907/g**).
+**TRE RIGHE, UNA CATENA SOLA, E VANNO INSIEME**: `estimateCapitalLevelRange` (produce `levels`),
+`recoverCompetitorQ` (ne e' l'**inversa algebrica** — correggerne una sola falserebbe `competitorQ` in
+silenzio) e `quadraticUserShare` (produce `refShare`, cioe' il «$/giorno» del pannello, via
+`rewards-normalize:137`). ⚠ **`competitorQ` era ed e' rimasto CORRETTO**: l'errore si cancella nel giro
+andata-ritorno, e infatti coincideva con la misura indipendente sul book (0-4%).
+⚠ **`capital` ORA E' IL TOTALE delle due gambe, non un budget per lato**: con la coppia «per lato» non
+e' esprimibile (le due gambe devono portare la stessa size). Corretto l'unico chiamante che dimezzava,
+`reward-price-row.js` — continuare a dimezzare avrebbe sottostimato di **esattamente 2×**.
+⚠ **LA CLASSIFICA NON CAMBIA, E NON PERCHE' I NUMERI SIANO UGUALI**: la selezione ordina col
+**netto-knapsack iniettato** e usa `punteggio()` (il numero corretto qui) solo come **ripiego
+dichiarato** per i candidati senza netto, che `ordinaCandidati` mette comunque **dopo** tutti quelli
+col netto. Misurato con la funzione vera: ordine **identico** col netto, **diverso** senza.
+⚠⚠ **E LO SPODESTAMENTO NON LEGGE AFFATTO QUESTO NUMERO**: il blocco 3-bis e' dentro
+`if (nettoPerMercato && ordiniLeggibili)` e passa solo da `nettoDi()`. **Quindi la correzione non puo'
+cancellare nessun ordine gia' a libro** — l'unica superficie che cancella e' lo spodestamento.
+Prove: `lib/rewardScore-denominatore.test.js` **17/17**, rosso sul sorgente di ieri sull'asserzione ①
+(«a parita' di tutto il resto il mid non cambia il punteggio»: 0,3333 contro 0,0476). Suite **230
+verdi / 7 rossi**, e i 7 sono rossi **anche prima** della modifica, verificato uno per uno.
 
 **197** · IL BANCO VERIFICA TUTTE E DIECI LE REGOLE CONCORDATE — 18 agosto, `176c5a5`. Sei passi nuovi
 (18-23), uno per ogni regola che non aveva prova o che era coperta di sponda: **26 passi su 26**, 0
