@@ -172,3 +172,54 @@ ricalcolato dal `rewardsMinSize` corrente e il secondo è **congelato** in
 occupante resta con un secchio che non esiste più e **diventa non spodestabile in silenzio**.
 Trovato dal test che falliva, non dalla rilettura. Non corretto: cambia il comportamento della
 rotazione e va deciso.
+
+---
+
+## 10 · COSA È SUCCESSO DAVVERO DOPO IL RIAVVIO — e la mia previsione era sbagliata
+
+Riavvio di **agent41 soltanto** alle **15:28:37** (pid 667820). agent40 non toccato (su dalle 04:28):
+**nessun ordine è diventato PRE-ESISTENTE.** Manopole da `/proc` invariate.
+
+**Primo ciclo di selezione, 15:33:41** — `nettiIniettati: 29` (erano 8-13): la correzione è in servizio.
+
+> ### ⚠ AVEVO SCRITTO «ZERO SPODESTAMENTI, NESSUN ORDINE TOCCATO». È SUCCESSO IL CONTRARIO.
+> Cinque minuti dopo il riavvio la selezione ha **spodestato** `0xd4e77ba6` («no Fed rate cuts»,
+> netto **−$0,0627/g**) a favore di `0x9a59e167` («Trump meet Lukashenko», netto **+$3,6558/g**), e
+> ha **cancellato 2 ordini veri** (`cancellati: {chiesti: 2, riusciti: 2, falliti: []}`).
+>
+> **Perché la simulazione a secco diceva 0 e non era un errore di metodo: il board si è mosso.**
+> Alle 15:0x gli ammissibili erano **24** e nessuno sfidante superava l'isteresi nello scaglione
+> giusto. Alle 15:33 erano **35**, e `0x9a59e167` — che alle 15:0x **non era sul board** — li
+> superava. La simulazione era corretta *per il suo istante*; l'istante è durato meno di mezz'ora.
+> **Una simulazione a secco su un board vivo ha la data di scadenza del board.** Va detto qui perché
+> è la lezione, non la scusa.
+>
+> **La correzione È la causa, verificato e non dedotto:** rieseguito il probe alle 15:35,
+> `0x9a59e167` ha `bestNetPerDay: null` con motivo `nessun-fill-osservato` e
+> `bestObiettivoPerDay: 3,6558`. **Senza la correzione era invisibile e non avrebbe potuto
+> spodestare.**
+>
+> **La regola che ha cancellato NON è nuova ed è quella giusta**: `selezione-mercati.js:992` permette
+> lo scambio su un occupante con ordini vivi **solo** se il suo netto è negativo e quello dello
+> sfidante positivo — e il giornale lo dichiara: «l'occupante e' in PERDITA e ha ordini a riposo:
+> vanno cancellati esplicitamente». Nessuna protezione è stata aggirata: **posizione aperta zero**,
+> quindi la cancellazione non ha lasciato nessuna gamba nuda.
+
+### Stato finale, letto (non ricostruito)
+
+| | |
+|---|---|
+| ordini a riposo | **10** su **5 mercati** (erano 9 prima del riavvio) |
+| coppie | **5 su 5 simmetriche** — nessun allarme di asimmetria |
+| posizioni al venue | **0** |
+| saldo / equity | **$1.494,78**, invariato |
+| guardiano | drawdown **−3,573%**, margine **$22,12**, latch **assente** |
+| scambio netto della giornata | netto **−$0,0627/g → +$3,6558/g** sullo slot |
+
+| mercato | gambe | size | costo coppia |
+|---|---|---|---|
+| `0x5e082f0b` 1 Fed rate cut | 2 | 56,5 | 0,950 |
+| `0x4e4f77e7` Republican House | 2 | 56,5 | 0,950 |
+| `0xbfc776a7` LCK LoL Worlds | 2 | 56,5 | 0,950 |
+| `0xd5d9fc47` Democratic House | 2 | 56,5 | 0,950 |
+| `0x9a59e167` Trump–Lukashenko **(nuovo)** | 2 | 57,1 | 0,930 |

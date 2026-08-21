@@ -1674,11 +1674,16 @@ la forma IDENTICA gia' adottata l'8 agosto in `collector-priority.js:185`, non u
 si sbloccano hanno tutti `nessun-fill-osservato`; sui 9 in comune il divario e' **0 su 9** — non cambia
 un valore, toglie una maschera. **⚠ IL FILL OSSERVATO NON SI PERDE**: `bestObiettivoPerDay` E'
 `best.net5m`, cioe' lordo meno il costo di adverse selection misurato (`net.js:93`: zero fill ⇒ costo
-zero KNOWN), e quattro occupanti su cinque stanno infatti a netto NEGATIVO. **⚠ ZERO SPODESTAMENTI**
-alla simulazione a secco, prima e dopo: a tenere e' l'isteresi di **$0,50/g** piu' lo scaglione
-(l'unico sfidante che la supera e' `basso`, gli occupanti negativi sono `alto`). Il guadagno si vede
-**quando uno slot si libera** — 37 volte nelle 24 h precedenti: senza la correzione lo slot veniva
-ripreso dal mercato appena uscito o da uno a netto negativo. **⚠ Nessun ordine toccato.**
+zero KNOWN), e quattro occupanti su cinque stanno infatti a netto NEGATIVO. **⚠ LA SIMULAZIONE A SECCO DAVA ZERO SPODESTAMENTI, E IN
+PRODUZIONE NE E' AVVENUTO UNO IN CINQUE MINUTI — con 2 ordini veri cancellati.** Non un errore di
+metodo: **il board si e' mosso** (24 ammissibili alle 15:0x, 35 alle 15:33) e lo sfidante vincente
+non esisteva al momento della simulazione. **Una simulazione a secco su un board vivo scade col
+board.** Lo scambio e' quello voluto — occupante a **−$0,0627/g** sostituito da uno a **+$3,6558/g** —
+e la regola che cancella e' preesistente (`selezione-mercati.js:992`: si spodesta un occupante con
+ordini vivi SOLO se il suo netto e' negativo e quello dello sfidante positivo). Posizioni zero ⇒
+nessuna gamba nuda. Verificato che la correzione sia la causa: lo sfidante aveva
+`bestNetPerDay: null` / `nessun-fill-osservato`, quindi prima era invisibile.
+**Stato dopo: 10 ordini su 5 mercati, 5 coppie su 5 SIMMETRICHE, posizioni 0, equity invariata.**
 ⚠ La selezione NON era ferma del tutto: 12 spodestamenti nelle 24 h precedenti, fra i mercati CON
 storico. Congelata era la **candidatura di chi non ne ha**, oggi 13 su 22.
 Prove: `lib/maker/selezione-ordina-a-priori.test.js` **15/0**, che fa girare `decidiSelezione` VERA e
