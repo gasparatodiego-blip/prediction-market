@@ -385,7 +385,10 @@ async function poll(deps = {}) {
   // ── IL RIFERIMENTO: MASSIMO MOBILE, SPOSTATO DAI MOVIMENTI DI CASSA ESTERNI ──────────────────────
   // Sostituisce la baseline-fotografia di §5.2 p.14, che con un deposito faceva fallire il guardiano
   // APERTO. Si aggiorna a OGNI giro e si riscrive solo quando cambia davvero.
-  const rif = aggiornaRiferimento({ stato: baselineRaw, capitale, now });
+  // ⚠ `osservazione` SERVE AL CRICCHETTO quanto serve allo scatto: e' l'istante in cui il saldo e'
+  // stato davvero letto, cioe' l'unica prova che due letture consecutive non vengano dalla stessa voce
+  // di cache. Senza, il riferimento non si alza (fail-closed) — vedi il blocco D-D in guardian-riferimento.
+  const rif = aggiornaRiferimento({ stato: baselineRaw, capitale, now, osservazione: capitale.osservazione || null });
   if (rif.cambiato && rif.stato) {
     try { scrivi(baselineFile, rif.stato); } catch (e) { return { azione: 'riferimento-non-scritto', motivo: e.message }; }
     log(`riferimento aggiornato: $${Number(rif.riferimentoUsd).toFixed(2)} — ${rif.motivo}.`

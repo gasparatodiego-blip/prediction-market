@@ -448,7 +448,7 @@ vero e poi lo rimette a posto — un controllo sempre rosso non distingue niente
 
 | | |
 |---|---|
-| `agent43-guardian` | **Il guardiano delle perdite economiche.** Ogni 30 s confronta (saldo pUSD + posizioni al prezzo corrente) con il **riferimento a massimo mobile** in `data/guardian-baseline.json` (§5-bis p.157: depositi e prelievi sono riconosciuti come cassa esterna, non come P&L); oltre `GUARDIAN_LOSS_PCT` (5%) o la **soglia assoluta DERIVATA** (5% del riferimento; `GUARDIAN_LOSS_ABS` resta il pavimento in dollari) cancella **tutti gli ordini a riposo**, deposita un referto `reason='guardian-auto-kill'` e mette il bot su **FERMA**. Non tocca le posizioni aperte e non ferma l'uscita automatica. **⚠ IL SECONDO INGRESSO — la perdita giornaliera realizzata a −$100 — DA R10 CHIUDE ANCHE LE POSIZIONI** (18/08): `chiusura-di-emergenza.js` (puro, **zero `require`**) classifica in **coppie a merge · gambe scoperte vendute attraversando · gambe sotto il minimo LASCIATE e dichiarate**, e agent43 **deposita** `data/chiusura-emergenza-richiesta.json` senza eseguire — la sua unica superficie al venue resta la spazzata, ed è una proprietà strutturale provata. A eseguire è **agent41**, che gira **prima** del cancello su AVVIA: il presidio dei 60 minuti sta dietro `botAttivo()`, cioè non gira a bot FERMO, che è lo stato che il kill produce. Il drawdown continua a NON toccare le posizioni, ed è una decisione: misura un **prezzo**, che può rientrare. Nessun auto-riarmo: si riparte cancellando `data/guardian-state.json` a mano. Le soglie si rileggono da `.env` **a ogni giro**, senza restart. Strutturalmente incapace di piazzare (unica superficie: `lib/maker/cancel-all`), verificato da un test che cammina l'albero dei `require` (65/65 verdi). File: `agents/agent43-guardian.js` + `lib/maker/guardian-perdite.js`. Codice e blocco pm2 sono in git dal 7 agosto (`dbba34e`). |
+| `agent43-guardian` | **Il guardiano delle perdite economiche.** Ogni 30 s confronta (saldo pUSD + posizioni al prezzo corrente) con il **riferimento a massimo mobile** in `data/guardian-baseline.json` (§5-bis p.157: depositi e prelievi sono riconosciuti come cassa esterna, non come P&L). **⚠ IL RIFERIMENTO SCENDE SUBITO E SALE SOLO SU CONFERMA** (D-D, 21/08, §5-bis p.202): un totale sopra il riferimento e' un **candidato** finche' una seconda lettura **distinta e contigua** non lo sostiene, e allora sale al **minimo delle due**; un rientro lo scarta. Il cricchetto accettava **k=1** dove lo scatto pretende **k=2**, e il 16/08 ha latchato per sempre $1.550,18 = saldo post-chiusura + posizioni pre-chiusura, cioe' **$57,10 contati due volte**. **⚠ NESSUN RIARMO AUTOMATICO DI AVVIA, per decisione**: dopo uno scatto il bot riparte a mano (misurato: **6h06m** di fermo dopo il falso scatto del 20/08 22:36) — l'allarme Telegram che accorcerebbe quel buco esiste come codice (`agent27:163`) ma **manca `TELEGRAM_BOT_TOKEN`/`_CHAT_ID` nel `.env`**; oltre `GUARDIAN_LOSS_PCT` (5%) o la **soglia assoluta DERIVATA** (5% del riferimento; `GUARDIAN_LOSS_ABS` resta il pavimento in dollari) cancella **tutti gli ordini a riposo**, deposita un referto `reason='guardian-auto-kill'` e mette il bot su **FERMA**. Non tocca le posizioni aperte e non ferma l'uscita automatica. **⚠ IL SECONDO INGRESSO — la perdita giornaliera realizzata a −$100 — DA R10 CHIUDE ANCHE LE POSIZIONI** (18/08): `chiusura-di-emergenza.js` (puro, **zero `require`**) classifica in **coppie a merge · gambe scoperte vendute attraversando · gambe sotto il minimo LASCIATE e dichiarate**, e agent43 **deposita** `data/chiusura-emergenza-richiesta.json` senza eseguire — la sua unica superficie al venue resta la spazzata, ed è una proprietà strutturale provata. A eseguire è **agent41**, che gira **prima** del cancello su AVVIA: il presidio dei 60 minuti sta dietro `botAttivo()`, cioè non gira a bot FERMO, che è lo stato che il kill produce. Il drawdown continua a NON toccare le posizioni, ed è una decisione: misura un **prezzo**, che può rientrare. Nessun auto-riarmo: si riparte cancellando `data/guardian-state.json` a mano. Le soglie si rileggono da `.env` **a ogni giro**, senza restart. Strutturalmente incapace di piazzare (unica superficie: `lib/maker/cancel-all`), verificato da un test che cammina l'albero dei `require` (65/65 verdi). File: `agents/agent43-guardian.js` + `lib/maker/guardian-perdite.js`. Codice e blocco pm2 sono in git dal 7 agosto (`dbba34e`). |
 
 Distinzione che era da tenere ferma, e che il 9 agosto 2026 ha perso una delle due metà: **agent37
 guardava i processi, agent43-guardian guarda il capitale** — due guasti indipendenti (un motore può
@@ -1403,6 +1403,19 @@ resta una riga nel registro di §5-bis.
    quasi insensibili alla size. Dove morde davvero e' il regime a concorrenza sottile (§5-bis p.167:
    168 share), e su questo board non c'e' nessun ammissibile li'.
 
+54. **🔴 IL TOTALE DEL GUARDIANO NON E' ATOMICO: LE DUE FONTI HANNO FRESCHEZZE DIVERSE — 21 agosto.**
+   `valutaCapitale` somma **saldo** (cache 45 s) e **posizioni** (snapshot di agent40, tollerato fino a
+   180 s). Durante una chiusura/merge il capitale e' «in volo» e le due fonti raccontano due istanti
+   diversi, in **entrambe** le direzioni: verso l'ALTO il 16/08 19:28 (saldo nuovo + posizioni vecchie ⇒
+   +$57,10, ed e' D-D, §5-bis p.202, ora chiuso dal lato del riferimento); verso il BASSO il **20/08
+   22:36**, dove il guardiano leggeva **$1.438,41** mentre l'osservatore nello stesso minuto leggeva
+   **$1.492,81** — **$54,40 di divario**, con un merge on-chain in corso su `c7dee846`. ⚠ Il verso basso
+   **puo' ancora produrre uno scatto falso**: k=2 non lo ferma se il transitorio dura due letture, e il
+   20/08 e' successo. Col riferimento corretto quel minimo resta a **$11,86** dal punto di scatto: la
+   protezione regge, ma di poco. **NON CORRETTO**: la cura e' pretendere la **co-temporalita' delle due
+   letture** (o non misurare quando divergono), cioe' cambiare come si legge il capitale nell'unica difesa
+   viva — e va deciso, non fatto di passaggio. ⚠ Su 8.812 campioni i picchi a **una sola lettura** sono 4:
+   e' raro, ma cade proprio negli istanti in cui il capitale si muove.
 53. **🟡 IL CICLO NON DISTINGUE «FIGLIO MORTO» DA «NIENTE DA FARE» NELL'ESITO — 21 agosto 2026.**
    `lib/maker/realloc-cycle.js:255-261`: se il piano fallisce e `triggerValidita` e' FALSO si esce con
    `mancato(...)` ⇒ **`referto('nessuna')`**, lo stesso esito di «non c'era niente da fare». Nel record
@@ -1673,6 +1686,40 @@ problema è già stato incontrato vale più del racconto di come. Il dettaglio i
 e nei commit citati nei sorgenti.
 
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
+
+**202** · D-D · IL RIFERIMENTO DEL GUARDIANO NON NASCEVA DA UN CAPITALE MAI ESISTITO — 21 agosto.
+`riferimentoUsd: 1550.17633` fissato il 16/08 19:28:00.990Z da **una lettura sola**: saldo $1.493,07
+(DOPO la chiusura delle posizioni) + posizioni $57,103 (PRIMA) — l'osservatore misura $1.497,05 un minuto
+prima e $1.493,08 un minuto dopo, e lo scarto e' **$57,10 esatti**, cioe' il valore delle posizioni.
+**LA CAUSA E' UN'ASIMMETRIA, NON UNA SOGLIA**: lo SCATTO pretende due letture distinte e contigue (k=2,
+perche' il segnale ha salti fino a $74,47 che rientrano al campione dopo), il CRICCHETTO accettava **k=1**
+— e un transitorio verso il basso rientra, uno verso l'alto **resta per sempre**. ⚠ **ERANO DUE STRADE**:
+a posizioni «ferme» (anche perche' lo snapshot non e' stato riletto) il salto del solo saldo soddisfa pure
+`rilevaMovimentoEsterno`, che alzava il riferimento per conto suo; chiuderne una non bastava. **LA REGOLA:
+il riferimento SCENDE SUBITO, SALE SOLO SU CONFERMA** — candidato → seconda lettura distinta (stessa
+costante dello scatto, **importata**) → sale al **minimo delle due**; rientro ⇒ scartato; deposito
+assorbito dal massimo mobile invece che dal rilevatore. Unica eccezione dichiarata: la **prima** lettura
+in assoluto crea il riferimento senza conferma.
+**IL COSTO**: 3,5-3,8% dei 5% di budget mangiati **in permanenza** (PnL a riposo fra −$54,92 e −$59,41 dal
+17 al 21/08) · **4 pre-allarmi e 1 SCATTO** (20/08 22:36:02, −$111,77) · ordini cancellati e bot su FERMA
+per **6h06m**. **LA MISURA**: la funzione VERA su **8.812 campioni reali** alza il riferimento 3 volte in
+6,2 giorni e finisce a **$1.501,63** — lo stesso numero del calcolo indipendente «massimo sostenuto da due
+letture». Riferimento $1.550,18 → $1.501,63 · drawdown −$55,39 → **−$6,85** · margine $22,12 → **$68,23** ·
+punto di scatto $1.472,67 → $1.426,55. **Replay su 10.711 letture vere (4,01 giorni, non 7: il log parte
+dal riavvio del 17/08): 4 pre-allarmi + 1 scatto col vecchio, 0 e 0 col nuovo**, e lo scatto del 20/08 non
+avverrebbe (−$63,22 contro −$75,08, margine $11,86).
+⚠ **LA SOGLIA NON E' STATA TOCCATA** (5%): il difetto era il riferimento. Le escursioni giornaliere
+«misurate a $38» erano in parte lo stesso artefatto — il 19/08 scende da **$38,70 a $1,92** togliendo il
+picco a un campione; le vere sono $32,05 e $38,12, contro un margine di $68,23.
+⚠ **ALLENTA IL PUNTO DI SCATTO DI $46,12, ED E' IL VERSO VOLUTO**: `tot <= 0,95·rif`, quindi un
+riferimento che sale piu' piano puo' solo abbassarlo. Non puo' far scattare PRIMA, per costruzione.
+⚠ **RESTA APERTO IL VERSO OPPOSTO, DICHIARATO E NON CORRETTO** (§5.2): lo stesso disallineamento fra le due
+fonti produce il transitorio verso il BASSO — il 20/08 22:36 il guardiano leggeva $1.438,41 mentre
+l'osservatore, nello stesso minuto, leggeva $1.492,81: **$54,40 di divario**. Vive in `valutaCapitale`, non
+nel riferimento.
+Prove: `guardian-riferimento-non-supera-il-confermato.test.js` **26/0**, **11 rosse sul sorgente vecchio**,
+dove riproduce il valore di produzione ($1.550,17933) dai numeri veri; `guardian-riferimento.test.js`
+**32/0** con due blocchi **riscritti non ammorbiditi**. Referto: `data/ricerca/d-d-riparazione-21-agosto.md`.
 
 **201** · D-C · IL FIGLIO DEL PIANO ANDAVA IN OOM: IL LETTORE DEL GIORNALE LEGGEVA TUTTO, DUE VOLTE,
 E TENEVA CIO' CHE NESSUNO LEGGE — 21 agosto. `loadJournal` moriva a **924 MB**, 4 cicli su 4 al

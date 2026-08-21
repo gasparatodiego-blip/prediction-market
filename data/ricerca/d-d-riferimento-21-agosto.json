@@ -1,0 +1,92 @@
+{
+ "lettoAl": "2026-08-21T18:32:59.492Z",
+ "serie": {
+  "campioni": 8812,
+  "da": "2026-08-15T12:52:35.248Z",
+  "a": "2026-08-21T18:32:06.992Z"
+ },
+ "riferimento": {
+  "vecchio": 1550.17633,
+  "nuovo": 1501.6325,
+  "salite": [
+   {
+    "iso": "2026-08-15T12:52:35.248Z",
+    "a": 1499.6408,
+    "motivo": "riferimento creato a $1499.64"
+   },
+   {
+    "iso": "2026-08-15T12:53:52.882Z",
+    "a": 1499.6468,
+    "motivo": "nuovo massimo CONFERMATO $1499.65 (due letture distinte: $1499.65 e $1499.65, si prende la minore)"
+   },
+   {
+    "iso": "2026-08-16T15:23:04.286Z",
+    "a": 1501.6325,
+    "motivo": "nuovo massimo CONFERMATO $1501.63 (due letture distinte: $1501.63 e $1501.63, si prende la minore)"
+   }
+  ]
+ },
+ "totaleOra": 1494.78,
+ "quadro": {
+  "vecchio": {
+   "riferimentoUsd": 1550.18,
+   "sogliaUsd": 77.51,
+   "puntoDiScattoUsd": 1472.67,
+   "drawdownUsd": -55.39,
+   "drawdownPct": -3.573,
+   "margineUsd": 22.12
+  },
+  "nuovo": {
+   "riferimentoUsd": 1501.63,
+   "sogliaUsd": 75.08,
+   "puntoDiScattoUsd": 1426.55,
+   "drawdownUsd": -6.85,
+   "drawdownPct": -0.456,
+   "margineUsd": 68.23
+  }
+ },
+ "replay": {
+  "finestra": {
+   "letture": 10711,
+   "da": "2026-08-17T18:19:55.312Z",
+   "a": "2026-08-21T18:32:33.331Z",
+   "giorni": 4.01
+  },
+  "vecchio": {
+   "riferimentoUsd": 1550.18,
+   "puntoDiScattoUsd": 1472.67,
+   "preallarmi": 4,
+   "scatti": [
+    {
+     "iso": "2026-08-20T22:36:02.405Z",
+     "totaleUsd": 1438.41,
+     "pnlUsd": -111.77
+    }
+   ],
+   "minimoLettoUsd": 1438.41,
+   "distanzaDalloScattoUsd": -34.26
+  },
+  "nuovo": {
+   "riferimentoUsd": 1501.63,
+   "puntoDiScattoUsd": 1426.55,
+   "preallarmi": 0,
+   "scatti": [],
+   "minimoLettoUsd": 1438.41,
+   "distanzaDalloScattoUsd": 11.86
+  }
+ },
+ "scattoDel20": {
+  "quando": "2026-08-20T22:36:02.405Z",
+  "totaleLetto": 1438.41,
+  "pnlUsd": -111.77,
+  "conIlNuovoRiferimento": {
+   "pnlUsd": -63.22,
+   "sogliaUsd": 75.08,
+   "scatterebbe": false,
+   "margineResiduoUsd": 11.86
+  },
+  "botFermoFinoA": "2026-08-21T04:42:39.762Z",
+  "botFermoOre": 6.11,
+  "riaccesoDa": "cli/avvia"
+ }
+}
