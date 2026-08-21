@@ -1403,6 +1403,16 @@ resta una riga nel registro di §5-bis.
    quasi insensibili alla size. Dove morde davvero e' il regime a concorrenza sottile (§5-bis p.167:
    168 share), e su questo board non c'e' nessun ammissibile li'.
 
+53. **🟡 IL CICLO NON DISTINGUE «FIGLIO MORTO» DA «NIENTE DA FARE» NELL'ESITO — 21 agosto 2026.**
+   `lib/maker/realloc-cycle.js:255-261`: se il piano fallisce e `triggerValidita` e' FALSO si esce con
+   `mancato(...)` ⇒ **`referto('nessuna')`**, lo stesso esito di «non c'era niente da fare». Nel record
+   la differenza c'e' (`valore.misurabile === false`, traccia `piano/fallito`) ma **nessuna difesa
+   reagisce**. ⚠ E il ramo contiene un **fail-open**: il commento dice «non stava per succedere
+   niente», ma dopo `mancato()` il ciclo ritorna e `confrontoDiValore` — il SECONDO trigger — non gira
+   mai, quindi «non stava per succedere niente» e' proprio cio' che il figlio morto ha impedito di
+   sapere. Un trigger **non misurato** trattato come **non scattato**: la famiglia `Number(null) === 0`
+   di §5.3 in forma di flusso di controllo. **Non corretto**: cambiare la tassonomia degli esiti del
+   ciclo e' un secondo lavoro, e chiuso l'OOM il caso diventa raro.
 51. **🟡 LO `scaglione` SALVATO NELLO STATO PUO' DIVERGERE DA QUELLO CALCOLATO — 21 agosto 2026.**
    `selezione-mercati` rifiuta lo scambio quando `v.scaglione !== occ.voce.scaglione`: il primo e'
    **ricalcolato** dal `rewardsMinSize` corrente, il secondo e' **congelato** in
@@ -1663,6 +1673,41 @@ problema è già stato incontrato vale più del racconto di come. Il dettaglio i
 e nei commit citati nei sorgenti.
 
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
+
+**201** · D-C · IL FIGLIO DEL PIANO ANDAVA IN OOM: IL LETTORE DEL GIORNALE LEGGEVA TUTTO, DUE VOLTE,
+E TENEVA CIO' CHE NESSUNO LEGGE — 21 agosto. `loadJournal` moriva a **924 MB**, 4 cicli su 4 al
+giorno **dal 19 agosto**, con ~430 MB liberi. Tre cause MISURATE
+(`data/ricerca/d-c-dove-va-la-memoria.json`): ① leggeva **tutti e 7** i file (1.295 MB) e filtrava la
+finestra **dopo** aver parsato; ② `readFileSync` + `split('\n')` ⇒ stringa intera **e** array delle
+righe in heap insieme, ~566 MB di transitorio sul file da 283 MB; ③ `{ ...r, tsMs }` copiava la riga
+INTERA — **887 B/riga** ritenuti. **`no` (45,2%) e `levels` (40,1%) sono l'85,3% del testo e nessun
+consumatore di righe di giornale li legge** (le occorrenze di `.levels` nel piano sono tutte su
+oggetti CURVA del knapsack). ⚠ **La data non e' un caso**: il 19 agosto `no` entra in servizio (§5.2
+p.43) e il file giornaliero passa da ~148 a ~283 MB; l'ultimo piano pesante riuscito e' del **19/08
+15:25**. ⚠ **Il repo aveva gia' preso meta' della decisione nel posto sbagliato**: `allocator.js:1407`
+fa `r.levels = undefined` — ma DOPO `loadJournal`, cioe' dopo il picco.
+**LA CURA, senza alzare nessuna soglia** (alzare `--max-old-space-size` qui sposterebbe l'OOM killer
+su agent40/agent41): filtro dei file **per nome** con un giorno di margine · **streaming a chunk da
+4 MB** (`StringDecoder`, o un multi-byte a cavallo di due chunk diventa `malformed`, cioe' un dato
+perso in silenzio) · **`scartaCampi` OPT-IN**, che COSTRUISCE la copia magra invece di sfoltire
+quella grassa. **MISURATO sulla finestra vera di 48 h: 7 file → 4, picco 924 MB → 302 MB, riuscito in
+29-33 s su 251.904 righe / 657 mercati.** ⚠ **Nessuno dei due cambi basta da solo**: col solo filtro
+sui file va **ancora in OOM** a 650 MB. ⚠ **La corsia del backtest non cambia**: `scartaCampi` assente
+⇒ comportamento identico, provato con **145.470 confronti campo-per-campo, 0 divergenze** (§5.2 p.50).
+**⚠ NESSUN RIAVVIO, e non per prudenza**: `journal.js` ha un solo importatore, `allocator.js:1380`,
+**dentro `planFromCollection`**, cioe' nel FIGLIO che rilegge da disco a ogni giro (§5.3); agent41 non
+ha nessun `require` reale dei due moduli — l'unica occorrenza (`:518`) e' **un commento**.
+**IL COSTO in 47 ore**: 8 cicli pesanti su 8 falliti · **48,7 h** su un piano vecchio ·
+`confrontoDiValore` **mai** misurato · `collector-priority` sceso da **60 a 40** mercati (39 scaduti,
+2 freschi), tenuto in vita solo dal **gradino 5 `risveglia-feed`** che lo riscriveva dal piano di due
+giorni prima · **il gradino 6 avrebbe messo il bot su FERMA 10 volte in 48 h**. ⚠ Attribuzione
+onesta: la scala parte per **capitale al lavoro 17,9%**, che e' strutturale (5 × $61,25 su $1.494); il
+contributo dell'OOM e' che il **gradino 1 non puo' riuscire**, quindi la scala arriva ogni volta a 6.
+⚠ **Spodestamenti mancati: NON misurabili** — il netto della selezione viene da un figlio diverso e
+piccolo che non va in OOM, e la rotazione infatti ha continuato.
+Prove: `scripts/rewards-replay/lib/journal-memoria.test.js` **11/0**, che misura il picco REALE
+(`VmHWM`) di un figlio con l'heap capato e **cade sul sorgente vecchio** (5/2, il figlio non
+sopravvive). Referto: `data/ricerca/d-c-riparazione-21-agosto.md`.
 
 **200** · D-A · LA SELEZIONE ORDINAVA CON UNA CIFRA DA MOSTRARE — 21 agosto. `agent41:1357` costruiva
 la mappa dei netti da `bestNetPerDay`, che `net-per-day.js:80` **annulla** senza fill osservati
