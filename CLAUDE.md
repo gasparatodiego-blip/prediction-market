@@ -598,6 +598,32 @@ in cui manca un ingresso (`no-position`, `no-entry-price`, `rules-unreadable`), 
 | 3 | chiusura rapida: taker fin dove il book copre + limit per il resto | coppia ≤ **101¢** |
 | 4 | riposizionamento scoperto: SELL a **+1% dal carico**, dentro banda e **mai sotto il carico**, + BUY sulla controparte | coppia ≤ 101¢ |
 
+> **📐 IL PAVIMENTO DELLA SCALA DEV'ESSERE UN PREZZO ESPRIMIBILE — 22 agosto 2026.**
+> `pavimentoConcesso` è una frazione del carico (il 5%, R7) e non cade quasi mai su un tick:
+> `0,68 × 0,95 = 0,646`, `0,37 × 0,95 = 0,3515`. `auto-close.inseguiIlBid` lo usa come `Math.max`,
+> quindi appena il bid scende sotto il pavimento il **prezzo dell'ordine diventa il pavimento**, e il
+> guard condiviso lo rifiuta con **`OFF_TICK`**. Misurato sul giornale vivo: **147 righe** con
+> `OFF_TICK` — **25** `skip-guard-refused` a 0,646 su `0x4757745c` (22/08 17:47→18:14), **107** e **15**
+> `skip-remainder-below-min-size` con codici `OFF_TICK,BELOW_MIN_SIZE` su `0xac3ee338` e `0x70620889`
+> (20-21/08, carico 0,37), dove la deroga sul minimo del venue **non si applica proprio perché** c'è
+> anche OFF_TICK.
+> **LA CURA**: `pavimentoConcesso` restituisce **due numeri** — `pavimento` (esatto, serve a
+> **confrontare**) e `pavimentoGriglia` (sulla griglia del mercato, serve a **prezzare**).
+> **⚠ UN SOLO ARROTONDAMENTO IN TUTTO IL REPO**, e sta lì: nato dentro il solo ramo fuori banda era
+> metà della correzione, e la metà che non serviva ai 132 rifiuti veri. `exit-plan` **legge**
+> `pav.pavimentoGriglia`, non lo ricalcola — un test conta gli arrotondamenti e pretende che sia **uno**.
+> **⚠ IN SU, E LA DIREZIONE È OBBLIGATA**: in giù si venderebbe **sotto** il pavimento della scala del
+> §7. In su se ne concede **meno**: il tappo del 5% non si sposta, può solo stringersi sulla griglia.
+> **⚠ IL CONFRONTO RESTA SUL NUMERO ESATTO**: spostarlo cambierebbe chi passa e chi no (il ramo
+> «pareggio non basta»), che è una decisione di rischio e non un arrotondamento. Le due cose non
+> possono contraddirsi: `b.hi` sta già sulla griglia, quindi `b.hi ≥ pavimento ⇒ b.hi ≥ pavimentoGriglia`
+> — l'arrotondamento **non può** spingere il prezzo fuori banda. Asserito su 500+ piani, non promesso.
+> **⚠ VALE ANCHE SENZA CONCESSIONE**: il pavimento a gradino 0/1 **è il carico**, che è un prezzo
+> **medio di fill** e cade fuori griglia più spesso di una frazione (0,6733 non è un prezzo).
+> **⚠ SU UN TOKEN ECONOMICO IL PAVIMENTO PUÒ FINIRE SOPRA IL CARICO** (0,095 ⇒ 0,09025 ⇒ **0,10**): è la
+> conseguenza onesta di una griglia da 1¢ su 9,5¢ — `tickConcessi` diceva già **0**. Prima quel caso
+> produceva un rifiuto, adesso un ordine valido.
+
 > **🚪 L'USCITA PUÒ GUARDARE FUORI BANDA QUANDO LA COPPIA È IMPOSSIBILE — 22 agosto 2026,
 > decisione dell'operatore.** `exit-plan.planExit` sapeva produrre **solo** prezzi dentro la banda
 > premiante: il clamp porta il prezzo a `b.hi`, e se `b.hi` sta sotto il pavimento della scala il
