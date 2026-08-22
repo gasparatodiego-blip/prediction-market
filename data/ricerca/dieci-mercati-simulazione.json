@@ -1,0 +1,44 @@
+{
+ "generatoAl": "2026-08-22T04:30:59.772Z",
+ "esiti": [
+  {
+   "nome": "OGGI   N=5  cap $650",
+   "cap": 650,
+   "max": 5,
+   "capitale": 650,
+   "tetto": 61.25,
+   "righePiano": 1,
+   "attivi": [
+    "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+    "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+    "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+    "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+    "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988"
+   ],
+   "slotLiberi": 0,
+   "postiNonAssegnati": []
+  },
+  {
+   "nome": "PIENO  N=10 cap $1300",
+   "cap": 1300,
+   "max": 10,
+   "capitale": 1300,
+   "tetto": 61.25,
+   "righePiano": 1,
+   "attivi": [
+    "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+    "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+    "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+    "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+    "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988"
+   ],
+   "slotLiberi": 5,
+   "postiNonAssegnati": [
+    {
+     "scaglione": "alto",
+     "posti": 5
+    }
+   ]
+  }
+ ]
+}

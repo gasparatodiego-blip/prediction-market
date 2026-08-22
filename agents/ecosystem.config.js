@@ -527,7 +527,20 @@ module.exports = {
         //     10 ordini attesi, $306,25 di capitale a riposo.
         // ⚠ N=5 E' IL MASSIMO CHE IL CAP CONSENTE: a N=6 l'esposizione sarebbe $735, cioe' $85 oltre.
         // Non e' una coincidenza che il soffitto valga 5 — v. APERTI.md §28.
-        MAKER_MERCATI_CONTEMPORANEI: '5',
+        // ⚠ 5 → 10 il 22 agosto 2026, decisione dell'operatore. Il soffitto di sorgente e' stato
+        // alzato a 10 nello stesso momento (`selezione-mercati.js`), o questo valore sarebbe stato
+        // rifiutato in silenzio e sarebbe valso il difetto — lo stesso blocco trovato il 18 agosto.
+        // ⚠ VERIFICATO PRIMA DI SCRIVERE, contro l'invariante di §5.2 p.37
+        // (`concentration.esposizioneMassimaRaggiungibileUsd`, importata dai quattro chiamanti):
+        //     esposizione massima raggiungibile a N=10 = $1.225,00 (10 coppie a riposo + il loro
+        //     completamento) contro il cap `maxOpenNotionalUsd` portato a $1.300 ⇒ margine $75,00.
+        //     20 ordini attesi, $612,50 di capitale a riposo, tetto per mercato invariato a $61,25.
+        // ⚠⚠ IL CAP NON E' UN PERMESSO, E' UN BUDGET: `realloc-cycle.js:242` fa
+        //     `capitale = min(saldo, maxOpenNotionalUsd)` PRIMA del knapsack, quindi alzarlo a $1.300
+        //     e' un ordine di allocare il doppio, non l'autorizzazione a farlo se capita. Il cap passa
+        //     dal 43% all'87% del capitale ($1.494,78): da limite che morde diventa quasi inerte, e la
+        //     difesa effettiva si riduce al kill R10 (−$100 realizzati) e al guardiano (−5%).
+        MAKER_MERCATI_CONTEMPORANEI: '10',
         // ── LA QUOTA DELLA CODA LUNGA — 12% → 50%, 21 agosto 2026, decisione dell'operatore ────────
         // Alle 05:00Z il board offriva 7 ammissibili TUTTI di coda lunga (1.699-3.163 h): sei a
         // `minSize 50`, pavimento $61,25, contro una quota che al 12% valeva $33,41. Il cancello 2-ter

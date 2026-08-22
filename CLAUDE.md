@@ -26,7 +26,7 @@ Ultima verifica contro codice/stato reali: **18 agosto 2026 — dopo la migrazio
 > **STATO AL 18 AGOSTO 2026, SERA, LETTO DAI PROCESSI VIVI**: flotta a 11 processi ONLINE (§5.1) ·
 > `MAKER_MODE=live-min` · `MAKER_ADAPTER_DRYRUN=false` · **`MANUAL_ORDER_PLACEMENT=send`** su agent40
 > **e** agent41 · freno di agent41 `=0` ⇒ **ZERO CINTURE INSERITE, 0/4** (§4.14) ·
-> `MAKER_MERCATI_CONTEMPORANEI=5` su agent41 (R1) · `SLOT_STERILE_ARMATO=0` · KILL spento ·
+> **`MAKER_MERCATI_CONTEMPORANEI=10`** su agent41 (R1, dal 22 agosto 2026) · `SLOT_STERILE_ARMATO=0` · KILL spento ·
 > selezione automatica **ACCESA** · perno **vuoto**.
 > ⚠ **QUANTI ORDINI CI SIANO A LIBRO NON SI SCRIVE QUI: SI LEGGE.** Alle 22:57Z erano **1 mercato e 2
 > ordini** (~$52,55), ma il numero cambia ogni pochi minuti. **Si legge da
@@ -35,7 +35,7 @@ Ultima verifica contro codice/stato reali: **18 agosto 2026 — dopo la migrazio
 > dichiarato «4 mercati, 8 ordini, $209,08» mentre al venue ce n'erano 2, perche' sei scadenze erano
 > gia' avvenute e agent40 non le aveva ancora scritte. Una ricostruzione non e' una lettura.
 > **⚠ CIÒ CHE RESTA DAVANTI NON SONO PIÙ CINTURE, È STATO DEL SISTEMA**: il KILL, il tetto per ordine
-> ($65,63), il tetto per mercato ($61,25), l'esposizione cumulativa (**$650**, §4.2), il rate limit,
+> ($65,63), il tetto per mercato ($61,25), l'esposizione cumulativa (**$1.300**, §4.2), il rate limit,
 > la perdita giornaliera a **−$100**, «mai primo sul libro» e la banda premiante. **Il freno vero è il
 > kill a −$100**, non il tetto di esposizione — quello serve solo a non murare la gestione.
 > **⚠ `MAKER_MODE` NEL `.env` DICE ANCORA `off`, ED È INERTE**: pm2 tiene la propria copia
@@ -644,9 +644,19 @@ sulla **gamba peggiore quotabile**, non sulla media. Conseguenza derivata e non 
 60/40** — al più 24 posti alle aperture, **16 riservati a rinnovi e chiusure protettive**. Invariante
 difesa da un test: `rateCap ≥ 2 × mercatiPerGiro` con almeno 8 posti di margine. Un'apertura rimandata
 è un **rinvio dichiarato** (`rimandato-per-quota`), non un errore. Cap per ordine di safety **$80**
-(era $1000 — 16 agosto 2026, decisione dell'operatore) e cap cumulativo di esposizione aperta **$650**
-(era $600 → $150 il 16 agosto → **$650 il 18 agosto sera**, decisione dell'operatore, per reggere i
-**5 mercati** di §4.13: conta i **fill riconciliati**, non gli ordini a riposo).
+(era $1000 — 16 agosto 2026, decisione dell'operatore) e cap cumulativo di esposizione aperta **$1.300**
+(era $600 → $150 il 16 agosto → $650 il 18 agosto sera → **$1.300 il 22 agosto 2026**, decisione
+dell'operatore, per reggere i **10 mercati** di §4.13: conta i **fill riconciliati**, non gli ordini a
+riposo). **⚠⚠ IL CAP NON È UN PERMESSO, È UN BUDGET**: `realloc-cycle.js:242` fa
+`capitale = min(saldo, maxOpenNotionalUsd)` **prima** del knapsack, quindi alzarlo è un **ordine di
+allocare di più**, non l'autorizzazione a farlo se capita. A $1.494,78 di saldo il cap passa dal **43%
+all'87%** del capitale: da limite che morde a limite quasi inerte, e la difesa effettiva sull'esposizione
+si riduce al **kill R10** (−$100 realizzati) e al **guardiano** (−5% dal riferimento).
+**⚠ E il presupposto è §5.2 p.54 CHIUSA**: col guardiano vecchio l'artefatto di co-temporalità a 10
+mercati a size piena valeva **$72,46** contro un margine di $75,08 e la coppia di letture del 20/08
+**avrebbe fatto scattare** il guardiano; col nuovo vale **$14,74**, cioè **5,1× di franco**
+(`data/ricerca/p54-legge-di-scala.json`, 9.400 letture reali). Chi riporta indietro il guardiano deve
+riportare indietro anche questo numero.
 **Perdita giornaliera massima $100** (era $25) — **è questo il freno vero**, non il tetto di
 esposizione, che serve solo a non murare la gestione.
 
@@ -1111,7 +1121,7 @@ test lo asserisce); il cablaggio sta in `agent41` e passa dalle **stesse** funzi
 
 | | |
 |---|---|
-| **vincoli** | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo** · **max N ATTIVI dove N = `MAKER_MERCATI_CONTEMPORANEI`** (R1, 18/08: ambiente di agent41, un posto solo, letto da `/proc`; difetto 3, **soffitto 5 dal 18/08 sera**) · **book UTILIZZABILE** (18/08 sera: `needsResnapshot === false` e un book esiste — v. il riquadro qui sotto) · **composizione DERIVATA da N** (`quotaScaglioni`): N≥2 ⇒ 1 «basso» (≤20) + (N−1) «alto» (≤50); N=1 ⇒ un secchio solo, che ammette tutto — con la regola stretta un unico slot potrebbe ospitare solo un minSize ≤ 20 e restare vuoto. ⚠ **168 → 24 h**: fra 48 e 168 h il board è VUOTO (168/96/48 danno piano identico e vuoto, 24 h sblocca 27 ammissibili). ⚠ **Il vincolo delle 3 CATEGORIE è stato TOLTO**: 23 dei 26 ammissibili sono `elections`, quindi la diversificazione teneva due slot sui mercati **peggiori** — netto −$0,111/g e +$0,026/g contro +$10,64/g escluso |
+| **vincoli** | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo** · **max N ATTIVI dove N = `MAKER_MERCATI_CONTEMPORANEI`** (R1: ambiente di agent41, un posto solo, letto da `/proc`; **soffitto e difetto 10 dal 22/08**, era 5 dal 18/08 e 3 prima — il difetto E' il soffitto, `quanti-mercati.js` lo importa) · **book UTILIZZABILE** (18/08 sera: `needsResnapshot === false` e un book esiste — v. il riquadro qui sotto) · **composizione DERIVATA da N** (`quotaScaglioni`): N≥2 ⇒ 1 «basso» (≤20) + (N−1) «alto» (≤50); N=1 ⇒ un secchio solo, che ammette tutto — con la regola stretta un unico slot potrebbe ospitare solo un minSize ≤ 20 e restare vuoto. ⚠ **168 → 24 h**: fra 48 e 168 h il board è VUOTO (168/96/48 danno piano identico e vuoto, 24 h sblocca 27 ammissibili). ⚠ **Il vincolo delle 3 CATEGORIE è stato TOLTO**: 23 dei 26 ammissibili sono `elections`, quindi la diversificazione teneva due slot sui mercati **peggiori** — netto −$0,111/g e +$0,026/g contro +$10,64/g escluso |
 | **interruttore** | `data/selezione-mercati.json`, `scripts/cli/selezione.js {stato\|prova\|accendi\|spegni}`. Difetto **SPENTA**; file illeggibile ⇒ **spenta**. **ACCESA dal 15/08** |
 | **quando gira** | a ogni ciclo 6 h **e** a ogni controllo del capitale fermo (120 s), **prima** del piano — e prima di `decidiTrigger`, così un mercato che scade esce anche nei giri in cui il trigger non scatta |
 | **classifica** | `levels[<capitale minimo>].grossRewardDay`, cioè la stima che **il board ha già calcolato** con la formula del venue → ripiego `rateOrdinamento` → `rewardsDailyRate`. **Non** il montepremi (§5 p.132). Pareggio rotto sul `conditionId`: due giri sullo stesso board danno la stessa risposta |
@@ -1700,6 +1710,50 @@ problema è già stato incontrato vale più del racconto di come. Il dettaglio i
 e nei commit citati nei sorgenti.
 
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
+
+**205** · DA 5 A 10 MERCATI E IL CAP A $1.300 — 22 agosto 2026, decisione dell'operatore.
+Tre valori e nient'altro: `selezione-mercati.MAX_MERCATI_CONTEMPORANEI` 5 → **10** (il letterale unico,
+da cui `quanti-mercati` deriva difetto e massimo e `quotaScaglioni` deriva la composizione),
+`MAKER_MERCATI_CONTEMPORANEI` '5' → **'10'** su agent41, `maxOpenNotionalUsd` $650 → **$1.300**.
+**IL PRESUPPOSTO E' p.204**: col guardiano vecchio l'artefatto a 10 mercati a size piena valeva $72,46
+contro $75,08 di margine e la coppia del 20/08 **avrebbe fatto scattare**; col nuovo vale **$14,74**
+(franco **5,1x**, 9.400 letture reali). ⚠ Il franco NON e' misurabile sulle letture dopo il riavvio di
+agent43: 26 letture, **zero posizioni**, artefatto identicamente $0 — finestra degenere, dichiarata.
+**⚠⚠ LA SIMULAZIONE A SECCO DAVA ZERO ENTRANTI, E VENTIDUE MINUTI DOPO NE SONO ENTRATI QUATTRO — la
+lezione D-A, di nuovo** (§5-bis p.200: «una simulazione a secco su un board vivo scade col board»).
+**Alle 04:28Z** (`dieci-mercati-simulazione.js`, funzioni VERE): a N=10 si riempivano **5 slot su 10**,
+entranti **0**, premio atteso identico ($0,9509/g lordo, $0,9080/g netto-obiettivo) — non $2,09 → $8,10.
+La diagnosi era esatta e vale ancora come **meccanismo**: **230 dei 231 ammissibili** cadevano su
+`coda-lunga-senza-fascia-corta` (il board era tutto oltre 7 giorni: 2 soli candidati sotto 168 h,
+entrambi a 67 h), e quei 2 cadevano su **`quota-scaglione-piena`** perche' `minSize 20` e il secchio
+«basso» ha **UN posto solo a qualunque N**. Senza un attivo di fascia corta la coda non riceve budget
+(§4.4), e l'unico modo di averne uno e' il posto che la composizione non concede.
+**MA ALLE 04:50:41Z, col tetto a 10 in servizio, la selezione ha applicato `occupati: 9, entrati: 4,
+usciti: 0`** — il board si era mosso. Alle 04:52 la lettura VERA del venue dava **14 ordini su 7
+mercati, 7 coppie tutte SIMMETRICHE, $375,16 a riposo** (era 10 ordini / 5 mercati / $267,81). A N=5
+quei 4 mercati non sarebbero entrati. **Il tetto morde davvero; il numero della simulazione no.**
+**⚠ NESSUNA GAMBA ESISTENTE E' STATA TOCCATA, E LA SIZE NON E' CAMBIATA**:
+`unitUsd = min(round(budget/50), floor(tetto/8)) = $7` a **entrambi** i budget, quindi la riga massima
+resta `8 x $7 = $56` (91,4% del tetto) e la size resta **56,5 share**. «Size al tetto pieno» (62,5
+share) **non e' raggiungibile** senza toccare `LIVELLI_MINIMI_PER_MERCATO` (§4.3, la difesa del deadlock
+del 13 agosto), che non e' stato toccato — quindi le 10 gambe gia' a libro non sono state ne' cancellate
+ne' ridimensionate, e **zero premio maturato e' andato perso**. Le uniche scritture al venue dopo il
+riavvio sono i rinnovi GTD di agent40 e le coppie NUOVE dei mercati entrati.
+**⚠ LA CASSA NON E' IL VINCOLO**: $1.225 e' cio' che il GATE somma, non i dollari che escono — un BUY a
+riposo non abbassa il saldo (§4.5). Esborso peggiore a coppie tutte complete **$612,50** ⇒ cassa residua
+**$882,28 (59,0%)**, non il 18%.
+**⚠ IL NUMERO SCOMODO, misurato e non modellato**: equity $1.499,64 (15/08) → $1.494,78 = **−$4,86 in
+6,65 giorni**; reward VERI incassati nello stesso arco **$7,13** (`data/confronto-reward.json`,
+`realeUsd`) ⇒ trading **−$11,99**, cioe' **1,68x il premio**, netto **−$0,73/giorno**. La configurazione
+e' netta NEGATIVA, e a slot pieni scalerebbe con l'esposizione.
+**⚠ QUOTA DEL LIBRO**: su 231 ammissibili a $56 di riga, **zero** superano il 50% e **zero** il 25%; la
+piu' alta e' **7,24%**. Il tetto di credibilita' 0,60 non morde a questa size.
+⚠ `selezione-mercati.test.js` blocco 5 e' stato **RISCRITTO e non ammorbidito**: asseriva «mai due
+mercati ATTIVI della stessa categoria», proprieta' che il modulo **non promette piu'** dal 15 agosto
+(§4.13) e che passava per **pigeonhole** (fixture a 8 categorie, soffitto 5). A soffitto 10 su 8
+categorie la ripetizione e' aritmetica. Ora difende cio' che il modulo promette: la categoria c'e'
+sempre. Suite dopo il commit: **245 test · 237 verdi · 7 rossi noti · 1 non parte** — gli **stessi 7 nomi**
+della baseline delle 03:32 (`suite-rossi-baseline.json`), nessuno introdotto.
 
 **204** · §5.2 p.54 · LE DUE FONTI DEL TOTALE NON ERANO CO-TEMPORALI: SI RICONCILIANO SUL VALORE, NON
 SUI TIMESTAMP — 22 agosto. Regola per intero in §3 (scheda del guardiano).
