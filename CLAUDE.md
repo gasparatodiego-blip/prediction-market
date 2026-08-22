@@ -1113,6 +1113,39 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
 54. **✅ CHIUSA IL 22 AGOSTO** — la cura non è una tolleranza sui timestamp (misurata e scartata) ma la
    **conservazione del valore**: `Δcassa + Δsize ≈ 0`, o il totale non è misurabile. Regola viva in §3,
    diagnosi integrale in §5-bis p.204 e `docs/registro-voci-chiuse.md`.
+58. **🔴 IL PAYBACK RIFIUTA I CORTI CHE LA SELEZIONE AMMETTE — 22 agosto 2026, NON corretto.**
+   La fascia corta adesso vede, sceglie e prezza (§4.13), ma il piano non la finanzia: su
+   `0x9db884ee` (MrBeast, 31 h) `horizonVerdict` risponde **`short`** — «scade fra 1,3 g ma il
+   rientro ne chiede 1,7» (`horizon.js:294`, `days <= payback`). Non è un cancello di
+   configurazione: è **economico**, dice che il costo di adverse selection modellato non rientra
+   prima della risoluzione. ⚠ **La stima di premio che ha giustificato la fascia NON passava di
+   qui**: `realisticEstimate` applica banda e quota, non il payback, quindi i $30,55/g della
+   simulazione a secco sono un **limite superiore** e il numero che il piano userà è più basso.
+   **Non corretto di proposito**: aggirare il payback è allentare un limite di rischio, e la
+   domanda vera — se su un mercato a 30 h il costo di adverse selection sia stimato bene — è una
+   misura che non esiste. **Serve una decisione dell'operatore**, non una patch.
+57. **🟡 LA COMPOSIZIONE PER SCAGLIONE NON SCALA COL NUMERO DI SLOT — 22 agosto 2026, NON corretta.**
+   `quotaScaglioni` dà **1 solo posto «basso»** (minSize ≤ 20) per qualunque N: a 12 slot sono
+   1 + 11. Ma la fascia corta è **dominata dai minSize 20** — misurato sul board del 22/08: 4 dei
+   7 corti ammissibili sono «basso» e si contendono **un posto solo**. È la ragione misurata per
+   cui il quinto slot corto è restato vuoto per due cicli (`postiVuoti: [{corta:1}]`). ⚠ Cambiarla
+   sposta la cifra di capitale per scaglione, che è una decisione dell'operatore (§4.13). **Non
+   toccata.**
+56. **🟡 UN MERCATO CHE ATTRAVERSA LE 48 h NON RICEVE LA DISTANZA DELLA FASCIA NUOVA — 22 agosto.**
+   La fascia si valuta **fresca a ogni giro** (giusto: è funzione dell'orologio, §5.2 p.51), ma
+   `targetOffsetCents` si scrive **una volta sola, all'ingresso**. Misurato: `0x4757745c` è entrato
+   a 48,4 h come «lunga» e adesso è «corta» a 47,8 h, conteggiato fra i 5 corti ma quotato a
+   2,05¢. ⚠ **Non corretto, ed è la scelta prudente**: scrivere l'offset a fascia cambiata farebbe
+   scattare l'inseguimento di agent40 su un ordine VIVO, cioè un cancella-e-ripiazza che perde la
+   priorità di coda su un mercato che sta lavorando bene — esattamente ciò che §11 vieta. Il caso
+   si consuma da sé (un corto scade entro 48 h). Va saputo leggendo il referto: «5 corti» non vuol
+   dire «5 a 3,0¢».
+55-bis. **🟡 LA CORSIA CALDA È PIENA E I CANDIDATI PRENDONO ZERO — 22 agosto, mitigato NON risolto.**
+   Con 60 posti occupati da righe del piano + selezionati + **trattenuti**, la classe `candidati`
+   riceveva **0**: l'unica porta d'ingresso per un mercato nuovo era chiusa. Mitigato con una
+   classe `prioritari` (≤ 12, la sola che scavalca i trattenuti). ⚠ **La leva vera resta il tetto
+   della corsia (60)**, e alzarlo è una decisione dell'operatore: più sottoscrizioni ws e più
+   `mid-history` su disco (~285 MB/g su 90 mercati, §5.2 p.43).
 53. **🟡 IL CICLO NON DISTINGUE «FIGLIO MORTO» DA «NIENTE DA FARE» NELL'ESITO — 21 agosto 2026.**
    `lib/maker/realloc-cycle.js:255-261`: se il piano fallisce e `triggerValidita` e' FALSO si esce con
    `mancato(...)` ⇒ **`referto('nessuna')`**, lo stesso esito di «non c'era niente da fare». Nel record
