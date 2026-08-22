@@ -598,6 +598,43 @@ in cui manca un ingresso (`no-position`, `no-entry-price`, `rules-unreadable`), 
 | 3 | chiusura rapida: taker fin dove il book copre + limit per il resto | coppia ≤ **101¢** |
 | 4 | riposizionamento scoperto: SELL a **+1% dal carico**, dentro banda e **mai sotto il carico**, + BUY sulla controparte | coppia ≤ 101¢ |
 
+> **🚪 L'USCITA PUÒ GUARDARE FUORI BANDA QUANDO LA COPPIA È IMPOSSIBILE — 22 agosto 2026,
+> decisione dell'operatore.** `exit-plan.planExit` sapeva produrre **solo** prezzi dentro la banda
+> premiante: il clamp porta il prezzo a `b.hi`, e se `b.hi` sta sotto il pavimento della scala il
+> verdetto è `no-target`, cioè **nessuna uscita** — il miglior bid del libro non veniva nemmeno
+> guardato. Misurato su MrBeast `0x4757745c`: bordo alto banda **0,55**, pavimento concesso **0,646**,
+> miglior bid **0,64** — fuori banda ma **9¢ meglio** di qualunque prezzo in banda.
+> **LA REGOLA**: gamba scoperta **e** coppia economicamente impossibile (`carico + ask sorella` oltre
+> il tetto di **101¢**) ⇒ l'uscita considera anche prezzi **FUORI** dalla banda. Prezzo =
+> `max(pavimento del gradino, min(obiettivo, miglior bid))` — la **stessa** aritmetica di
+> `inseguiIlBid`, non una seconda. Si rinuncia al premio su quella gamba per non restare direzionali.
+> **⚠ IL MERGE VIENE PRIMA, SEMPRE, ED È SCRITTO**: `sizeAltroLato > 0` ⇒ si fonde e non si vende. La
+> precedenza esisteva per struttura (`provaCoppia` gira prima in ogni ramo); adesso è **una
+> condizione**, e `sizeAltroLato` **non letta** chiude la deroga.
+> **⚠ IL TAPPO DEL 5% (R7) E LA SCALA DI §7 NON SI TOCCANO**: il pavimento è un `Math.max`, quindi
+> questo ramo può solo scegliere un prezzo che la scala **già consentiva**. Se il pavimento resta sopra
+> il bid, l'ordine sta a riposo fuori banda e non si riempie — **è la risposta voluta**.
+> **⚠ IL PAVIMENTO SI ARROTONDA IN SU SULLA GRIGLIA, e la direzione è obbligata**: `pavimentoConcesso`
+> è una frazione del carico (0,68 × 0,95 = **0,646**) e non cade su un tick. In giù concederebbe **più**
+> perdita; in su ne concede **meno**. Il pavimento che esce dal piano è quello arrotondato, o
+> `inseguiIlBid` a valle lo riporterebbe fuori griglia.
+> **⚠ IL TRIGGER DI BANDA NON GIUDICA UN'USCITA FUORI BANDA VOLUTA**: `band-exit` chiude **a mercato**,
+> cioè vende al bid, che starebbe **sotto** il pavimento — sarebbe un modo di aggirare il pavimento del
+> rischio. `decideExit({fuoriBandaVoluta:true})` non valuta il trigger 1 e lo dichiara; **il tetto di
+> attesa (24 h) resta intatto**, ed è l'unica via d'uscita che non passa dal pavimento.
+> **⚠ E NON DICHIARA `inCoda`**: `manual-order` **riassegna** `price = q.price` dopo `prezzo-in-coda`,
+> e quel ricalcolo riporterebbe l'uscita **dentro** banda, annullando in silenzio il prezzo scelto. È la
+> **quarta** omissione condizionata di `inCoda` in `auto-close`, contata per nome da
+> `risposta-al-fill.test.js`. «Mai primo sul libro» non è toccata: su un SELL non rifiuta mai.
+> **⚠ IL PREMIO PERSO È ZERO PER COSTRUZIONE**, non per misura: un'uscita fuori banda **resta a
+> riposo** solo dove `b.hi < pavimento`, cioè dove **nessuna uscita in banda era ammessa** e quindi non
+> c'era nessun ordine da cui maturare. Quando il bid arriva al prezzo scelto l'ordine **attraversa** e
+> si riempie: non riposa. Asserito su 7.000+ stati in `uscita-fuori-banda.test.js` ⑥.
+> **⚠ MONOTONO E OPT-IN**: senza `uscitaFuoriBanda: true` `planExit` è la funzione di prima riga per
+> riga (asserito su 273 combinazioni); la deroga non abbassa mai un'uscita né la fa sparire.
+> **Fail-closed** su ogni ingresso: bid illeggibile, ask dell'altro lato illeggibile, coppia non
+> misurabile, `sizeAltroLato` non letta ⇒ nessuna deroga.
+
 **⚠ IL LIVELLO 0 SI VALUTA PRIMA DI QUALUNQUE GUARDIA SUL PREZZO** (R8): le due guardie che aprivano
 `decidiLivello` — carico non leggibile, tetto non calcolabile — parlano del prezzo a cui si comprerebbe
 il **secondo lato**, e rispondevano anche a una coppia **già completa**. Il conto di `manca` sta
