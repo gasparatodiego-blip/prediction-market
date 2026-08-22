@@ -1,7 +1,7 @@
 {
   "global": {
     "maxOrderNotionalUsd": 80,
-    "maxOpenNotionalUsd": 1300,
+    "maxOpenNotionalUsd": 1470,
     "maxOrdersPerWindow": 40,
     "windowMs": 60000,
     "maxDailyLossUsd": 100,

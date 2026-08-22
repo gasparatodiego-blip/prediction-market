@@ -145,6 +145,22 @@ function candidatiPerIlFeed() {
   } catch { return []; }   // board illeggibile ⇒ nessun candidato: si torna al comportamento di prima
 }
 
+/** I mercati che la SELEZIONE ha scelto — la classe che va sottoscritta ad agent34 o la fascia corta
+ *  resta cieca per sempre (v. il blocco in `collector-priority.writeCollectorPriority`).
+ *  ⚠ Si legge dallo STATO gia' scritto, non si ricalcola: la selezione gira PRIMA del piano (§4.13),
+ *  quindi qui lo stato e' quello di questo giro. Ricalcolarla sarebbe una seconda decisione.
+ *  ⚠ FAIL-CLOSED: stato illeggibile ⇒ lista vuota ⇒ il comportamento di prima.
+ *  ⚠ ANCHE GLI `inGestione`: una gamba riempita in attesa della sorella ha bisogno del libro almeno
+ *  quanto un mercato che quota, e per la stessa ragione delle posizioni. */
+function selezionatiPerIlFeed() {
+  try {
+    const st = SELS.leggiStato();
+    const sel = st && st.stato && st.stato.selezionati;
+    if (!sel || typeof sel !== 'object') return [];
+    return Object.keys(sel).map((id) => String(id).trim().toLowerCase()).filter(Boolean);
+  } catch { return []; }
+}
+
 /** I mercati dove il capitale è GIÀ esposto. Fail-closed: snapshot illeggibile ⇒ lista vuota. */
 function mercatiConPosizione() {
   try {
@@ -686,9 +702,11 @@ async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null, ex
       const pr = writeCollectorPriority(piano, {
         candidati: candidatiPerIlFeed(),
         posizioni: mercatiConPosizione(),
+        selezionati: selezionatiPerIlFeed(),
       });
       annuncia('log', `priorità del raccoglitore aggiornate: ${pr.marketIds.length} mercati`
         + ` (${pr.freschi} da questo piano, ${pr.conPosizione} con posizione aperta,`
+        + ` ${pr.selezionati || 0} SCELTI dalla selezione,`
         + ` ${pr.candidati} CANDIDATI seminati nel feed${pr.candidatiTagliati ? ` (${pr.candidatiTagliati} oltre il tetto)` : ''},`
         + ` ${pr.trattenuti} tenuti caldi, ${pr.scaduti} lasciati raffreddare)`);
     } catch (e) { annuncia('error', 'priorità del raccoglitore non scritte', { error: e.message }); }
@@ -1193,6 +1211,10 @@ function copiaRegoleNelRipiego({ marketId }, by) {
 const SELM = require('../lib/maker/selezione-mercati');
 // R1 · quanti mercati contemporanei: dall'ambiente di QUESTO processo, non da una costante.
 const QUANTI = require('../lib/maker/quanti-mercati');
+// La distanza dal mid per FASCIA di scadenza (22 agosto 2026). Un posto solo, e il valore viaggia ad
+// agent40 per `data/maker-offsets.json`, non per un env suo: agent40 non si riavvia (§4.14).
+const DFASCIA = require('../lib/maker/distanza-fascia');
+const OFFSETS = require('../lib/maker/offset-config');
 const SCAD = require('../lib/maker/scadenza-fuori-perimetro');
 const SELS = require('../lib/maker/selezione-stato');
 // «Perimetro pieno, libro vuoto» non deve durare piu' di un ciclo — regola dell'operatore del
@@ -2420,6 +2442,12 @@ async function selezionaMercati(deps = {}) {
   // La composizione per scaglione la deriva `quotaScaglioni(max)` dentro `decidiSelezione`: un numero
   // solo, non due.
   const quanti = (deps.quanti !== undefined ? deps.quanti : QUANTI.quantiMercati());
+  // ── I DUE CONTATORI DI FASCIA (22 agosto 2026) ────────────────────────────────────────────────
+  // Stessa disciplina di `quanti`: vivono nell'ambiente di QUESTO processo e si leggono da `/proc`,
+  // non dal `.env`. Si scrive `MAKER_SLOT_CORTI` e i lunghi si DERIVANO, cosi' la somma non puo'
+  // contraddire il tetto (`quanti-mercati.slotDiFascia`).
+  // ⚠ Non dichiarata ⇒ 0 corti ⇒ la selezione sceglie esattamente come prima.
+  const fascia = (deps.fascia !== undefined ? deps.fascia : QUANTI.slotDiFascia(process.env, quanti.quanti));
   // ⚠ `codaLungaGiorni` VIENE DA `horizon`, L'UNICA FONTE, e si INIETTA perche' `selezione-mercati`
   // e' puro (zero `require`, un test lo asserisce). Senza, la selezione non sa che l'allocatore
   // finanzia la coda lunga solo a partire dal budget della fascia corta — ed e' il deadlock del
@@ -2489,6 +2517,7 @@ async function selezionaMercati(deps = {}) {
     board, stato: stato.stato, posizioni, ora: Date.now(), escludi: quarantena, orizzonteMassimoOre,
     nettoPerMercato, conOrdiniVivi, max: quanti.quanti, codaLungaGiorni, bookVivi,
     codaLungaFrazione, tettoPerMercatoUsd, pavimentoPremiante,
+    slotCorti: fascia.corti, sogliaCortiOre: DFASCIA.SOGLIA_CORTI_ORE,
   });
   if (!d.ok) {
     annuncia('log', `selezione automatica: nessuna decisione — ${d.motivo}`);
@@ -2595,7 +2624,62 @@ async function selezionaMercati(deps = {}) {
     let p;
     try { p = await preparaMercatoNuovo(e.id, abilita, prendiInGestione, accendiUscita, registraCatalogo); }
     catch (err) { p = { ok: false, motivo: err && err.message ? err.message : String(err) }; }
-    entrati.push({ ...e, riga: undefined, aperto: p.ok === true, motivo: p.ok === true ? null : p.motivo });
+
+    // ══ LA DISTANZA DI FASCIA, SCRITTA DOVE AGENT40 LA LEGGE GIA' ═══════════════════════════════
+    //
+    // ⚠⚠ QUESTO E' IL PUNTO IN CUI §14 E §5.1 SI TOCCANO, e va letto prima di cambiarlo.
+    // «I processi che decidono un prezzo si riavviano INSIEME, o i prezzi divergono» (§5.1) — ma
+    // agent40 NON si riavvia, perche' al suo avvio gli ordini gia' a libro diventano PRE-ESISTENTI,
+    // cioe' invisibili al motore, e con `send` aperto un deploy li condanna alla morte per GTD.
+    // Quindi la distanza di fascia non puo' viaggiare ne' in un env di agent40 ne' nel suo codice.
+    //
+    // Viaggia in `data/maker-offsets.json`, che `offset-config.resolveOffsetFor` rilegge **da disco a
+    // ogni chiamata**: il TRIGGER 3 di `auto-reprice` trova `source:'configured'` e tiene l'ordine
+    // alla distanza scritta senza sapere niente di fasce. E' il canale che il pannello usa da sempre,
+    // non un secondo meccanismo — e la sua precedenza («un settaggio esplicito vince») e' gia' la
+    // regola documentata in testa a quel modulo.
+    //
+    // ⚠ SI SCRIVE PRIMA CHE IL MERCATO RICEVA ORDINI, ed e' l'unico istante in cui e' gratis: dopo,
+    // cambiare la distanza vorrebbe dire un riprezzo, cioe' perdere la priorita' di coda.
+    // ⚠ SOLO SUI CORTI, e solo se il mercato e' stato davvero aperto. `distanzaPerMercato` risponde
+    // `applica:false` su tutto il resto — lungo, scadenza illeggibile, banda illeggibile, env spento —
+    // e in quel caso NON si tocca il file: un mercato lungo non deve trovarsi una distanza scritta.
+    // ⚠ NON SOLLEVA MAI. Una distanza non scritta significa «quotato come i lunghi», che e' il
+    // comportamento di prima; farne fallire l'ingresso sarebbe peggio del difetto che cura.
+    let distanza = null;
+    if (p.ok === true) {
+      try {
+        const riga = e.riga || {};
+        const df = DFASCIA.distanzaPerMercato({
+          oreAllaScadenza: e.oreAllaScadenza,
+          bandRadiusCents: Number(riga.rewardsMaxSpread),
+          tick: Number(riga.tickSize),
+          // Il pavimento «mai piu' vicina al mid dei lunghi» si chiede alla STESSA funzione da cui
+          // esce la distanza dei lunghi, non a un numero ricopiato: il reperto D1 qui sarebbe su un
+          // prezzo di ordini reali.
+          distanzaLunghiCents: (() => {
+            try {
+              const d0 = require('../lib/maker/distanza-obiettivo')
+                .distanzaObiettivoCents({ maxSpreadCents: Number(riga.rewardsMaxSpread) });
+              return d0 && Number.isFinite(d0.distanzaC) ? d0.distanzaC : null;
+            } catch { return null; }
+          })(),
+        });
+        if (df.applica) {
+          const w = OFFSETS.setMarketOffset({ marketId: e.id, targetOffsetCents: df.cents,
+            by: 'riallocatore · selezione automatica',
+            reason: `fascia corta: ${df.motivo}` });
+          distanza = { ...df, scritta: !!(w && w.ok !== false) };
+        } else {
+          distanza = { applica: false, motivo: df.motivo, scritta: false };
+        }
+      } catch (err) {
+        distanza = { applica: false, scritta: false,
+          motivo: `distanza di fascia non scritta: ${err && err.message ? err.message : String(err)}` };
+      }
+    }
+    entrati.push({ ...e, riga: undefined, aperto: p.ok === true, motivo: p.ok === true ? null : p.motivo,
+      distanzaFascia: distanza });
   }
 
   // ⚠ SI SALVA SOLO CIO' CHE E' STATO SCRITTO DAVVERO. Un mercato che `preparaMercatoNuovo` ha
@@ -2649,6 +2733,13 @@ async function selezionaMercati(deps = {}) {
     // qualcosa di calcolato non viene letto: qui si legge.
     postiNonAssegnati: d.postiNonAssegnati || [],
     scartatiPerComposizione: d.scartatiPerComposizione || [],
+    // ── LE DUE FASCE, con quello che hanno fatto e quello che NON hanno potuto fare ─────────────
+    // ⚠ SI SCRIVE ANCHE QUANDO SONO SPENTE (`attiva:false`): «la fascia non ha lasciato posti vuoti»
+    // e «la fascia non c'era» sono due stati diversi, e un campo assente non li distingue.
+    fasce: d.fasce || null,
+    fasceConfig: { corti: fascia.corti, lunghi: fascia.lunghi, totale: fascia.totale,
+      fonte: fascia.fonte, grezzo: fascia.grezzo, clampata: fascia.clampata, motivo: fascia.motivo,
+      distanzaCorti: DFASCIA.leggiDistanzaCorti() },
     slotVuotiPerScarsita: d.slotVuotiPerScarsita || null,
     bookVivi: bookVivi.leggibile
       ? { leggibile: true, quanti: bookVivi.quanti, regime: bookVivi.regime, feedVivo: bookVivi.feedVivo,

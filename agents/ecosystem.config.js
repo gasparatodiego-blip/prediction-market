@@ -540,7 +540,60 @@ module.exports = {
         //     e' un ordine di allocare il doppio, non l'autorizzazione a farlo se capita. Il cap passa
         //     dal 43% all'87% del capitale ($1.494,78): da limite che morde diventa quasi inerte, e la
         //     difesa effettiva si riduce al kill R10 (−$100 realizzati) e al guardiano (−5%).
-        MAKER_MERCATI_CONTEMPORANEI: '10',
+        // ⚠ 10 → 12 il 22 agosto 2026. L'operatore ne aveva chiesti 15 (10 lunghi + 5 corti):
+        //   15 × 2 × $61,25 = $1.837,50 contro un cap di $1.300 e un CAPITALE di $1.494,78.
+        // Farceli stare vorrebbe dire size $43,33, sotto il pavimento premiante dello scaglione 50
+        // ($61,25) ⇒ reward ZERO su 17 dei 25 mercati ammissibili e 7 slot vuoti su 15 (misurato sul
+        // board del 22/08 14:39Z). DODICI e' il massimo che tiene ogni mercato sopra il pavimento:
+        //   12 × 2 × $61,25 = $1.470,00 ≤ cap $1.470 ≤ capitale $1.494,78.
+        // La derivazione integrale sta in `lib/maker/selezione-mercati.js`, non qui: questo e' il
+        // posto dove si SCRIVE il numero, quello e' il posto dove si spiega.
+        MAKER_MERCATI_CONTEMPORANEI: '12',
+        // ══ I DUE CONTATORI DI FASCIA — `MAKER_SLOT_CORTI` ═══════════════════════════════════════
+        //
+        // Quanti dei `MAKER_MERCATI_CONTEMPORANEI` slot appartengono alla fascia CORTA (scadenza
+        // entro 48 h). I LUNGHI si DERIVANO (`12 − 5 = 7`) e non hanno una variabile propria: due
+        // env indipendenti potrebbero sommare a piu' del tetto — cioe' esposizione oltre il cap — e
+        // nessuno se ne accorgerebbe finche' il gate non smettesse di piazzare a meta' strada.
+        //
+        // ⚠⚠ SONO DUE CONTATORI SEPARATI, NON UNA PRIORITA': un corto non prende mai un posto lungo
+        //   e viceversa, e i posti corti che avanzano RESTANO VUOTI invece di passare ai lunghi
+        //   (istruzione esplicita dell'operatore: i corti scadono in ore, quindi il posto si ricicla
+        //   presto, mentre un lungo che lo prendesse lo terrebbe per giorni).
+        //
+        // ⚠ **NON DICHIARATA ⇒ 0 ⇒ NESSUNA FASCIA**, cioe' la selezione di sempre. E' la posizione di
+        //   spegnimento, e tornare indietro e' cancellare questa riga piu' un riavvio DAL FILE.
+        //
+        // ⚠ **PERCHE' I CORTI**, misurato sul board vivo: il vantaggio non viene dal montepremi
+        //   (mediana $10/g contro $3/g) ma dalla CONCORRENZA — `competitorQ` mediana **68,6 sui corti
+        //   contro 755,2 sui lunghi**, undici volte meno. Su un libro quasi vuoto $61 contano
+        //   qualcosa; su uno da 755 share non contano niente.
+        MAKER_SLOT_CORTI: '5',
+        // ══ LA DISTANZA DAL MID PER FASCIA — `MAKER_DISTANZA_CORTI_CENTS` ═══════════════════════
+        //
+        // I CORTI si quotano a 3,0¢ dal mid; i LUNGHI restano a `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V`
+        // (0,456 × 4,5¢ = **2,05¢**), che questa variabile non tocca in nessun ramo.
+        //
+        // ⚠⚠ **3,0 E NON 3,5, E IL MOTIVO E' IL TICK.** L'operatore aveva chiesto 3,5¢: misurato sul
+        //   board del 22/08, **cinque dei sei corti ammissibili hanno tick 1¢**, e su una griglia da
+        //   1¢ il valore 3,5 non esiste — atterra a 3 o a 4. Le due scelte reali col loro costo, che
+        //   e' il punteggio del venue `S = ((v−s)/v)²` sulla banda modale di 4,5¢:
+        //         3,0¢ → S = 0,111        4,0¢ → S = 0,0123   (nove volte peggio)
+        //   Decisione dell'operatore: **3,0¢**, il valido piu' interno.
+        //
+        // ⚠ **COME ARRIVA AD AGENT40 SENZA RIAVVIARLO**, che e' la parte da non rompere: agent40 NON
+        //   si riavvia (renderebbe PRE-ESISTENTI gli ordini veri, §4.14). agent41 materializza questa
+        //   distanza PER MERCATO in `data/maker-offsets.json` quando sceglie un corto, e
+        //   `offset-config.resolveOffsetFor` la rilegge da disco a ogni ciclo: il TRIGGER 3 di
+        //   `auto-reprice` la trova come `source:'configured'` e ce lo tiene. Nessun env di agent40,
+        //   nessun codice nuovo in agent40.
+        //
+        // ⚠ **NON DICHIARATA ⇒ REGOLA SPENTA**: i corti verrebbero quotati come i lunghi. Non e'
+        //   «meta' regola», e' lo stato noto di prima.
+        // ⚠ **NON PUO' MAI AVVICINARE AL MID**: un valore piu' piccolo della distanza dei lunghi
+        //   viene RIFIUTATO da `distanza-fascia.js`, e comunque `planBehindBest` applica la
+        //   distanza-obiettivo con un `Math.min` sul prezzo che «mai primo sul libro» ha gia' scelto.
+        MAKER_DISTANZA_CORTI_CENTS: '3.0',
         // ── LA QUOTA DELLA CODA LUNGA — 12% → 50%, 21 agosto 2026, decisione dell'operatore ────────
         // Alle 05:00Z il board offriva 7 ammissibili TUTTI di coda lunga (1.699-3.163 h): sei a
         // `minSize 50`, pavimento $61,25, contro una quota che al 12% valeva $33,41. Il cancello 2-ter
