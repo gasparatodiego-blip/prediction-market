@@ -205,7 +205,13 @@ function candidatiPerIlFeed() {
       const corti = ammessi.filter(eCortoAmmissibile).sort(perPool).slice(0, TETTO_CORTI_PROMOSSI);
       const cortiSet = new Set(corti.map((r) => String(r.marketId)));
       const resto = ammessi.filter((r) => !cortiSet.has(String(r.marketId))).sort(perPool);
-      return [...corti, ...resto].map((r) => String(r.marketId));
+      // ⚠ I CORTI ESCONO ANCHE SEPARATI, e serve: metterli in testa ai CANDIDATI non basta, perche'
+      // la classe candidati puo' ricevere ZERO posti — misurato, con la corsia piena di righe del
+      // piano, selezionati e trattenuti. Chi chiama li passa come `prioritari`, l'unica classe che
+      // scavalca i trattenuti (v. `collector-priority.unioneMobile`). Restano in testa ai candidati
+      // anche qui, cosi' il comportamento e' lo stesso per chi non li passa separati.
+      return Object.assign([...corti, ...resto].map((r) => String(r.marketId)),
+        { corti: corti.map((r) => String(r.marketId)) });
   } catch { return []; }   // board illeggibile ⇒ nessun candidato: si torna al comportamento di prima
 }
 
@@ -763,14 +769,17 @@ async function calcolaPiano({ capital, maxPerMarketUsd, onlyMarketIds = null, ex
   // scritta adesso non fa in tempo ad aiutare QUESTO ciclo, ma è quella che rende eseguibile il prossimo.
   if (!onlyMarketIds) {
     try {
+      const cand = candidatiPerIlFeed();
       const pr = writeCollectorPriority(piano, {
-        candidati: candidatiPerIlFeed(),
+        candidati: cand,
+        prioritari: cand.corti || [],
         posizioni: mercatiConPosizione(),
         selezionati: selezionatiPerIlFeed(),
       });
       annuncia('log', `priorità del raccoglitore aggiornate: ${pr.marketIds.length} mercati`
         + ` (${pr.freschi} da questo piano, ${pr.conPosizione} con posizione aperta,`
         + ` ${pr.selezionati || 0} SCELTI dalla selezione,`
+        + ` ${pr.prioritari || 0} CORTI prioritari${pr.prioritariTagliati ? ` (${pr.prioritariTagliati} tagliati)` : ''},`
         + ` ${pr.candidati} CANDIDATI seminati nel feed${pr.candidatiTagliati ? ` (${pr.candidatiTagliati} oltre il tetto)` : ''},`
         + ` ${pr.trattenuti} tenuti caldi, ${pr.scaduti} lasciati raffreddare)`);
     } catch (e) { annuncia('error', 'priorità del raccoglitore non scritte', { error: e.message }); }
@@ -3773,8 +3782,15 @@ async function eseguiGradino(azione) {
       // Non si riavvia nessun processo: si RISEMINA la corsia calda, che agent34 rilegge da sé. È la
       // stessa scrittura del ciclo normale, quindi non introduce nessun percorso nuovo.
       const piano = leggiUltimoPiano();
+      // ⚠ `selezionati` VA PASSATO ANCHE QUI, o questo gradino toglierebbe la protezione che il
+      // ciclo normale mette. E' la classe «protezione presente su un percorso e assente sul
+      // gemello», la piu' ricorrente di questo repo: un gradino di SBLOCCO che, riseminando, fa
+      // uscire dal feed i mercati scelti sarebbe un presidio che produce il guasto che cura.
+      const candR = candidatiPerIlFeed();
       const pr = writeCollectorPriority(piano && piano.ok ? { rows: piano.righe || [] } : { rows: [] }, {
-        candidati: candidatiPerIlFeed(), posizioni: mercatiConPosizione(),
+        candidati: candR, prioritari: candR.corti || [],
+        posizioni: mercatiConPosizione(),
+        selezionati: selezionatiPerIlFeed(),
       });
       return fatto(!!(pr && pr.ok !== false), messaggioFeedRiseminato(pr));
     }
