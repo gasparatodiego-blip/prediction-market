@@ -1113,6 +1113,27 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
 54. **✅ CHIUSA IL 22 AGOSTO** — la cura non è una tolleranza sui timestamp (misurata e scartata) ma la
    **conservazione del valore**: `Δcassa + Δsize ≈ 0`, o il totale non è misurabile. Regola viva in §3,
    diagnosi integrale in §5-bis p.204 e `docs/registro-voci-chiuse.md`.
+61. **🟡 `selezione-cablata.test.js` CONTA I SELEZIONATI INVECE DEGLI ATTIVI — 22 agosto, NON corretto.**
+   L'asserzione «e il vincolo e' esattamente l'insieme scelto» (riga 95-96) confronta
+   `onlyMarketIds.length` con **tutti** i selezionati, mentre `restringiAllaSelezione` usa
+   `idsAttivi`, cioe' i **non-in-gestione** — che e' il comportamento corretto e documentato in §4.13
+   («usa `idsAttivi` per il piano, ma la lista del riprezzo tiene tutti gli id»). ⚠ **Il codice ha
+   ragione, il test no**: e' verde solo finche' nessun mercato e' in gestione, e diventa rosso al
+   primo fill. Misurato: 13 selezionati, 12 attivi, 1 in gestione (MrBeast con la posizione aperta).
+   La cura e' una riga (`scelti` → i soli `inGestione !== true`). **Non corretto**: e' un secondo
+   lavoro, e il prompt chiedeva il tick.
+60. **🟡 `marketMeta` ESPLODE SU UN ELEMENTO NULLO IN `rows` — 22 agosto, preesistente, NON corretto.**
+   `allocator.js:111` fa `r.bidDepthInBand` senza guardia, quindi un `null` nell'array dei campioni
+   solleva `TypeError` prima di qualunque altra cosa. Trovato scrivendo il test del tick, non da un
+   caso vero: **non e' noto se in produzione `rows` possa contenere elementi nulli**, e senza quella
+   prova non si corregge (una guardia aggiunta a caso sposta il comportamento in un verso che nessuno
+   ha misurato). Dichiarato perche' chi tocchera' quella funzione lo sappia.
+59. **🟡 IL GIORNALE REGISTRA `gamba-impossibile` SENZA IL SOTTO-MOTIVO — 22 agosto, NON corretto.**
+   `data/realloc-scheduler.jsonl` porta `motivo: "gambe non costruibili: gamba-impossibile"` e basta;
+   il dettaglio vero («offset non valido», cioe' il tick mancante) vive solo nel valore di ritorno di
+   `gambeDiUnaRiga` e **non arriva a disco**. Conseguenza misurata: la diagnosi del difetto del tick
+   non era raggiungibile dal giornale — e' servito ricalcolare le gambe fuori processo. Un motivo che
+   non si scrive e' un motivo che non esiste il giorno dopo.
 58. **🔴 IL PAYBACK RIFIUTA I CORTI CHE LA SELEZIONE AMMETTE — 22 agosto 2026, NON corretto.**
    La fascia corta adesso vede, sceglie e prezza (§4.13), ma il piano non la finanzia: su
    `0x9db884ee` (MrBeast, 31 h) `horizonVerdict` risponde **`short`** — «scade fra 1,3 g ma il
