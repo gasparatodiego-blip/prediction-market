@@ -148,6 +148,47 @@ const FAST_SLICE_HOURS  = Number(process.env.REWARD_FAST_SLICE_HOURS) > 0
 // una copertura parziale silenziosa e' peggio di una dichiarata.
 const FAST_MAX_PAGES    = Number(process.env.REWARD_FAST_MAX_PAGES) > 0
   ? Number(process.env.REWARD_FAST_MAX_PAGES) : 120;
+
+// ── LA TERZA PASSATA · L'ELENCO DEI PREMIATI SI CHIEDE AL VENUE, NON SI DEDUCE ──────────────────────
+//
+// ═══ PERCHE' LE PRIME DUE PASSATE NON POSSONO COPRIRE LA FINESTRA, MAI ═════════════════════════════
+// Misurato il 22 agosto 2026 (difetto **J**). La passata 2 partiziona 0..48 h in otto fette da 6 h e
+// spende al piu' `FAST_MAX_PAGES` pagine: le prime sei fette ne consumano 121, quindi il budget finisce
+// li' e **le fette 36-42 h e 42-48 h non vengono lette affatto**, a ogni giro, da sempre. Ma il difetto
+// non e' il budget: e' che **la domanda e' sbagliata**. Gamma tronca OGNI query a 2.100 record e le fette
+// da 6 h contengono piu' di 2.100 mercati, quasi tutti senza montepremi (sport e crypto up-or-down),
+// quindi anche una fetta letta per intero e' TRONCATA — e i premiati stanno oltre il taglio.
+//
+// La misura, sul board vivo del 22 agosto:
+//   · bisezione adattiva delle otto fette fino a 45 minuti di ampiezza (l'unico modo di aggirare i
+//     2.100 restando su Gamma): **839 pagine, 559 s a MAX_RPS=1.5, 395 MB di picco**, e **due fette
+//     restavano comunque troncate**. Trovava 589 premiati entro 48 h.
+//   · `GET /sampling-markets` del CLOB: **17 richieste, 2,8 s**, e trova **642** premiati entro 48 h.
+// Cioe': trentatre' volte piu' economica, e piu' completa. Non e' un'ottimizzazione — e' la differenza
+// fra dedurre l'elenco dei mercati premiati enumerando l'universo e **chiederlo a chi lo pubblica**.
+//
+// ⚠ NON SI INVENTA NESSUN CAMPO. `/sampling-markets` dice QUALI mercati hanno un montepremi; i campi
+// della riga continuano ad arrivare da Gamma, chiesti per `condition_ids` in blocchi, e costruiti dalla
+// STESSA `raccogli()` delle altre due passate. Una riga della passata 3 e' indistinguibile da una riga
+// della passata 1: nessun ramo nuovo a valle, nessun campo con un valore di ripiego.
+// ⚠ MONOTONA: puo' solo AGGIUNGERE mercati all'unione. Nessun filtro, nessuna soglia, nessun cancello
+// e nessun criterio di ordinamento e' toccato. Un mercato gia' trovato da Gamma resta quello di Gamma.
+// ⚠ FAIL-OPEN COME LE SORELLE: se il CLOB non risponde, le passate 1 e 2 restano e il board non e'
+// vuoto — e viceversa. Il fatto viene dichiarato nel log, non dedotto.
+const CLOB_SAMPLING_URL = 'https://clob.polymarket.com/sampling-markets';
+// 17 pagine misurate il 22/08 (16.342 mercati a 1.000 per pagina). 40 e' il fermo contro un cursore che
+// non termina, non una previsione: il ciclo esce da solo su `next_cursor` vuoto o `LTE=`.
+const SAMPLING_MAX_PAGES = Number(process.env.REWARD_SAMPLING_MAX_PAGES) > 0
+  ? Number(process.env.REWARD_SAMPLING_MAX_PAGES) : 40;
+// Quanti `condition_ids` per query a Gamma. Misurato: 100 rispondono (URL di 8.099 caratteri), 50
+// tengono l'URL sotto i 4,1 k — meta' del limite prudenziale di 8 k — e costano 13 richieste per 642
+// mercati. Il margine costa 6 richieste, cioe' 4 secondi: si paga.
+const GAMMA_IDS_PER_QUERY = 50;
+// Il tetto sul costo della terza passata, nella stessa forma delle sorelle: 30 blocchi = 1.500 mercati
+// nuovi per giro. Se morde viene DICHIARATO, come il budget della passata 2.
+const FAST_MAX_ID_QUERIES = Number(process.env.REWARD_FAST_MAX_ID_QUERIES) > 0
+  ? Number(process.env.REWARD_FAST_MAX_ID_QUERIES) : 30;
+
 const { scaricaLibri } = require('../lib/rewards/libri-batch');
 const GAP_SHARE_THRESH  = 0.20;  // ≥20% estimated share at $500 → band is thinly covered
 
@@ -369,11 +410,75 @@ async function fetchRewardMarkets(deps = {}) {
     if (r.pagine >= 21) fetteAlTetto++;
   }
 
+  // ── PASSATA 3 · L'ELENCO DEI PREMIATI, CHIESTO AL VENUE ────────────────────────────────
+  // Due domande, in quest'ordine: **quali** mercati hanno un montepremi (il CLOB lo pubblica), e poi
+  // **com'e' fatta la riga** di quelli che le prime due passate non hanno trovato (Gamma, per id).
+  const s3 = {
+    attiva: false, pagine: 0, elencati: 0, nellaFinestra: 0, senzaScadenza: 0,
+    daChiedere: 0, query: 0, aggiunti: 0, tettoQuery: false, errore: null,
+  };
+  const finestraFine = adesso + FAST_WINDOW_DAYS * 24 * 3_600_000;
+  try {
+    // (a) L'elenco. Il cursore termina da solo (`LTE=` o vuoto); `SAMPLING_MAX_PAGES` e' il fermo
+    //     contro un cursore che non termina, e se mordesse sarebbe una copertura parziale dichiarata.
+    const mancanti = [];
+    let cursore = '';
+    for (let pag = 0; pag < SAMPLING_MAX_PAGES; pag++) {
+      const r = await get(CLOB_SAMPLING_URL + (cursore ? `?next_cursor=${encodeURIComponent(cursore)}` : ''));
+      if (!r || r.status !== 200 || !r.data || !Array.isArray(r.data.data) || r.data.data.length === 0) break;
+      s3.pagine++;
+      for (const m of r.data.data) {
+        s3.elencati++;
+        const cid = m && m.condition_id;
+        if (!cid) continue;
+        // ⚠ Una scadenza che il venue non pubblica NON diventa «dentro la finestra»: senza data non si
+        //   puo' dire se il mercato appartenga alla finestra, e «non l'ho letta» non e' «e' vicina».
+        //   Resta scopribile dalla passata 1, che non filtra sulle date. Il caso si conta, non si tace.
+        const t = m.end_date_iso ? Date.parse(m.end_date_iso) : NaN;
+        if (!Number.isFinite(t)) { s3.senzaScadenza++; continue; }
+        if (t < adesso || t > finestraFine) continue;
+        s3.nellaFinestra++;
+        // Gia' trovato da Gamma ⇒ si tiene quello di Gamma: stessa regola d'unione delle altre due
+        // passate, e la riga di Gamma e' l'unica che porta lo slug dell'evento e il volume 24 h.
+        if (perId.has(cid)) continue;
+        mancanti.push(cid);
+      }
+      cursore = r.data.next_cursor;
+      if (!cursore || cursore === 'LTE=') break;
+    }
+    s3.attiva = s3.pagine > 0;
+    s3.daChiedere = mancanti.length;
+
+    // (b) Le righe. Gamma per `condition_ids`, a blocchi, e poi la STESSA `raccogli()`: la passata 3
+    //     non costruisce righe, ne chiede — quindi non puo' produrne una fatta diversamente.
+    for (let i = 0; i < mancanti.length; i += GAMMA_IDS_PER_QUERY) {
+      if (s3.query >= FAST_MAX_ID_QUERIES) { s3.tettoQuery = true; break; }
+      const blocco = mancanti.slice(i, i + GAMMA_IDS_PER_QUERY);
+      const qs = blocco.map((c) => `condition_ids=${encodeURIComponent(c)}`).join('&');
+      let r;
+      try { r = await get(`https://gamma-api.polymarket.com/markets?limit=${GAMMA_IDS_PER_QUERY}&${qs}`); }
+      catch (e) { console.warn(`  Gamma [per-id] blocco ${i / GAMMA_IDS_PER_QUERY} error: ${e.message}`); break; }
+      s3.query++;
+      if (!r || r.status !== 200 || !Array.isArray(r.data)) break;
+      s3.aggiunti += raccogli(r.data);
+    }
+  } catch (e) {
+    // Una passata che cade non deve azzerare le altre due: e' la stessa disciplina della passata 2.
+    s3.errore = e.message;
+  }
+
   console.log(`  scoperta: ${p1.pagine}p listino (+${p1.aggiunti}) · ${pagineUsate}p in ${fetteFatte}/${fetteN} fette da ${FAST_SLICE_HOURS}h`
     + ` (+${nuoviVicini} nuovi entro ${FAST_WINDOW_DAYS}g)`
     + (fetteAlTetto ? ` · ${fetteAlTetto} fetta/e al tetto dei 2.100: copertura PARZIALE` : '')
-    + (budgetFinito ? ` · BUDGET ESAURITO a ${FAST_MAX_PAGES}p: le fette oltre +${fetteFatte * FAST_SLICE_HOURS}h non sono state lette` : '')
+    + (budgetFinito ? ` · budget fette esaurito a ${FAST_MAX_PAGES}p oltre +${fetteFatte * FAST_SLICE_HOURS}h (coperto dalla passata 3)` : '')
     + ` → ${perId.size} mercati premiati`);
+  console.log(`  scoperta/venue: ${s3.attiva ? `${s3.pagine}p sampling · ${s3.elencati} mercati premiati pubblicati dal CLOB`
+      + ` · ${s3.nellaFinestra} entro ${FAST_WINDOW_DAYS}g · ${s3.daChiedere} non visti da Gamma`
+      + ` → ${s3.query} query per id (+${s3.aggiunti} nuovi)`
+      + (s3.senzaScadenza ? ` · ${s3.senzaScadenza} senza scadenza pubblicata: NON collocati nella finestra` : '')
+      + (s3.tettoQuery ? ` · ⚠ TETTO di ${FAST_MAX_ID_QUERIES} query per id raggiunto: copertura PARZIALE` : '')
+      + (s3.pagine >= SAMPLING_MAX_PAGES ? ` · ⚠ TETTO di ${SAMPLING_MAX_PAGES} pagine sampling raggiunto` : '')
+    : `⚠ NON DISPONIBILE${s3.errore ? ` (${s3.errore})` : ''} — la finestra resta coperta solo dalle fette`}`);
   return [...perId.values()];
 }
 
@@ -1242,4 +1347,5 @@ if (require.main === module) main();
 // secco e i test usino LE FUNZIONI VERE invece di ricopiarle: una copia che diverge e' il reperto D1, e
 // qui divergerebbe proprio sul numero che decide quali mercati il bot guarda.
 module.exports = { fetchRewardMarkets, FAST_WINDOW_DAYS, FAST_SLICE_HOURS, FAST_MAX_PAGES, MAX_PAGES, GAMMA_PAGE_SIZE,
-  analizzaLibro, computeLevels, sceltiPerLaScansione, MAX_CLOB_MARKETS, MIN_SIZE_ALLA_PORTATA };
+  analizzaLibro, computeLevels, sceltiPerLaScansione, MAX_CLOB_MARKETS, MIN_SIZE_ALLA_PORTATA,
+  CLOB_SAMPLING_URL, SAMPLING_MAX_PAGES, GAMMA_IDS_PER_QUERY, FAST_MAX_ID_QUERIES };
