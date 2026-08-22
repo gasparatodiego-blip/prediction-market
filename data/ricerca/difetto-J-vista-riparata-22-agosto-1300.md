@@ -306,3 +306,69 @@ solo per **quali** mercati chiedere, quindi la divergenza non entra nei numeri �
 del reperto **D1** fra due publisher. **Non toccato.**
 
 **⚠ Non ho corretto nessuno di questi tre.**
+
+---
+
+## 10 · IN SERVIZIO — confermato in produzione, due giri
+
+`agent24-liquidity-rewards` riavviato **dal file** alle 12:41:09Z (pid 768749). Due scansioni complete:
+
+```
+[12:41:18Z] scoperta: 21p listino (+622) · 120p in 6/8 fette · budget fette esaurito a 120p oltre
+            +36h (coperto dalla passata 3) → 1246 mercati premiati
+            scoperta/venue: 17p sampling · 16317 pubblicati dal CLOB · 625 entro 2g
+            · 619 non visti da Gamma → 13 query per id (+616 nuovi)
+[12:57:39Z] → 1232 mercati premiati · (+602 nuovi dalla passata 3)
+            profondità: 6.8 min per 300 mercati = 1.36 s/mercato · periodo 15 min
+```
+
+**Il costo in tempo NON è peggiorato.** La prima scansione ha misurato 13,3 min di fase profondità, ma
+la macchina stava girando la suite e gli script di misura: la seconda, a macchina scarica, dà **6,8 min
+/ 1,36 s per mercato**, cioè **meglio** dei 7,9-8,6 min misurati prima della correzione. Totale del giro:
+~2,1 min di scoperta + 6,8 min di profondità = **8,9 min su un periodo di 15**.
+`esclusi per libro MANCANTE: 0`.
+
+### Cinture e ordini — invariati, letti da `/proc/<pid>/environ`
+
+| processo | pid | vivo dal | stato |
+|---|---|---|---|
+| `agent24-liquidity-rewards` | **768749** | **12:41:09Z** | **riavviato — l'unico** |
+| `agent40-manual-reprice` | 624894 | 21/08 04:27 | **intatto** |
+| `agent41-realloc-scheduler` | 737613 | 22/08 04:46 | **intatto** |
+
+```
+agent40: MAKER_MODE=live-min · MAKER_ADAPTER_DRYRUN=false · MANUAL_ORDER_PLACEMENT=send
+         MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V=0.456 · MAKER_LIVE_MIN_MARKET=(vuoto)
+agent41: idem + MAKER_MERCATI_CONTEMPORANEI=10 · REALLOC_SCHEDULER_DRY_RUN=0
+```
+
+Nessuna variabile nuova richiesta: `REWARD_SAMPLING_MAX_PAGES` e `REWARD_FAST_MAX_ID_QUERIES` sono
+**assenti dall'ambiente**, quindi valgono i difetti di sorgente (40 e 30).
+`data/venue-orders.json` continua a essere riscritto da agent40 (età < 2 s) e riporta gli stessi
+mercati di prima del riavvio. **Nessun ordine toccato.**
+
+### ⚠ LA CONSEGUENZA CHE VA DETTA: IL BOARD È UN ALTRO
+
+| | prima (12:24Z) | dopo (13:06Z) |
+|---|---|---|
+| righe di board | 297 | 271 |
+| sotto 24 h | **3** | **120** |
+| fra 24 e 48 h | **1** | **90** |
+| oltre 48 h | 280 | **61** |
+| il più corto | 2,4 giorni | **14,9 h** |
+
+Il board passa da **4 righe corte su 297** a **210 su 271**. Non è un effetto collaterale: è ciò che la
+riparazione doveva produrre. Ma **cambia l'ingresso di tutto ciò che sta a valle** — la selezione di
+§4.13, la classifica per `grossRewardDay`, la corsia dei candidati di agent34. **I cancelli non sono
+stati toccati e continuano a mordere**: dei 120 corti sotto 24 h che ora arrivano al board, il cancello
+delle 24 ore li scarterà **tutti**.
+
+## 11 · DIFETTO N — dichiarato, NON corretto
+
+**`REWARD_MAX_CLOB_MARKETS = 300` era tarato su una scoperta da 633 mercati, e adesso ne vede 1.232.**
+Il taglio passa dal **47 % al 24 %** dei premiati, e la quota riservata a `minSize <= 100`
+(`sceltiPerLaScansione`, 150 posti) ora sceglie fra **1.218 compatibili** invece che fra poche decine:
+la composizione dei 300 è **un'altra**, decisa dalla classifica per montepremi fra molti più candidati.
+Il cronometro di agent24 dice che al ritmo attuale (1,36 s/mercato) nel periodo ci starebbe un tetto di
+**~395**, quindi la leva esiste — ma alzarla cambia quali mercati arrivano alla selezione, che è
+**esattamente ciò che questo giro non doveva toccare**. È una decisione dell'operatore. **Non corretto.**
