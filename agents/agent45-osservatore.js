@@ -227,6 +227,14 @@ async function giro() {
       saldoUsd: saldo && saldo.affidabile ? saldo.usd : null,
       posizioni: posizioni && posizioni.readable ? posizioni.positions : null,
       posizioniLeggibili: !!(posizioni && posizioni.readable),
+      // ⚠ `'non-richiesta'` E' UNA SCELTA, NON UNA DIMENTICANZA (§5.2 p.54, 22 agosto 2026).
+      // Il controllo di co-temporalita' serve a chi DECIDE di cancellare un libro su questo numero.
+      // L'osservatore non decide niente: registra. Ed e' lo strumento con cui l'artefatto e' stato
+      // misurato — un campione «non misurabile» al posto del totale grezzo cancellerebbe proprio la
+      // serie che ha permesso di ricostruire il 20 agosto al centesimo. Qui il totale grezzo E' il
+      // dato. Chi legge `pnlGuardianoUsd` sappia che e' la lettura GREZZA, non quella riconciliata:
+      // la riga che il guardiano usa per decidere e' `op:'guardian-riconciliazione'` nel giornale.
+      riconciliazione: 'non-richiesta',
     });
     if (cap.leggibile && baseline && baseline.valido) {
       pnlGuardiano = calcolaPnl({ baselineUsd: baseline.baselineUsd, totaleUsd: cap.totaleUsd });

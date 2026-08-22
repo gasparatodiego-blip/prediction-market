@@ -1,0 +1,23 @@
+{
+ "generatoAl": "2026-08-22T03:18:18.828Z",
+ "letture": 9336,
+ "giorni": 6.601154756944444,
+ "vecchio": {
+  "scatti": [],
+  "preallarmi": [],
+  "rifiutate": 0,
+  "misurate": 9336,
+  "maxDiFila": 0,
+  "riferimentoFinale": 1501.6325
+ },
+ "nuovo": {
+  "scatti": [],
+  "preallarmi": [],
+  "rifiutate": 24,
+  "misurate": 9312,
+  "maxDiFila": 4,
+  "riferimentoFinale": 1501.6325
+ },
+ "escursioneMin": 0,
+ "escursioneMax": 15.060899999999947
+}

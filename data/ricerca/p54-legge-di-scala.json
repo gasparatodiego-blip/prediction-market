@@ -1,0 +1,43 @@
+{
+ "generatoAl": "2026-08-22T03:20:35.374Z",
+ "giorni": 6.602547974537037,
+ "margineUsd": 75.08,
+ "righe": [
+  {
+   "nome": "oggi          5 × $56",
+   "k": 1,
+   "vecchioMax": 33.11799999999994,
+   "nuovoMax": 6.738699999999881,
+   "vecchioSett": 0,
+   "nuovoSett": 0,
+   "rifiutate": 24
+  },
+  {
+   "nome": "solo size     5 × $61,25",
+   "k": 1.094,
+   "vecchioMax": 36.23109199999999,
+   "nuovoMax": 7.372137000000066,
+   "vecchioSett": 0,
+   "nuovoSett": 0,
+   "rifiutate": 24
+  },
+  {
+   "nome": "solo mercati 10 × $56",
+   "k": 2,
+   "vecchioMax": 66.2360000000001,
+   "nuovoMax": 13.477399999999989,
+   "vecchioSett": 0,
+   "nuovoSett": 0,
+   "rifiutate": 27
+  },
+  {
+   "nome": "PIENO        10 × $61,25",
+   "k": 2.188,
+   "vecchioMax": 72.46218399999998,
+   "nuovoMax": 14.7442759999999,
+   "vecchioSett": 0,
+   "nuovoSett": 0,
+   "rifiutate": 27
+  }
+ ]
+}

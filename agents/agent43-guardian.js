@@ -129,6 +129,7 @@ require('../lib/safety/percorsi-critici').verificaOMuori('agent43-guardian');
 const audit = (riga) => appendMakerAudit(riga);
 const {
   valutaCapitale, calcolaPnl, decidiScatto, leggiBaseline, costruisciEventoGuardian,
+  TOLLERANZA_RICONCILIAZIONE_USD,
   valutaLatch, eventoRiarmo, ETA_RIARMO_MS,
   confermaScatto, LETTURE_CONSECUTIVE_PER_SCATTO,
 } = require('../lib/maker/guardian-perdite');
@@ -139,6 +140,21 @@ const {
 // ── LO STATO DELLA PERSISTENZA, FRA UN GIRO E L'ALTRO ────────────────────────────────────────────
 // In memoria e non su disco: vedi il commento dentro `poll`. Un riavvio lo azzera, ed e' voluto.
 let statoConferme = null;
+// ── LA LETTURA PRECEDENTE, PER RICONCILIARE LE DUE FONTI (§5.2 p.54) ───────────────────────────────
+// Vive nel PROCESSO, come `statoConferme`: un riavvio la azzera, e va bene — un guardiano appena nato
+// non ha visto il campione precedente (§5-bis p.141), quindi non puo' riconciliare e non misura per un
+// giro. Costa 30 s di cecita' dopo un riavvio; il falso scatto che questo chiude e' costato 6h06m.
+// ⚠ SI CONSERVA ANCHE QUANDO LA LETTURA E' STATA RIFIUTATA: le componenti grezze restano osservazioni
+// valide — era il TOTALE a non essere misurabile, non il saldo e le posizioni. Conservarle e' cio' che
+// rende il rifiuto AUTO-GUARENTE: alla lettura dopo la fonte indietro ha recuperato, il residuo torna
+// a zero e la misura riprende da sola. Buttarle allungherebbe la cecita' invece di accorciarla.
+let ultimaLetturaFonti = null;
+// Quante letture di fila non sono state misurabili. Serve a non smettere di misurare IN SILENZIO.
+let nonMisurabiliDiFila = 0;
+/** Oltre questa quantita' di rifiuti consecutivi il log smette di essere una riga e diventa un allarme.
+ *  10 giri = 5 minuti: il caso osservato piu' lungo e' di DUE giri (fill in volo), quindi 10 e' cinque
+ *  volte il peggio misurato e non puo' scattare per il funzionamento normale. */
+const RIFIUTI_CONSECUTIVI_DA_DICHIARARE = 10;
 
 const ENV_FILES = ['.env.local', '.env'];
 const RADICE = path.join(__dirname, '..');
@@ -244,13 +260,28 @@ async function capitaleOra(deps = {}) {
     saldoFonte: saldo ? saldo.fonte : null,
     posizioniEtaMs: pos && Number.isFinite(Number(pos.ageMs)) ? Number(pos.ageMs) : null,
   };
+  const oraMs = deps.now ? deps.now() : Date.now();
+  const saldoOra = (saldo && saldo.affidabile === false) ? null : (saldo ? saldo.usd : null);
+  const posizioniOra = pos ? pos.positions : null;
+  // ⚠ LA PRECEDENTE SI INIETTA, o il test proverebbe la DECISIONE e non il CABLAGGIO — che e' l'errore
+  // per cui tre difese sono rimaste inerti col verde (§5-bis p.181).
+  const precedente = deps.precedenteFonti !== undefined ? deps.precedenteFonti : ultimaLetturaFonti;
   const cap = valutaCapitale({
     // `affidabile:false` = il numero c'è ma è vecchio oltre il tollerato. Per un gate di piazzamento
     // sarebbe «non autorizzare»; qui è «non misurare», che è la stessa prudenza nell'altra direzione.
-    saldoUsd: (saldo && saldo.affidabile === false) ? null : (saldo ? saldo.usd : null),
-    posizioni: pos ? pos.positions : null,
+    saldoUsd: saldoOra,
+    posizioni: posizioniOra,
     posizioniLeggibili: !!(pos && pos.readable),
+    // ⚠ §5.2 p.54 — SI CHIEDE SEMPRE. Il guardiano DECIDE su questo numero: e' l'unico chiamante che
+    // non puo' permettersi `'non-richiesta'`, e un test lo verifica sul sorgente.
+    riconciliazione: { at: oraMs, precedente },
   });
+  // Si ricorda SEMPRE, misurabile o no: v. il commento su `ultimaLetturaFonti`.
+  if (deps.precedenteFonti === undefined) {
+    ultimaLetturaFonti = (Number.isFinite(Number(saldoOra)) && Array.isArray(posizioniOra))
+      ? { at: oraMs, saldoUsd: saldoOra, posizioni: posizioniOra }
+      : null;
+  }
   // L'osservazione viaggia ACCANTO al capitale, non dentro: `valutaCapitale` è puro e non deve
   // imparare cos'è una cache. Chi decide lo scatto ha bisogno di entrambi.
   return { ...cap, osservazione };
@@ -379,6 +410,7 @@ async function poll(deps = {}) {
     // spazzata totale causata da un RPC lento. Questa guardia sta PRIMA del riferimento di proposito:
     // un massimo mobile aggiornato su una lettura fallita resterebbe sbagliato per sempre.
     return { azione: baseline.valido ? 'capitale-illeggibile' : 'attesa-baseline',
+      riconciliazione: capitale.riconciliazione || null,
       motivo: baseline.valido ? capitale.motivo
         : `riferimento da creare ma il capitale non è leggibile (${capitale.motivo}) — non si fissa un punto zero su una lettura fallita` };
   }
@@ -616,11 +648,45 @@ async function loop() {
   try {
     const r = await poll();
     if (r.azione === 'entro-soglia') {
+      nonMisurabiliDiFila = 0;
       log(`ok — PnL ${r.pnlUsd >= 0 ? '+' : ''}${r.pnlUsd.toFixed(2)} USD`
         + `${r.pnlPct === null ? '' : ` (${r.pnlPct >= 0 ? '+' : ''}${r.pnlPct.toFixed(3)}%)`}`
         + ` · baseline $${r.baselineUsd.toFixed(2)} → $${r.totaleUsd.toFixed(2)} · soglie −${r.soglie.abs} USD / −${r.soglie.pct}%`);
     } else if (r.azione === 'capitale-illeggibile' || r.azione === 'attesa-baseline') {
-      log(`niente misura questo giro: ${r.motivo}`);
+      // ── UN GUARDIANO CHE SMETTE DI MISURARE IN SILENZIO E' PEGGIO DI UNO CHE SBAGLIA ────────────
+      // Il rifiuto per riconciliazione e' per costruzione TRANSITORIO — si chiude appena la fonte
+      // indietro recupera — quindi una serie lunga NON e' il funzionamento normale ed e' l'unica cosa
+      // che qui vada gridata. Si conta, si dichiara a ogni giro, e oltre la soglia il tono cambia.
+      nonMisurabiliDiFila += 1;
+      const rico = r.riconciliazione || null;
+      const coda = rico && rico.richiesta && rico.confrontabile && rico.coerente === false
+        ? ` · Δcassa $${rico.deltaCassaUsd} + Δsize $${rico.deltaSizeUsd} = residuo $${rico.residuoUsd}`
+          + ` (tolleranza $${TOLLERANZA_RICONCILIAZIONE_USD})`
+        : '';
+      if (nonMisurabiliDiFila >= RIFIUTI_CONSECUTIVI_DA_DICHIARARE) {
+        log(`⚠⚠ NON MISURO DA ${nonMisurabiliDiFila} GIRI DI FILA (${Math.round(nonMisurabiliDiFila * POLL_MS / 1000)}s):`
+          + ` ${r.motivo}${coda}. Il guardiano NON sta sorvegliando il drawdown: non e' uno scatto mancato,`
+          + ' e\' una sorveglianza sospesa, e va guardata a mano.');
+      } else {
+        log(`niente misura questo giro (${nonMisurabiliDiFila}/${RIFIUTI_CONSECUTIVI_DA_DICHIARARE}): ${r.motivo}${coda}`);
+      }
+      // A verbale SEMPRE: senza una riga nel giornale «non ho misurato» non e' verificabile dopo, ed e'
+      // esattamente cio' che e' mancato per capire il 20 agosto.
+      try {
+        audit({ ts: Date.now(), venue: 'polymarket', source: 'agent43-guardian',
+          op: 'guardian-riconciliazione',
+          outcome: (rico && rico.richiesta && rico.confrontabile && rico.coerente === false)
+            ? 'fonti-non-co-temporali' : 'capitale-non-misurabile',
+          observed: {
+            consecutive: nonMisurabiliDiFila,
+            deltaCassaUsd: rico ? rico.deltaCassaUsd : null,
+            deltaSizeUsd: rico ? rico.deltaSizeUsd : null,
+            residuoUsd: rico ? rico.residuoUsd : null,
+            tolleranzaUsd: TOLLERANZA_RICONCILIAZIONE_USD,
+            confrontabile: rico ? rico.confrontabile : null,
+          },
+          reason: r.motivo });
+      } catch { /* un audit che non riesce non ferma il guardiano */ }
     } else if (r.azione === 'gia-scattato') {
       log(`fermo: ${r.motivo}`);
     }

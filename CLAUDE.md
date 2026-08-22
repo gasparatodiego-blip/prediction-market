@@ -448,7 +448,7 @@ vero e poi lo rimette a posto — un controllo sempre rosso non distingue niente
 
 | | |
 |---|---|
-| `agent43-guardian` | **Il guardiano delle perdite economiche.** Ogni 30 s confronta (saldo pUSD + posizioni al prezzo corrente) con il **riferimento a massimo mobile** in `data/guardian-baseline.json` (§5-bis p.157: depositi e prelievi sono riconosciuti come cassa esterna, non come P&L). **⚠ IL RIFERIMENTO SCENDE SUBITO E SALE SOLO SU CONFERMA** (D-D, 21/08, §5-bis p.202): un totale sopra il riferimento e' un **candidato** finche' una seconda lettura **distinta e contigua** non lo sostiene, e allora sale al **minimo delle due**; un rientro lo scarta. Il cricchetto accettava **k=1** dove lo scatto pretende **k=2**, e il 16/08 ha latchato per sempre $1.550,18 = saldo post-chiusura + posizioni pre-chiusura, cioe' **$57,10 contati due volte**. **⚠ NESSUN RIARMO AUTOMATICO DI AVVIA, per decisione**: sarebbe una **terza** strada autonoma verso il capitale reale (§2 r.3 ne nomina due) dentro il modulo il cui mestiere e' fermare. Dopo uno scatto il bot riparte a mano — misurato: **6h06m** di fermo dopo il falso scatto del 20/08 22:36, costate non perche' il riarmo e' manuale ma perche' **nessuno sapeva**. Da qui l'**AVVISO** (`lib/maker/allarme-guardiano.js`), cablato come **ULTIMO** passo di `spazzaEFerma`: non puo' ritardare la spazzata (gira dopo cancellazione, FERMA, referto e latch), non puo' farla fallire (non solleva mai, e il chiamante ha un secondo `catch`), non aggiunge **nessuna** chiamata nei giri normali — un test lo verifica **per ordine** nel sorgente e **per assenza** dentro `poll`. **⚠ E' INERTE FINCHE' `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` non sono nel `.env`** (le stesse due chiavi di `agent27:101`): senza, dichiara nel log che non e' partito e perche'; oltre `GUARDIAN_LOSS_PCT` (5%) o la **soglia assoluta DERIVATA** (5% del riferimento; `GUARDIAN_LOSS_ABS` resta il pavimento in dollari) cancella **tutti gli ordini a riposo**, deposita un referto `reason='guardian-auto-kill'` e mette il bot su **FERMA**. Non tocca le posizioni aperte e non ferma l'uscita automatica. **⚠ IL SECONDO INGRESSO — la perdita giornaliera realizzata a −$100 — DA R10 CHIUDE ANCHE LE POSIZIONI** (18/08): `chiusura-di-emergenza.js` (puro, **zero `require`**) classifica in **coppie a merge · gambe scoperte vendute attraversando · gambe sotto il minimo LASCIATE e dichiarate**, e agent43 **deposita** `data/chiusura-emergenza-richiesta.json` senza eseguire — la sua unica superficie al venue resta la spazzata, ed è una proprietà strutturale provata. A eseguire è **agent41**, che gira **prima** del cancello su AVVIA: il presidio dei 60 minuti sta dietro `botAttivo()`, cioè non gira a bot FERMO, che è lo stato che il kill produce. Il drawdown continua a NON toccare le posizioni, ed è una decisione: misura un **prezzo**, che può rientrare. Nessun auto-riarmo: si riparte cancellando `data/guardian-state.json` a mano. Le soglie si rileggono da `.env` **a ogni giro**, senza restart. Strutturalmente incapace di piazzare (unica superficie: `lib/maker/cancel-all`), verificato da un test che cammina l'albero dei `require` (65/65 verdi). File: `agents/agent43-guardian.js` + `lib/maker/guardian-perdite.js`. Codice e blocco pm2 sono in git dal 7 agosto (`dbba34e`). |
+| `agent43-guardian` | **Il guardiano delle perdite economiche.** Ogni 30 s confronta (saldo pUSD + posizioni al prezzo corrente) con il **riferimento a massimo mobile** in `data/guardian-baseline.json` **⚠ E LE DUE FONTI DEVONO DESCRIVERE LO STESSO ISTANTE** (§5.2 p.54 chiusa, §5-bis p.204, 22/08): il saldo ha una cache da 45 s e lo snapshot posizioni e' tollerato fino a 180 s, quindi durante un fill il totale contava il DEBITO senza il suo ATTIVO — e' cosi' che il 20/08 e' nato uno scatto falso da $1.438,41 costato 6h06m. `riconciliaFonti` (pura) pretende che un movimento di **cassa** sia compensato da uno OPPOSTO delle **size** (`Δcassa + Δsize ≈ 0`, tolleranza **$6,00**, presa dal divario VUOTO fra $4,95 e $8,32 misurato su 29 movimenti veri); se non lo e', **il totale non e' misurabile** e il giro finisce li'. **⚠ SI RICONCILIA LA PARTE DOVUTA ALLE SIZE, NON IL VALORE**: un movimento di solo PREZZO e' P&L vero (fino a **$12,93** misurato) e il guardiano lo deve VEDERE — un criterio sul valore totale lo accecherebbe durante un crollo. **⚠ Chiude entrambi i versi con una regola sola** perche' scatto e cricchetto stanno tutti e due dietro `capitale.leggibile`: una lettura rifiutata non scatta **e** non alza il riferimento. **⚠ NON E' PIU' INERTE E NON E' MENO SVEGLIO**: disponibilita' **99,74%** su 9.338 letture vere, artefatto massimo **$33,12 → $6,74**, e un controllo positivo prova che su una perdita vera scatta ancora a k=2. **⚠ Costa un giro (30 s) dopo un riavvio** — la prima lettura non ha una precedente con cui riconciliare — e non smette mai di misurare in silenzio: contatore dei rifiuti consecutivi, riga a ogni giro e `op:'guardian-riconciliazione'` a verbale. (§5-bis p.157: depositi e prelievi sono riconosciuti come cassa esterna, non come P&L). **⚠ IL RIFERIMENTO SCENDE SUBITO E SALE SOLO SU CONFERMA** (D-D, 21/08, §5-bis p.202): un totale sopra il riferimento e' un **candidato** finche' una seconda lettura **distinta e contigua** non lo sostiene, e allora sale al **minimo delle due**; un rientro lo scarta. Il cricchetto accettava **k=1** dove lo scatto pretende **k=2**, e il 16/08 ha latchato per sempre $1.550,18 = saldo post-chiusura + posizioni pre-chiusura, cioe' **$57,10 contati due volte**. **⚠ NESSUN RIARMO AUTOMATICO DI AVVIA, per decisione**: sarebbe una **terza** strada autonoma verso il capitale reale (§2 r.3 ne nomina due) dentro il modulo il cui mestiere e' fermare. Dopo uno scatto il bot riparte a mano — misurato: **6h06m** di fermo dopo il falso scatto del 20/08 22:36, costate non perche' il riarmo e' manuale ma perche' **nessuno sapeva**. Da qui l'**AVVISO** (`lib/maker/allarme-guardiano.js`), cablato come **ULTIMO** passo di `spazzaEFerma`: non puo' ritardare la spazzata (gira dopo cancellazione, FERMA, referto e latch), non puo' farla fallire (non solleva mai, e il chiamante ha un secondo `catch`), non aggiunge **nessuna** chiamata nei giri normali — un test lo verifica **per ordine** nel sorgente e **per assenza** dentro `poll`. **⚠ E' INERTE FINCHE' `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` non sono nel `.env`** (le stesse due chiavi di `agent27:101`): senza, dichiara nel log che non e' partito e perche'; oltre `GUARDIAN_LOSS_PCT` (5%) o la **soglia assoluta DERIVATA** (5% del riferimento; `GUARDIAN_LOSS_ABS` resta il pavimento in dollari) cancella **tutti gli ordini a riposo**, deposita un referto `reason='guardian-auto-kill'` e mette il bot su **FERMA**. Non tocca le posizioni aperte e non ferma l'uscita automatica. **⚠ IL SECONDO INGRESSO — la perdita giornaliera realizzata a −$100 — DA R10 CHIUDE ANCHE LE POSIZIONI** (18/08): `chiusura-di-emergenza.js` (puro, **zero `require`**) classifica in **coppie a merge · gambe scoperte vendute attraversando · gambe sotto il minimo LASCIATE e dichiarate**, e agent43 **deposita** `data/chiusura-emergenza-richiesta.json` senza eseguire — la sua unica superficie al venue resta la spazzata, ed è una proprietà strutturale provata. A eseguire è **agent41**, che gira **prima** del cancello su AVVIA: il presidio dei 60 minuti sta dietro `botAttivo()`, cioè non gira a bot FERMO, che è lo stato che il kill produce. Il drawdown continua a NON toccare le posizioni, ed è una decisione: misura un **prezzo**, che può rientrare. Nessun auto-riarmo: si riparte cancellando `data/guardian-state.json` a mano. Le soglie si rileggono da `.env` **a ogni giro**, senza restart. Strutturalmente incapace di piazzare (unica superficie: `lib/maker/cancel-all`), verificato da un test che cammina l'albero dei `require` (65/65 verdi). File: `agents/agent43-guardian.js` + `lib/maker/guardian-perdite.js`. Codice e blocco pm2 sono in git dal 7 agosto (`dbba34e`). |
 
 Distinzione che era da tenere ferma, e che il 9 agosto 2026 ha perso una delle due metà: **agent37
 guardava i processi, agent43-guardian guarda il capitale** — due guasti indipendenti (un motore può
@@ -1425,19 +1425,11 @@ resta una riga nel registro di §5-bis.
    che il cancello ① esiste per rifiutare. **NON CORRETTO**: la leva e' la corsia del feed (e il suo
    tetto), non il tetto del board, ed e' una decisione dell'operatore — alzare la corsia significa piu'
    sottoscrizioni ws e piu' `mid-history` su disco (§5.2 p.43: ~285 MB/g su 90 mercati).
-54. **🔴 IL TOTALE DEL GUARDIANO NON E' ATOMICO: LE DUE FONTI HANNO FRESCHEZZE DIVERSE — 21 agosto.**
-   `valutaCapitale` somma **saldo** (cache 45 s) e **posizioni** (snapshot di agent40, tollerato fino a
-   180 s). Durante una chiusura/merge il capitale e' «in volo» e le due fonti raccontano due istanti
-   diversi, in **entrambe** le direzioni: verso l'ALTO il 16/08 19:28 (saldo nuovo + posizioni vecchie ⇒
-   +$57,10, ed e' D-D, §5-bis p.202, ora chiuso dal lato del riferimento); verso il BASSO il **20/08
-   22:36**, dove il guardiano leggeva **$1.438,41** mentre l'osservatore nello stesso minuto leggeva
-   **$1.492,81** — **$54,40 di divario**, con un merge on-chain in corso su `c7dee846`. ⚠ Il verso basso
-   **puo' ancora produrre uno scatto falso**: k=2 non lo ferma se il transitorio dura due letture, e il
-   20/08 e' successo. Col riferimento corretto quel minimo resta a **$11,86** dal punto di scatto: la
-   protezione regge, ma di poco. **NON CORRETTO**: la cura e' pretendere la **co-temporalita' delle due
-   letture** (o non misurare quando divergono), cioe' cambiare come si legge il capitale nell'unica difesa
-   viva — e va deciso, non fatto di passaggio. ⚠ Su 8.812 campioni i picchi a **una sola lettura** sono 4:
-   e' raro, ma cade proprio negli istanti in cui il capitale si muove.
+54. **✅ CHIUSA IL 22 AGOSTO — diagnosi integrale in §5-bis p.204.** La cura NON e' una tolleranza sui
+   timestamp (misurata e scartata: lo scarto dichiarato non separa le letture contaminate dalle pulite,
+   perche' lo snapshot timbra l'istante di SCRITTURA e non quello di lettura) ma la **conservazione del
+   valore**: un movimento di cassa dev'essere compensato da un movimento OPPOSTO delle size, o le due
+   fonti non descrivono lo stesso istante e **il totale non e' misurabile**. Chiude entrambi i versi.
 53. **🟡 IL CICLO NON DISTINGUE «FIGLIO MORTO» DA «NIENTE DA FARE» NELL'ESITO — 21 agosto 2026.**
    `lib/maker/realloc-cycle.js:255-261`: se il piano fallisce e `triggerValidita` e' FALSO si esce con
    `mancato(...)` ⇒ **`referto('nessuna')`**, lo stesso esito di «non c'era niente da fare». Nel record
@@ -1708,6 +1700,53 @@ problema è già stato incontrato vale più del racconto di come. Il dettaglio i
 e nei commit citati nei sorgenti.
 
 **153** · IL GRADINO 6 NON ESISTEVA: `impostaBot` NON ERA IMPORTATO
+
+**204** · §5.2 p.54 · LE DUE FONTI DEL TOTALE NON ERANO CO-TEMPORALI: SI RICONCILIANO SUL VALORE, NON
+SUI TIMESTAMP — 22 agosto. Regola per intero in §3 (scheda del guardiano).
+**IL FATTO, RICOSTRUITO AL CENTESIMO DALLE COMPONENTI VERE**: la lettura che ha fatto scattare il
+guardiano il **20/08 22:36:02** ($1.438,41 ⇒ libro cancellato, bot su FERMA, **6h06m di fermo**) e'
+`saldo(22:30) $1.402,98 + posizioni(22:26) $35,42 = $1.438,40` — **241 secondi di scarto**. L'equity
+vera non si e' mai mossa da $1.491-1.495. Altre due letture della stessa serata si ricostruiscono uguale,
+una per verso: `22:30:58 = saldo(22:30)+pos(22:31) = $1.472,00` e `22:34:31 = saldo(22:35)+pos(22:34) =
+$1.513,25` — quest'ultima **sopra** il riferimento, cioe' lo stesso difetto di D-D (§5-bis p.202).
+**⚠ LA TOLLERANZA SUI TIMESTAMP E' STATA MISURATA E SCARTATA**, ed e' la cura che viene in mente per
+prima: su 9.324 campioni le 11 letture contaminate hanno un'eta' dichiarata dello snapshot fra **749 ms
+e 52 s**, cioe' sovrapposte alle pulite; a 5 s si rifiuterebbe l'**87%** delle letture e ne passerebbero
+comunque 2 su 11. La ragione e' strutturale: `writeVenuePositions` timbra `at = now()` alla **SCRITTURA**,
+quindi il timestamp non misura la staleness del CONTENUTO. **⚠ E la co-temporalita' vera non e'
+raggiungibile**: nessuna delle due fonti si puo' ricampionare a un istante passato.
+**LA CURA — `riconciliaFonti`, pura, zero `require`**: un fill non crea ne' distrugge valore, quindi fra
+due letture contigue `Δcassa + Δvalore_dovuto_alle_SIZE ≈ 0`; se non vale, **il totale non e' misurabile**.
+**⚠⚠ «DOVUTO ALLE SIZE» E' LA META' CHE CONTA**: il valore si muove per size (un fill — e allora la cassa
+deve muoversi in modo opposto) e per PREZZO (P&L vero, cassa ferma). Un criterio scritto sul valore
+TOTALE accecherebbe il guardiano proprio durante un crollo — misurato: il solo prezzo arriva a **$12,93**
+su 4.646 campioni a cassa ferma. Un test dedicato (blocco ③) difende la visibilita' del crollo.
+**LA TOLLERANZA VIENE DALLA TABELLA E IL DIVARIO E' VUOTO**: su 29 letture contigue con movimento di
+cassa, le 18 compensate hanno residuo **≤ $4,95** e le 11 non compensate **≥ $8,32**. `$6,00` sta nel
+vuoto (stessa disciplina dell'85% di p.142).
+**⚠ ENTRAMBI I VERSI DA UN CRITERIO SOLO, e non per fortuna**: sia lo scatto sia il cricchetto stanno
+dietro `capitale.leggibile`, quindi una lettura rifiutata non scatta **e** non alza il riferimento.
+**LA MISURA (9.338 letture vere, 6,60 giorni, funzioni di produzione)**: artefatto massimo **$33,12 →
+$6,74** · letture ≥$10 di artefatto **6 → 0** · disponibilita' **99,74%** (24 rifiuti, al piu' **4
+consecutivi**) · riferimento finale identico ($1.501,63). **Le tre letture anomale del 20/08 sono tutte
+RIFIUTATE.** **LA LEGGE DI SCALA**: il rapporto nuovo/vecchio e' **0,203 a qualunque scala** — a
+10 × $61,25 l'artefatto passa da **$72,46 a $14,74** contro un margine di $75,08 (**3,0× di franco**), e
+la coppia che fece scattare il guardiano diventa ($16,7 · $25,1) invece di ($82,3 · $123,3). Servirebbe
+**k = 9,8**, cioe' ~45 mercati a size piena, per riprodurre quello scatto.
+**⚠ NON E' DIVENTATO INERTE, ed e' provato e non promesso**: un controllo positivo guida `poll` VERA su
+una perdita di solo prezzo e il guardiano **scatta a k=2, cancella e mette il bot su FERMA** come prima.
+**⚠ COSTA UN GIRO DI CECITA' DOPO UN RIAVVIO** (prima lettura senza precedente ⇒ non misurabile, 30 s), e
+un guardiano in crash-loop non creerebbe mai il riferimento — dichiarato, non corretto.
+**⚠ NON SMETTE DI MISURARE IN SILENZIO**: contatore dei rifiuti consecutivi, riga a ogni giro, riga a
+verbale `op:'guardian-riconciliazione'`, e oltre **10 di fila** (5 min, cinque volte il peggio misurato)
+il log diventa un allarme. Nessuna AZIONE aggiunta: sarebbe una terza strada autonoma, e non e' chiesta.
+**⚠ `riconciliazione` NON HA UN DIFETTO PERMISSIVO**: ometterla vale «non misurabile». agent45 (che
+osserva e non decide) dichiara `'non-richiesta'` — e resta lo strumento con cui l'artefatto e' stato
+misurato. **⚠ NESSUN ORDINE PUO' ESSERE TOCCATO**: la correzione puo' solo TOGLIERE misure, quindi solo
+TOGLIERE scatti; provato con `poll` vera e le superfici che agiscono iniettate in modo da SOLLEVARE.
+Prove: `guardian-fonti-co-temporali.test.js` **32/0**, **20 rosse** sul sorgente di ieri. Riscritti e non
+ammorbiditi: `guardian-perdite` (70/0), `allarme-guardiano` (23/0), `kill-perdita-giornaliera` (35/0).
+Referti: `data/ricerca/p54-replay.md`, `p54-legge-di-scala.json`.
 
 **203** · LA VISTA DEL BOARD DA 150 A 300, E IL COLLO CHE NON ERANO I LIBRI — 21 agosto.
 Regola per intero in §4.7. **La misura che ribalta la premessa**: `POST /books` porta **3.112 libri (tutto
