@@ -132,16 +132,80 @@ function candidatiPerIlFeed() {
     const tetto = CONC.capPerMarketUsd(capitale);
     const ORA = Date.now();
     const MIN_ORE = 18;
-    return righe
+    const ammessi = righe
       .filter((r) => {
         const pav = CONC.pavimentoPremiante(r && r.minSize);
         if (pav == null || pav > tetto) return false;              // fuori portata del tetto
         if (!r.endDate) return false;                              // scadenza non determinabile ⇒ esclude
         const ore = (Date.parse(r.endDate) - ORA) / 3_600_000;
         return Number.isFinite(ore) && ore >= MIN_ORE;
-      })
-      .sort((a, b) => (Number(b.dailyPool) || 0) - (Number(a.dailyPool) || 0))
-      .map((r) => String(r.marketId));
+      });
+      // ══ I CORTI PER PRIMI, O LA FASCIA CORTA E' CIECA PER COSTRUZIONE — 22 agosto 2026 ═══════
+      //
+      // ⚠ IL FATTO, misurato in produzione subito dopo il riavvio: la selezione ha rifiutato TUTTI
+      // gli otto corti ammissibili con `book-non-sottoscritto`, e ha lasciato quattro posti corti
+      // vuoti su cinque. La catena e' un anello chiuso in cui i corti non possono entrare MAI:
+      //   il piano scarta chi ha `profondita: 'non-verificata'`
+      //   → la verifica accetta solo campioni websocket
+      //   → agent34 sottoscrive `collector-priority`
+      //   → li' i corti entravano come CANDIDATI, ordinati per MONTEPREMI e tagliati dal tetto di 60.
+      // E i corti hanno montepremi PICCOLI per costruzione — $24-$207 contro i $500+ dei lunghi —
+      // quindi l'ordinamento per montepremi li mette in fondo SEMPRE, per ogni board e ogni
+      // capitale. Non e' che oggi perdono: e' che non possono vincere.
+      //
+      // ⚠ E NON BASTAVA PROTEGGERE I SELEZIONATI (la classe che questo stesso commit aggiunge a
+      // `collector-priority`): quella protegge chi e' GIA' dentro, ma un corto non puo' entrare
+      // finche' non e' nel feed, e non e' nel feed finche' non entra. Le due meta' servono
+      // entrambe, e questa e' quella che apre l'anello.
+      //
+      // ⚠ SI PROMUOVONO SOLO I CORTI CHE LA SELEZIONE AMMETTEREBBE DAVVERO — non tutti i mercati
+      // sotto le 48 h. La differenza e' fra OTTO e duecento: il filtro grezzo qui sopra (≥ 18 h,
+      // pavimento alla portata) ne lascia passare 216, e promuoverli tutti allagherebbe una corsia
+      // da 60 posti affamando i lunghi. `valutaAmmissibilita` e' la STESSA funzione che decide poi
+      // davvero (≥ 24 h, niente meteo, scaglione), quindi il gruppo promosso e' esattamente
+      // l'insieme che puo' occupare uno slot corto — mai uno di piu'.
+      // ⚠ E IL GRUPPO E' COMUNQUE LIMITATO: mai piu' di `TETTO_CORTI_PROMOSSI`. Se un giorno il
+      // board offrisse cento corti ammissibili, questa riga non deve poter svuotare la corsia dei
+      // lunghi — un presidio che si sostituisce a quello che doveva aiutare e' il difetto, non la cura.
+      // ⚠ NON ALLARGA NIENTE: cambia l'ORDINE dei candidati, non chi e' candidato. Nessun mercato
+      // nuovo entra in questa lista, e sottoscrivere un libro non apre nessuna posizione.
+      const TETTO_CORTI_PROMOSSI = 12;
+      const ORA_F = ORA;
+      // ⚠⚠ IL BOARD NORMALIZZATO NON HA I NOMI CHE `valutaAmmissibilita` LEGGE, e passarglielo
+      // grezzo sarebbe la trappola di §5.3 in persona: qui i campi si chiamano `marketId`,
+      // `minSize`, `title`, mentre quella funzione legge `conditionId`, `rewardsMinSize`,
+      // `question`. `Number(undefined)` e' NaN e `Number(null)` e' ZERO — cioe' «minSize 0», cioe'
+      // «il mercato piu' finanziabile del board», che e' esattamente il difetto gia' incontrato su
+      // questo stesso campo. Si TRADUCE esplicitamente, e si rifiuta se un campo manca: non si
+      // promuove nel feed un mercato di cui non si e' potuto leggere il pavimento premiante.
+      const comeRigaDiBoard = (r) => {
+        const id = r && r.marketId;
+        const ms = r && r.minSize;
+        if (!id || !(Number.isFinite(Number(ms)) && Number(ms) > 0) || !r.endDate) return null;
+        return { conditionId: id, rewardsMinSize: Number(ms), endDate: r.endDate,
+          question: r.title || null, category: r.category || null,
+          rewardsMaxSpread: r.maxSpread, tickSize: r.tickSize };
+      };
+      const eCortoAmmissibile = (r) => {
+        try {
+          const o = (Date.parse(r.endDate) - ORA_F) / 3_600_000;
+          if (!(Number.isFinite(o) && o <= 48)) return false;
+          const riga = comeRigaDiBoard(r);
+          if (!riga) return false;                       // campo mancante ⇒ non si promuove
+          // ⚠ LA STESSA FUNZIONE CHE DECIDERA' DAVVERO, non un criterio ricopiato: se un giorno la
+          // selezione cambiasse regola (l'orizzonte, il meteo, gli scaglioni), il feed la
+          // seguirebbe da solo. Un secondo elenco di criteri qui sarebbe il reperto D1 su «quali
+          // mercati il bot puo' vedere».
+          const v = SELM.valutaAmmissibilita(riga, { ora: ORA_F,
+            quota: SELM.quotaScaglioni(QUANTI.quantiMercati().quanti) });
+          return v.ammissibile === true;
+        } catch { return false; }
+      };
+      const perPool = (a, b) => (Number(b.dailyPool) || 0) - (Number(a.dailyPool) || 0);
+      const corti = ammessi.filter(eCortoAmmissibile).sort(perPool).slice(0, TETTO_CORTI_PROMOSSI);
+      const cortiSet = new Set(corti.map((r) => String(r.marketId)));
+      const resto = ammessi.filter((r) => !cortiSet.has(String(r.marketId))).sort(perPool);
+      return [...corti, ...resto].map((r) => String(r.marketId));
   } catch { return []; }   // board illeggibile ⇒ nessun candidato: si torna al comportamento di prima
 }
 
