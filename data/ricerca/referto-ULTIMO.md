@@ -1,198 +1,182 @@
-# Referto — «Fai lavorare tutto il capitale»
-**23 agosto 2026, 08:53Z.** Sola lettura per le misure, poi applicazione nello stesso giro.
-Commit `44e0a45`. Processi riavviati: **agent40** (pid 869708) e **agent41** (pid 869709).
+# Referto — «Porta il capitale al lavoro sopra l'80%»
+**23 agosto 2026, 09:45Z.** Misure prima, applicazione dopo, stesso giro.
+Commit `ce26a1d`. Riavviati **agent24** (pid 877113) e **agent41** (pid 877107). **agent40 NON riavviato ⇒ zero ordini toccati.**
+
+> ## ⛔ LA RISPOSTA CORTA: L'80% NON È RAGGIUNGIBILE SENZA SFONDARE IL CAP, E IL CAP NON È STATO TOCCATO.
+> Il soffitto strutturale è **51,0%**. Mancano **$431** di nozionale, cioè **28,9 punti**.
+> Il conto è al §3 e non dipende da quanti slot o da quanto grande sia la size.
 
 ---
 
-## 1 · IL CENSIMENTO — due numeri secchi
+## 1 · IL TETTO DI SCANSIONE — 300 → **343**, non 382
 
-| | |
-|---|---|
-| mercati premiati che il venue espone | **1.275** ⚠ a sua volta **parziale** |
-| mercati che agent24 guarda davvero | **300** |
-| mercati che finiscono a board | **252** |
+**Il 382 è reale ma è l'istantanea del ciclo migliore.** Quattro cicli consecutivi del 23/08 fra le
+08:15 e le 09:00 danno un ritmo di **2,29 · 1,41 · 1,66 · 1,45 s/mercato** — variazione **1,6×** — e
+il tetto che ognuno *dichiarava* era `~235 · ~382 · ~326 · ~371`. Un quinto ciclo misurato dopo
+conferma il peggiore: **11,4 min per 300 = 2,29 s/mercato ⇒ ~235**.
 
-**⇒ 975 mercati (76,5% del censito) non vengono MAI guardati.**
+**E il conto per-mercato ignora l'overhead.** Durata VERA del ciclo intero, da «scanning…» alla
+scrittura del board:
 
-Pagine lette e budget, dal log di agent24: `21p listino (+626) · 120p in 7/8 fette da 6h (+317
-nuovi entro 2g) · **5 fette al tetto dei 2.100: copertura PARZIALE** · **budget fette esaurito a
-120p** oltre +42h → 1275 mercati premiati`. Quindi anche il 1.275 è un **limite inferiore**: il
-budget `REWARD_FAST_MAX_PAGES = 120` (`agent24:149`) si esaurisce prima di finire, e 5 fette su 8
-tornano troncate dal tetto di 2.100 record di Gamma.
-
-Il taglio da 1.275 a 300 è `REWARD_MAX_CLOB_MARKETS` — **`agents/agent24-liquidity-rewards.js:71`**.
-⚠ Il cronometro dello stesso ciclo dice che **382 starebbero nel periodo** («profondità: 7,1 min per
-300 mercati = 1,41 s/mercato · a questo ritmo il tetto che sta nel periodo è ~382»): il 300 è
-prudente rispetto alla misura di adesso, non al limite.
-
-## 2 · LA PIRAMIDE COMPLETA, dal totale censito
-
-| cancello | file:riga | toglie | restano |
-|---|---|---:|---:|
-| censiti dal venue | log agent24 | — | **1275** |
-| **tetto di scansione** | `agent24-liquidity-rewards.js:71` | **−975** | 300 |
-| **pavimento di profondità** (`depthFloorUsd` 25) | agent24 · `suppressedThinDepthMarkets` | **−48** | 252 |
-| riga-assente / senza-conditionId | `selezione-mercati.js:388,391` | −0 | 252 |
-| minsize-illeggibile | `selezione-mercati.js:396` | −0 | 252 |
-| **minsize-oltre-soglia** (>50 ⇒ pavimento >$61,25) | `selezione-mercati.js:399` | **−33** | 219 |
-| scadenza-non-determinabile | `selezione-mercati.js:405` | −1 | 218 |
-| scadenza-discorde | `selezione-mercati.js:411` | −0 | 218 |
-| scadenza-troppo-vicina (<24 h) | `selezione-mercati.js:417` | −9 | 209 |
-| scadenza-oltre-orizzonte-piano | `selezione-mercati.js:426` | −4 | 205 |
-| **famiglia-meteo** | `selezione-mercati.js:433` | **−172** | 33 |
-| quarantena venue + slot-sterile ⚠ **silenzioso** | `agent41-realloc-scheduler.js:2479` | −2 | 31 |
-| già selezionati (occupano uno slot) | `selezione-mercati.js:1288` | −8 | **23** |
-
-**⇒ 23 ammissibili e liberi: 22 LUNGHI (≥48 h) e 1 CORTO.**
-⚠ Il cancello della quarantena è **silenzioso**: non compare in `scartatiPerComposizione` né in
-`scartatiPerFascia` (§5.2 p.62, dichiarato non corretto).
-
-**I tre che tolgono di più**: tetto di scansione **−975** (`agent24:71`) · famiglia-meteo **−172**
-(`selezione-mercati.js:433`) · minsize-oltre-soglia **−33** (`selezione-mercati.js:399`).
-
-## 3 · IL MINSIZE — e perché abbassare la size non aiuta
-
-`rewardsMinSize` sul board: **20 → 195 mercati · 50 → 24 · 100 → 17 · 200 → 16**.
-Pavimento premiante = `minSize × 0,98 × 1,25` ⇒ `20 ⇒ $24,50 · 50 ⇒ $61,25 · 100 ⇒ $122,50 · 200 ⇒ $245`.
-
-**33 mercati cadono** perché il pavimento supera $61,25 (cioè `minSize > 50`).
-
-**⚠ A $30 per lato NON tornano finanziabili: se ne PERDONO 24.** A $30 il pavimento finanziabile è
-`minSize ≤ 24`, quindi restano i **195** a minSize 20 e cadono i **24** a minSize 50 (pavimento
-$61,25 > $30) — che oggi sono finanziati. Abbassare la size **non aggiunge un solo mercato** e ne
-toglie 24: la premessa del punto 7 non regge, e il punto 7 **non è stato applicato**.
-
-## 4 · LE VIE DI RIPIEGO — le share si contano per MERCATO, e il premio NON si ferma
-
-Regola del venue, dal disclaimer del board e da `lib/rewardScore.js`: il punteggio è
-`S(v,s) = ((v−s)/v)²` con combinazione a due lati, e `Q_utente = Σ S(v,sᵢ)·sizeᵢ` sommata su
-**tutti i propri ordini a riposo nel book di QUEL mercato**. La quota è
-`Q_utente / (Q_utente + Q_concorrenti)`. **Si conta per MERCATO, non per ordine.**
-
-**⚠ Il $61,25 è NOSTRO, non del venue.** `lib/rewards/concentration.js` lo definisce come tetto di
-concentrazione: il venue ha solo un **pavimento** (`min_incentive_size`), nessun soffitto. Cercato
-`max_incentive` / cap per mercato nel codice del venue: **zero occorrenze**.
-
-**Misurato sui 30 mercati lunghi ammissibili, a 3,0¢ dal mid, con la concorrenza di adesso:**
-
-| capitale per mercato | quota mediana | premio mediano | premio TOTALE | marginale |
-|---|---|---|---|---|
-| **$61,25** (tetto attuale) | 0,697% | $0,2932/g | **$41,83/g** | — |
-| $122,50 | 1,385% | $0,5793/g | **$78,12/g** | +$59,25 ogni $100 |
-| $245,00 | 2,731% | $1,1313/g | **$138,85/g** | +$49,58 ogni $100 |
-| $490,00 | 5,314% | $2,1612/g | **$230,49/g** | +$37,40 ogni $100 |
-
-**⇒ Raddoppiare sullo stesso mercato NON matura zero: quasi raddoppia il premio.** La quota satura
-solo quando `Q_nostro` si avvicina a `Q_concorrenti`, e a $61,25 siamo allo **0,7%**: siamo lontani
-dalla saturazione, la resa è quasi lineare. **Non applicato** perché il punto 7 vieta di superare
-$61,25 per mercato — va al punto 8.
-
-## 5 · LE DISTANZE — valori letti da `/proc` PRIMA, e il conto del margine
-
-**Prima** (`/proc/865747` e `/proc/865753`): `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V=0.7777777777777778`
-(**3,500¢**) · `MAKER_DISTANZA_CORTI_CENTS=3.0` · `MAKER_SLOT_CORTI=5` · `MAKER_MERCATI_CONTEMPORANEI=12`.
-
-**Dopo** (`/proc/869708` e `/proc/869709`): `…FRAZIONE_V=0.6666666666666666` (**3,000¢**) ·
-`MAKER_DISTANZA_CORTI_CENTS=3.5` · `MAKER_SLOT_CORTI=2` · `MAKER_MERCATI_CONTEMPORANEI=12`.
-
-| fascia | banda · tick | mercati | distanza | margine dal bordo | tick |
-|---|---|---:|---|---|---|
-| LUNGHI | ±4,5¢ · 1,0¢ | 16 | 3,000¢ | 1,500¢ | **1,50** ✔ |
-| LUNGHI | ±4,5¢ · 0,1¢ | 10 | 3,000¢ | 1,500¢ | 15,00 ✔ |
-| LUNGHI | ±5,5¢ · 0,1¢ | 4 | 3,667¢ | 1,833¢ | 18,33 ✔ |
-| CORTI | ±4,5¢ · 1,0¢ | 1 | 3,500¢ | 1,000¢ | **1,00** ✔ |
-| CORTI | ±5,5¢ · 1,0¢ | 2 | 3,500¢ | 2,000¢ | 2,00 ✔ |
-
-**33 mercati su 33 tengono almeno un tick. Zero sotto.**
-
-**⚠ Dove non è esprimibile si arrotonda verso l'interno, ed è misurato, non promesso**: su griglia da
-1¢ **3,5¢ non è un prezzo**. Dopo il riavvio delle 08:21Z il giornale mostra `richiesta 3,5¢ →
-distanzaMid **3,45¢**`, cioè **più vicino al mid** del bersaglio, mai più vicino al bordo. E il
-paletto di `applicaObiettivo` garantisce il tetto comunque: chiedendo 4,0¢ si ottiene 3,5¢
-(`alBordo: true`). **3,0¢ per i lunghi è invece esprimibile esattamente.**
-
-Un solo punto per fascia: `const DISTANZA_LUNGHI_FRAZIONE_V` (`ecosystem.config.js:148`, referenziato
-dai due blocchi `env`) e `MAKER_DISTANZA_CORTI_CENTS` (una sola riga).
-
-## 6 · GLI SLOT — il 7 era configurazione, non scarsità
-
-Il 7 dei lunghi **non era scritto da nessuna parte**: è `lunghi = totale − corti`
-(`lib/maker/quanti-mercati.js`), e l'unico numero scritto era `MAKER_SLOT_CORTI: '5'`
-(`ecosystem.config.js:603`). Con 5 posti corti, **3 restavano vuoti per scarsità vera** (un solo
-corto ammissibile su 23) mentre la fascia lunga era **PIENA a 7/7 con 22 lunghi in attesa fuori**.
-
-**`MAKER_SLOT_CORTI` 5 → 2 ⇒ 2 corti + 10 lunghi derivati = 12.** `MAKER_MERCATI_CONTEMPORANEI`
-**non toccato** (12).
-
-**⚠ Restano fuori 19 lunghi ammissibili su 22**, e per due ragioni distinte: 3 sono entrati, e dei
-19 rimasti **14 sono nel secchio «basso»** (`rewardsMinSize ≤ 20`) contro una quota `basso: 1` già
-occupata — `quota-scaglione-piena`. Il collo, dopo questo giro, **non è più la fascia: è la
-composizione per scaglione** (§5.2 p.57, cura scritta ma non applicata per istruzione).
-
-## 7 · LA SIZE — non abbassata, e il conto del perché
-
-**L'invariante regge e non è stata toccata:**
-`12 slot × 2 gambe × $61,25 = **$1.470,00** ≤ cap **$1.470**` — uguaglianza esatta.
-`esposizioneMassimaRaggiungibileUsd(12) = $1.470`. **N = 13 sfonderebbe** ($1.592,50).
-
-Il capitale al lavoro raggiungibile a 12 slot col tetto attuale è
-`12 × $61,25 = $735` di nozionale a riposo ⇒ **$761,31 = 51,1%** — sotto l'80% chiesto.
-Ma **abbassare la size non ci arriva**, e il conto lo dice:
-- il numero di slot è tappato a **12** da `MAX_MERCATI_CONTEMPORANEI` (`selezione-mercati.js:176`) e
-  dal cap: size più piccola **non crea slot**;
-- a $30 per lato si **perdono 24 mercati** (§3), quindi la platea si restringe;
-- il capitale al lavoro è `slot × tetto per mercato`, e abbassare il secondo **abbassa il prodotto**.
-
-**Size lasciata a $61,25 per mercato. Il punto 7 non è applicabile come scritto.**
-
-## 8 · COSA MANCA PER IL 100% — proposte, NON applicate
-
-Al lavoro raggiungibile oggi: **51,1%**. Mancano ~**$730** per arrivare al 100%.
-Le tre leve, con il rischio in dollari misurato:
-
-| leva | dove | guadagno | rischio in dollari |
+| ciclo | totale | profondità | resto |
 |---|---|---|---|
-| **① alzare il tetto per mercato** $61,25 → $122,50 | `concentration.js` | premio da **$41,83 a $78,12/g** (misurato §4) | esposizione massima raggiungibile `12×2×122,50 = **$2.940**` contro cap $1.470 ⇒ **sfonda di $1.470**. Servirebbe scendere a **6 slot** (6×2×122,50 = $1.470) — meno diversificazione, stesso capitale |
-| **② alzare il cap** $1.470 → $2.940 con 12 slot a $122,50 | `data/safety-risk-limits.json` | idem | il cap è un **budget, non un permesso** (§4.2): `capitale = min(saldo, maxOpenNotionalUsd)` ⇒ è un **ordine di allocare di più**. A $2.940 su equity $1.491 il limite diventa **inerte**, e la difesa residua è il solo kill a **−$100** |
-| **③ alzare il tetto di scansione** 300 → 382 | `agent24:71` | +82 mercati visti, ~**+7 ammissibili** stimati pro-rata | zero rischio di capitale; costo = tempo di scansione, e il cronometro dice che 382 sta nel periodo di 15 min. **È la leva a rischio più basso**, e non tocca nessun limite |
+| 08:15:32 → 08:24:29 | 537 s (8,9 min) | 426 s | 111 s |
+| 08:30:32 → 08:40:46 | 614 s (10,2 min) | 498 s | 116 s |
+| 08:45:32 → 08:54:42 | 550 s (9,2 min) | 438 s | 112 s |
 
-⚠ **La leva ③ da sola non basta**: aggiunge candidati, ma il collo è la quota `basso: 1` e il tetto
-di 12 slot. **Nessuna delle tre è stata applicata.**
+⇒ **overhead di scoperta+scrittura ~113 s, stabile.**
 
-## 9-13 · L'APPLICAZIONE, e lo stato dopo
+**Il ciclo a 382**: a 1,41 s/mkt ⇒ 10,9 min ✔ · a 1,66 ⇒ 12,4 ✔ · a 1,45 ⇒ 11,1 ✔ ·
+**a 2,29 ⇒ 16,5 min ✘ SFORA** il periodo di 15 min.
 
-**Prima del riavvio**: 16 ordini a riposo su 8 mercati, $416,08 · 7 coppie · 1 gamba scoperta a
-libro · 2 posizioni aperte (`0x4d79d306` 56,1 @0,4145 carico 0,494 · `0xd947c421` 56,1 @0,0545
-carico 0,065) — **non vendute**. Riavviati **solo** agent40 e agent41, che sono i due che leggono
-la manopola e si riavviano **insieme** (§5.1). Il riavvio ha **azzerato la quarantena slot-sterile in
-memoria**: ne sono usciti `0x684e5b72` (NVIDIA), `0xf3c634bd` (Musk <40 tweet), `0x790474c0` (Trump
-180-199 Truth) — e infatti Trump è già rientrato a libro con una coppia da $52,68.
+**Il massimo che ci sta anche nel caso peggiore**: `N = (900 − 113) / 2,29 = **343**`.
+Verificato sui quattro ritmi: **15,0 · 9,9 · 11,4 · 10,2 min**. Nessuno sfora.
 
-**Dopo un ciclo (08:50:36Z):**
+**⚠ Sforare non rompe, degrada in silenzio** — ed è la ragione per cui si tara sul peggiore:
+`resto = SCAN_INTERVAL_MS − durata` ha un pavimento di 60 s, quindi un ciclo da 16,5 min produce un
+board ogni ~17,5 min, che sta **sotto `ETA_BOARD_MAX_MS` (25 min)** e non fa scattare nessun allarme.
+
+**In servizio, verificato**: `Processing top **343** of 1273 reward markets` (log delle 09:29:23Z).
+Il modulo espone `MAX_CLOB_MARKETS = 343`.
+
+**⚠⚠ LA COPERTURA RESTA PARZIALE: il numero vero dei premiati NON È NOTO.** Il log dichiara a ogni
+giro `4-5 fette al tetto dei 2.100 · budget fette esaurito a 120p` (`REWARD_FAST_MAX_PAGES`), quindi
+il **1.273-1.281** che compare come totale è un **limite inferiore**, non un censimento. Alzare
+questo tetto fa vedere più mercati **fra quelli trovati**; non fa trovare quelli mai cercati.
+
+## 2 · LA QUOTA «BASSO» — 1 → **4** su 12
+
+`quotaScaglioni` dà ora `round(N/3)`, almeno 1 e al più N−1: **a N=12 fa 4+8**, a N=3 fa ancora
+**1+2** (la regola originale dell'operatore, intatta).
+
+**Misurato PRIMA, sul board delle 09:04Z**: dei **22 mercati ammissibili e liberi**, **14 sono
+«basso»** (12 lunghi + 2 corti) contro **un posto solo, già occupato** — quattordici candidati che
+non potevano entrare mai, qualunque cosa succedesse.
+
+**⚠ QUANTI NE RIENTRANO SUBITO: ZERO, e va detto.** Gli slot erano già **12/12**. La quota non crea
+slot: cambia **chi** li occupa quando si liberano. Misurato prima del cambio:
+- quota basso 1 ⇒ posti liberi `basso 0 · alto 0` ⇒ entranti possibili **0**
+- quota basso 4 ⇒ posti liberi `basso 3 · alto 0` ⇒ entranti possibili **3**, ma `slotLiberi = 0`
+
+E il referto post-riavvio lo conferma: `postiNonAssegnati: [{scaglione: basso, posti: 3}]` con
+`occupati 12`. **I 3 posti «basso» esistono e aspettano che uno slot si liberi.**
+
+**⚠ NON EVICE NESSUNO.** Con 11 occupanti «alto» e la quota nuova a 8, `postiLiberi` va **negativo**
+e il cancello legge `> 0`, cioè «pieno»: nessuno viene cacciato. La composizione nuova si realizza
+man mano, non con uno strappo — cacciare un mercato che sta quotando bene per una ragione di
+composizione sarebbe churn pagato in priorità di coda.
+
+## 3 · IL TETTO PER MERCATO — **non toccato**, e il conto dice perché
+
+```
+equity totale            = $1.464,47 + $24,63            = $1.489,10
+obiettivo 80%                                             = $1.191,28 al lavoro
+alLavoro = totale − libero = totale − (saldo − nozionale) = posizioni + nozionale
+  ⇒ nozionale necessario = $1.191,28 − $24,63            = $1.166,65
+
+IL VINCOLO DEL CAP, in forma generale:
+  esposizioneMassimaRaggiungibile(N) = N × 2 × tetto ≤ cap
+  ⇒ N × tetto ≤ cap/2 = $735,00
+  e il nozionale a riposo È N × tetto     ⇒  nozionale ≤ $735,00
+```
+
+**⚠ Il soffitto NON dipende da N.** Qualunque coppia `(N, tetto)` dà lo stesso $735: più slot con
+size più piccola, o meno slot con size più grande, **producono lo stesso nozionale massimo**. Non
+esiste una configurazione che arrivi all'80% sotto un cap di $1.470.
+
+```
+capitale al lavoro MASSIMO = $24,63 + $735,00 = $759,63 = 51,0%
+MANCANO                    = $431,65 di nozionale = 28,9 punti percentuali
+
+il tetto che servirebbe, a N=12: $1.166,65 / 12 = $97,22
+  verifica: 12 × 2 × $97,22 = $2.333,30  contro cap $1.470  ⇒ SFONDA di $863,30
+
+il tetto MASSIMO che rispetta il cap a N=12 = $1.470 / 2 / 12 = $61,25
+  ⇒ È ESATTAMENTE QUELLO DI ADESSO. Non c'è niente da alzare.
+```
+
+**Punto 3 non applicato. Punto 4 rispettato: il cap resta $1.470.**
+
+## 5 · L'ORDINE DELLE MOSSE, come chiesto
+
+1 e 2 applicati per primi → riavvio → atteso il ciclo di selezione (09:33:18Z) → misurato: **12/12
+slot, 2 corti su 2, 10 lunghi su 10, `entranti 0`, `postiNonAssegnati [{basso,3}]`** → **solo allora**
+calcolato il punto 3 sul numero reale, che dice **non applicabile**. Il tetto per mercato non è stato
+toccato.
+
+## 7 · I MERCATI FERMI — sono QUATTRO, non tre, e il blocco è il PIANO
+
+| mercato | scaglione | fermo da |
+|---|---|---|
+| `0x684e5b72` NVIDIA | alto | **236 min** |
+| `0xf3c634bd` Musk <40 tweet | alto | **208 min** |
+| `0x5e082f0b` Fed 1 taglio | alto | 15 min |
+| `0x4e4f77e7` Republican House | alto | 15 min |
+
+**Non è un rifiuto di un gate**: cercati tutti i `manual-place`, `bulk-allocate` e `rifiuto-ripetuto`
+su quei quattro mercati nelle ultime 4 ore ⇒ **nessun tentativo di piazzamento, zero record**.
+
+**Il blocco è a monte: il piano ha 4 righe su 12 mercati selezionati.**
+`data/realloc-ultimo-piano.json` porta **4 righe** e il giornale ripete a ogni mini-ciclo
+`ricostruzione: {tentata: true, adottata: true, righe: 4}` con esito
+`nessun mercato del piano ha spazio sufficiente adesso`. I mercati selezionati che non ricevono una
+riga di piano non ricevono mai un ordine.
+
+**È §5.2 p.55**: l'allocatore scarta chi ha `profondita: 'non-verificata'`, e la verifica accetta
+**solo campioni websocket** — la corsia di agent34 ha un tetto di 60 posti. **Difetto dichiarato,
+NON corretto in questo giro**, come richiesto.
+
+## 8 · ORDINI VIVI, dichiarati PRIMA del riavvio
+
+16 ordini a riposo su 8 mercati, **$423,89** · 6 coppie · **2 gambe scoperte a libro** · **2
+posizioni aperte** (`0x4d79d306` 56,1 @0,386 carico 0,494 · `0xd947c421` 56,1 @0,053 carico 0,065),
+**non vendute**. Riavviati **agent24** (tetto di scansione) e **agent41** (quota). **agent40 NON
+riavviato**, perché nessuna delle due modifiche vive lì ⇒ **zero ordini toccati**.
+Il riavvio di agent41 **ha azzerato la quarantena slot-sterile in memoria**: ne sono usciti 6 —
+`0x684e5b72` NVIDIA, `0xf3c634bd` Musk<40, `0x5e082f0b` Fed-1-taglio, `0x4e4f77e7` Republican-House,
+`0x80b3af88` Fed-rialzo, `0xd4e77ba6` no-Fed-cuts.
+
+## 9-10 · ASSERZIONI E SUITE
+
+`lib/maker/scansione-e-quota.test.js` — **18/0**, **ROSSO su HEAD con 8 fallimenti**:
+- un board di **400 righe** viene valutato **tutto** (`valutati === 400`), e con ≥382 ammissibili la
+  selezione li considera tutti;
+- il tetto configurato **sta nel periodo al ritmo peggiore**, col **CONTROLLO** che 382 non ci starebbe;
+- con quota basso 4 e ≥4 candidati «basso» entrano **esattamente 4**, e i 2 in eccesso escono con
+  `quota-scaglione-piena`;
+- la quota **non muove il capitale**: `esposizioneMassimaRaggiungibileUsd(N)/2/N === 61,25` per ogni N.
+
+**Quattro test asserivano il comportamento vecchio e sono stati RISCRITTI SULLA PROPRIETÀ, non
+ammorbiditi**: `vista-board` (`MAX_CLOB_MARKETS === 300` era una fotografia della costante — ora
+difende «non più stretto di 150» **e** «sta nel periodo al ritmo peggiore»), `selezione-mercati`
+(`basso === 1` idem — ora difende «esiste sempre e non mangia mai tutto l'alto», più il caso N=3),
+`fasce-slot` ② e ③ e `distanze-e-slot` ⑦ (i fixture erano tutti «alto», quindi a fermarli sarebbe
+stata la quota invece della fascia — che è ciò che quei blocchi provano).
+
+**Suite: `252 test · 243 verdi · 8 ROSSI · 1 non parte`** — esattamente gli 8 noti.
+`allowlist-con-posizioni` è tornato verde da solo: era dipendente dallo stato vivo, come previsto.
+
+## 11 · DOPO DUE CICLI
 
 | | |
 |---|---|
-| slot occupati | **12 su 12** — **10 lunghi** (su 10) + **2 corti** (su 2) |
-| posti vuoti | **nessuno** (`postiVuoti: []`, `postiNonAssegnati: []`) |
-| entranti | 3, tutti di fascia lunga |
-| ordini a riposo | **18 su 9 mercati** (i 3 nuovi si stanno riempiendo) |
-| nozionale a riposo | **$470,61** |
-| size per lato | ~$26 · **per mercato ~$52,5**, sotto il tetto di $61,25 |
-| capitale al lavoro | **$496,92 / $1.490,78 = 33,3%** · a regime su 12 mercati ≈ **44%**, tetto teorico **51,1%** |
-
-**La suite**: `251 test · 241 verdi · **9 ROSSI** · 1 non parte`. Gli 8 noti più
-`allowlist-con-posizioni`, che ho verificato essere **15/2 identico anche su HEAD**: preesistente e
-dipendente dallo stato vivo, non introdotto da questo giro. `tre-fix-sicurezza` è uscito dai rossi
-(è il timeout di §5.2 p.42), `selezione-cablata` resta dentro (§5.2 p.61, rosso al primo fill).
+| ordini a riposo | **16** |
+| mercati con ordini | **8** su 12 assegnati |
+| slot occupati | **12 su 12** — 10 lunghi (su 10) + 2 corti (su 2) |
+| posti non assegnati | `[{scaglione: basso, posti: 3}]` — la quota nuova aspetta uno slot libero |
+| size per lato | **$26,49** · per mercato **$52,99** (tetto $61,25) |
+| nozionale | **$423,89** |
+| capitale al lavoro | **$448,52 / $1.489,10 = 30,1%** |
+| soffitto strutturale | **$759,63 = 51,0%** |
 
 ## Difetti trovati e NON corretti
 
-1. **`CLAUDE.md` dice il falso sul riavvio di agent40**: afferma «OGNI RIAVVIO DI agent40 ABBANDONA
-   GLI ORDINI GIÀ A LIBRO». Misurato: `preesistenti-adottati` con **14 ordini adottati su 15**, 1
-   solo invisibile (`1-origine-non-auto`). Classe D7, su una decisione di deploy.
-2. **La quarantena non compare in nessuna lista di scarto** (§5.2 p.62): entra in `escludi` e cade
-   prima del cancello di composizione, quindi `slotVuotiPerScarsita` attribuisce il vuoto alla
-   ragione sbagliata.
-3. **Il censimento è parziale due volte**, e solo una è dichiarata: il tetto di 300 è nel log, ma il
-   `budget fette esaurito` significa che anche il **1.275 è un limite inferiore** — il numero di
-   mercati premiati che il venue espone davvero **non è noto**.
+1. **Il piano produce 4 righe su 12 mercati selezionati** (§7 sopra, §5.2 p.55). È la causa vera per
+   cui il capitale al lavoro sta al 30% invece che al 49% raggiungibile: quattro slot assegnati non
+   hanno mai ricevuto un ordine, due da oltre tre ore.
+2. **La suite scrive nello stato di produzione**: il runner dichiara `⚠ STATO TOCCATO:
+   data/selezione-mercati.json`, e durante l'esecuzione compaiono nel giornale record
+   `tipo: 'selezione-mercati'` con `valutati: 143` e `fasce: null` che **non vengono da agent41**.
+   È §5.2 p.45 in forma peggiore: non solo il rilevatore non distingue l'autore, ma i test **scrivono
+   davvero** nel giornale di produzione.
+3. **La quarantena non compare in nessuna lista di scarto** (§5.2 p.62), invariato.
