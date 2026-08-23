@@ -387,6 +387,50 @@ cioè distruggeva ordini che nessuno stava per correggere. L'orologio si azzera 
 buona**, e una cancellazione fallita NON lo azzera. Tre cause distinte in audit —
 `cecita-timeout-{mid-stantio|nessun-libro|eta-ignota}` — perché l'azione è la stessa ma la diagnosi no.
 
+> **🔁 IL PAVIMENTO DI PROFONDITÀ NON GIUDICA UN RINNOVO — il filo era tagliato, 23 agosto 2026.**
+> La regola è del **16 agosto** (`63c10a0`, chiude §5.2 p.21) ed è stata **INERTE per sette giorni**:
+> `auto-reprice.js:1709` costruiva la prova (`esenzione-rinnovo.provaRinnovo`) e la passava come
+> `rinnovo:` a `valutaMercato`, ma **`motore-unico.valutaMercato` non la destrutturava e non la
+> inoltrava a `trovaLivello`** — l'unica funzione che sa esentare. **Sesta occorrenza della classe
+> «dep col nome giusto che nessuno inietta»**, e la prima in cui mittente e ricevitore c'erano
+> **entrambi**: le 21 prove del mittente e quelle del ricevitore chiamano le due funzioni
+> direttamente, quindi **nessuna passava dal ponte**. ⚠ `scripts/dipendenze-scollegate.js` non può
+> vederlo: guarda le `deps.*`, e `rinnovo` è un argomento nominato (§5.2 p.66).
+> **LA MISURA**: 63 ordini morti per GTD senza rinnovo fra 06:13Z e 13:18Z del 23/08, **$862,58**
+> fuori dal libro; **49 col gate `motore-non-conforme`, e tutti e 49 `profondita-insufficiente`** —
+> **39** «la banda finisce prima del pavimento» ($260,66), 8 «banda non calcolabile», 2 «un solo
+> livello». ⚠ **I mercati NON erano illiquidi**: la soglia è **relativa** (10% della media altrui in
+> banda *di quel mercato*), e la profondità altrui davanti aveva mediana **$106,50** contro il
+> ripiego di **$15** che il motore chiede a un mercato senza storico — Bad Bunny fu respinto con
+> **$543,75** davanti. **Zero mercati da dichiarare non quotabili, zero slot da liberare.**
+> **⚠ MONOTONA PER COSTRUZIONE, e non per taratura**: `valutaMercato` valuta col pavimento **PIENO**
+> e **solo se cade** rivaluta con l'esenzione. La prima stesura inoltrava e basta, ed è stata
+> **misurata a secco e bocciata**: recuperava 1 rifiuto e ne **creava 4**, perché `prezzoMaxRinnovo`
+> dentro `trovaLivello` scarta i livelli più cari — un filtro che protegge il prezzo **restituito**,
+> mentre su questo percorso `valutaMercato` è un **VETO** e il prezzo lo sceglie `decideReprice`.
+> Il commento che lo giustificava descriveva un comportamento inesistente (**D7**).
+> **⚠ UN RINNOVO NON HA BISOGNO DI UN LIVELLO NUOVO: HA BISOGNO DI TENERE IL SUO.** Se il pavimento
+> era soddisfatto e a scartare sono stati **solo** i prezzi, il verdetto è ammesso e il prezzo è
+> quello che l'ordine **ha già** (`prezzoDiRiferimento: true`, `level: null`) — mai un livello più caro.
+> **⚠ IL PREZZO DI RIFERIMENTO È QUELLO CHE PARTE**, non `order.price`: erano due espressioni per la
+> stessa domanda, e un **inseguimento al rialzo** si sarebbe dichiarato rinnovo sul prezzo vecchio
+> passando con **più** nozionale a riposo. Adesso è `prezzoCheParte`, un numero solo, letto dal tetto
+> per mercato **e** dalla prova. ⚠ Su una gamba **SELL** `prezzoMassimo` si **specchia** con la stessa
+> funzione che ha specchiato la scala, o vivrebbe nello spazio sbagliato.
+> **⚠ ESENTA QUEL PAVIMENTO E BASTA**: «mai primo sul libro», tetto per mercato, banda, fine scala,
+> mid stantio, KILL, rate limit e tetto per ordine restano identici e **asseriti**.
+> **LA PROVA**: `lib/maker/rinnovo-sotto-il-pavimento.test.js` (22/22) — proprietà, non sorgente;
+> monotonia su **252 configurazioni**; rossa su tre mutazioni distinte.
+
+> **📣 UN CICLO CHE PERDE ORDINI PER GTD LO DICHIARA — 23 agosto 2026.** `auto-reprice` scrive **una
+> riga sola** per ciclo, `outcome:'anomalia-scadenze-senza-rinnovo'`, `anomalia:true`, con **numero**,
+> **nozionale**, mercati, `perGate` e gli `orderId`. `scaduto-senza-rinnovo` (una riga per ordine)
+> c'era già e non ha avvisato nessuno: **il degrado non era silenzioso per mancanza di righe, ma
+> perché nessuna riga diceva QUANTO** — i 63 morti si sono visti solo contandoli a posteriori con un
+> grep. ⚠ **Referto, non gate**: non ferma niente e non tocca ordini. ⚠ **Si scrive solo se qualcuno
+> è morto in quel giro** (asserito per assenza). ⚠ Il nozionale somma ciò che si è potuto misurare, e
+> `senzaNozionale` conta a parte chi no: «non ho letto» non è «non c'è».
+
 **Cadenza di reprice adattiva per mercato** (`cadenza-adattiva.js`): l'escursione del mid su 15 minuti
 si traduce in tick/ora e da lì in tre classi — veloce 1 s, media 5 s, lenta 10 s. Chiamate al venue
 −37,9%. **Non abbassa nessuna soglia**: `minMoveCents`, `hysteresisTicks`, `confirmSamples` e
@@ -1343,6 +1387,23 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
    legga l'ambiente del processo vivo (come fanno le cinture e R1), non `process.env` della propria
    shell; **non fatta**: tocca il modo in cui si misura, e la misura è la cosa da non sporcare
    mentre la si sta usando per decidere.
+66. **🔴 `scripts/dipendenze-scollegate.js` NON VEDE IL FILO TAGLIATO FRA DUE MODULI — 23 agosto
+   2026, NON corretto.** Cerca le `deps.*` facoltative che nessuno inietta; il difetto del 23/08 era
+   un **argomento nominato** (`rinnovo`) costruito dal chiamante, passato dentro l'oggetto e **mai
+   destrutturato dal chiamato**. Lo strumento ha risposto «0 facoltative mai iniettate in moduli
+   VIVI» mentre l'esenzione era morta da **sette giorni** e costava 39 ordini in un turno. La cura è
+   un rilevatore che confronti le chiavi passate a un chiamato con quelle che il chiamato
+   destruttura. **Non fatta**: è un secondo lavoro e tocca lo strumento con cui si misura.
+67. **🟡 IL `gate` ORIGINALE DEL RINNOVO SI PERDE NELL'AUDIT — 23 agosto, NON corretto.**
+   `auto-reprice.js:1751` sovrascrive `d.gate` con `motore-non-conforme`, quindi la riga non dice
+   più se il rinnovo veniva da `expiry-refresh` o da un inseguimento: per contare i 49 è stato
+   necessario dedurlo dal testo del `reason`. Stessa famiglia di p.59. **Non corretto**: cambia la
+   forma del giornale, che altri lettori confrontano.
+68. **🟡 `provaRinnovo` CONDIZIONE ③ È SBAGLIATA DI VERSO SU UNA GAMBA SELL — 23 agosto, NON
+   corretto.** «Il nozionale non aumenta» è il conto di chi **compra**: su una SELL un prezzo più
+   alto è **meno** probabile che venga riempito, cioè meno rischio, non più. Oggi il modulo lo tratta
+   come apertura e **nega** l'esenzione — sbaglia nella direzione **prudente**, ed è per questo che
+   non è stato toccato. **Serve una decisione dell'operatore**, non una patch.
 61. **🟡 `selezione-cablata.test.js` CONTA I SELEZIONATI INVECE DEGLI ATTIVI — 22 agosto, NON corretto.**
    L'asserzione «e il vincolo e' esattamente l'insieme scelto» (riga 95-96) confronta
    `onlyMarketIds.length` con **tutti** i selezionati, mentre `restringiAllaSelezione` usa

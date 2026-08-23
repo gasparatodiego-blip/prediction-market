@@ -1,327 +1,332 @@
-# Referto — 23 agosto 2026, 13:5xZ
+# Referto — 23 agosto 2026, 14:5xZ
 
-## Due difetti chiusi: le posizioni senza via d'uscita, e il rinnovo GTD che azzera la coda
+## Il rinnovo che non passava: un filo tagliato dentro `valutaMercato`, inerte da sette giorni
 
-**PRIMA la misura, POI l'applicazione, nello stesso giro.** Tutto ciò che segue è letto dal libro
-vivo, dal giornale e dal pacchetto installato: nessun numero è ricordato.
+**PRIMA la misura, POI l'applicazione, nello stesso giro.** Ogni numero qui sotto è letto dal
+giornale, dal libro vivo o dal codice: nessuno è ricordato.
 
 ---
 
 ## 0 · Stato dichiarato PRIMA di toccare (punto 7)
 
-Fotografia del venue alle **13:22:56Z**, letta con l'adapter *cancel-only* (nessuna superficie di
-piazzamento caricata):
+Letto dal venue con l'adapter **cancel-only** alle **14:12:46Z** (nessuna superficie di piazzamento
+caricata), più `data/venue-positions.json` e `data/posizioni-abbandonate.json`.
 
 | | |
 |---|---|
-| ordini a riposo | **30** su **15** mercati |
-| coppie simmetriche | **13** |
-| gambe sole a libro | **2** |
-| posizioni aperte | **5**, tutte **scoperte** (zero coppie) |
-| nozionale a riposo | **$770,38** |
-| cassa (pUSD, on-chain) | **$1.452,20** |
-| età degli ordini | media **8,1 min** · max **22,6 min** · min 0,6 min |
+| ordini a riposo | **29** su **15** mercati · nozionale **$789,35** |
+| età degli ordini | media **11,9 min** · mediana 11,1 · max **17,2** (GTD 23 min) |
+| coppie complete a libro (due token, stesso mercato) | **12** |
+| gambe sole a libro | **3** mercati (`0x4e4f77e7` una gamba; `0x790474c0` e `0x4d79d306` una gamba + il SELL d'uscita) |
+| posizioni aperte | **5**, tutte **scoperte** (zero coppie), valore al venue **$35,87** |
+| di cui **ABBANDONATE** (R6) | **2** — `0xc5cd9325` MrBeast (valore $0,32, uscita $1,50) e `0xd947c421` Don't Say Good Luck (valore $1,52, uscita $2,12) |
+| restano gestite | `0x4d79d306` Democratic House · `0x790474c0` Trump 180-199 · `0xb3c7f543` Iran |
+| capitale al lavoro | **$778,13 / $1.489,43 = 52,2%** (obiettivo 95%) |
+| flotta | 11 definiti, **10 online** + `agent44` in `waiting restart` (schedulato) |
 
-**Processi riavviati: due, e solo due — `agent40-manual-reprice` e `agent41-realloc-scheduler`.**
-Sono i soli che caricano il codice toccato: agent40 giudica e scrive il registro degli abbandoni e
-timbra il GTD della corsia di chiusura; agent41 lo legge per liberare lo slot.
-**Ordini toccati dal riavvio: ZERO.** Nessuna cancellazione, nessun piazzamento, nessuna modifica di
-prezzo fa parte di questo lavoro. ⚠ Ma va detta la conseguenza nota (§CLAUDE.md, riquadro in cima):
-**ogni riavvio di agent40 rende PRE-ESISTENTI gli ordini già a libro** — invisibili al motore, quindi
-non riprezzati e non rinnovati — e con `MANUAL_ORDER_PLACEMENT=send` quelli muoiono per GTD entro
-≤ 23 minuti e vengono ripiazzati dal ciclo normale. **Il riavvio di agent41 azzera anche la quarantena
-in memoria della regola «slot sterile»** (`statoLibroVuoto`), che è una perdita del freno anti-churn,
-non un disarmo: per 22 minuti nessuno può essere rilasciato.
-
----
-
-## 1 · La soglia di abbandono — il conto, non il gusto
-
-**La regola** (`lib/maker/abbandono-posizione.js`, puro):
-
-```
-ABBANDONO  ⟺  valoreResiduo < SOGLIA   E   costoUscita ≥ valoreResiduo
-```
-
-* `valoreResiduo` = il **bid CAMMINATO** per l'**intera** size — i dollari che il libro paga *adesso*.
-  Mai `size × mid`: la misura del 16 agosto (283 campioni, **zero** istanti con un'uscita in guadagno)
-  dice che il mid non è consumabile, ed è lo stesso motivo per cui `presa-di-profitto` cammina la scala.
-* `costoUscita` = la perdita realizzata che si accetta, presa dalla via più economica fra le due:
-  * **vendita** `size × (carico − bidCamminato)`
-  * **coppia** `size × (carico + askAltroCamminato − 1)`
-
-> ### ⚠ Le due vie costano identico, ed è strutturale — non un caso del giorno
-> I due token di un mercato binario condividono **un solo libro**: un BUY di NO a `p` *è* un SELL di
-> YES a `1 − p`, quindi `askAltroLato = 1 − bidMioLato` per costruzione. Sostituendo:
-> `costoCoppia = size × (carico + (1 − bid) − 1) = size × (carico − bid) = costoVendita`.
-> **Misurato sulle cinque posizioni vive: identiche alla quarta cifra, 5 su 5.** Il `min` resta scritto
-> lo stesso, e non è ridondanza difensiva: è l'unico punto che se ne accorgerebbe se il venue
-> disaccoppiasse i due libri. Un'asserzione lo verifica.
-
-### Il conto della soglia
-
-```
-SOGLIA_ABBANDONO_USD = PERDITA_MAX_FRAZIONE × MARKET_CAP_FIXED_USD = 0,05 × $61,25 = $3,0625
-```
-
-Entrambe le grandezze sono **importate** dai moduli dove già vivono (`urgenza-scoperto`,
-`concentration`): ricopiarne una sarebbe il reperto **D1** su un limite di rischio.
-
-**Perché proprio quel prodotto.** `PERDITA_MAX_FRAZIONE` è quanto **R7 autorizza la scala d'urgenza a
-bruciare** per liberare una gamba; `MARKET_CAP_FIXED_USD` è **la gamba più grande che questa
-configurazione possa aprire**. Il prodotto è quindi *il massimo che il bot possa legittimamente
-spendere per uscire da una posizione qualsiasi*. Una posizione che vale meno di quella cifra è, per
-costruzione, una posizione su cui la scala è autorizzata a spendere **più di quanto la posizione
-valga** — cioè esattamente lo stato che R6 vieta. **La soglia non è un gusto: è il punto in cui R6 si
-contraddice.**
-
-⚠ **L'operatore aveva suggerito «ordine di grandezza $5».** Sul board di oggi **$3,06 e $5,00 danno lo
-stesso verdetto su tutte e cinque le posizioni** (abbandonano le stesse due, salvano le stesse tre).
-Si tiene il **derivato**, che è anche il più stretto: abbandonare è smettere di provare, quindi il
-verso prudente è abbandonare di **meno**.
-
-### Quali posizioni ricadono nella regola — dichiarato a secco, col modulo vero
-
-| verdetto | mercato | size @ carico | valore residuo | costo d'uscita | causa |
-|---|---|---|---|---|---|
-| **ABBANDONATA** | `0xc5cd9325` MrBeast 37-39M | 56,5 @ 0,05 | **$0,45** | **$2,38** | costa più di quanto vale |
-| **ABBANDONATA** | `0xd947c421` Don't Say Good Luck | 56,1 @ 0,065 | **$1,52** | **$2,12** | costa più di quanto vale |
-| resta | `0x4d79d306` Democratic House | 56,1 @ 0,494 | $21,88 | $5,83 | sopra soglia |
-| resta | `0x790474c0` Trump 180-199 | 52,8 @ 0,099 | $3,85 | $1,37 | sopra soglia |
-| resta | `0xb3c7f543` Iran sanctions | 2,8461 @ 0,87 | $2,33 | $0,14 | **sotto soglia ma uscita conveniente** |
-
-L'ultima riga è la prova che la **doppia** condizione serve: Iran vale $2,33, cioè sotto la soglia, ma
-uscire costa $0,14 — la regola a una condizione sola l'avrebbe abbandonata per sbaglio.
+**Processi riavviati: due, e solo due — `agent40-manual-reprice` e `agent41-realloc-scheduler`**,
+insieme e **dal file**. Sono i soli che caricano il codice toccato: agent40 esegue il ciclo di
+riprezzo (`auto-reprice`) e il motore (`motore-unico`); agent41 carica lo stesso motore per la
+corsia di riallocazione.
+**Ordini toccati da questo lavoro: ZERO.** Nessuna cancellazione, nessun piazzamento, nessuna
+modifica di prezzo. **Le posizioni aperte non sono state vendute.**
+⚠ Conseguenza nota e dichiarata (CLAUDE.md, riquadro in cima): **ogni riavvio di agent40 rende
+PRE-ESISTENTI gli ordini già a libro** — invisibili al motore, quindi né riprezzati né rinnovati — e
+quelli muoiono per GTD entro ≤ 23 minuti, poi il ciclo normale li ripiazza. ⚠ Il riavvio di agent41
+azzera anche la quarantena in memoria della regola «slot sterile» (`statoLibroVuoto`): non è un
+disarmo — per 22 minuti nessuno può essere rilasciato — ma è una perdita del freno anti-churn.
 
 ---
 
-## 2 · Il limite resta — cosa l'abbandono NON fa
+## 1 · La causa: quale presidio, quale file, quale riga (punto 1)
 
-* **Non cancella nulla al venue e non vende.** Il modulo è puro: due `require` di sole costanti, zero
-  I/O, nessuna superficie di piazzamento o cancellazione raggiungibile.
-* **Non sparisce dai conti.** La posizione resta al venue ⇒ resta dentro `readVenuePositions`, dentro
-  il totale del guardiano, dentro `capitale-al-lavoro` e dentro il P&L. **Abbandonare è smettere di
-  AGIRE, non di CONTARE.**
-* **Resta visibile nel giornale**: una riga `posizione-abbandonata` **a ogni giro**, con valore
-  residuo, costo d'uscita, soglia, bid camminato, gradino e minuti di scopertura. Più
-  `posizione-abbandonata-dichiarata` all'ingresso e `posizione-abbandonata-rientrata` all'uscita.
-* **La coppia batte sempre l'abbandono**: `sizeAltroLato > 0` ⇒ mai abbandonata (il merge rende
-  $1/share, e nessuna soglia vale più di così). `sizeAltroLato` non letta ⇒ **non giudicabile**.
-* **Asimmetrico apposta**: si **entra** con 2 osservazioni contigue (≤ 5 min), si **esce** con una.
-  Un giudizio `non-giudicabile` non fa rientrare: lascia la voce com'è, o un buco di feed rimetterebbe
-  in gioco una posizione abbandonata e ricomincerebbe a bruciare tentativi.
-* **Fail-closed su ogni ingresso**: carico, size, `sizeAltroLato` non finiti, o una delle due scale che
-  non copre l'intera size ⇒ non si abbandona.
-* **Lo slot si libera solo se OGNI posizione di quel mercato è abbandonata.** La sottrazione avviene in
-  `agent41.posizioniPerSelezione`, l'unico ingresso da cui la selezione deriva `inGestione`: il mercato
-  ricade nel ramo **già esistente e già provato** («era in gestione e al venue non c'è più niente»).
-  Nessun ramo nuovo nella macchina della rotazione. **§4.8 non è toccata.**
+> ### 🔴 IL PRESIDIO È IL **PAVIMENTO DI PROFONDITÀ**, E I 49 SONO **TUTTI E 49** SUOI
+> `motore-unico.trovaLivello` · `DEPTH_FLOOR_PCT_OF_AVG` · bocciatura `profondita-insufficiente`,
+> prodotta a **`lib/maker/motore-unico.js:426`** e trasformata in `gate: 'motore-non-conforme'` a
+> **`lib/maker/auto-reprice.js:1751`**.
+
+**I 49, divisi per sottocausa** — finestra del referto precedente, 06:13Z → 13:18Z, contati sulle
+righe `scaduto-senza-rinnovo` del giornale:
+
+| sottocausa | quanti | nozionale | è il caso che l'esenzione copre? |
+|---|---|---|---|
+| **`la banda finisce prima del pavimento`** | **39** | **$260,66** | **sì** |
+| `banda premiante non calcolabile` | 8 | $227,65 | no — manca un dato, non è un giudizio di liquidità |
+| `dentro la banda c'è 1 livello: la ricerca parte dal secondo` | 2 | $9,98 | no — la guardia sta **prima** del pavimento |
+
+Totale del giro: **63 morti · $862,58** — `motore-non-conforme` 49, `close-sell-floor` 5,
+`rate-limited` 4, non dichiarata 5. **Riprodotto al numero**, non ricopiato dal referto di stamattina.
+
+### La soglia, e come è dimensionata
+
+```
+pavimento = DEPTH_FLOOR_PCT_OF_AVG × (liquidità ALTRUI media in banda di QUEL mercato)
+          = 0,10 × media_altrui                       (fonte `media-altrui`)
+ripiego   = $15                                       (mercato senza storico)
+```
+
+**È una soglia RELATIVA, e questo è il punto**: non dice «questo libro è sottile», dice «questo libro
+è più sottile della propria media recente». Sui 39 (ultima osservazione per ordine, dal giornale):
+
+| grandezza | mediana | min | max |
+|---|---|---|---|
+| pavimento richiesto | **$170,44** | $26,03 | $46.666,47 |
+| profondità **altrui** davanti, misurata | **$106,50** | $6,80 | $11.958,75 |
+| media altrui in banda del mercato (= pavimento/0,10) | **$1.704,45** | $260,27 | $466.664,67 |
+| rapporto davanti/pavimento | **0,536** | 0,114 | 0,959 |
+
+**Fonte del pavimento: `media-altrui` in 39 casi su 39.** Mai il ripiego.
 
 ---
 
-## 3 · L'anomalia dei 240 minuti — **NON era muta**
+## 2 · Il rinnovo non è un ingresso — quali presidi sono legittimi (punto 2)
 
-**Dichiarazione richiesta: la riga è stata scritta, e molte volte.** Misurato sul giornale della
-finestra 06:13Z → 13:18Z:
+**L'esenzione esisteva già, ed è quella giusta.** `lib/maker/esenzione-rinnovo.provaRinnovo`, scritta
+il **16 agosto** (commit `63c10a0`, 16:05Z) proprio per chiudere §5.2 p.21, con 21 prove interne
+tutte verdi. **Non ne serviva una nuova.**
 
-| mercato | righe `scoperto-oltre-soglia-grave` | scopertura coperta |
+> ### 🔴 ERA INERTE DA SETTE GIORNI: IL FILO ERA TAGLIATO A METÀ STRADA
+> `auto-reprice.js:1709-1716` costruisce la prova e la passa come `rinnovo:` dentro l'oggetto di
+> `valutaMercato`. Ma **`motore-unico.valutaMercato` (`:369-380` del sorgente di ieri) non
+> destrutturava `rinnovo`**, e a **`:422-423`** chiamava `trovaLivello({side, bookLevels, bandBounds,
+> ownOrders, tick, pavimentoUsd, scoringMid, bandRadiusCents})` — **senza `rinnovo`**. Il parametro
+> arrivava all'unica funzione che non lo riceveva.
+> `trovaLivello` sapeva esentare (`:202`, `if (esenteRinnovo) pavimentoUsd = 0`) e non è mai stato
+> raggiunto da un `rinnovo` diverso da `null`, mai, in sette giorni.
+>
+> **È la SESTA occorrenza in questo repo della classe «una dep col nome giusto che nessuno inietta è
+> un valore di difetto che nessuno ha chiesto»** — con un'aggravante: le altre cinque avevano un
+> ricevitore senza mittente, qui **mittente e ricevitore c'erano entrambi** e il filo era spezzato
+> nel modulo di mezzo. Le prove del mittente (21, verdi) chiamano `provaRinnovo` direttamente; quelle
+> del ricevitore chiamano `trovaLivello` direttamente. **Nessuna delle due passava dal ponte.**
+> ⚠ E **`scripts/dipendenze-scollegate.js` non poteva vederlo**: cerca `deps.*` non iniettate, e
+> `rinnovo` è un argomento nominato, non una dep. Dichiarato al punto 11.
+
+### Chi è legittimo su un rinnovo e chi no
+
+| presidio | su un rinnovo | perché |
 |---|---|---|
-| `0x4d79d306` Democratic House | **394** | da 249,3 a **673,3 min** |
-| `0xd947c421` Don't Say Good Luck | **101** | da 240,4 a 349,0 min |
+| **pavimento di profondità** | ❌ **NON legittimo** | limita l'**apertura** di esposizione su un libro sottile. Un rinnovo non apre: sposta un ordine già a libro a size e nozionale **non crescenti**. Il termine di paragone non è «nessuna esposizione» (non è un'opzione) ma «la gamba muore e restiamo direzionali», che è il rischio peggiore |
+| **mai primo sul libro** | ✅ legittimo | non parla di esposizione: parla di dove finisce il prezzo. Un rinnovo in cima al libro è comunque un ordine che si fa mangiare. Resta **assoluto** (asserito) |
+| **tetto per mercato** (Regola 5) | ✅ legittimo | l'esenzione qui è quella di **chiusura**, che esiste già ed è provata a parte. Resta applicato (asserito) |
+| **banda premiante** | ✅ legittimo | fuori banda l'ordine non matura premio: rinnovarlo lì è capitale immobile per definizione |
+| **fine scala · mid stantio · KILL · rate limit · tetto per ordine** | ✅ legittimi | nessuno dei cinque parla di profondità del libro, e nessuno è toccato |
 
-Il presidio ha un chiamante (`auto-close.js`, subito dopo `decideClose`) e non è mai stato silenzioso.
-**Non c'era niente da riparare, e non è stato riparato.**
+### Cosa è cambiato nel codice — tre righe, e tutte in una direzione
 
-⚠ **Ma il lavoro di oggi poteva renderlo muto, ed è il rischio che ho dovuto disinnescare.** Il blocco
-dell'abbandono fa `continue` sulla posizione: messo *sopra* l'anomalia, avrebbe spento una difesa
-mentre dichiarava di non toccarne nessuna — la classe «filtro a monte che svuota l'eccezione scritta a
-valle», applicata a sé stessi. Il blocco sta **dopo**, e un'asserzione lo difende: spostandolo, il test
-diventa rosso (verificato per mutazione).
+1. **Il filo** — `motore-unico.valutaMercato` destruttura `rinnovo` e lo inoltra a `trovaLivello`.
+2. **Il prezzo di riferimento è quello che PARTE, non quello che c'è già** — `auto-reprice` passava
+   `price: order.price` alla prova, mentre a `valutaMercato` passava `proposedPrice: d.targetPrice ??
+   order.price`. Due espressioni per la stessa domanda: un **inseguimento al rialzo** si sarebbe
+   dichiarato «rinnovo» sul prezzo vecchio e sarebbe passato con **più** nozionale a riposo. Adesso è
+   `const prezzoCheParte`, **un numero solo**, letto da entrambe.
+3. **Il prezzo di riferimento va nello spazio del motore** — su una gamba **SELL** `scalaPerIlMotore`
+   specchia i prezzi (`p → 1−p`); `prezzoMassimo` nasce dagli ordini veri, non specchiati. Si specchia
+   con la **stessa** funzione che ha specchiato la scala. Le condizioni ② e ③ (size, nozionale)
+   restano nello spazio vero: sono un conto in dollari e non si specchiano.
+
+> ### ⚠ LA PRIMA STESURA ERA SBAGLIATA, E L'HA DETTO LA MISURA, NON IL RAGIONAMENTO
+> Inoltrare `rinnovo` e basta sembrava la correzione ovvia. Provata a secco sugli **11 ordini vivi**
+> dei mercati che avevano perso gambe: **recuperava 1 rifiuto e ne CREAVA 4** — quattro ordini che
+> passavano prima e non passavano dopo.
+> **La causa**: `prezzoMaxRinnovo` dentro `trovaLivello`, che scarta i livelli più cari dell'ordine
+> sostituito. Esiste per proteggere il prezzo **restituito** da quella funzione — ma sul percorso del
+> riprezzo `valutaMercato` è un **VETO** e il prezzo lo sceglie `decideReprice`. Il commento che lo
+> giustificava («nel ciclo di riprezzo la size è nota ma il prezzo no: lo sceglie questa funzione»)
+> **descriveva un comportamento inesistente**: è un reperto **D7** appoggiato sopra il filo morto.
+> **Le due correzioni**:
+> · l'esenzione si applica **solo al ritenta**: si valuta col pavimento PIENO, e solo se cade e solo
+>   se il rinnovo è provato si rivaluta con l'esenzione. Così può **solo** trasformare un rifiuto in
+>   un'accettazione — proprietà **strutturale**, vera qualunque cosa faccia `trovaLivello` dentro;
+> · se il pavimento era soddisfatto e a scartare sono stati **solo i prezzi**, il rinnovo è ammesso e
+>   il prezzo è **quello che l'ordine ha già** (`prezzoDiRiferimento: true`, `level: null`). *Un
+>   rinnovo non ha bisogno di un livello nuovo: ha bisogno di tenere il suo.* Non si restituisce mai
+>   un livello più caro — asserito su tutti i rinnovi esentati del test.
 
 ---
 
-## 4 · Il rinnovo GTD
+## 3 · Il rifiuto era giusto? (punto 3) — **NO, e non per opinione**
 
-**Durata in uso.** `RESTING_GTD_SECONDS = 1380` s (**23 min effettivi**) con
-`REFRESH_MARGIN_SECONDS = 180`: ogni ordine viene **cancellato e ripiazzato dopo 1.200 s = 20 min**.
-Coerente con la misura: età massima osservata **22,6 min**.
+**Nessuno dei 10 mercati coinvolti nei 39 è diventato illiquido. Zero slot da liberare.**
 
-**Chi rinnova.** `agent40-manual-reprice`, tramite `auto-reprice.decideReprice` → gate
-`expiry-refresh` → `replaceManualOrder` (cancel + place). Misurati **305 rinnovi** in 7,1 h.
+| mercato | ordini | profondità **altrui davanti** | pavimento richiesto |
+|---|---|---|---|
+| `cid_938e6a0a` **Bad Bunny** (il caso del prompt) | 2 | **$543,75 – $607,04** | $616,77 – $632,68 |
+| `cid_4e4f77e7` | 5 | $11.460 – $11.959 | $46.551 – $46.666 |
+| `cid_2c00cb09` | 6 | $2.348 – $2.578 | $3.492 – $3.591 |
+| `cid_a34edb6c` | 2 | $310,57 – $312,42 | $529,13 – $540,98 |
+| `cid_be1ff656` | 8 | $83,08 – $213,70 | $159,08 – $293,79 |
+| `cid_d947c421` | 1 | $103,72 | $138,73 |
+| `cid_790474c0` | 4 | $6,80 – $63,29 | $59,54 – $73,74 |
+| `cid_aa74d4f5` | 8 | $31,54 – $50,53 | $79,44 – $146,76 |
+| `cid_3492e563` | 2 | $48,55 | $162,83 – $165,71 |
+| `cid_4d79d306` | 1 | **$11,72** | $26,03 |
 
-**Perché cancella e ripiazza invece di prolungare — verificato, non supposto.** L'`expiration` di un
-ordine sta **dentro la struct EIP-712 firmata**, e **nessuno dei due SDK installati espone
-`modify`/`amend`/`extend`**: 88 metodi in `@polymarket/clob-client-v2`, **zero** corrispondenze su
-`modif|amend|updat|replac|edit|extend|renew` (il solo match è `updateBalanceAllowance`). Cambiare la
-scadenza significa una firma nuova ⇒ un ordine nuovo ⇒ **in fondo alla coda**.
-**Il venue NON permette di estendere.**
+**Il metro assoluto è il ripiego del pavimento stesso: $15** — quanto il motore chiede a un mercato
+di cui non sa niente. **37 ordini su 39 stanno sopra**, mediana **$106,50**, cioè **7×** il ripiego.
+Bad Bunny è la dimostrazione più netta: **$543,75 di liquidità altrui davanti** — un libro
+profondissimo — respinto perché $543,75 < $616,77, cioè il 10% di una media recente di **$6.168**.
+Il mercato non è diventato illiquido: **è la sua stessa media di ieri a fargli da giudice**.
+
+Un solo ordine su 39 (`cid_4d79d306`, $11,72 davanti) è sottile anche in assoluto — ed è su
+Democratic House, mercato che ha una **posizione aperta** ed è quindi già `inGestione`, fuori dal
+conteggio degli slot. **Non c'è nessun mercato da dichiarare non più quotabile**, e non ho aggiunto
+nessun meccanismo per farlo: sarebbe macchinario nuovo su capitale reale senza un caso che lo chieda.
 
 ---
 
-## 5 · Quanto vale la coda — la misura che ha deciso cosa toccare
+## 4 · L'allarme: il degrado silenzioso finisce (punto 4)
 
-> ### Il premio non conosce la coda. Zero, per costruzione.
-> `quadraticUserShare(competitorQ, mid, maxSpreadCents, minSize, capital, distanceCents)` prende **sei**
-> parametri e **la posizione in coda non è uno di quelli**; il punteggio è `scoreOrder(d,v) = ((v−d)/v)²`.
-> Zero occorrenze di *queue*/*coda*/*priorità* in `lib/rewardScore.js`. **Un ordine di quotazione che va
-> in fondo alla coda matura esattamente lo stesso premio.**
-
-**Il churn residuo sulla quotazione, misurato:** 43 rinnovi/h con un buco `cancel→place` di **12,47 s
-medi** (mediana 1,55 s · p90 37,3 s · p99 184,5 s) ⇒ **0,53% del tempo-libro** ⇒ al ritmo di premio di
-oggi ≈ **$0,03/giorno**. **Allungare lì non compra niente** — e costerebbe esposizione non presidiata,
-oltre a invertire in silenzio la calibrazione di `ripristino-gambe` (il cui tetto di 30 min sta *sopra*
-la GTD della quotazione). **`RESTING_GTD_SECONDS` non è stato toccato: resta 1380.**
-
-**Dove la coda conta davvero: la corsia di CHIUSURA.** Lì il fill è ciò che si vuole. Misurato: il SELL
-d'uscita di `0x4d79d306` è stato piazzato **24 volte** in 673 minuti; quello di `0xd947c421` **18**.
-E c'era un'**inversione**: `MERGE_WAIT_TIMEOUT_MIN` concede **30 minuti** all'ordine di completamento
-del Livello 2, ma quell'ordine portava i **23 minuti** della quotazione — il venue lo ritirava *prima*
-che la regola smettesse di aspettarlo (a giornale: `merge-in-attesa … 29,8 min` su un ordine morto a 23).
-
-**La correzione, derivata:**
+`lib/maker/auto-reprice.js` — quando un ciclo perde ordini per GTD, ne scrive **una riga sola**,
+marcata `anomalia: true`:
 
 ```
-GTD_CHIUSURA_SECONDS = MERGE_WAIT_TIMEOUT_MIN × 60 + REFRESH_MARGIN_SECONDS = 1800 + 180 = 1980 s (33 min)
+outcome: 'anomalia-scadenze-senza-rinnovo' · anomalia: true · corsia: 'rinnovo'
+reason : "ANOMALIA: N ordini morti per GTD senza rinnovo in questo ciclo · $X usciti dal libro
+          su M mercati · per gate: motore-non-conforme×49, rate-limited×4, … "
+observed: { ordini, nozionaleUsd, senzaNozionale, mercati, perGate, orderIds }
 ```
 
-Entrambe **importate**: chi cambia l'attesa del Livello 2 muove anche questo, e non può dimenticarsene.
-
-⚠ **Cosa costa, detto per intero**: se l'host muore, un ordine **di chiusura** resta a libro fino a 33
-minuti invece di 23. È l'unica direzione accettabile, perché un ordine di chiusura può solo **ridurre**
-l'esposizione. **Nessun ordine di apertura è toccato**, e `riposizionaDopoChiusura` — che *riapre* due
-gambe — è dichiarato ed escluso.
-
-⚠ **Il punto unico è `chiudendo(spec)`, non `piazzaChiudendo`, e crederlo era l'errore**: in
-`auto-close.js` ci sono **cinque** chiamate a `deps.placeOrder` e **una sola** passa da
-`piazzaChiudendo`. Le altre quattro sono l'uscita ordinaria, il riposizionamento scoperto, il rimasuglio
-sotto il minimo, e — l'unica che non è una chiusura — il riposizionamento dopo la fusione.
-
----
-
-## 6 · Un difetto vero, misurato e NON corretto (punto 12)
-
-> ### 🔴 63 ordini morti per GTD senza rinnovo in 7 ore, $862,58 di nozionale fuori dal libro
-> `scaduto-senza-rinnovo`, finestra 06:13Z → 13:18Z. **Causa dominante: `motore-non-conforme`, 49 su 63**
-> (`close-sell-floor` 5, `rate-limited` 4, non dichiarata 5). Cioè: **il 20,7% dei rinnovi finisce con
-> l'ordine morto**, perché un rinnovo *allo stesso prezzo* deve ripassare dal motore, e se il motore in
-> quell'istante dice no (tipicamente `profondita-insufficiente`) l'ordine muore invece di essere
-> prolungato. Il caso di Bad Bunny delle 12:49:01 è esattamente questo.
-> **NON corretto di proposito**: allungare il GTD ne riduce solo la *frequenza*, non lo aggiusta; e
-> sollevare il motore su un rinnovo è una decisione di rischio, non una patch.
-
-Altri due, dichiarati e non toccati:
-* **`allowlist-con-posizioni.test.js` lampeggia, e non è mio**: rosso nella prima passata, **verde nella
-  seconda**, e rosso anche con le mie modifiche messe da parte (`git stash`). Causa misurata: il test
-  inietta `posizioni` ma non neutralizza `enabledDaOrdini`, e nell'istante rosso c'era **1 mercato con
-  ordini vivi fuori dalla lista dell'operatore** (`liveMin 18` contro `operatore 17`). È la classe
-  «rossi che dipendono dai DATI VIVI» di §5.2 p.11 — ruota col libro, non è una regressione. La cura
-  sarebbe iniettare anche gli ordini; **non fatta**, è un secondo lavoro.
-* **`chiusura-senza-tetto.test.js` fotografava il sorgente** (`res = await deps.placeOrder({`, graffa
-  compresa) invece della proprietà. **Questo l'ho corretto**, perché era rosso per causa mia: adesso
-  cerca la chiamata e non la forma dell'argomento. Terza occorrenza della classe (§5.3).
+**Perché non bastavano le righe per ordine.** `scaduto-senza-rinnovo` c'era già, una per ordine, e
+in un giornale che ne scrive centinaia all'ora una morte in più è indistinguibile da una riga di
+routine: i 63 morti di stamattina sono stati visti **contandoli a posteriori con un grep**. Il
+degrado non era silenzioso per mancanza di righe — era silenzioso perché **nessuna riga diceva
+QUANTO**.
+⚠ **È un referto, non un gate**: non ferma niente, non cancella niente, non tocca ordini.
+⚠ **Si scrive solo se qualcuno è morto in quel giro**: un avviso che compare sempre non è un avviso
+(asserito per assenza).
+⚠ **Il nozionale è la somma di ciò che si è potuto misurare**, e chi non si è potuto misurare si
+conta a parte (`senzaNozionale`) invece di entrare come zero. «Non ho letto» non è «non c'è».
 
 ---
 
-## 7 · Asserzioni — e falliscono davvero sul sorgente non corretto
+## 5 · Simulazione a secco (punto 5)
 
-`lib/maker/abbandono-e-anomalia.test.js` — **30/30 verdi**. Le tre mutazioni provate:
+`scripts/ricerca/rinnovo-simulazione-a-secco.js` — sola lettura, **funzioni vere**
+(`resolveMarketRules`, `resolveMarketDepth`, `decideReprice`, `scalaPerIlMotore`, `provaRinnovo`,
+`valutaMercato`, `mediaProfonditaAltrui`): nessuna aritmetica ricopiata. Il controfattuale è
+**esatto**, non stimato — `valutaMercato` è chiamata **due volte sugli stessi ingressi**, una con
+`rinnovo: null` (che riproduce byte per byte il sorgente di ieri) e una con la prova vera.
+*(`scalaPerIlMotore` è stata **esportata** apposta: ricopiarla in uno script di ricerca sarebbe il
+reperto D1 dentro la misura con cui si decide. L'export non ha effetti.)*
 
-| mutazione | asserzione che diventa rossa |
+**Mercati che hanno perso ordini nelle ultime 2 h: 7 · 18-20 ordini morti · ~$141-148.**
+In quella finestra le sottocause sono: **`pavimento` 16 ($110,73)** e `meno-di-2-livelli` 1 ($25,30).
+
+**A/B sul libro vivo (29 ordini a riposo, 15 mercati):**
+
+| | ordini | nozionale |
+|---|---|---|
+| rifiutati da `profondita-insufficiente` PRIMA | 3 | $38,63 |
+| di cui classe **`pavimento`** | **2** | **$9,68** |
+| **recuperati dalla correzione** | **2** | **$9,68** |
+| **quota della classe `pavimento` recuperata** | **2/2 = 100%** | **100%** |
+| restano rifiutati | 1 | $28,95 |
+| **REGRESSIONI (passava prima, rifiutato dopo)** | **0** | — |
+| ordini che **non stanno rinnovando** (size o nozionale in aumento ⇒ pavimento pieno) | 3 / 29 | — |
+
+L'unico che resta rifiutato è `0x4d79d306` YES BUY 0,516: cade su `dentro la banda c'è 1 livello`
+(sottocausa non coperta) **e** non è un rinnovo — è un inseguimento che alzerebbe il nozionale da
+$28,95 a $30,46. **Rifiutato a ragione, due volte.**
+
+> ### ⚠ E IL RECUPERO SUI 39 NON È UNA SIMULAZIONE: È DETERMINATO
+> Con l'esenzione il pavimento vale **0**, quindi il livello `i=1` è **sempre** ammesso dal
+> pavimento; poi o passa il confronto sul prezzo, o innesca il ramo del prezzo di riferimento. In
+> entrambi i casi il verdetto è **ammesso**. L'unica condizione residua è `dentro.length ≥ 2`, che il
+> messaggio stesso dei 39 dimostra («…su **N** livelli», con N = `dentro.length − 1` ≥ 1).
+> **Ogni rinnovo GTD è esente per costruzione**: TRIGGER 2 di `decideReprice`
+> (`auto-reprice.js:613`) restituisce `targetPrice: price`, cioè **lo stesso prezzo**, quindi size e
+> nozionale non salgono e `provaRinnovo` concede. ⇒ **39 su 49 (79,6%) dei rifiuti, 39 su 63 (61,9%)
+> delle morti del giro, $260,66 di nozionale.** Ben oltre la metà.
+
+---
+
+## 6 · L'asserzione che morde (punto 8)
+
+`lib/maker/rinnovo-sotto-il-pavimento.test.js` — **22/22 verdi**. La proprietà, testuale:
+*un ordine già a libro, rinnovato a prezzo e size identici su un mercato la cui profondità è scesa
+sotto la soglia d'ingresso, DEVE essere rinnovato e non rifiutato.* Nessuna asserzione guarda una
+stringa del sorgente o conta occorrenze: si costruisce un book vero (pavimento $175,07 su una media
+di $1.750, profondità altrui $89-118 — **sopra** il ripiego di $15) e si guarda il **verdetto**.
+
+**Mutazioni provate una per una, e riportate per come sono andate davvero:**
+
+| mutazione | esito |
 |---|---|
-| l'anomalia dei 240 min resa muta | ② «posizione ABBANDONATA e scoperta da 649 min: l'anomalia grave è comunque a verbale» |
-| il GTD di chiusura non timbrato | ⑥ «ogni ordine di CHIUSURA parte col GTD della corsia di chiusura» |
-| l'abbandono non ferma i tentativi | ① «la posizione confermata abbandonata produce la riga `posizione-abbandonata`» |
+| il filo tagliato (`esente` forzata a false = il sorgente fino a oggi) | **ROSSO**, 5 asserzioni (② e ②-bis) |
+| `rinnovo` non inoltrato a `trovaLivello` | **ROSSO**, le stesse |
+| il ramo del prezzo di riferimento disattivato | **ROSSO**, 2 asserzioni (②-bis) |
+| l'allarme aggregato reso muto | **ROSSO**, 8 asserzioni in `scaduto-senza-rinnovo.test.js` |
+| l'esenzione applicata **sempre** invece che al solo ritenta | **verde** — e lo dichiaro invece di tacerlo: col ramo del prezzo di riferimento al suo posto le due forme accettano esattamente le stesse configurazioni. La forma «prima senza, poi con» resta perché rende la monotonia **strutturale**, non una conseguenza da ricontrollare |
 
-Più: `lib/maker/abbandono-posizione.js` ha **21 prove interne** (`node lib/maker/abbandono-posizione.js`).
+Più: **③ monotonia su 252 configurazioni** (nessuna passa prima e fallisce dopo) · **④** «mai primo»
+e tetto per mercato restano applicati su un rinnovo provato · **⑤** quattro modi di non essere un
+rinnovo ricevono il pavimento pieno · **⑥** `meno-di-2-livelli` resta rifiutato prima e dopo ·
+**⑦** il prezzo restituito non supera mai quello dell'ordine sostituito.
+
+**Test riscritti, non ammorbiditi:** `motore-riceve-il-book.test.js` chiedeva il veto del pavimento
+su un ordine che il ciclo stava **rinnovando**, cioè difendeva la proprietà vecchia. La proprietà
+che quel file esiste per difendere — «il motore riceve la scala e le Regole 2-5 girano davvero» — si
+prova adesso **meglio**: il pavimento si verifica sull'INGRESSO (`rinnovo: null`), il rinnovo sullo
+**stesso book** passa, e il veto del ciclo si verifica su un inseguimento al rialzo e su un doppione.
+**45/45**, e rosso sul sorgente non corretto.
+
+---
+
+## 7 · Cosa NON è stato toccato (punto 6)
+
+Cap **$2.400** · **18 slot** · tetto per mercato **$61,25** · distanze (lunghi/corti) · soglia **24 h**
+· filtro meteo · tetto coppia **101¢** · payback · guardiano · kill R10 · la Parte B · il fix
+**OFF_TICK** · soglia di abbandono **$3,0625** · GTD di chiusura **33 min** · il rifiuto dei mercati a
+netto negativo. **Nessuna posizione venduta. Nessun ordine cancellato o piazzato da me.**
+Verificato anche dalla suite: i **7 rossi noti** sono rimasti **7**, per nome.
+
+---
+
+## 8 · Altri difetti trovati — dichiarati e NON corretti (punto 11)
+
+1. **🟡 `scripts/dipendenze-scollegate.js` non vede questa classe di filo tagliato.** Cerca le
+   `deps.*` facoltative mai iniettate; `rinnovo` è un **argomento nominato** passato fra due moduli,
+   e il rilevatore non lo guarda. Ha risposto «0 facoltative mai iniettate in moduli VIVI» mentre il
+   filo era morto da sette giorni. La cura sarebbe un rilevatore che confronti le chiavi passate a un
+   chiamato con quelle che il chiamato destruttura. **Non fatta**: è un secondo lavoro, e tocca lo
+   strumento con cui si misura.
+2. **🟡 Il `gate` originale del rinnovo si perde nell'audit.** `auto-reprice.js:1751` sovrascrive
+   `d.gate` con `motore-non-conforme`, quindi la riga non dice più se il rinnovo veniva da
+   `expiry-refresh` o da un inseguimento. Per contare i 49 ho dovuto dedurlo dal testo del `reason`.
+   È la stessa famiglia di §5.2 p.59 («un motivo che non si scrive è un motivo che non esiste il
+   giorno dopo»). **Non corretto**: cambia la forma del giornale, che altri lettori confrontano.
+3. **🟡 `provaRinnovo` condizione ③ è sbagliata di verso su una gamba SELL.** «Il nozionale non
+   aumenta» è il conto di chi **compra**: su una SELL un prezzo più alto è meno probabile che venga
+   riempito, cioè **meno** rischio, non più. Oggi il modulo lo tratta come apertura e **nega**
+   l'esenzione — cioè sbaglia nella direzione prudente, e per questo non l'ho toccato. **Serve una
+   decisione**, non una patch.
+4. **🟡 `lib/maker/quantita-davanti.js` continua a non avere chiamanti** (§5.2 p.52). Non toccato.
 
 ---
 
 ## In sei righe
 
-1. **La soglia è $3,0625**, e non è scelta: è `PERDITA_MAX_FRAZIONE × MARKET_CAP_FIXED_USD` = il 5% che
-   R7 autorizza a bruciare, applicato alla gamba più grande apribile — cioè il massimo spendibile per
-   uscire da una posizione qualsiasi. Sotto quella cifra R6 si contraddice. Sul board di oggi $3,06 e i
-   $5 suggeriti danno **lo stesso verdetto**, e si tiene il derivato perché è il più stretto.
-2. **Diventano abbandonate due**: `0xc5cd9325` MrBeast (vale $0,45, uscire costa $2,38) e `0xd947c421`
-   Don't Say Good Luck (vale $1,52, costa $2,12). Restano Democratic House ($21,88), Trump 180-199
-   ($3,85) e Iran — quest'ultima sotto soglia ma con un'uscita che costa $0,14, cioè la prova che la
-   doppia condizione serve.
-3. **L'anomalia dei 240 minuti NON era muta**: 394 righe su Democratic House (fino a 673,3 min) e 101 su
-   Don't Say Good Luck. Non c'era un presidio senza chiamanti, e non è stato riparato niente — ma il
-   `continue` dell'abbandono poteva renderlo muto, quindi sta **dopo**, e un'asserzione lo difende.
-4. **Del GTD ho cambiato solo la corsia di chiusura**, da 23 a **33 minuti**
-   (`MERGE_WAIT_TIMEOUT_MIN × 60 + REFRESH_MARGIN_SECONDS`), perché il venue **non sa estendere** (88
-   metodi SDK, zero `amend`) e perché l'ordine di completamento moriva a 23 minuti su un'attesa di 30.
-   **La quotazione resta a 23**: il premio non conosce la coda — `quadraticUserShare` ha sei parametri e
-   nessuno è la posizione in coda — e il churn residuo vale **$0,03/giorno**.
-5. **La coda vale $0 in premio e molto in fill**: 24 ripiazzamenti del SELL d'uscita di Democratic House
-   in 673 minuti, 18 di Don't Say Good Luck. È lì che l'ho comprata, non sulla quotazione.
-6. **La suite: 255 test · 247 verdi · 7 ROSSI · 1 non parte** — i sette noti e nient'altro
+1. **La causa dei 49**: il **pavimento di profondità** (`motore-unico.js:426`,
+   `DEPTH_FLOOR_PCT_OF_AVG = 0,10`), e **tutti e 49** sono suoi — 39 `banda finisce prima del
+   pavimento`, 8 `banda non calcolabile`, 2 `un solo livello`. L'esenzione per i rinnovi esisteva dal
+   16 agosto ed **era inerte**: `valutaMercato` non destrutturava `rinnovo` e non lo inoltrava a
+   `trovaLivello` (`motore-unico.js:378-379` e `:422-423` del sorgente di ieri). Sesta occorrenza
+   della classe «dep col nome giusto che nessuno inietta», questa volta col filo tagliato in mezzo.
+2. **Cosa ho esentato**: il **solo** pavimento di profondità, e **solo** su un ordine di cui
+   `esenzione-rinnovo` **dimostra** contro gli ordini vivi del venue che sostituisce una gamba a
+   libro senza far salire né size né nozionale — sul prezzo che **parte davvero**, non su quello
+   vecchio. Perché il pavimento limita l'**apertura**, e un rinnovo non apre: l'alternativa non è
+   «meno esposizione», è «la gamba muore e restiamo direzionali». Mai-primo, tetto per mercato,
+   banda, fine scala, KILL, rate limit e tetto per ordine restano identici e asseriti.
+3. **Mercati davvero illiquidi: ZERO su 10.** Mediana della profondità altrui davanti **$106,50**,
+   cioè **7×** il ripiego di $15 che il motore chiede a un mercato senza storico; Bad Bunny aveva
+   **$543,75** davanti. Nessuno slot da liberare, e nessun meccanismo aggiunto per farlo.
+4. **Nozionale che torna a libro**: **$260,66** sui 39 del giro di stamattina (**79,6%** dei rifiuti
+   `motore-non-conforme`, **61,9%** di tutte le morti) — determinato, non stimato, perché con
+   pavimento 0 il livello `i=1` è sempre ammesso e ogni rinnovo GTD è esente per costruzione. Sul
+   libro vivo, A/B a secco: **classe `pavimento` recuperata al 100%, zero regressioni**.
+5. **Capitale al lavoro dopo due cicli**: in coda a questo file, § *Dopo due cicli*.
+6. **La suite: 256 test · 248 verdi · 7 ROSSI · 1 non parte** — i sette noti e nient'altro
    (`dipendenze-mai-iniettate`, `distanza-2c`, `end-of-scale-cycle`, `tetti-per-giro-e-scope`,
-   `categoria-mercato`, `tetto-derivato-dallo-scaglione`, `tetto-e-scoperta`). Il capitale al lavoro
-   dopo due cicli è in coda a questo file (§ *Dopo due cicli*).
-
----
-
-## Dopo due cicli — 14:01Z, misurato
-
-Riavviati **solo** `agent40-manual-reprice` (pid **911306**) e `agent41-realloc-scheduler`
-(pid **911312**), insieme e **dal file**. Ambiente confermato da `/proc/<pid>/environ`: cinture
-invariate (`MAKER_MODE=live-min`, `MAKER_ADAPTER_DRYRUN=false`, `MANUAL_ORDER_PLACEMENT=send`,
-`REALLOC_SCHEDULER_DRY_RUN=0`), `MAKER_MERCATI_CONTEMPORANEI=18`, `MAKER_SLOT_CORTI=2`,
-`MAKER_QUOTA_CODA_LUNGA=0.5`, `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V=0.6666666666666666`.
-
-| | |
-|---|---|
-| ordini a riposo | **26** su **13** mercati |
-| età degli ordini | media **8,0 min** · max **22,3 min** · min 1,6 min |
-| coppie simmetriche a libro | **11** · gambe sole a libro **2** |
-| posizioni | **6 righe su 5 mercati** — 1 coppia (MrBeast), **4 gambe nude** |
-| nozionale a riposo | **$690,08** |
-| cassa · posizioni · totale | $1.434,01 · $55,94 · **$1.489,95** |
-| **capitale al lavoro** | **$746,02 = 50,1%** |
-| PnL guardiano | −$11,67 |
-
-### Le posizioni scoperte e il loro gradino
-
-| mercato | gradino | scoperta da | verdetto |
-|---|---|---|---|
-| `0x4d79d306` Democratic House | **3** | 717,0 min | resta (vale $21,32, uscire costa $6,40) |
-| `0xd947c421` Don't Say Good Luck | **3** | 392,8 min | **ABBANDONATA** (vale $1,52, costa $2,12) |
-| `0xc5cd9325` MrBeast | **2** | 88,7 min | resta — **coppia completa** |
-| `0xb3c7f543` Iran | **2** | 61,1 min | resta (vale $2,13, ma uscire costa $0,34) |
-| `0x790474c0` Trump 180-199 | **1** | 49,2 min | resta (vale $3,83, sopra soglia) |
-
-### Le tre prove che la regola è viva, e non solo compilata
-
-1. **La prima osservazione ha armato soltanto** — registro alle 13:57:31 con `osservazioni: 1` e
-   `abbandonataDal: null` su entrambe; l'abbandono è scattato al **secondo** giro, alle **13:58:36**.
-2. **L'anomalia dei 240 minuti continua a essere scritta su una posizione ABBANDONATA**: alle
-   **13:59:11** `scoperto-oltre-soglia-grave` su `d947c421` (gradino 3, 390,3 min), e dieci secondi
-   dopo `posizione-abbandonata` sullo stesso mercato. **L'ordine dei due blocchi regge in produzione,
-   non solo nel test.**
-3. **Il rientro ha funzionato da solo, su un caso vero, in 49 secondi.** Alle 13:58:36 MrBeast era
-   abbandonata; poi la sua **gamba sorella ha ricevuto un fill (20,1 share @ 0,90)** e alle 13:59:25 il
-   giornale porta `posizione-abbandonata-rientrata` — *«vale $2,38 ma uscire costa solo $0,44, meno di
-   quanto si incassa: si continua a provare»*. E lo **slot NON è stato liberato** per MrBeast, proprio
-   perché una delle sue due gambe è viva: `slot-liberato-per-abbandono` alle **14:00:27** elenca il solo
-   `0xd947c421`. La condizione «solo se OGNI posizione del mercato è abbandonata» ha morso su un caso
-   reale entro cinque minuti dal varo.
-
----
-
-## Difetto trovato nel riavvio, dichiarato e NON corretto
-
-> ### 🔴 `MAKER_FILTRO_METEO` non è in `agents/ecosystem.config.js`, e il filtro meteo è ARMATO
-> Il CLAUDE.md dichiara in cima «`MAKER_FILTRO_METEO=0` ⇒ **FILTRO METEO DISARMATO** (dal 23 agosto
-> 2026)». Ma la variabile **non compare**: né in `/proc/911312/environ`, né nel `.env`, né in
-> `agents/ecosystem.config.js` — e `git log -S` dice che **non c'è mai stata** in quel file (compare solo
-> dentro la ricetta di ripristino in `APERTI.md`, che presuppone una riga `MAKER_FILTRO_METEO: '0',`
-> inesistente). Per la regola di §4.13 — *«assente ⇒ ARMATO, solo il valore esatto `'0'` disarma»* — il
-> filtro **è armato**, cioè l'opposto di quanto il documento dichiara. È la trappola di §5.1: una
-> variabile messa con `--update-env` vive solo nel processo e **il primo riavvio dal file la perde**.
-> ⚠ **NON è stato il mio riavvio a cambiarla**, ed è misurato: `ammissibili` vale **20 alle 13:39 e 20
-> alle 13:43**, sullo stesso board (281 valutati) — nessuno scalino attraverso il riavvio delle 13:41.
-> Era già persa prima, con ogni probabilità al riavvio dal file delle 11:14.
-> **Non corretto**: riarmare o disarmare il filtro meteo è una decisione dell'operatore, non una patch,
-> e §6 di questo giro dice esplicitamente di non toccarlo.
+   `categoria-mercato`, `tetto-derivato-dallo-scaglione`, `tetto-e-scoperta`).
