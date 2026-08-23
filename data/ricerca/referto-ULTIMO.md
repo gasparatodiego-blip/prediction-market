@@ -260,3 +260,68 @@ Più: `lib/maker/abbandono-posizione.js` ha **21 prove interne** (`node lib/make
    (`dipendenze-mai-iniettate`, `distanza-2c`, `end-of-scale-cycle`, `tetti-per-giro-e-scope`,
    `categoria-mercato`, `tetto-derivato-dallo-scaglione`, `tetto-e-scoperta`). Il capitale al lavoro
    dopo due cicli è in coda a questo file (§ *Dopo due cicli*).
+
+---
+
+## Dopo due cicli — 14:01Z, misurato
+
+Riavviati **solo** `agent40-manual-reprice` (pid **911306**) e `agent41-realloc-scheduler`
+(pid **911312**), insieme e **dal file**. Ambiente confermato da `/proc/<pid>/environ`: cinture
+invariate (`MAKER_MODE=live-min`, `MAKER_ADAPTER_DRYRUN=false`, `MANUAL_ORDER_PLACEMENT=send`,
+`REALLOC_SCHEDULER_DRY_RUN=0`), `MAKER_MERCATI_CONTEMPORANEI=18`, `MAKER_SLOT_CORTI=2`,
+`MAKER_QUOTA_CODA_LUNGA=0.5`, `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V=0.6666666666666666`.
+
+| | |
+|---|---|
+| ordini a riposo | **26** su **13** mercati |
+| età degli ordini | media **8,0 min** · max **22,3 min** · min 1,6 min |
+| coppie simmetriche a libro | **11** · gambe sole a libro **2** |
+| posizioni | **6 righe su 5 mercati** — 1 coppia (MrBeast), **4 gambe nude** |
+| nozionale a riposo | **$690,08** |
+| cassa · posizioni · totale | $1.434,01 · $55,94 · **$1.489,95** |
+| **capitale al lavoro** | **$746,02 = 50,1%** |
+| PnL guardiano | −$11,67 |
+
+### Le posizioni scoperte e il loro gradino
+
+| mercato | gradino | scoperta da | verdetto |
+|---|---|---|---|
+| `0x4d79d306` Democratic House | **3** | 717,0 min | resta (vale $21,32, uscire costa $6,40) |
+| `0xd947c421` Don't Say Good Luck | **3** | 392,8 min | **ABBANDONATA** (vale $1,52, costa $2,12) |
+| `0xc5cd9325` MrBeast | **2** | 88,7 min | resta — **coppia completa** |
+| `0xb3c7f543` Iran | **2** | 61,1 min | resta (vale $2,13, ma uscire costa $0,34) |
+| `0x790474c0` Trump 180-199 | **1** | 49,2 min | resta (vale $3,83, sopra soglia) |
+
+### Le tre prove che la regola è viva, e non solo compilata
+
+1. **La prima osservazione ha armato soltanto** — registro alle 13:57:31 con `osservazioni: 1` e
+   `abbandonataDal: null` su entrambe; l'abbandono è scattato al **secondo** giro, alle **13:58:36**.
+2. **L'anomalia dei 240 minuti continua a essere scritta su una posizione ABBANDONATA**: alle
+   **13:59:11** `scoperto-oltre-soglia-grave` su `d947c421` (gradino 3, 390,3 min), e dieci secondi
+   dopo `posizione-abbandonata` sullo stesso mercato. **L'ordine dei due blocchi regge in produzione,
+   non solo nel test.**
+3. **Il rientro ha funzionato da solo, su un caso vero, in 49 secondi.** Alle 13:58:36 MrBeast era
+   abbandonata; poi la sua **gamba sorella ha ricevuto un fill (20,1 share @ 0,90)** e alle 13:59:25 il
+   giornale porta `posizione-abbandonata-rientrata` — *«vale $2,38 ma uscire costa solo $0,44, meno di
+   quanto si incassa: si continua a provare»*. E lo **slot NON è stato liberato** per MrBeast, proprio
+   perché una delle sue due gambe è viva: `slot-liberato-per-abbandono` alle **14:00:27** elenca il solo
+   `0xd947c421`. La condizione «solo se OGNI posizione del mercato è abbandonata» ha morso su un caso
+   reale entro cinque minuti dal varo.
+
+---
+
+## Difetto trovato nel riavvio, dichiarato e NON corretto
+
+> ### 🔴 `MAKER_FILTRO_METEO` non è in `agents/ecosystem.config.js`, e il filtro meteo è ARMATO
+> Il CLAUDE.md dichiara in cima «`MAKER_FILTRO_METEO=0` ⇒ **FILTRO METEO DISARMATO** (dal 23 agosto
+> 2026)». Ma la variabile **non compare**: né in `/proc/911312/environ`, né nel `.env`, né in
+> `agents/ecosystem.config.js` — e `git log -S` dice che **non c'è mai stata** in quel file (compare solo
+> dentro la ricetta di ripristino in `APERTI.md`, che presuppone una riga `MAKER_FILTRO_METEO: '0',`
+> inesistente). Per la regola di §4.13 — *«assente ⇒ ARMATO, solo il valore esatto `'0'` disarma»* — il
+> filtro **è armato**, cioè l'opposto di quanto il documento dichiara. È la trappola di §5.1: una
+> variabile messa con `--update-env` vive solo nel processo e **il primo riavvio dal file la perde**.
+> ⚠ **NON è stato il mio riavvio a cambiarla**, ed è misurato: `ammissibili` vale **20 alle 13:39 e 20
+> alle 13:43**, sullo stesso board (281 valutati) — nessuno scalino attraverso il riavvio delle 13:41.
+> Era già persa prima, con ogni probabilità al riavvio dal file delle 11:14.
+> **Non corretto**: riarmare o disarmare il filtro meteo è una decisione dell'operatore, non una patch,
+> e §6 di questo giro dice esplicitamente di non toccarlo.
