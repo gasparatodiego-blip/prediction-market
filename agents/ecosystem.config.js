@@ -586,7 +586,33 @@ module.exports = {
         //   12 × 2 × $61,25 = $1.470,00 ≤ cap $1.470 ≤ capitale $1.494,78.
         // La derivazione integrale sta in `lib/maker/selezione-mercati.js`, non qui: questo e' il
         // posto dove si SCRIVE il numero, quello e' il posto dove si spiega.
-        MAKER_MERCATI_CONTEMPORANEI: '12',
+        // ⚠ 12 → 18 il 23 agosto 2026, decisione dell'operatore («cap $2.400, slot 19»), e il 18 non
+        // e' il 19 chiesto: e' il 19 passato per il pavimento di CASSA che l'operatore ha posto nello
+        // stesso messaggio («la cassa residua resti sopra $250; se scende sotto, riduci N»).
+        //   IL CAP autorizza 19:  19 × 2 × $61,25 = $2.327,50 ≤ $2.400   (20 ⇒ $2.450 > $2.400, NO)
+        //   LA CASSA autorizza 18: saldo letto da agent41 alle 10:58:36Z = $1.391,57
+        //       19 × $61,25 = $1.163,75 ⇒ residua $227,82   ← SOTTO il pavimento di $250
+        //       18 × $61,25 = $1.102,50 ⇒ residua $289,07   ← sopra, ed e' il valore in servizio
+        // Le due grandezze sono diverse e nessuna implica l'altra: il cap limita l'ESPOSIZIONE
+        // (riposo + completamento), la cassa e' il denaro con cui si comprano le sorelle e il
+        // carburante del gradino 1 della scala d'uscita (§4.6). Il SOFFITTO di sorgente vale 19
+        // (`selezione-mercati.js`) perche' e' quello che il cap autorizza; qui c'e' quello che la
+        // cassa di oggi consente. Se il saldo risale sopra $1.413,75 il 19 diventa scrivibile senza
+        // toccare nient'altro.
+        // ⚠ VERIFICATO PRIMA DI SCRIVERE, contro l'invariante di §5.2 p.37
+        // (`concentration.esposizioneMassimaRaggiungibileUsd`, importata dai quattro chiamanti):
+        //     esposizione massima raggiungibile a N=18 = $2.205,00 contro il cap $2.400 ⇒ margine
+        //     $195,00. 36 ordini attesi, $1.102,50 di capitale a riposo, tetto per mercato invariato.
+        // ⚠⚠ E IL CAP NON E' UN PERMESSO, E' UN BUDGET (`realloc-cycle.js:242`,
+        //     `capitale = min(saldo, maxOpenNotionalUsd)`): a $2.400 il min lo prende SEMPRE il
+        //     saldo, quindi da oggi il cap non compare piu' nel budget del knapsack — a limitare
+        //     l'allocazione restano il saldo, il tetto per mercato e il numero di slot. Il cap vale il
+        //     161% del capitale ($1.484,39): non e' piu' una difesa. Restano il kill a −$100 e il
+        //     guardiano.
+        // ⚠ COMPOSIZIONE DERIVATA, non scritta: `quotaScaglioni(18)` ⇒ round(18/3) = **6 «basso»
+        //     (minSize ≤ 20) + 12 «alto»**. E `MAKER_SLOT_CORTI` resta '2', cioe' 2 corti + 16
+        //     lunghi: e' un secondo asse, ortogonale ai secchi, e non e' stato toccato.
+        MAKER_MERCATI_CONTEMPORANEI: '18',
         // ══ I DUE CONTATORI DI FASCIA — `MAKER_SLOT_CORTI` ═══════════════════════════════════════
         //
         // Quanti dei `MAKER_MERCATI_CONTEMPORANEI` slot appartengono alla fascia CORTA (scadenza

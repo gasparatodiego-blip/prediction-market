@@ -39,8 +39,8 @@ Il quadro del giro è in `APERTI.md`.
 > ## 🔴🔴 IL BOT È ARMATO E OPERA CON CAPITALE VERO — dalle 16:21Z del 18 agosto 2026
 > **STATO LETTO DAI PROCESSI VIVI**: flotta a 11 processi ONLINE (§5.1) · `MAKER_MODE=live-min` ·
 > `MAKER_ADAPTER_DRYRUN=false` · **`MANUAL_ORDER_PLACEMENT=send`** su agent40 **e** agent41 · freno di
-> agent41 `=0` ⇒ **ZERO CINTURE INSERITE, 0/4** (§4.14) · **`MAKER_MERCATI_CONTEMPORANEI=12`** e
-> **`MAKER_SLOT_CORTI=5`** su agent41 (R1, dal 22 agosto 2026; letti da `/proc`) ·
+> agent41 `=0` ⇒ **ZERO CINTURE INSERITE, 0/4** (§4.14) · **`MAKER_MERCATI_CONTEMPORANEI=18`** (soffitto **19**) e
+> **`MAKER_SLOT_CORTI=2`** su agent41 (R1, dal 23 agosto 2026; letti da `/proc`) ·
 > **`MAKER_FILTRO_METEO=0` ⇒ FILTRO METEO DISARMATO** (dal 23 agosto 2026, §4.13) · **`SLOT_STERILE_ARMATO`
 > ASSENTE ⇒ la regola dello slot sterile è ARMATA** (riarmata da `52c33f4`, 20 agosto 2026) · KILL spento ·
 > selezione automatica **ACCESA** ·
@@ -478,8 +478,8 @@ difesa da un test: `rateCap ≥ 2 × mercatiPerGiro` con almeno 8 posti di margi
 è un **rinvio dichiarato** (`rimandato-per-quota`), non un errore.
 
 **I numeri correnti**: cap per ordine di safety **$80** · cap cumulativo di esposizione aperta
-**$1.300** (dal 22 agosto 2026, decisione dell'operatore, per reggere i **10 mercati** di §4.13: conta i
-**fill riconciliati**, non gli ordini a riposo) · **perdita giornaliera massima $100**, che è **il freno
+**$2.400** (dal 23 agosto 2026, decisione dell'operatore, per reggere i **18 mercati** di §4.13 su un
+soffitto di 19: conta i **fill riconciliati**, non gli ordini a riposo) · **perdita giornaliera massima $100**, che è **il freno
 vero** — il tetto di esposizione serve solo a non murare la gestione · **mercati per giro 10**,
 dichiarati in **un posto solo** (`utilizzo-capitale.leggiMaxNuoviPerGiro`) e importati dal trigger.
 **⚠⚠ IL CAP NON È UN PERMESSO, È UN BUDGET**: `realloc-cycle.js:242` fa
@@ -496,6 +496,20 @@ ordini di APERTURA**, quindi un cap stretto smette di piazzare a metà strada �
 10 mercati a size piena valeva **$72,46** contro un margine di $75,08 e la coppia di letture del 20/08
 **avrebbe fatto scattare** il guardiano; col nuovo vale **$14,74** (**5,1× di franco**). Chi riporta
 indietro il guardiano deve riportare indietro anche questo numero.
+**⚠⚠ IL CAP HA UN SECONDO TETTO SOPRA DI SÉ, E VA MOSSO INSIEME — 23 agosto 2026.**
+`lib/safety/risk-limits.HARD_CEILINGS.maxOpenNotionalUsd` (**$2.400** dal 23/08, era $2.000) è il tetto
+**duro** di sorgente, e `clampNum` fa `min(disco, tetto duro)` **senza sollevare**: un cap versionato a
+$2.400 con il tetto duro fermo a $2.000 sarebbe stato in servizio a **$2.000**, cioè un numero deciso
+dall'operatore, scritto su disco, e silenziosamente diverso da quello che il gate applica —
+e l'invariante `N × 2 × $61,25 ≤ cap` sarebbe stata **verificata sul numero sbagliato** (a N=19 servono
+$2.327,50: sotto $2.400, sopra $2.000 ⇒ il gate avrebbe smesso di piazzare a metà strada, il guasto del
+16 agosto con in più il referto che dice che ci sta). Si alza allo **stretto necessario**, così resta un
+tetto vero. `lib/maker/cap-2400-e-slot.test.js` ② confronta disco e servizio e fallisce sul clamp.
+**⚠ A $2.400 IL CAP NON È PIÙ UNA DIFESA**: vale il **161%** del capitale ($1.484,39), e in
+`realloc-cycle.js:242` (`capitale = min(saldo, cap)`) il `min` lo prende ormai **sempre il saldo** — il
+cap è uscito dal budget del knapsack. A limitare restano il saldo, il tetto per mercato, il numero di
+slot, e come **freni** il **kill a −$100** e il **guardiano**.
+
 **⚠ `data/safety-risk-limits.json` NON È GITIGNORED**: i cinque numeri che governano l'esposizione
 vivevano solo sul disco di una macchina, e un ripristino da git li avrebbe riportati a valori diversi
 **in silenzio**. **Una fonte sola versionata**, non default-nel-repo + override-locale.
@@ -962,7 +976,7 @@ per chi esce. *(Storia delle stesure precedenti: `docs/storia-per-sezione.md`.)*
 
 | | |
 |---|---|
-| **vincoli** | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo SE `MAKER_FILTRO_METEO` è armato** (assente o ≠ `'0'`; **disarmato dal 23/08**, v. riquadro) · **max N ATTIVI dove N = `MAKER_MERCATI_CONTEMPORANEI`** (R1: ambiente di agent41, un posto solo, letto da `/proc`; **soffitto e difetto 12 dal 22/08** — il difetto E' il soffitto, `quanti-mercati.js` lo importa) · **book UTILIZZABILE** (v. riquadro) · **composizione DERIVATA da N** (`quotaScaglioni`): N≥2 ⇒ **`round(N/3)` «basso» (≤20), almeno 1 e al più N−1, il resto «alto» (≤50)** — a **N=12 ⇒ 4 bassi + 8 alti** (dal 22/08 sera, §5.2 p.57 chiusa; prima era 1 basso fisso e a dodici slot teneva fermo il capitale); N=1 ⇒ un secchio solo, che ammette tutto |
+| **vincoli** | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo SE `MAKER_FILTRO_METEO` è armato** (assente o ≠ `'0'`; **disarmato dal 23/08**, v. riquadro) · **max N ATTIVI dove N = `MAKER_MERCATI_CONTEMPORANEI`** (R1: ambiente di agent41, un posto solo, letto da `/proc`; **soffitto 19 e in servizio 18 dal 23/08** — il soffitto e' quello che il **cap $2.400** autorizza (19×2×$61,25 = $2.327,50 ≤ $2.400; a 20 sarebbero $2.450, no), il numero in servizio e' quello che la **cassa** consente (18×$61,25 = $1.102,50 su un saldo di $1.391,57 ⇒ residua $289,07 sopra il pavimento di $250; a 19 residuerebbe $227,82). `quanti-mercati.js` importa il soffitto e un valore oltre il soffitto vale il **difetto, in silenzio**) · **book UTILIZZABILE** (v. riquadro) · **composizione DERIVATA da N** (`quotaScaglioni`): N≥2 ⇒ **`round(N/3)` «basso» (≤20), almeno 1 e al più N−1, il resto «alto» (≤50)** — a **N=18 ⇒ 6 bassi + 12 alti** (dal 22/08 sera, §5.2 p.57 chiusa; prima era 1 basso fisso e a dodici slot teneva fermo il capitale); N=1 ⇒ un secchio solo, che ammette tutto |
 | **interruttore** | `data/selezione-mercati.json`, `scripts/cli/selezione.js {stato\|prova\|accendi\|spegni}`. Difetto **SPENTA**; file illeggibile ⇒ **spenta**. **ACCESA dal 15/08** |
 | **quando gira** | a ogni ciclo 6 h **e** a ogni controllo del capitale fermo (120 s), **prima** del piano — e prima di `decidiTrigger`, così un mercato che scade esce anche nei giri in cui il trigger non scatta |
 | **classifica** | `levels[<capitale minimo>].grossRewardDay`, cioè la stima che **il board ha già calcolato** con la formula del venue → ripiego `rateOrdinamento` → `rewardsDailyRate`. **Non** il montepremi. Pareggio rotto sul `conditionId`: due giri sullo stesso board danno la stessa risposta |
@@ -1047,7 +1061,7 @@ scritta esplicitamente, perché la conseguenza cambia e la regola no.
 > `entratiInGestione`, `liberati`.
 > **⚠ LA CONSEGUENZA VA DETTA PER INTERO: L'ESPOSIZIONE TOTALE NON È LIMITATA DAL NUMERO DI SLOT.** N
 > quotano mentre altri completano. Ciò che la limita è, in ordine: il **tetto per mercato** ($61,25), il
-> cap cumulativo di esposizione aperta (**$1.300**, §4.2) e il **kill a −$100**. Chi rialza uno di quei
+> cap cumulativo di esposizione aperta (**$2.400**, §4.2) e il **kill a −$100**. Chi rialza uno di quei
 > tre alza il rischio di questa regola, non di quella.
 > **⚠ UN MERCATO IN GESTIONE DEVE RESTARE ABILITATO AL RIPREZZO**: `restringiAllaSelezione` usa
 > `idsAttivi` (solo i non-in-gestione) per il **piano**, ma la lista del riprezzo tiene **tutti** gli id.

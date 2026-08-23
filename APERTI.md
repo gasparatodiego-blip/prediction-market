@@ -11,6 +11,32 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 
 ---
 
+> ## ⏪ RIPRISTINO — IL CAP TORNA A $1.470 E GLI SLOT A 12, 23 agosto 2026
+> Riporta il tetto di esposizione cumulativa da **$2.400** a **$1.470** e gli slot da **18** a **12**,
+> cioè la configurazione in servizio fino alle 11:0xZ del 23 agosto. Da `bot`, da `/home/bot/bot`.
+> ⚠ Riavvio pm2 da confermare in chat (§2 r.2).
+>
+> ```bash
+> node -e "const f='data/safety-risk-limits.json';const j=require('./'+f);j.global.maxOpenNotionalUsd=1470;require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')" && sed -i "s/^\( *\)MAKER_MERCATI_CONTEMPORANEI: '18',/\1MAKER_MERCATI_CONTEMPORANEI: '12',/" agents/ecosystem.config.js && sed -i "s/^const MAX_MERCATI_CONTEMPORANEI = 19;/const MAX_MERCATI_CONTEMPORANEI = 12;/" lib/maker/selezione-mercati.js && pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler && pm2 save && node -e "console.log('cap in servizio:',require('./lib/safety/risk-limits').resolveLimits({userId:'op'}).limits.maxOpenNotionalUsd)" && tr '\0' '\n' < /proc/$(pm2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).find(x=>x.name.includes('agent41')).pid))")/environ | grep MAKER_MERCATI_CONTEMPORANEI
+> ```
+>
+> **⚠ L'ORDINE È OBBLIGATO, e va giù prima il numero di slot o non va giù affatto.** Il cap e il
+> soffitto sono legati dall'invariante `N × 2 × $61,25 ≤ cap`: abbassare il cap a $1.470 lasciando 18
+> slot vorrebbe dire $2.205 di esposizione autorizzata contro $1.470 di tetto, cioè **il gate che
+> smette di piazzare a metà strada** — il guasto del 16 agosto. La riga fa le tre cose insieme, e
+> `lib/maker/cap-2400-e-slot.test.js` diventa rosso se qualcuno ne fa solo una.
+> **⚠ NON RIPORTA GIÙ IL TETTO DURO** `HARD_CEILINGS.maxOpenNotionalUsd` (da $2.000 a $2.400 in
+> `lib/safety/risk-limits.js`), ed è voluto: è un tetto **sopra** il cap, non morde finché il cap sta
+> sotto, e toglierlo con un `sed` mentre il cap è ancora alto produrrebbe un clamp silenzioso. Chi lo
+> vuole indietro usa `git revert` su quel commit — è una decisione separata.
+> **⚠ Non riporta indietro il secchio basso** (`quotaScaglioni`, `round(N/3)`) né la deroga di
+> spodestamento: codice committato, si toglie con `git revert`.
+> **⚠ RIDURRE GLI SLOT NON CHIUDE NIENTE DA SOLO**: la selezione non spodesta chi ha ordini vivi o una
+> posizione (R9), quindi da 18 a 12 non ne caccia sei — il rientro avviene per consumo.
+> **⚠ Azzera la quarantena slot-sterile in memoria**, come ogni riavvio di agent41.
+
+---
+
 > ## ⏪ RIPRISTINO — LA DISTANZA DEI LUNGHI TORNA A 0,456 (2,05¢), 23 agosto 2026
 > Riporta i lunghi da **3,5¢** a **2,05¢** dal mid, cioè la frazione **0,456** che era in servizio
 > fino alle 08:2xZ del 23 agosto. Da `bot`, da `/home/bot/bot`. ⚠ Riavvio pm2 da confermare in chat.
