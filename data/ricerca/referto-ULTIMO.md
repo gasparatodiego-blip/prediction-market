@@ -330,3 +330,61 @@ Verificato anche dalla suite: i **7 rossi noti** sono rimasti **7**, per nome.
 6. **La suite: 256 test · 248 verdi · 7 ROSSI · 1 non parte** — i sette noti e nient'altro
    (`dipendenze-mai-iniettate`, `distanza-2c`, `end-of-scale-cycle`, `tetti-per-giro-e-scope`,
    `categoria-mercato`, `tetto-derivato-dallo-scaglione`, `tetto-e-scoperta`).
+
+---
+
+## Dopo due cicli — 15:27Z, misurato
+
+Riavviati **solo** `agent40-manual-reprice` (pid **922782**) e `agent41-realloc-scheduler`
+(pid **922776**), insieme e **dal file** (`pm2 restart agents/ecosystem.config.js --only …`) alle
+**14:57:46Z**. Ambiente confermato da `/proc/<pid>/environ`, **cinture invariate**:
+`MAKER_MODE=live-min` · `MAKER_ADAPTER_DRYRUN=false` · `MANUAL_ORDER_PLACEMENT=send` ·
+`REALLOC_SCHEDULER_DRY_RUN=0` · `MAKER_MERCATI_CONTEMPORANEI=18` · `MAKER_SLOT_CORTI=2` ·
+`MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V=0.6666666666666666` · `MAKER_QUOTA_CODA_LUNGA=0.5` ·
+`SBLOCCO_GRADINO6_ARMATO=0` · `SLOT_STERILE_ARMATO` assente ⇒ **armata** · perno vuoto.
+**Il codice nuovo era in servizio 23 secondi dopo il riavvio** (primo campo `rinnovoEsente` nel
+giornale alle 14:58:09Z).
+
+| | prima (14:12Z) | dopo due cicli (15:27Z) |
+|---|---|---|
+| ordini a riposo | 29 su 15 mercati | **27 su 14 mercati** |
+| nozionale a riposo | $789,35 | **$716,58** |
+| età media / mediana / max | 11,9 / 11,1 / 17,2 min | **12,4 / 13,6 / 19,9 min** |
+| coppie complete a libro | 12 | **13** |
+| gambe sole a libro | 3 | **1** |
+| capitale al lavoro | $778,13 / $1.489,43 = **52,2%** | **$783,54 / $1.489,68 = 52,6%** |
+
+### Ordini morti per GTD nell'ultima ora, e il confronto onesto
+
+| finestra | morti | nozionale | gate |
+|---|---|---|---|
+| **dopo il riavvio, 29 min** | **0** | **$0,00** | — |
+| stessi 29 min **prima** del riavvio | 4 | $70,02 | `motore-non-conforme` 3, `close-sell-floor` 1 |
+| ultima ora (comprende il pre-riavvio) | 5 | $78,01 | tutti pre-riavvio |
+
+**Il rinnovo gira davvero**: dopo il riavvio il giornale porta **33 trigger `expiry-refresh` e 32
+`sent`**, più 2 `rinnovo-esente-dal-tetto`. Le **17** righe `anomalia-rinnovo-fermato` del periodo
+sono **tutte `rate-limited`** — l'anti-churn locale da 30 s con **171-174 s** di margine alla
+scadenza, che per costruzione non può costare l'ordine. **Zero rinnovi fermati da
+`motore-non-conforme`**, contro 3 morti da quella causa nei 29 minuti precedenti.
+
+⚠ **Va detto cosa questi 29 minuti NON provano.** Il riavvio di agent40 rende **pre-esistenti** gli
+ordini che erano già a libro: quelli escono da `owned` e la loro morte **non produce**
+`scaduto-senza-rinnovo`, quindi lo zero della prima riga è in parte un effetto del riavvio stesso. Ciò
+che invece è misurato e non artefatto sono i **32 rinnovi inviati** sugli ordini nati dopo le 14:58 e
+i **zero veti del motore** su di essi. La prova piena arriva su una finestra di sette ore come quella
+del referto di stamattina; questa finestra dice che il percorso è vivo e non rifiuta.
+
+⚠ **`anomalia-scadenze-senza-rinnovo` non è ancora comparsa nel giornale, ed è il comportamento
+voluto**: si scrive solo nei cicli in cui qualcuno muore, e in questi 29 minuti non è morto nessuno.
+Il suo funzionamento è provato dal test (8 asserzioni, rosse se l'allarme si rende muto).
+
+### Ancora sui difetti dichiarati (punto 11) — un quinto, trovato riavviando
+
+5. **🟡 `MAKER_FILTRO_METEO` NON ESISTE DA NESSUNA PARTE ⇒ il filtro meteo è ARMATO, non disarmato.**
+   Letto adesso: assente da `agents/ecosystem.config.js`, assente dal `.env`, assente da
+   `/proc/922776/environ`. E la regola è «assente ⇒ **armato**, solo il valore esatto `'0'` disarma»
+   (§4.13). Quindi **la decisione del 23 agosto di disarmarlo è scritta in CLAUDE.md ma non è mai
+   entrata in servizio**, e `scripts/cli/stato.js` dichiara infatti «vincoli: … **niente meteo**».
+   **Non toccato**: il punto 6 del mandato lo mette esplicitamente fra ciò che non si tocca. Va
+   deciso se applicarlo davvero o correggere il documento.
