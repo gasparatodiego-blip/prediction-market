@@ -69,7 +69,38 @@ const NEAR_EXPIRY_DAYS  = 14;    // markets closing within → force HIGH vol
 const GAMMA_PAGE_SIZE   = 100;
 const MAX_PAGES         = 21;    // offset 0..2000 (21 × 100)
 const MAX_CLOB_MARKETS  = Number(process.env.REWARD_MAX_CLOB_MARKETS) > 0
-  ? Number(process.env.REWARD_MAX_CLOB_MARKETS) : 300;   // 150 → 300 il 21/08/2026: vedi il blocco qui sotto
+  ? Number(process.env.REWARD_MAX_CLOB_MARKETS) : 343;   // 300 → 343 il 23/08/2026: vedi il blocco qui sotto
+// ══ 300 → 343, E NON 382, PERCHE' IL CRONOMETRO VARIA DI 1,6× — 23 agosto 2026 ═════════════════════
+//
+// L'operatore ha chiesto 382, «il valore che il cronometro dello stesso ciclo dichiara sostenibile».
+// Quel numero e' REALE ma e' l'istantanea del ciclo MIGLIORE. Misurati quattro cicli consecutivi del
+// 23/08 fra le 08:15 e le 09:00, il ritmo della fase di profondita' e':
+//     2,29 · 1,41 · 1,66 · 1,45 s/mercato   ⇒ variazione 1,6×
+// e il tetto che ognuno di quei cicli DICHIARAVA era, rispettivamente, ~235 · ~382 · ~326 · ~371.
+// Prendere il 382 significa tarare sul migliore e sforare sul peggiore.
+//
+// LA DURATA VERA DEL CICLO INTERO, misurata da «scanning…» alla scrittura del board (non la sola
+// fase di profondita'):
+//     08:15:32 → 08:24:29 = 537 s   (profondita' 426 s · resto 111 s)
+//     08:30:32 → 08:40:46 = 614 s   (profondita' 498 s · resto 116 s)
+//     08:45:32 → 08:54:42 = 550 s   (profondita' 438 s · resto 112 s)
+//   ⇒ overhead di scoperta+scrittura ~113 s, STABILE. E' il termine che il conto per-mercato ignora.
+//
+// IL CICLO A 382, con l'overhead dentro:  a 1,41 s/mkt ⇒ 10,9 min ✔ · a 1,66 ⇒ 12,4 ✔ ·
+//   a 1,45 ⇒ 11,1 ✔ · **a 2,29 ⇒ 16,5 min ✘ SFORA il periodo di 15 min**.
+//
+// IL MASSIMO CHE CI STA ANCHE NEL CASO PEGGIORE:  N = (900 − 113) / 2,29 = **343**.
+//   Verificato sui quattro ritmi: 15,0 · 9,9 · 11,4 · 10,2 min. Nessuno sfora.
+//
+// ⚠ SFORARE NON ROMPE, DEGRADA — e va saputo prima di alzare ancora: `resto = SCAN_INTERVAL_MS −
+//   durata` ha un pavimento di 60 s, quindi un ciclo da 16,5 min produce un board ogni ~17,5 min.
+//   Sotto `ETA_BOARD_MAX_MS` (25 min) nessun allarme scatta: il degrado sarebbe SILENZIOSO, ed e'
+//   la ragione per cui qui si tara sul peggiore e non sul migliore.
+//
+// ⚠⚠ E LA COPERTURA RESTA PARZIALE: il numero vero dei premiati NON e' noto. Il log dichiara a ogni
+//   giro «4-5 fette al tetto dei 2.100 · budget fette esaurito a 120p» (`REWARD_FAST_MAX_PAGES`),
+//   quindi il 1.275-1.281 che compare come totale e' un LIMITE INFERIORE, non un censimento. Alzare
+//   questo tetto fa vedere piu' mercati fra quelli TROVATI; non fa trovare quelli mai cercati.
 // ══ 150 → 300, E IL COLLO NON ERANO I LIBRI — 21 agosto 2026 ═══════════════════════════════════════
 // ⚠ IL COLLO E' `MAX_RPS`, NON LA RETE, e va detto prima di tutto il resto. La coda `httpGet` di questo
 // file e' SERIALIZZATA (`_drain`): le sei chiamate per mercato che sembrano parallele scorrono in fila a
