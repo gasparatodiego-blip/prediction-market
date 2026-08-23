@@ -1,159 +1,262 @@
-# Referto — «Applica il cap e riempi gli slot»
-**23 agosto 2026, 11:42Z.** Verifica **prima**, applicazione **dopo**, nello stesso giro.
-Commit `186af96`, pushato. Riavviato **solo agent41**.
+# Referto — 23 agosto 2026, 13:5xZ
 
-> ## ✅ APPLICATO — cap **$2.400**, slot **18** su un soffitto di **19**
-> ## ⚠️ E NON HA PORTATO IL CAPITALE ALL'80%: il cap e gli slot **non erano il vincolo**
-> Gli slot sono passati da 12 a 18 e si sono **riempiti tutti** (18/18, zero slot vuoti per
-> scarsità). Ma il **piano** finanzia **4 righe su 17 attive**: 13 mercati selezionati non
-> ricevono un dollaro, e le ragioni sono le stesse già misurate alle 10:02 — `netto-negativo`
-> (6), `quota-coda-lunga` (6), `orizzonte` (1). **Capitale al lavoro 46,0%**, contro il 48,8%
-> di prima del giro. **Il collo di bottiglia non era il tetto di esposizione.**
+## Due difetti chiusi: le posizioni senza via d'uscita, e il rinnovo GTD che azzera la coda
+
+**PRIMA la misura, POI l'applicazione, nello stesso giro.** Tutto ciò che segue è letto dal libro
+vivo, dal giornale e dal pacchetto installato: nessun numero è ricordato.
 
 ---
 
-## 1 · LA VERIFICA CHIESTA AL PUNTO 1 — **sì, era già fatto**, e con file e riga
+## 0 · Stato dichiarato PRIMA di toccare (punto 7)
 
-L'allineamento è il commit **`3ce2256`** del **23/08 10:39:15Z**, **in servizio da 13 secondi
-dopo**: agent41 pid 883101 è partito alle **10:39:28Z**.
+Fotografia del venue alle **13:22:56Z**, letta con l'adapter *cancel-only* (nessuna superficie di
+piazzamento caricata):
 
-| cosa | dove | valore misurato |
-|---|---|---|
-| la distanza del piano | `agents/agent41-realloc-scheduler.js:649` — `conDistanzaDiPiano(o)` mette `offsetTicks: null` + `offsetCents` da `distanzaObiettivoCents` | **3,00¢** |
-| il piano **operativo** ci passa | `agent41-realloc-scheduler.js:696` (`calcolaPianoFuoriProcesso`) | ✅ |
-| il piano dei **netti che ordinano la selezione** ci passa | `agent41-realloc-scheduler.js:1487` (`nettiDeiCandidati`) | ✅ |
-
-Misurato con la `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V` **del processo vivo** (0,6666…):
-`distanzaObiettivoCents({maxSpreadCents: 4.5})` = `{"distanzaC":3,"motivo":"obiettivo
-0.6666… × v(4.5¢) = 3.00¢ dal mid"}`. **I 18 mercati sono stati scelti con i netti a 3,0¢**,
-non con quelli a 1 tick. ⚠ Resta vero ciò che `3ce2256` dichiarava: la correzione **non muove
-i netti** (il lordo nasce da `levels[]` del board, calcolato da agent24 con la propria posa).
-
-## 2 · IL CAP — e il **secondo tetto** che il punto 2 non contava
-
-`maxOpenNotionalUsd` **$1.470 → $2.400** in `data/safety-risk-limits.json`.
-⚠ **Il cap non si legge da `/proc`**: non è un env, è il file **versionato**. Da `/proc` si
-legge il numero di **slot**. Il punto di configurazione è uno, ma non è dove diceva il punto 2.
-
-⚠⚠ **E non bastava**: `lib/safety/risk-limits.HARD_CEILINGS.maxOpenNotionalUsd` stava a
-**$2.000**, e `clampNum` fa `min(disco, tetto duro)` **senza sollevare**. Il cap in servizio
-sarebbe stato **$2.000** mentre il referto diceva $2.400 — e l'invariante a N=19 ($2.327,50)
-sarebbe stata **verificata su un numero e applicata su un altro**: il gate avrebbe smesso di
-piazzare a metà strada (il guasto del 16 agosto), col referto che rassicura. Il tetto duro sale
-allo **stretto necessario** ($2.400), quindi resta un tetto vero.
-**Verificato dopo il riavvio**: `resolveLimits()` ⇒ `maxOpenNotionalUsd: 2400`, `clampEvents: []`.
-
-## 3 · GLI SLOT — **18**, non 19, e la ragione è la **cassa** (punto 4)
-
-```
-IL CAP autorizza 19:   19 × 2 × $61,25 = $2.327,50  ≤ $2.400
-                       20 × 2 × $61,25 = $2.450,00  > $2.400   ⇒ NO
-LA CASSA autorizza 18: saldo agent41 10:58:36Z = $1.391,57
-      19 × $61,25 = $1.163,75 ⇒ residua $227,82   ← SOTTO il pavimento di $250
-      18 × $61,25 = $1.102,50 ⇒ residua $289,07   ← sopra ⇒ in servizio
-```
-Il punto 4 dice esattamente questo («se scende sotto, riduci N»). **Il $1.464,47 del referto
-delle 12:12 era più alto del saldo che agent41 legge**, e le due grandezze non sono la stessa
-cosa: il cap limita l'**esposizione**, la cassa è il denaro con cui si comprano le sorelle.
-Perciò il **soffitto** di sorgente vale **19** (ciò che il cap autorizza) e **l'ambiente vale
-18** (ciò che la cassa consente). Sopra $1.413,75 di saldo il 19 diventa scrivibile.
-
-⚠ **E il soffitto andava mosso o il 18 sarebbe stato rifiutato in silenzio**: `quantiMercati`
-risponde col **difetto**, non con un errore, quando il valore supera
-`selezione-mercati.MAX_MERCATI_CONTEMPORANEI` — lo stesso blocco del 18 e del 22 agosto.
-
-**Composizione DERIVATA**: `quotaScaglioni(18)` = `round(18/3)` = **6 «basso» + 12 «alto»**.
-**Quanti dei candidati «basso» sono entrati davvero**: alle 11:26:49Z
-`scartatiPerComposizione` è **vuoto** e `postiNonAssegnati` è **vuoto** — nessun candidato è
-stato respinto dalla quota, e nessun posto è rimasto non assegnato. Il secchio «basso» non è
-più il cancello che era il 22/08 (6 scarti `quota-scaglione-piena`).
-`MAKER_SLOT_CORTI` resta **2** (2 corti + 16 lunghi): asse ortogonale, non toccato.
-
-## 4 · LA CASSA (punto 4) — **$1.438,72**, molto sopra $250
-
-A piena allocazione (18 × $61,25 = $1.102,50) resterebbero **$289,07**. Oggi il piano ne
-alloca $189, quindi la cassa reale è $1.438,72. **Nessuna riduzione ulteriore di N necessaria.**
-
-## 5 · GLI SCARTI RESTANO SCARTI (punto 5) — **nessun netto negativo forzato dentro**
-
-**Zero slot vuoti**: 18/18 occupati, `slotVuotiPerScarsita: null`. Ma **17 attivi ⇒ 4 righe di
-piano**, e i 13 senza riga (misurati alle 11:37Z col piano vero, distanza 3,0¢):
-
-| ragione | mercati | capitale fermo |
-|---|---:|---:|
-| `netto-negativo` | **6** (`0x12dc2b61` `0xf3c634bd` `0xdeb729bc` `0xa34edb6c` `0xd4e77ba6` `0x80b3af88`) | **$367,50** |
-| `quota-coda-lunga` | **6** (`0x76c1a69f` `0x684e5b72` `0x14d32732` `0x5e082f0b` `0x4e4f77e7` `0x938e6a0a`) | $367,50 |
-| `orizzonte` | 1 (`0x7619b095`) | $61,25 |
-| **totale non finanziato** | **13** | **$796,25** |
-
-**$367,50 restano fermi per netto negativo, e non è un difetto**: un mercato che rende meno di
-zero resta fuori anche se occupa uno slot. **Nessuno è stato forzato dentro.**
-⚠ **Ma la voce più grossa non è quella**: `quota-coda-lunga` (il 12% del piano oltre 7 giorni,
-§4.4) ne ferma altrettanti, e **il cap non la tocca**. È la stessa diagnosi del referto delle
-10:02, e **alzare cap e slot non l'ha cambiata**.
-
-## 6 · NON TOCCATO (punto 6)
-tetto per mercato **$61,25** · soglia **24 h** · filtro meteo · distanze (lunghi **3,0¢**,
-corti **3,5¢**) · tetto coppia **101¢** · payback · pavimento di profondità · guardiano ·
-kill R10 · Parte B · fix OFF_TICK. **Le posizioni aperte non sono state vendute.**
-
-## 7 · ORDINI VIVI E RIAVVIO (punto 7) — dichiarato **prima**
-
-| | prima (11:13Z) | dopo (11:41Z) |
-|---|---|---|
-| ordini a riposo | **21** su **11** mercati (10 coppie + 1 gamba) | **26** su **13** mercati |
-| posizioni aperte | **4**, valore **$92,82** | **3**, valore **$49,61** |
-| gambe scoperte | le 4 posizioni erano tutte a lato singolo | 3 |
-| capitale a riposo | $631,45 | **$635,73** |
-
-**Riavviato un processo solo: `agent41-realloc-scheduler`** (pid 883101 → **890013**, 11:14:30Z),
-`pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler` + `pm2 save`.
-**Ordini toccati dal riavvio: ZERO** — la regola dei PRE-ESISTENTI è di **agent40**, che non è
-stato riavviato apposta: riavviarlo avrebbe condannato i 21 ordini a libro alla morte per GTD.
-⚠ **Il riavvio ha azzerato la quarantena slot-sterile in memoria** di agent41 (e con essa
-`zeroDa`): non è un disarmo, ma il freno anti-churn riparte da zero.
-⚠ **agent40 tiene in memoria `HARD_CEILINGS = $2.000`** fino al suo prossimo riavvio. Oggi non
-morde: l'esposizione **riconciliata** è $49,61, e $2.000 comincerebbe a mordere solo sopra 16
-mercati interamente riempiti. Si sana da sé al prossimo riavvio di agent40. **Dichiarato.**
-
-## 8 · L'ASSERZIONE (punto 8) — `lib/maker/cap-2400-e-slot.test.js`, **26/0**
-**Rossa sul sorgente non corretto: 6 fallimenti**, fra cui esattamente quello chiesto —
-`19 × 2 × $61,25 = $2.327,50 ≤ cap $1.470` **FAIL**. Regge a **19**, **morde a 20**
-($2.450 > $2.400): senza la metà che fallisce non sarebbe un'invariante ma una tautologia.
-Il blocco ② è stato **provato costruendo il caso**: cap $2.400 su disco con tetto duro $2.000
-⇒ `FAIL — disco 2400 != servizio 2000: HARD_CEILINGS lo sta tagliando`.
-
-## 9 · LA SUITE (punto 9) — **254 test · 246 verdi · 7 ROSSI · 1 non parte**
-`data/ricerca/suite-rossi-23ago-cap2400-finale.json`. **Nessun rosso nuovo.** I 7 sono i noti,
-per nome: `dipendenze-mai-iniettate` · `distanza-2c` · `end-of-scale-cycle` ·
-`tetti-per-giro-e-scope` · `categoria-mercato` · `tetto-derivato-dallo-scaglione` ·
-`tetto-e-scoperta`. **Sono 7 e non 8 perché `tre-fix-sicurezza` è passato** (era il timeout di
-§5.2 p.42, non una regressione). **Due rossi chiusi per strada**:
-`selezione-cablata` (contava i selezionati invece degli **attivi** — **§5.2 p.61 CHIUSA**; e il
-regex che fotografava `restringiAllaSelezione(` nudo, rotto da `3ce2256`) e `limiti-versionati`
-(disco ≠ versionato finché il cap non era committato). Commit `186af96`, **push fatto**.
-
-## 10 · IL RIPRISTINO (punto 10)
-Riga unica in **`APERTI.md`**, in cima: riporta cap a **$1.470**, slot a **12** e soffitto a
-**12** in un comando solo. ⚠ **L'ordine è obbligato**: abbassare il cap lasciando 18 slot
-significherebbe $2.205 autorizzati contro $1.470 di tetto, cioè il gate che smette di piazzare
-a metà strada. `cap-2400-e-slot.test.js` diventa rosso se qualcuno ne fa solo una.
-
-## 11 · DOPO DUE CICLI (punto 11) — misurato alle 11:41Z, macchina scarica
-
-| grandezza | valore |
+| | |
 |---|---|
-| **righe di piano / mercati selezionati** | **4 / 17 attivi** (+3 in gestione, 20 selezionati) |
-| capitale allocato dal piano | **$189,00** su $1.438,72 · non allocato **$1.249,72** |
-| mercati con ordini al venue | **13** |
-| ordini a riposo | **26** |
-| nozionale a riposo | **$635,73** |
-| cassa residua | **$1.438,72** |
-| **capitale al lavoro** | **46,0%** (era 48,8% prima del giro; 36,1% nel mezzo della rotazione) |
-| posizioni aperte | 3, $49,61 |
+| ordini a riposo | **30** su **15** mercati |
+| coppie simmetriche | **13** |
+| gambe sole a libro | **2** |
+| posizioni aperte | **5**, tutte **scoperte** (zero coppie) |
+| nozionale a riposo | **$770,38** |
+| cassa (pUSD, on-chain) | **$1.452,20** |
+| età degli ordini | media **8,1 min** · max **22,6 min** · min 0,6 min |
 
-⚠ **L'80% non è stato raggiunto, e adesso si sa perché con i numeri**: gli slot si sono
-riempiti (18/18) ma il **piano** finanzia 4 righe. **$796,25 di capitale sta fermo su mercati
-selezionati che il piano rifiuta**, e le due voci sono `netto-negativo` ($367,50 — corretto che
-resti fermo) e `quota-coda-lunga` ($367,50 — **una decisione dell'operatore, non un difetto**).
-Il cap e il numero di slot **non erano il vincolo**, e alzarli non lo ha spostato.
+**Processi riavviati: due, e solo due — `agent40-manual-reprice` e `agent41-realloc-scheduler`.**
+Sono i soli che caricano il codice toccato: agent40 giudica e scrive il registro degli abbandoni e
+timbra il GTD della corsia di chiusura; agent41 lo legge per liberare lo slot.
+**Ordini toccati dal riavvio: ZERO.** Nessuna cancellazione, nessun piazzamento, nessuna modifica di
+prezzo fa parte di questo lavoro. ⚠ Ma va detta la conseguenza nota (§CLAUDE.md, riquadro in cima):
+**ogni riavvio di agent40 rende PRE-ESISTENTI gli ordini già a libro** — invisibili al motore, quindi
+non riprezzati e non rinnovati — e con `MANUAL_ORDER_PLACEMENT=send` quelli muoiono per GTD entro
+≤ 23 minuti e vengono ripiazzati dal ciclo normale. **Il riavvio di agent41 azzera anche la quarantena
+in memoria della regola «slot sterile»** (`statoLibroVuoto`), che è una perdita del freno anti-churn,
+non un disarmo: per 22 minuti nessuno può essere rilasciato.
+
+---
+
+## 1 · La soglia di abbandono — il conto, non il gusto
+
+**La regola** (`lib/maker/abbandono-posizione.js`, puro):
+
+```
+ABBANDONO  ⟺  valoreResiduo < SOGLIA   E   costoUscita ≥ valoreResiduo
+```
+
+* `valoreResiduo` = il **bid CAMMINATO** per l'**intera** size — i dollari che il libro paga *adesso*.
+  Mai `size × mid`: la misura del 16 agosto (283 campioni, **zero** istanti con un'uscita in guadagno)
+  dice che il mid non è consumabile, ed è lo stesso motivo per cui `presa-di-profitto` cammina la scala.
+* `costoUscita` = la perdita realizzata che si accetta, presa dalla via più economica fra le due:
+  * **vendita** `size × (carico − bidCamminato)`
+  * **coppia** `size × (carico + askAltroCamminato − 1)`
+
+> ### ⚠ Le due vie costano identico, ed è strutturale — non un caso del giorno
+> I due token di un mercato binario condividono **un solo libro**: un BUY di NO a `p` *è* un SELL di
+> YES a `1 − p`, quindi `askAltroLato = 1 − bidMioLato` per costruzione. Sostituendo:
+> `costoCoppia = size × (carico + (1 − bid) − 1) = size × (carico − bid) = costoVendita`.
+> **Misurato sulle cinque posizioni vive: identiche alla quarta cifra, 5 su 5.** Il `min` resta scritto
+> lo stesso, e non è ridondanza difensiva: è l'unico punto che se ne accorgerebbe se il venue
+> disaccoppiasse i due libri. Un'asserzione lo verifica.
+
+### Il conto della soglia
+
+```
+SOGLIA_ABBANDONO_USD = PERDITA_MAX_FRAZIONE × MARKET_CAP_FIXED_USD = 0,05 × $61,25 = $3,0625
+```
+
+Entrambe le grandezze sono **importate** dai moduli dove già vivono (`urgenza-scoperto`,
+`concentration`): ricopiarne una sarebbe il reperto **D1** su un limite di rischio.
+
+**Perché proprio quel prodotto.** `PERDITA_MAX_FRAZIONE` è quanto **R7 autorizza la scala d'urgenza a
+bruciare** per liberare una gamba; `MARKET_CAP_FIXED_USD` è **la gamba più grande che questa
+configurazione possa aprire**. Il prodotto è quindi *il massimo che il bot possa legittimamente
+spendere per uscire da una posizione qualsiasi*. Una posizione che vale meno di quella cifra è, per
+costruzione, una posizione su cui la scala è autorizzata a spendere **più di quanto la posizione
+valga** — cioè esattamente lo stato che R6 vieta. **La soglia non è un gusto: è il punto in cui R6 si
+contraddice.**
+
+⚠ **L'operatore aveva suggerito «ordine di grandezza $5».** Sul board di oggi **$3,06 e $5,00 danno lo
+stesso verdetto su tutte e cinque le posizioni** (abbandonano le stesse due, salvano le stesse tre).
+Si tiene il **derivato**, che è anche il più stretto: abbandonare è smettere di provare, quindi il
+verso prudente è abbandonare di **meno**.
+
+### Quali posizioni ricadono nella regola — dichiarato a secco, col modulo vero
+
+| verdetto | mercato | size @ carico | valore residuo | costo d'uscita | causa |
+|---|---|---|---|---|---|
+| **ABBANDONATA** | `0xc5cd9325` MrBeast 37-39M | 56,5 @ 0,05 | **$0,45** | **$2,38** | costa più di quanto vale |
+| **ABBANDONATA** | `0xd947c421` Don't Say Good Luck | 56,1 @ 0,065 | **$1,52** | **$2,12** | costa più di quanto vale |
+| resta | `0x4d79d306` Democratic House | 56,1 @ 0,494 | $21,88 | $5,83 | sopra soglia |
+| resta | `0x790474c0` Trump 180-199 | 52,8 @ 0,099 | $3,85 | $1,37 | sopra soglia |
+| resta | `0xb3c7f543` Iran sanctions | 2,8461 @ 0,87 | $2,33 | $0,14 | **sotto soglia ma uscita conveniente** |
+
+L'ultima riga è la prova che la **doppia** condizione serve: Iran vale $2,33, cioè sotto la soglia, ma
+uscire costa $0,14 — la regola a una condizione sola l'avrebbe abbandonata per sbaglio.
+
+---
+
+## 2 · Il limite resta — cosa l'abbandono NON fa
+
+* **Non cancella nulla al venue e non vende.** Il modulo è puro: due `require` di sole costanti, zero
+  I/O, nessuna superficie di piazzamento o cancellazione raggiungibile.
+* **Non sparisce dai conti.** La posizione resta al venue ⇒ resta dentro `readVenuePositions`, dentro
+  il totale del guardiano, dentro `capitale-al-lavoro` e dentro il P&L. **Abbandonare è smettere di
+  AGIRE, non di CONTARE.**
+* **Resta visibile nel giornale**: una riga `posizione-abbandonata` **a ogni giro**, con valore
+  residuo, costo d'uscita, soglia, bid camminato, gradino e minuti di scopertura. Più
+  `posizione-abbandonata-dichiarata` all'ingresso e `posizione-abbandonata-rientrata` all'uscita.
+* **La coppia batte sempre l'abbandono**: `sizeAltroLato > 0` ⇒ mai abbandonata (il merge rende
+  $1/share, e nessuna soglia vale più di così). `sizeAltroLato` non letta ⇒ **non giudicabile**.
+* **Asimmetrico apposta**: si **entra** con 2 osservazioni contigue (≤ 5 min), si **esce** con una.
+  Un giudizio `non-giudicabile` non fa rientrare: lascia la voce com'è, o un buco di feed rimetterebbe
+  in gioco una posizione abbandonata e ricomincerebbe a bruciare tentativi.
+* **Fail-closed su ogni ingresso**: carico, size, `sizeAltroLato` non finiti, o una delle due scale che
+  non copre l'intera size ⇒ non si abbandona.
+* **Lo slot si libera solo se OGNI posizione di quel mercato è abbandonata.** La sottrazione avviene in
+  `agent41.posizioniPerSelezione`, l'unico ingresso da cui la selezione deriva `inGestione`: il mercato
+  ricade nel ramo **già esistente e già provato** («era in gestione e al venue non c'è più niente»).
+  Nessun ramo nuovo nella macchina della rotazione. **§4.8 non è toccata.**
+
+---
+
+## 3 · L'anomalia dei 240 minuti — **NON era muta**
+
+**Dichiarazione richiesta: la riga è stata scritta, e molte volte.** Misurato sul giornale della
+finestra 06:13Z → 13:18Z:
+
+| mercato | righe `scoperto-oltre-soglia-grave` | scopertura coperta |
+|---|---|---|
+| `0x4d79d306` Democratic House | **394** | da 249,3 a **673,3 min** |
+| `0xd947c421` Don't Say Good Luck | **101** | da 240,4 a 349,0 min |
+
+Il presidio ha un chiamante (`auto-close.js`, subito dopo `decideClose`) e non è mai stato silenzioso.
+**Non c'era niente da riparare, e non è stato riparato.**
+
+⚠ **Ma il lavoro di oggi poteva renderlo muto, ed è il rischio che ho dovuto disinnescare.** Il blocco
+dell'abbandono fa `continue` sulla posizione: messo *sopra* l'anomalia, avrebbe spento una difesa
+mentre dichiarava di non toccarne nessuna — la classe «filtro a monte che svuota l'eccezione scritta a
+valle», applicata a sé stessi. Il blocco sta **dopo**, e un'asserzione lo difende: spostandolo, il test
+diventa rosso (verificato per mutazione).
+
+---
+
+## 4 · Il rinnovo GTD
+
+**Durata in uso.** `RESTING_GTD_SECONDS = 1380` s (**23 min effettivi**) con
+`REFRESH_MARGIN_SECONDS = 180`: ogni ordine viene **cancellato e ripiazzato dopo 1.200 s = 20 min**.
+Coerente con la misura: età massima osservata **22,6 min**.
+
+**Chi rinnova.** `agent40-manual-reprice`, tramite `auto-reprice.decideReprice` → gate
+`expiry-refresh` → `replaceManualOrder` (cancel + place). Misurati **305 rinnovi** in 7,1 h.
+
+**Perché cancella e ripiazza invece di prolungare — verificato, non supposto.** L'`expiration` di un
+ordine sta **dentro la struct EIP-712 firmata**, e **nessuno dei due SDK installati espone
+`modify`/`amend`/`extend`**: 88 metodi in `@polymarket/clob-client-v2`, **zero** corrispondenze su
+`modif|amend|updat|replac|edit|extend|renew` (il solo match è `updateBalanceAllowance`). Cambiare la
+scadenza significa una firma nuova ⇒ un ordine nuovo ⇒ **in fondo alla coda**.
+**Il venue NON permette di estendere.**
+
+---
+
+## 5 · Quanto vale la coda — la misura che ha deciso cosa toccare
+
+> ### Il premio non conosce la coda. Zero, per costruzione.
+> `quadraticUserShare(competitorQ, mid, maxSpreadCents, minSize, capital, distanceCents)` prende **sei**
+> parametri e **la posizione in coda non è uno di quelli**; il punteggio è `scoreOrder(d,v) = ((v−d)/v)²`.
+> Zero occorrenze di *queue*/*coda*/*priorità* in `lib/rewardScore.js`. **Un ordine di quotazione che va
+> in fondo alla coda matura esattamente lo stesso premio.**
+
+**Il churn residuo sulla quotazione, misurato:** 43 rinnovi/h con un buco `cancel→place` di **12,47 s
+medi** (mediana 1,55 s · p90 37,3 s · p99 184,5 s) ⇒ **0,53% del tempo-libro** ⇒ al ritmo di premio di
+oggi ≈ **$0,03/giorno**. **Allungare lì non compra niente** — e costerebbe esposizione non presidiata,
+oltre a invertire in silenzio la calibrazione di `ripristino-gambe` (il cui tetto di 30 min sta *sopra*
+la GTD della quotazione). **`RESTING_GTD_SECONDS` non è stato toccato: resta 1380.**
+
+**Dove la coda conta davvero: la corsia di CHIUSURA.** Lì il fill è ciò che si vuole. Misurato: il SELL
+d'uscita di `0x4d79d306` è stato piazzato **24 volte** in 673 minuti; quello di `0xd947c421` **18**.
+E c'era un'**inversione**: `MERGE_WAIT_TIMEOUT_MIN` concede **30 minuti** all'ordine di completamento
+del Livello 2, ma quell'ordine portava i **23 minuti** della quotazione — il venue lo ritirava *prima*
+che la regola smettesse di aspettarlo (a giornale: `merge-in-attesa … 29,8 min` su un ordine morto a 23).
+
+**La correzione, derivata:**
+
+```
+GTD_CHIUSURA_SECONDS = MERGE_WAIT_TIMEOUT_MIN × 60 + REFRESH_MARGIN_SECONDS = 1800 + 180 = 1980 s (33 min)
+```
+
+Entrambe **importate**: chi cambia l'attesa del Livello 2 muove anche questo, e non può dimenticarsene.
+
+⚠ **Cosa costa, detto per intero**: se l'host muore, un ordine **di chiusura** resta a libro fino a 33
+minuti invece di 23. È l'unica direzione accettabile, perché un ordine di chiusura può solo **ridurre**
+l'esposizione. **Nessun ordine di apertura è toccato**, e `riposizionaDopoChiusura` — che *riapre* due
+gambe — è dichiarato ed escluso.
+
+⚠ **Il punto unico è `chiudendo(spec)`, non `piazzaChiudendo`, e crederlo era l'errore**: in
+`auto-close.js` ci sono **cinque** chiamate a `deps.placeOrder` e **una sola** passa da
+`piazzaChiudendo`. Le altre quattro sono l'uscita ordinaria, il riposizionamento scoperto, il rimasuglio
+sotto il minimo, e — l'unica che non è una chiusura — il riposizionamento dopo la fusione.
+
+---
+
+## 6 · Un difetto vero, misurato e NON corretto (punto 12)
+
+> ### 🔴 63 ordini morti per GTD senza rinnovo in 7 ore, $862,58 di nozionale fuori dal libro
+> `scaduto-senza-rinnovo`, finestra 06:13Z → 13:18Z. **Causa dominante: `motore-non-conforme`, 49 su 63**
+> (`close-sell-floor` 5, `rate-limited` 4, non dichiarata 5). Cioè: **il 20,7% dei rinnovi finisce con
+> l'ordine morto**, perché un rinnovo *allo stesso prezzo* deve ripassare dal motore, e se il motore in
+> quell'istante dice no (tipicamente `profondita-insufficiente`) l'ordine muore invece di essere
+> prolungato. Il caso di Bad Bunny delle 12:49:01 è esattamente questo.
+> **NON corretto di proposito**: allungare il GTD ne riduce solo la *frequenza*, non lo aggiusta; e
+> sollevare il motore su un rinnovo è una decisione di rischio, non una patch.
+
+Altri due, dichiarati e non toccati:
+* **`allowlist-con-posizioni.test.js` lampeggia, e non è mio**: rosso nella prima passata, **verde nella
+  seconda**, e rosso anche con le mie modifiche messe da parte (`git stash`). Causa misurata: il test
+  inietta `posizioni` ma non neutralizza `enabledDaOrdini`, e nell'istante rosso c'era **1 mercato con
+  ordini vivi fuori dalla lista dell'operatore** (`liveMin 18` contro `operatore 17`). È la classe
+  «rossi che dipendono dai DATI VIVI» di §5.2 p.11 — ruota col libro, non è una regressione. La cura
+  sarebbe iniettare anche gli ordini; **non fatta**, è un secondo lavoro.
+* **`chiusura-senza-tetto.test.js` fotografava il sorgente** (`res = await deps.placeOrder({`, graffa
+  compresa) invece della proprietà. **Questo l'ho corretto**, perché era rosso per causa mia: adesso
+  cerca la chiamata e non la forma dell'argomento. Terza occorrenza della classe (§5.3).
+
+---
+
+## 7 · Asserzioni — e falliscono davvero sul sorgente non corretto
+
+`lib/maker/abbandono-e-anomalia.test.js` — **30/30 verdi**. Le tre mutazioni provate:
+
+| mutazione | asserzione che diventa rossa |
+|---|---|
+| l'anomalia dei 240 min resa muta | ② «posizione ABBANDONATA e scoperta da 649 min: l'anomalia grave è comunque a verbale» |
+| il GTD di chiusura non timbrato | ⑥ «ogni ordine di CHIUSURA parte col GTD della corsia di chiusura» |
+| l'abbandono non ferma i tentativi | ① «la posizione confermata abbandonata produce la riga `posizione-abbandonata`» |
+
+Più: `lib/maker/abbandono-posizione.js` ha **21 prove interne** (`node lib/maker/abbandono-posizione.js`).
+
+---
+
+## In sei righe
+
+1. **La soglia è $3,0625**, e non è scelta: è `PERDITA_MAX_FRAZIONE × MARKET_CAP_FIXED_USD` = il 5% che
+   R7 autorizza a bruciare, applicato alla gamba più grande apribile — cioè il massimo spendibile per
+   uscire da una posizione qualsiasi. Sotto quella cifra R6 si contraddice. Sul board di oggi $3,06 e i
+   $5 suggeriti danno **lo stesso verdetto**, e si tiene il derivato perché è il più stretto.
+2. **Diventano abbandonate due**: `0xc5cd9325` MrBeast (vale $0,45, uscire costa $2,38) e `0xd947c421`
+   Don't Say Good Luck (vale $1,52, costa $2,12). Restano Democratic House ($21,88), Trump 180-199
+   ($3,85) e Iran — quest'ultima sotto soglia ma con un'uscita che costa $0,14, cioè la prova che la
+   doppia condizione serve.
+3. **L'anomalia dei 240 minuti NON era muta**: 394 righe su Democratic House (fino a 673,3 min) e 101 su
+   Don't Say Good Luck. Non c'era un presidio senza chiamanti, e non è stato riparato niente — ma il
+   `continue` dell'abbandono poteva renderlo muto, quindi sta **dopo**, e un'asserzione lo difende.
+4. **Del GTD ho cambiato solo la corsia di chiusura**, da 23 a **33 minuti**
+   (`MERGE_WAIT_TIMEOUT_MIN × 60 + REFRESH_MARGIN_SECONDS`), perché il venue **non sa estendere** (88
+   metodi SDK, zero `amend`) e perché l'ordine di completamento moriva a 23 minuti su un'attesa di 30.
+   **La quotazione resta a 23**: il premio non conosce la coda — `quadraticUserShare` ha sei parametri e
+   nessuno è la posizione in coda — e il churn residuo vale **$0,03/giorno**.
+5. **La coda vale $0 in premio e molto in fill**: 24 ripiazzamenti del SELL d'uscita di Democratic House
+   in 673 minuti, 18 di Don't Say Good Luck. È lì che l'ho comprata, non sulla quotazione.
+6. **La suite: 255 test · 247 verdi · 7 ROSSI · 1 non parte** — i sette noti e nient'altro
+   (`dipendenze-mai-iniettate`, `distanza-2c`, `end-of-scale-cycle`, `tetti-per-giro-e-scope`,
+   `categoria-mercato`, `tetto-derivato-dallo-scaglione`, `tetto-e-scoperta`). Il capitale al lavoro
+   dopo due cicli è in coda a questo file (§ *Dopo due cicli*).

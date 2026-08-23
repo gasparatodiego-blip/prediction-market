@@ -272,6 +272,8 @@ const SENT = require('../lib/maker/sentinella-vuoto');
 // suo ramo `ordiniARiposo > 0` azzera l'orologio anche a 2 ordini su 23.
 const COLL = require('../lib/maker/sentinella-collasso');
 const QUAR = require('../lib/maker/quarantena-venue');
+// L'abbandono: qui SOLO in lettura — `mercatiInteramenteAbbandonati` decide quali slot si liberano.
+const ABB = require('../lib/maker/abbandono-posizione');
 const DATA_DIR_A41 = path.join(__dirname, '..', 'data');
 const COER = require('../lib/maker/coerenza-soglie');
 const SBLOCCO = require('../lib/maker/sblocco-progressivo');
@@ -1368,18 +1370,58 @@ function leggiBoardReward(file = BOARD_REWARD) {
 
 /** I mercati con una posizione APERTA al venue, per conditionId. Dallo snapshot su disco: nessuna
  *  chiamata di rete, e quindi nessuna superficie che sappia piazzare. */
-function posizioniPerSelezione(leggi = readVenuePositions) {
+const ABBANDONI_FILE_A41 = path.join(DATA_DIR_A41, 'posizioni-abbandonate.json');
+/**
+ * IL REGISTRO DEGLI ABBANDONI, IN SOLA LETTURA — lo scrive agent40, qui si consuma soltanto.
+ * ⚠ FAIL-CLOSED: qualunque problema ⇒ registro VUOTO ⇒ nessuno slot si libera, cioe' il comportamento
+ * di prima riga per riga. Un file che non si legge non deve poter liberare uno slot occupato da
+ * capitale vero.
+ */
+function leggiAbbandoniA41() {
+  try {
+    const j = JSON.parse(fs.readFileSync(ABBANDONI_FILE_A41, 'utf8'));
+    return (j && typeof j === 'object' && j.voci && typeof j.voci === 'object') ? j : { v: 1, voci: {} };
+  } catch { return { v: 1, voci: {} }; }
+}
+
+function posizioniPerSelezione(leggi = readVenuePositions, opzioni = {}) {
   let p;
   try { p = leggi(); } catch (e) { return { leggibile: false, motivo: e.message, conditionIds: [] }; }
   if (!p || p.readable !== true) return { leggibile: false, motivo: (p && p.reason) || 'snapshot non leggibile', conditionIds: [] };
+  // ══ LO SLOT DI UNA POSIZIONE ABBANDONATA SI LIBERA — 23 agosto 2026, decisione dell'operatore ════
+  // «La posizione viene dichiarata ABBANDONATA, esce dal ciclo di uscita, e il suo mercato libera lo
+  // slot.» Il posto giusto per toglierla e' QUI e non piu' a valle: `conPosizione` e' l'unico ingresso
+  // da cui la selezione deriva `inGestione`, quindi togliendola qui il mercato ricade nel ramo che
+  // gia' esiste e gia' e' provato — «era in gestione e al venue non c'e' piu' niente ⇒ liberato».
+  // Nessun ramo nuovo nella macchina della rotazione.
+  //
+  // ⚠ NON CANCELLA NIENTE E NON VENDE NIENTE: la posizione resta al venue, quindi resta dentro lo
+  // snapshot, dentro il totale del guardiano, dentro `capitale-al-lavoro` e dentro il P&L. Cambia
+  // solo di chi e' il POSTO.
+  // ⚠ SI LIBERA SOLO SE **OGNI** POSIZIONE DI QUEL MERCATO E' ABBANDONATA (lo decide
+  // `mercatiInteramenteAbbandonati`): un mercato con una gamba abbandonata e una viva sta ancora
+  // lavorando, e togliergli lo slot vorrebbe dire smettere di gestirlo mentre ha capitale dentro.
+  // ⚠ E NON TOCCA §4.8: il perimetro live-min continua a includere quel mercato finche' ha posizioni
+  // o ordini a riposo, quindi l'uscita automatica e il rinnovo restano accesi. Questo tocca il
+  // CONTEGGIO DEGLI SLOT, non la gestione.
+  let abbandonati = new Set();
+  try {
+    if (opzioni.abbandoniDisattivi !== true) {
+      const reg = opzioni.registroAbbandoni !== undefined ? opzioni.registroAbbandoni : leggiAbbandoniA41();
+      abbandonati = ABB.mercatiInteramenteAbbandonati({ registro: reg, posizioni: p.positions || [] });
+    }
+  } catch { abbandonati = new Set(); }
   const ids = [];
+  const esclusiPerAbbandono = [];
   for (const x of (p.positions || [])) {
     const c = typeof x.conditionId === 'string' ? x.conditionId.trim().toLowerCase() : '';
     // Una riga senza size positiva non e' una posizione aperta; una size illeggibile NON vale zero.
     const s = Number(x.size);
-    if (c && Number.isFinite(s) && s > 0 && !ids.includes(c)) ids.push(c);
+    if (!(c && Number.isFinite(s) && s > 0)) continue;
+    if (abbandonati.has(c)) { if (!esclusiPerAbbandono.includes(c)) esclusiPerAbbandono.push(c); continue; }
+    if (!ids.includes(c)) ids.push(c);
   }
-  return { leggibile: true, motivo: null, conditionIds: ids };
+  return { leggibile: true, motivo: null, conditionIds: ids, esclusiPerAbbandono };
 }
 
 /**
@@ -2509,6 +2551,18 @@ async function selezionaMercati(deps = {}) {
 
   const board = deps.leggiBoard ? deps.leggiBoard() : leggiBoardReward();
   const posizioni = deps.leggiPosizioni ? deps.leggiPosizioni() : posizioniPerSelezione();
+  // ⚠ UNO SLOT LIBERATO DA UN ABBANDONO SI DICHIARA. Senza questa riga il posto tornerebbe libero e
+  // il referto direbbe solo «coppia-chiusa», che per una posizione ABBANDONATA (ancora al venue, ancora
+  // nel P&L) non e' vero. E' la stessa lezione di `slotVuotiPerScarsita`: un posto vuoto e una causa
+  // non dichiarata sono la coppia che rende un referto inutilizzabile il giorno dopo.
+  if (posizioni && Array.isArray(posizioni.esclusiPerAbbandono) && posizioni.esclusiPerAbbandono.length) {
+    scrivi({ tipo: 'slot-liberato-per-abbandono', esito: 'applicato',
+      mercati: posizioni.esclusiPerAbbandono,
+      motivo: 'posizione dichiarata ABBANDONATA da agent40 (vale meno della soglia e uscire costa piu\' di'
+        + ' quanto valga, R6): il mercato non occupa piu\' uno slot. La posizione resta al venue, resta'
+        + ' gestita da §4.8 e resta nel P&L: cambia solo di chi e\' il posto.' });
+    annuncia('log', `selezione: ${posizioni.esclusiPerAbbandono.length} slot liberato/i da posizioni abbandonate`);
+  }
   const quarantena = (() => {
     let base = [];
     try { base = Object.keys(leggiQuarantena() || {}); } catch { base = []; }

@@ -717,6 +717,70 @@ il prezzo a ogni giro e, dal gradino 1 in su, l'uscita **insegue il miglior ask*
 basta (solo se il prezzo nuovo è più basso di un tick). **`planExit` produce un PAVIMENTO, non un
 prezzo**: chi lo tratta come prezzo lascia l'uscita sopra il book e non scende mai.
 
+> **🏳️ L'ABBANDONO — R6 LETTA COME CANCELLO, 23 agosto 2026, decisione dell'operatore.**
+> `lib/maker/abbandono-posizione.js` (puro, due `require` di sole costanti). Una posizione **scoperta**
+> è dichiarata **ABBANDONATA** quando `valoreResiduo < SOGLIA` **E** `costoUscita ≥ valoreResiduo`:
+> esce dal ciclo di uscita, **libera lo slot**, e **non si cancella nulla al venue e non si vende** —
+> si smette solo di provare.
+> · `valoreResiduo` = il **bid CAMMINATO** per l'INTERA size, mai `size × mid` (la misura del 16
+> agosto: 283 campioni, **zero** uscite in guadagno al mid).
+> · `costoUscita` = il minimo fra `size × (carico − bidCamm)` (vendita) e `size × (carico + askAltro − 1)`
+> (coppia). **⚠⚠ SUL CLOB LE DUE VIE COSTANO IDENTICO, ED È STRUTTURALE**: i due token condividono un
+> libro solo, quindi `askAltroLato = 1 − bidMioLato` — misurato **5 righe su 5** alla quarta cifra. Il
+> `min` resta scritto perché è l'unico punto che se ne accorgerebbe se il venue disaccoppiasse i libri.
+> **LA SOGLIA È DERIVATA**: `PERDITA_MAX_FRAZIONE × MARKET_CAP_FIXED_USD = 0,05 × $61,25 =` **$3,0625**,
+> entrambe **importate**. Il conto: `PERDITA_MAX_FRAZIONE` è quanto R7 autorizza a **bruciare** per
+> liberare una gamba, `MARKET_CAP_FIXED_USD` è la gamba più grande apribile ⇒ il prodotto è il massimo
+> spendibile per uscire da una posizione qualsiasi. Sotto quella cifra R6 si contraddice.
+> ⚠ L'operatore aveva suggerito «ordine di grandezza $5»: sulle cinque posizioni vive del 23/08 **$3,06
+> e $5,00 danno lo stesso verdetto**, e si tiene il derivato perché è il più stretto (abbandonare è
+> smettere di provare, quindi il verso prudente è abbandonare di MENO).
+> **⚠ NON SPARISCE DAI CONTI**: la posizione resta al venue ⇒ resta in `readVenuePositions`, nel totale
+> del guardiano, in `capitale-al-lavoro` e nel P&L. Abbandonare è smettere di **AGIRE**, non di **CONTARE**.
+> **⚠ NON SPEGNE L'ANOMALIA DELLE QUATTRO ORE**: il blocco dell'abbandono sta **DOPO** quello di
+> `scoperto-oltre-soglia-grave`, e l'ordine è un requisito — un test lo verifica e diventa rosso se
+> qualcuno lo inverte. Una riga `posizione-abbandonata` si scrive **a ogni giro**, non solo al primo.
+> **⚠ LA COPPIA BATTE SEMPRE L'ABBANDONO**: `sizeAltroLato > 0` ⇒ mai abbandonata (il merge rende
+> $1/share). `sizeAltroLato` non letta ⇒ **non giudicabile** ⇒ non si abbandona.
+> **⚠ ASIMMETRICO**: si ENTRA con **2 osservazioni contigue** (≤ 5 min l'una dall'altra), si ESCE con
+> **una**. Un giudizio `non-giudicabile` **non fa rientrare**: lascia la voce com'è.
+> **⚠ LO SLOT SI LIBERA SOLO SE OGNI POSIZIONE DEL MERCATO È ABBANDONATA** — la sottrazione avviene in
+> `agent41.posizioniPerSelezione`, cioè l'unico ingresso da cui la selezione deriva `inGestione`: il
+> mercato ricade nel ramo già esistente e già provato, nessun ramo nuovo nella rotazione. **§4.8 non è
+> toccata**: il perimetro live-min continua a includerlo finché ha posizioni o ordini a riposo.
+> **⚠ REGISTRO SU DISCO** (`data/posizioni-abbandonate.json`): lo scrive **agent40** (che ha il libro e
+> giudica), lo legge **agent41** (che libera lo slot) — due processi, quindi una memoria di processo
+> sarebbe la corsa già misurata su `mercatiConOrdiniVivi`. Fail-closed in entrambi i versi.
+> **AL VARO (23/08 13:30Z)**: abbandonate **`0xc5cd9325` MrBeast** (valore $0,45, costo $2,38) e
+> **`0xd947c421` Don't Say Good Luck** (valore $1,52, costo $2,12); restano Democratic House ($21,88,
+> sopra soglia), Trump 180-199 ($3,85, sopra soglia) e Iran ($2,33 ma uscita conveniente a $0,14).
+
+> **⏳ IL GTD DELLA CORSIA DI CHIUSURA È 33 MINUTI, QUELLO DELLA QUOTAZIONE RESTA 23 — 23 agosto 2026.**
+> **IL VENUE NON SA ESTENDERE UN ORDINE**: l'`expiration` sta **dentro la struct EIP-712 firmata** e
+> nessuno dei due SDK installati espone `modify`/`amend`/`extend` (**88 metodi** in
+> `@polymarket/clob-client-v2`, **zero** corrispondenze). Prolungare senza perdere la coda **non è
+> possibile**: è un fatto verificato sul pacchetto installato, non una supposizione.
+> **L'INVERSIONE MISURATA**: `MERGE_WAIT_TIMEOUT_MIN` concede **30 min** all'ordine di completamento del
+> Livello 2, ma quell'ordine portava i **23 min** della quotazione — il venue lo ritirava **prima** che
+> la regola smettesse di aspettarlo (`merge-in-attesa … 29,8 min` su un ordine morto a 23).
+> `GTD_CHIUSURA_SECONDS = MERGE_WAIT_TIMEOUT_MIN × 60 + REFRESH_MARGIN_SECONDS = **1.980 s**`, entrambe
+> **importate**: chi cambia l'attesa del Livello 2 muove anche questo.
+> **⚠ LA QUOTAZIONE NON SI TOCCA, E IL PERCHÉ È UNA MISURA**: **il premio non conosce la coda** —
+> `quadraticUserShare` prende concorrenza, mid, banda, minSize, capitale e distanza, e la posizione in
+> coda non è uno di quei sei; `scoreOrder = ((v−d)/v)²`. Un ordine di quotazione che va in fondo alla
+> coda matura **esattamente lo stesso premio**. Il churn residuo misurato: 43 rinnovi/h con un buco
+> cancel→place di **12,47 s medi** = **0,53% del tempo-libro** ≈ **$0,03/giorno**. Allungare lì non
+> compra niente e costerebbe esposizione non presidiata.
+> **⚠ E LA CALIBRAZIONE DI `ripristino-gambe` RESTA VALIDA**: il suo tetto di 30 min sta sopra la GTD
+> *della quotazione*, che non è cambiata. Un GTD globale l'avrebbe invertita in silenzio.
+> **⚠ COSA COSTA**: se l'host muore, un ordine di **chiusura** resta a libro fino a 33 min invece di 23.
+> È l'unica direzione accettabile: un ordine di chiusura può solo **ridurre** l'esposizione (un SELL
+> vende ciò che possediamo, un BUY di completamento chiude una coppia che rende $1/share). **Nessun
+> ordine di APERTURA è toccato**, e `riposizionaDopoChiusura` — che riapre due gambe — è dichiarato ed
+> escluso. Il tetto dell'orologio del mercato (`tooClose`) resta davanti.
+> **⚠ IL PUNTO UNICO È `chiudendo(spec)`, NON `piazzaChiudendo`**: in `auto-close.js` ci sono **cinque**
+> chiamate a `deps.placeOrder` e **una sola** passa da `piazzaChiudendo`. Crederlo era l'errore.
+
 **La resa dopo 60 minuti** (`urgenza-scoperto.js`): gradino 1 a **30 min** (uscita fino al carico),
 gradino 2 a **60 min** ⇒ chiusura **peggiorativa**, gradino 3 a 240 min ⇒ anomalia grave.
 **⚠ LA CONCESSIONE È IL 5% DEL CARICO, E BASTA** (R7, 18 agosto 2026, decisione dell'operatore; era
@@ -1261,6 +1325,24 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
 54. **✅ CHIUSA IL 22 AGOSTO** — la cura non è una tolleranza sui timestamp (misurata e scartata) ma la
    **conservazione del valore**: `Δcassa + Δsize ≈ 0`, o il totale non è misurabile. Regola viva in §3,
    diagnosi integrale in §5-bis p.204 e `docs/registro-voci-chiuse.md`.
+65. **🔴 LA QUOTA CODA LUNGA IN SERVIZIO È 0,50, MA CHIUNQUE LA LEGGA FUORI DA agent41 VEDE 0,12 —
+   23 agosto 2026, NON corretto.** `MAKER_QUOTA_CODA_LUNGA: '0.5'` sta **solo** in
+   `agents/ecosystem.config.js:690` — non nel `.env` — e `horizon.LONG_TAIL_CAP_FRAC` si calcola
+   **una volta sola al caricamento del modulo** (`horizon.js:213`). Il figlio del piano la vede
+   perché `execFile` è chiamato **senza opzione `env`** e quindi eredita l'ambiente di agent41
+   (`agent41-realloc-scheduler.js:698`). **Ma qualunque strumento lanciato da una shell** — uno
+   script di ricerca, `node -e`, un test — carica `horizon.js` **senza quella variabile** e ottiene
+   il difetto **0,12**, cioè un quarto del valore vero. **⚠ NON È TEORICO: ha già prodotto un
+   referto sbagliato.** Il referto delle 11:42Z del 23/08 dichiarava «6 mercati respinti da
+   `quota-coda-lunga`, $367,50 fermi»; rimisurato con l'ambiente vero (letto da
+   `/proc/<pid>/environ`) i respinti sono **5 su 27 ammissibili** e il netto che bloccano è
+   **$0,0277/giorno**, non una frazione del piano. È la classe «due strade che rispondono alla
+   stessa domanda con numeri diversi», nella variante peggiore: la strada che **sbaglia** è quella
+   che si usa per **misurare**. **⚠ E `scripts/cli/stato.js` non stampa affatto questa quota**,
+   quindi oggi il valore in servizio non è leggibile da nessun comando. La cura è che chi misura
+   legga l'ambiente del processo vivo (come fanno le cinture e R1), non `process.env` della propria
+   shell; **non fatta**: tocca il modo in cui si misura, e la misura è la cosa da non sporcare
+   mentre la si sta usando per decidere.
 61. **🟡 `selezione-cablata.test.js` CONTA I SELEZIONATI INVECE DEGLI ATTIVI — 22 agosto, NON corretto.**
    L'asserzione «e il vincolo e' esattamente l'insieme scelto» (riga 95-96) confronta
    `onlyMarketIds.length` con **tutti** i selezionati, mentre `restringiAllaSelezione` usa

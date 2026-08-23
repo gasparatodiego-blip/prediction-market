@@ -241,6 +241,12 @@ const { registraScadenzeSenzaRinnovo } = require('../lib/maker/scadenze-senza-ri
 // AUTOMATIC POSITION CLOSING. Runs on the same throttle as the reconciliation and for the same reason:
 // a fill is only observable after the venue is asked. Default OFF everywhere; see lib/maker/auto-close.js.
 const { runAutoCloseCycle } = require('../lib/maker/auto-close');
+// ── L'ABBANDONO DI UNA POSIZIONE SCOPERTA (R6 come cancello, 23 agosto 2026) ─────────────────────
+// Il modulo e' PURO: decide e aggiorna un registro che riceve. A leggerlo e a scriverlo e' questo
+// agente; a CONSUMARLO — per liberare lo slot — e' agent41, che vive in un altro processo. Per questo
+// il registro sta su disco e non in memoria: e' la stessa forma di `chiusura-emergenza-richiesta.json`
+// (agent43 deposita, agent41 esegue).
+const ABB = require('../lib/maker/abbandono-posizione');
 // ══ LA SORVEGLIANZA SULLA VALUTAZIONE — 17 agosto 2026, requisito dell'operatore ═════════════════════
 // Vive FUORI da `closeTask`, ed e' il punto: se stesse dentro, condividerebbe le sue cause di silenzio
 // (il gate su `riconciliato`, un'eccezione, un mercato fuori da `visitare`) e non potrebbe vederle.
@@ -677,6 +683,37 @@ async function snapshotPosizioniTask() {
 // «nessuna attesa in corso», che e' la direzione sicura: auto-close, senza attesa registrata e con un
 // ordine di completamento gia' a riposo, non ne piazza un secondo — perche' senza registro il ramo del
 // merge non parte affatto (fail-closed esplicito in auto-close.js).
+const ABBANDONI_FILE = path.join(__dirname, '..', 'data', 'posizioni-abbandonate.json');
+
+// ══ IL REGISTRO DELLE POSIZIONI ABBANDONATE — su DISCO, e il perche' e' il punto ═══════════════════
+// Lo scrive agent40 (che ha il libro e giudica), lo legge agent41 (che libera lo slot): due processi,
+// quindi una memoria di processo non basterebbe — sarebbe la corsa gia' misurata su
+// `mercatiConOrdiniVivi` (§4.8). Scrittura ATOMICA: un file mezzo scritto e' illeggibile, e
+// illeggibile qui significa «nessun abbandono», cioe' si continua a provare — il verso prudente.
+// ⚠ `readable` VIENE DICHIARATO E NON DEDOTTO: un file assente e un file corrotto portano oggi allo
+// stesso comportamento, ma non sono la stessa cosa, e chi legge deve poterli distinguere.
+function leggiAbbandoni() {
+  try {
+    const j = JSON.parse(fs.readFileSync(ABBANDONI_FILE, 'utf8'));
+    if (!j || typeof j !== 'object' || !j.voci || typeof j.voci !== 'object') {
+      return { readable: false, registro: { v: 1, voci: {} }, motivo: 'il file non ha la forma attesa' };
+    }
+    return { readable: true, registro: j };
+  } catch (e) {
+    return { readable: false, registro: { v: 1, voci: {} },
+      motivo: e && e.code === 'ENOENT' ? 'mai scritto (primo avvio: e\' lo stato sano)' : (e && e.message) || String(e) };
+  }
+}
+function scriviAbbandoni(registro) {
+  try {
+    const tmp = `${ABBANDONI_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(registro, null, 1));
+    fs.renameSync(tmp, ABBANDONI_FILE);
+  } catch (e) {
+    console.log(`⚠ registro degli abbandoni non scritto (${e.message}): nessuna posizione viene abbandonata`);
+  }
+}
+
 const MERGE_WAIT_FILE = path.join(__dirname, '..', 'data', 'merge-attese.json');
 
 function registroAttesaMerge() {
@@ -1370,6 +1407,23 @@ async function closeTask() {
     const regChiusuraCiclo = registroModalitaChiusura();
     const res = await runAutoCloseCycle({
       marketIds: visitare,
+      // ── IL REGISTRO DEGLI ABBANDONI ────────────────────────────────────────────────────────────
+      // ⚠ `leggi` dichiara `readable`: un file illeggibile NON e' «nessuna posizione abbandonata»,
+      // ma in questo caso le due cose portano allo stesso comportamento (si continua a provare), ed
+      // e' il verso prudente. La differenza resta scritta perche' il giorno in cui qualcuno userA'
+      // questo registro per una decisione opposta, il campo dev'essere gia' li'.
+      abbandoni: {
+        leggi: () => {
+          const r = leggiAbbandoni();
+          return { readable: r.readable, chiavi: ABB.abbandonate({ registro: r.registro }).map((v) => v.chiave) };
+        },
+        applica: (giudizi, ora) => {
+          const r = leggiAbbandoni();
+          const out = ABB.aggiornaRegistro({ registro: r.registro, giudizi, ora });
+          scriviAbbandoni(out.registro);
+          return out;
+        },
+      },
       killStatus: () => killSwitch.killStatus(),
       isManual: (marketId) => isManualMarket(marketId),
       resolveRules: (marketId) => resolveMarketRules(marketId),
