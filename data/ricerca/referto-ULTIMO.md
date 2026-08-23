@@ -1,148 +1,159 @@
-# Referto — «Ripara il piano e porta il capitale al lavoro sopra l'80%»
-**23 agosto 2026, 10:05Z.** Solo misure. **NIENTE È STATO APPLICATO**, per la regola del punto 4.
+# Referto — «Applica il cap e riempi gli slot»
+**23 agosto 2026, 11:42Z.** Verifica **prima**, applicazione **dopo**, nello stesso giro.
+Commit `186af96`, pushato. Riavviato **solo agent41**.
 
-> ## ⛔ FERMATO AL PUNTO 4, E PER DUE RAGIONI INDIPENDENTI
-> **① La causa accertata è sbagliata.** Non è la corsia websocket (§5.2 p.55): **tutti e 12 i
-> mercati selezionati hanno `profondita: 'misurata'`**. La corsia li copre tutti. Il piano li scarta
-> per due ragioni **economiche e già dichiarate**: `quota-coda-lunga` (5) e `netto-negativo` (5).
-> **② Uno dei quattro mercati fermi resta fermo anche con la correzione**, perché ha un netto atteso
-> di **−$2,17/giorno**. Il punto 4 dice: «se anche solo uno resta fermo, hai riparato il sintomo
-> sbagliato: dillo e fermati senza applicare il resto». Fermato.
->
-> **Nessun file di produzione è stato modificato. Nessun processo riavviato. Nessun ordine toccato.**
+> ## ✅ APPLICATO — cap **$2.400**, slot **18** su un soffitto di **19**
+> ## ⚠️ E NON HA PORTATO IL CAPITALE ALL'80%: il cap e gli slot **non erano il vincolo**
+> Gli slot sono passati da 12 a 18 e si sono **riempiti tutti** (18/18, zero slot vuoti per
+> scarsità). Ma il **piano** finanzia **4 righe su 17 attive**: 13 mercati selezionati non
+> ricevono un dollaro, e le ragioni sono le stesse già misurate alle 10:02 — `netto-negativo`
+> (6), `quota-coda-lunga` (6), `orizzonte` (1). **Capitale al lavoro 46,0%**, contro il 48,8%
+> di prima del giro. **Il collo di bottiglia non era il tetto di esposizione.**
 
 ---
 
-## 1 · LA CAUSA ESATTA — misurata, e non è quella accertata
+## 1 · LA VERIFICA CHIESTA AL PUNTO 1 — **sì, era già fatto**, e con file e riga
 
-**Chi compone il piano**: `lib/rewards/allocator.js` → `planFromCollection`, eseguito in un processo
-figlio (`RUNNER_PIANO`, `agents/agent41-realloc-scheduler.js:613`) e ristretto ai selezionati da
-`restringiAllaSelezione` (`agent41-realloc-scheduler.js:640`, che usa `idsAttivi`).
+L'allineamento è il commit **`3ce2256`** del **23/08 10:39:15Z**, **in servizio da 13 secondi
+dopo**: agent41 pid 883101 è partito alle **10:39:28Z**.
 
-Eseguito **adesso** sui 12 selezionati attivi, capitale $1.464,47, tetto $61,25:
-
-| mercato | netto $/g | profondità | `reasonCode` | status |
-|---|---:|---|---|---|
-| `0x790474c0` Trump 180-199 | **+3,4051** | misurata | — | **scelto** |
-| `0xaa74d4f5` Don't Say Good Luck | **+1,9851** | misurata | — | **scelto** |
-| `0x684e5b72` NVIDIA | +0,4538 | misurata | `quota-coda-lunga` | scartato |
-| `0x76c1a69f` Spider-Man | +0,1845 | misurata | `quota-coda-lunga` | scartato |
-| `0x14d32732` Avengers | +0,0779 | misurata | `quota-coda-lunga` | scartato |
-| `0x5e082f0b` Fed 1 taglio | +0,0222 | misurata | `quota-coda-lunga` | scartato |
-| `0x4e4f77e7` Republican House | +0,0050 | misurata | `quota-coda-lunga` | scartato |
-| `0xd4e77ba6` no Fed cuts | **−0,0356** | misurata | `netto-negativo` | scartato |
-| `0x12dc2b61` Harry Kane | **−0,0376** | misurata | `netto-negativo` | scartato |
-| `0x80b3af88` Fed rialzo | **−0,1746** | misurata | `netto-negativo` | scartato |
-| `0xf3c634bd` Musk <40 tweet | **−2,1651** | misurata | `netto-negativo` | scartato |
-| `0x316e494b` Musk 40-64 tweet | **−7,9862** | misurata | `netto-negativo` | scartato |
-
-**⇒ 2 righe su 12, non 4. E la corsia websocket non c'entra:**
-`profondita` sui 12 selezionati = `{"misurata": 12}`. **Zero `non-verificata`.**
-(Sui 307 candidati totali, 295 hanno profondità `?` — ma quelli non sono selezionati e non sono il caso in esame.)
-
-**Le due cause vere, con file e riga:**
-1. **`quota-coda-lunga`** — `lib/rewards/allocator.js`, il cancello della quota di coda lunga (§4.4:
-   «il capitale oltre `LONG_TAIL_DAYS 7` non supera il **12%** del piano»). **8 dei 12 selezionati
-   sono di coda lunga** (68,6 · 129,6 · 129,6 · 129,6 · 129,6 · 71,6 · 107,6 · 129,6 giorni): la
-   fascia corta ha solo 4 mercati e la quota che la coda riceve è calcolata su quella.
-2. **`netto-negativo`** — il netto atteso è sotto zero: quei mercati **costano** capitale.
-
-**⚠ E il piano salvato su disco era di CINQUE ORE prima** (`realloc-ultimo-piano.json`,
-`at: 2026-08-23T04:42:49Z`), mentre il giornale dichiara una ricostruzione a ogni mini-ciclo: la
-ricostruzione **non viene persistita**. Difetto dichiarato, non corretto.
-
-## 2-3 · LA CORREZIONE E L'ALLARME — **non applicati**
-
-La correzione chiesta (ogni selezionato ha una riga, con motivo dichiarato) è **giusta come
-osservabilità** e la userei: renderebbe visibile ciò che ho dovuto ricostruire eseguendo
-l'allocatore a mano. Ma **non riparerebbe il capitale fermo**, perché le righe mancanti non sono
-sparizioni silenziose: sono **scarti dichiarati con un `reasonCode`**, già presenti in
-`piano.candidates`. Il degrado non è silenzioso nel piano — è silenzioso **nel giornale**, che
-riporta solo `righe: 4` senza i motivi.
-
-## 4 · SIMULAZIONE A SECCO SUI QUATTRO FERMI — **uno resta fermo, quindi mi fermo**
-
-| mercato | fermo da | motivo vero | con la correzione riceve una riga? | riceve un ORDINE? |
-|---|---|---|---|---|
-| `0x684e5b72` NVIDIA | 236 min | `quota-coda-lunga`, netto **+0,45**/g | sì | **solo se la quota di coda lunga sale** |
-| `0x5e082f0b` Fed 1 taglio | ~15 min | `quota-coda-lunga`, netto **+0,02**/g | sì | idem |
-| `0x4e4f77e7` Republican House | ~15 min | `quota-coda-lunga`, netto **+0,005**/g | sì | idem |
-| `0xf3c634bd` Musk <40 | 208 min | **`netto-negativo`, −$2,17/g** | sì | **NO, e non deve** |
-
-**`0xf3c634bd` resta fermo per costruzione.** Una riga di piano che dichiara `netto-negativo` non
-produce un ordine, e non deve: allocare $61,25 su un mercato con netto atteso **−$2,17/giorno**
-significa pagare per stare a libro. Forzare l'ordine sarebbe scavalcare il modello economico, non
-riparare un difetto.
-
-**⇒ Il punto 4 scatta: «hai riparato il sintomo sbagliato». Fermato senza applicare il resto.**
-
-⚠ E gli altri tre non sono un affare: netto **+$0,45 · +$0,02 · +$0,005 al giorno**. Anche
-riempiendoli tutti e tre, il piano guadagnerebbe **$0,48/giorno** contro i $5,65/giorno che le due
-righe scelte già producono. **Il capitale fermo non è capitale sprecato: è capitale che il modello
-si rifiuta di mettere su mercati che non rendono.**
-
-## 5-6-8 · I CONTI CHIESTI — calcolati, **non applicati**
-
-**Il cap a $2.400** (`N × 2 × $61,25 ≤ cap`):
-
-| cap | N max | nozionale a riposo | capitale al lavoro | cassa residua |
-|---|---:|---|---|---|
-| $1.470 (attuale) | **12** | $735,00 | $759,63 = **51,0%** | $729,47 ✔ |
-| $2.400 | **19** | $1.163,75 | $1.188,38 = **79,8%** | **$300,72** ✔ sopra $250 |
-
-**⚠ $2.400 arriva al 79,8%, non all'80%.** Mancano **0,2 punti**. Per superare l'80% servirebbe
-`cap ≥ $2.412`. Non applicato comunque.
-
-**Mercati ammissibili**: ne esistono **33** (15 basso + 18 alto), di cui **21 liberi**. Per N=19 ne
-servono 19: **bastano**. La quota a N=19 sarebbe `round(19/3) = **6 basso + 13 alto**`, e i 14
-candidati «basso» liberi avrebbero 6 posti — ne entrerebbero **6**, non 14.
-
-**Il guardiano, con il cap raddoppiato** (misura, non ritarata):
-
-| | cap $1.470 · N=12 | cap $2.400 · N=19 |
+| cosa | dove | valore misurato |
 |---|---|---|
-| esposizione massima raggiungibile | $1.470,00 | **$2.327,50** |
-| perdita max in un ciclo (coppia a 101¢ contro merge a 100¢) | $7,36 | **$11,66** |
-| soglia guardiano (5% di $1.489,10) | $74,45 | $74,45 |
-| kill giornaliero R10 | −$100 = 6,72% dell'equity | idem |
+| la distanza del piano | `agents/agent41-realloc-scheduler.js:649` — `conDistanzaDiPiano(o)` mette `offsetTicks: null` + `offsetCents` da `distanzaObiettivoCents` | **3,00¢** |
+| il piano **operativo** ci passa | `agent41-realloc-scheduler.js:696` (`calcolaPianoFuoriProcesso`) | ✅ |
+| il piano dei **netti che ordinano la selezione** ci passa | `agent41-realloc-scheduler.js:1487` (`nettiDeiCandidati`) | ✅ |
 
-**⇒ Restano coerenti.** La perdita massima di un ciclo ($11,66) è **un sesto** della soglia del
-guardiano e **un nono** del kill: raddoppiare il cap non avvicina nessuna delle due difese al loro
-punto di scatto. ⚠ Ma il cap **è un budget, non un permesso** (§4.2): a $2.400 su equity $1.489 il
-limite diventa **quasi inerte**, e la difesa effettiva si riduce al guardiano e al kill. **Non
-ritarati, come richiesto.**
+Misurato con la `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V` **del processo vivo** (0,6666…):
+`distanzaObiettivoCents({maxSpreadCents: 4.5})` = `{"distanzaC":3,"motivo":"obiettivo
+0.6666… × v(4.5¢) = 3.00¢ dal mid"}`. **I 18 mercati sono stati scelti con i netti a 3,0¢**,
+non con quelli a 1 tick. ⚠ Resta vero ciò che `3ce2256` dichiarava: la correzione **non muove
+i netti** (il lordo nasce da `levels[]` del board, calcolato da agent24 con la propria posa).
 
-## 9 · ORDINI VIVI — stato al momento della misura
+## 2 · IL CAP — e il **secondo tetto** che il punto 2 non contava
 
-16 ordini a riposo su 8 mercati, **$423,89** · 6 coppie · **2 gambe scoperte a libro** · **2
-posizioni aperte** (`0x4d79d306` 56,1 @0,386 carico 0,494 · `0xd947c421` 56,1 @0,053 carico 0,065),
-**non vendute**. **Nessun processo riavviato, zero ordini toccati, la quarantena in memoria di
-agent41 è intatta.**
+`maxOpenNotionalUsd` **$1.470 → $2.400** in `data/safety-risk-limits.json`.
+⚠ **Il cap non si legge da `/proc`**: non è un env, è il file **versionato**. Da `/proc` si
+legge il numero di **slot**. Il punto di configurazione è uno, ma non è dove diceva il punto 2.
 
-## Difetti trovati e NON corretti
+⚠⚠ **E non bastava**: `lib/safety/risk-limits.HARD_CEILINGS.maxOpenNotionalUsd` stava a
+**$2.000**, e `clampNum` fa `min(disco, tetto duro)` **senza sollevare**. Il cap in servizio
+sarebbe stato **$2.000** mentre il referto diceva $2.400 — e l'invariante a N=19 ($2.327,50)
+sarebbe stata **verificata su un numero e applicata su un altro**: il gate avrebbe smesso di
+piazzare a metà strada (il guasto del 16 agosto), col referto che rassicura. Il tetto duro sale
+allo **stretto necessario** ($2.400), quindi resta un tetto vero.
+**Verificato dopo il riavvio**: `resolveLimits()` ⇒ `maxOpenNotionalUsd: 2400`, `clampEvents: []`.
 
-1. **Il piano valuta a 1¢ dal mid mentre il bot quota a 3,0¢.** `piano.offsetCents = 1`: tutti i
-   netti della tabella al §1 sono calcolati per una posa a **un tick** dal mid, dove il punteggio
-   vale `S = ((4,5−1)/4,5)² = 0,605`. Alla distanza vera di **3,0¢** il punteggio è **0,111**, cioè
-   **5,4 volte più basso** — quindi i netti veri sono peggiori di quelli misurati, e i cinque
-   `netto-negativo` lo sono **di più**, non di meno. **La stima e l'esecuzione non concordano**, ed è
-   la classe «due strade che rispondono alla stessa domanda con numeri diversi».
-2. **La selezione e il piano usano criteri diversi.** La selezione ordina per
-   `levels[].grossRewardDay` (§4.13) e **non applica il payback**; il piano applica il netto completo.
-   Per questo la selezione riempie 12 slot con mercati che il piano poi rifiuta: **non è un difetto
-   di uno dei due, è che nessuno dei due conosce il verdetto dell'altro.** È la causa strutturale del
-   capitale fermo, ed è più grande di §5.2 p.55.
-3. **La ricostruzione del piano non viene persistita**: `realloc-ultimo-piano.json` è fermo a
-   `04:42:49Z` mentre il giornale dichiara una ricostruzione ogni due minuti.
-4. **Il giornale riporta `righe: N` senza i motivi degli scarti** — il degrado è silenzioso lì, non
-   nel piano (che i `reasonCode` li ha).
-5. **La suite scrive nello stato di produzione** (dal referto precedente, invariato).
+## 3 · GLI SLOT — **18**, non 19, e la ragione è la **cassa** (punto 4)
 
-## Cosa servirebbe davvero, se l'obiettivo resta l'80%
+```
+IL CAP autorizza 19:   19 × 2 × $61,25 = $2.327,50  ≤ $2.400
+                       20 × 2 × $61,25 = $2.450,00  > $2.400   ⇒ NO
+LA CASSA autorizza 18: saldo agent41 10:58:36Z = $1.391,57
+      19 × $61,25 = $1.163,75 ⇒ residua $227,82   ← SOTTO il pavimento di $250
+      18 × $61,25 = $1.102,50 ⇒ residua $289,07   ← sopra ⇒ in servizio
+```
+Il punto 4 dice esattamente questo («se scende sotto, riduci N»). **Il $1.464,47 del referto
+delle 12:12 era più alto del saldo che agent41 legge**, e le due grandezze non sono la stessa
+cosa: il cap limita l'**esposizione**, la cassa è il denaro con cui si comprano le sorelle.
+Perciò il **soffitto** di sorgente vale **19** (ciò che il cap autorizza) e **l'ambiente vale
+18** (ciò che la cassa consente). Sopra $1.413,75 di saldo il 19 diventa scrivibile.
 
-In ordine di quanto è dimostrato:
-1. **Allineare selezione e piano sullo stesso netto** (difetto 2). Senza, qualunque numero di slot si
-   riempie di mercati che il piano rifiuta, e il capitale resta fermo a prescindere dal cap.
-2. **Correggere l'offset del piano da 1¢ a 3,0¢** (difetto 1), o i netti resteranno ottimistici.
-3. **Solo allora** alzare il cap: a $2.412 il conto dà l'80,0%, e la cassa residua ($295) resta sopra
-   i $250 del gradino 1 del §7.
+⚠ **E il soffitto andava mosso o il 18 sarebbe stato rifiutato in silenzio**: `quantiMercati`
+risponde col **difetto**, non con un errore, quando il valore supera
+`selezione-mercati.MAX_MERCATI_CONTEMPORANEI` — lo stesso blocco del 18 e del 22 agosto.
+
+**Composizione DERIVATA**: `quotaScaglioni(18)` = `round(18/3)` = **6 «basso» + 12 «alto»**.
+**Quanti dei candidati «basso» sono entrati davvero**: alle 11:26:49Z
+`scartatiPerComposizione` è **vuoto** e `postiNonAssegnati` è **vuoto** — nessun candidato è
+stato respinto dalla quota, e nessun posto è rimasto non assegnato. Il secchio «basso» non è
+più il cancello che era il 22/08 (6 scarti `quota-scaglione-piena`).
+`MAKER_SLOT_CORTI` resta **2** (2 corti + 16 lunghi): asse ortogonale, non toccato.
+
+## 4 · LA CASSA (punto 4) — **$1.438,72**, molto sopra $250
+
+A piena allocazione (18 × $61,25 = $1.102,50) resterebbero **$289,07**. Oggi il piano ne
+alloca $189, quindi la cassa reale è $1.438,72. **Nessuna riduzione ulteriore di N necessaria.**
+
+## 5 · GLI SCARTI RESTANO SCARTI (punto 5) — **nessun netto negativo forzato dentro**
+
+**Zero slot vuoti**: 18/18 occupati, `slotVuotiPerScarsita: null`. Ma **17 attivi ⇒ 4 righe di
+piano**, e i 13 senza riga (misurati alle 11:37Z col piano vero, distanza 3,0¢):
+
+| ragione | mercati | capitale fermo |
+|---|---:|---:|
+| `netto-negativo` | **6** (`0x12dc2b61` `0xf3c634bd` `0xdeb729bc` `0xa34edb6c` `0xd4e77ba6` `0x80b3af88`) | **$367,50** |
+| `quota-coda-lunga` | **6** (`0x76c1a69f` `0x684e5b72` `0x14d32732` `0x5e082f0b` `0x4e4f77e7` `0x938e6a0a`) | $367,50 |
+| `orizzonte` | 1 (`0x7619b095`) | $61,25 |
+| **totale non finanziato** | **13** | **$796,25** |
+
+**$367,50 restano fermi per netto negativo, e non è un difetto**: un mercato che rende meno di
+zero resta fuori anche se occupa uno slot. **Nessuno è stato forzato dentro.**
+⚠ **Ma la voce più grossa non è quella**: `quota-coda-lunga` (il 12% del piano oltre 7 giorni,
+§4.4) ne ferma altrettanti, e **il cap non la tocca**. È la stessa diagnosi del referto delle
+10:02, e **alzare cap e slot non l'ha cambiata**.
+
+## 6 · NON TOCCATO (punto 6)
+tetto per mercato **$61,25** · soglia **24 h** · filtro meteo · distanze (lunghi **3,0¢**,
+corti **3,5¢**) · tetto coppia **101¢** · payback · pavimento di profondità · guardiano ·
+kill R10 · Parte B · fix OFF_TICK. **Le posizioni aperte non sono state vendute.**
+
+## 7 · ORDINI VIVI E RIAVVIO (punto 7) — dichiarato **prima**
+
+| | prima (11:13Z) | dopo (11:41Z) |
+|---|---|---|
+| ordini a riposo | **21** su **11** mercati (10 coppie + 1 gamba) | **26** su **13** mercati |
+| posizioni aperte | **4**, valore **$92,82** | **3**, valore **$49,61** |
+| gambe scoperte | le 4 posizioni erano tutte a lato singolo | 3 |
+| capitale a riposo | $631,45 | **$635,73** |
+
+**Riavviato un processo solo: `agent41-realloc-scheduler`** (pid 883101 → **890013**, 11:14:30Z),
+`pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler` + `pm2 save`.
+**Ordini toccati dal riavvio: ZERO** — la regola dei PRE-ESISTENTI è di **agent40**, che non è
+stato riavviato apposta: riavviarlo avrebbe condannato i 21 ordini a libro alla morte per GTD.
+⚠ **Il riavvio ha azzerato la quarantena slot-sterile in memoria** di agent41 (e con essa
+`zeroDa`): non è un disarmo, ma il freno anti-churn riparte da zero.
+⚠ **agent40 tiene in memoria `HARD_CEILINGS = $2.000`** fino al suo prossimo riavvio. Oggi non
+morde: l'esposizione **riconciliata** è $49,61, e $2.000 comincerebbe a mordere solo sopra 16
+mercati interamente riempiti. Si sana da sé al prossimo riavvio di agent40. **Dichiarato.**
+
+## 8 · L'ASSERZIONE (punto 8) — `lib/maker/cap-2400-e-slot.test.js`, **26/0**
+**Rossa sul sorgente non corretto: 6 fallimenti**, fra cui esattamente quello chiesto —
+`19 × 2 × $61,25 = $2.327,50 ≤ cap $1.470` **FAIL**. Regge a **19**, **morde a 20**
+($2.450 > $2.400): senza la metà che fallisce non sarebbe un'invariante ma una tautologia.
+Il blocco ② è stato **provato costruendo il caso**: cap $2.400 su disco con tetto duro $2.000
+⇒ `FAIL — disco 2400 != servizio 2000: HARD_CEILINGS lo sta tagliando`.
+
+## 9 · LA SUITE (punto 9) — **254 test · 246 verdi · 7 ROSSI · 1 non parte**
+`data/ricerca/suite-rossi-23ago-cap2400-finale.json`. **Nessun rosso nuovo.** I 7 sono i noti,
+per nome: `dipendenze-mai-iniettate` · `distanza-2c` · `end-of-scale-cycle` ·
+`tetti-per-giro-e-scope` · `categoria-mercato` · `tetto-derivato-dallo-scaglione` ·
+`tetto-e-scoperta`. **Sono 7 e non 8 perché `tre-fix-sicurezza` è passato** (era il timeout di
+§5.2 p.42, non una regressione). **Due rossi chiusi per strada**:
+`selezione-cablata` (contava i selezionati invece degli **attivi** — **§5.2 p.61 CHIUSA**; e il
+regex che fotografava `restringiAllaSelezione(` nudo, rotto da `3ce2256`) e `limiti-versionati`
+(disco ≠ versionato finché il cap non era committato). Commit `186af96`, **push fatto**.
+
+## 10 · IL RIPRISTINO (punto 10)
+Riga unica in **`APERTI.md`**, in cima: riporta cap a **$1.470**, slot a **12** e soffitto a
+**12** in un comando solo. ⚠ **L'ordine è obbligato**: abbassare il cap lasciando 18 slot
+significherebbe $2.205 autorizzati contro $1.470 di tetto, cioè il gate che smette di piazzare
+a metà strada. `cap-2400-e-slot.test.js` diventa rosso se qualcuno ne fa solo una.
+
+## 11 · DOPO DUE CICLI (punto 11) — misurato alle 11:41Z, macchina scarica
+
+| grandezza | valore |
+|---|---|
+| **righe di piano / mercati selezionati** | **4 / 17 attivi** (+3 in gestione, 20 selezionati) |
+| capitale allocato dal piano | **$189,00** su $1.438,72 · non allocato **$1.249,72** |
+| mercati con ordini al venue | **13** |
+| ordini a riposo | **26** |
+| nozionale a riposo | **$635,73** |
+| cassa residua | **$1.438,72** |
+| **capitale al lavoro** | **46,0%** (era 48,8% prima del giro; 36,1% nel mezzo della rotazione) |
+| posizioni aperte | 3, $49,61 |
+
+⚠ **L'80% non è stato raggiunto, e adesso si sa perché con i numeri**: gli slot si sono
+riempiti (18/18) ma il **piano** finanzia 4 righe. **$796,25 di capitale sta fermo su mercati
+selezionati che il piano rifiuta**, e le due voci sono `netto-negativo` ($367,50 — corretto che
+resti fermo) e `quota-coda-lunga` ($367,50 — **una decisione dell'operatore, non un difetto**).
+Il cap e il numero di slot **non erano il vincolo**, e alzarli non lo ha spostato.
