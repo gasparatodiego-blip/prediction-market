@@ -1066,6 +1066,32 @@ scritta esplicitamente, perché la conseguenza cambia e la regola no.
 > invece di essere preso da un «alto» — sostituire cambierebbe in silenzio la cifra di capitale che
 > l'operatore ha deciso.
 
+> **⚖️ SELEZIONE E PIANO GIUDICANO CON LO STESSO NETTO — 23 agosto 2026.**
+> **IL FATTO, misurato alle 10:20Z**: 12 slot pieni, ma il piano ne finanziava **3**. Quattro
+> occupanti «alto» avevano netto **NEGATIVO** (−0,04 · −0,17 · −2,27 · **−7,86** $/g) e fuori c'era
+> `0xddcb215d8c` (PA-08 House seat) a **+22,73 $/g**, ammissibile e non in quarantena. **Non compariva
+> in nessuna lista di scarto**: non lo scartava niente, non poteva essere considerato. Con gli slot a
+> 12/12 l'unica porta era lo spodestamento, e lo spodestamento chiedeva lo **stesso secchio** — lui è
+> «basso», i quattro in perdita sono «alto».
+> **LA DEROGA, con quattro condizioni**: si attraversa il secchio solo se ① l'occupante ha netto
+> **negativo**, ② lo sfidante **positivo**, ③ il secchio dell'occupante è **sopra** la sua quota e
+> ④ quello dello sfidante **sotto**. ③+④ sono la ragione per cui non viola §4.13: lo scambio muove la
+> composizione **verso** la cifra decisa dall'operatore (1+11 → 2+10 contro una quota 4+8), mai lontano.
+> **⚠ NON CAMBIA IL CAPITALE**: `MARKET_CAP_FIXED_USD` vale $61,25 per mercato in **entrambi** i
+> secchi, quindi `N × 2 × tetto` non contiene la quota. È perché il secchio non governa la size che
+> attraversarlo è ammissibile. **⚠ Fail-closed su ogni ingresso**: netto non finito, quota non
+> leggibile, conteggio non calcolabile ⇒ nessuna deroga. **Misurato a secco: un solo scambio,
+> +$22,90/giorno.**
+> **⚠ E LA DISTANZA A CUI IL PIANO GIUDICA ORA È QUELLA VERA**: `conDistanzaDiPiano` (un punto solo,
+> usato da **entrambi** i piani — quello operativo e quello dei netti che ordinano la selezione) passa
+> `offsetTicks: null` + `offsetCents` da `distanzaObiettivoCents`, cioè **3,0¢ su ogni griglia**.
+> `offsetTicks` da solo non bastava: conta i tick **del mercato**, e 3 tick valgono 3,0¢ su griglia 1¢
+> ma **0,3¢** su griglia 0,1¢. **⚠⚠ E VA DETTO CHE NON MUOVE I NETTI**: misurato, i tre modi danno gli
+> stessi numeri a meno della seconda cifra, e i netti negativi restano 4 su 11. `offsetTicks` governa
+> il **costo** di selezione avversa, non il punteggio del venue: **il lordo nasce da `levels[]` del
+> board, che agent24 calcola con la propria posa tipica, e QUELLA resta disallineata.** La correzione
+> si applica perché il parametro deve dire il vero, non perché curi il capitale fermo.
+
 > **🔁 LA COPERTURA CONTINUA RIMETTE LA GAMBA A LIBRO — §5-bis p.171.**
 > **⚠ IL NUMERO CHE GOVERNA IL DISEGNO È 720**: il ciclo che ospita la decisione gira ogni **120 s**, e
 > senza raffreddamento un mercato che rifiuta sempre verrebbe ritentato 720 volte al giorno.

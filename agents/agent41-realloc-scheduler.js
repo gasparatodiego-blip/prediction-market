@@ -610,6 +610,47 @@ async function leggiSaldo() {
 // Si risolve da `__dirname`, che per un agent e' sempre quello vero (nessuna rotta importa un agent —
 // vedi `scripts/percorsi-dati.js`), quindi in produzione il file caricato e' identico a prima.
 const PERCORSO_ALLOCATOR = path.join(__dirname, '..', 'lib', 'rewards', 'allocator');
+// ══ LA DISTANZA A CUI IL PIANO GIUDICA — UN PUNTO SOLO, 23 agosto 2026 ═══════════════════════════
+//
+// IL DIFETTO: il pianificatore valutava i mercati a `offsetTicks: 1`, cioe' UN tick dal mid, mentre il
+// bot posta a `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V × v` = **3,0¢** sulla banda modale. Stima ed
+// esecuzione descrivevano due pose diverse: la classe «due strade che rispondono alla stessa domanda
+// con numeri diversi».
+//
+// ⚠⚠ MISURATO, E VA SCRITTO PERCHE' RIDIMENSIONA IL DIFETTO: correggerlo NON muove i netti. Sui 12
+// selezionati del 23/08, i tre modi danno rispettivamente (Musk 40-64 · Musk<40 · DSGL · Trump):
+//     difetto di oggi      −7,8232 · −2,2479 · +1,9613 · +5,2699
+//     offsetTicks: 3       −7,8277 · −2,2432 · +1,9626 · +5,2711
+//     3,0¢ VERI            −7,7762 · −2,5974 · +1,9638 · +5,3066
+// I netti negativi restano 4 su 11 in tutte e tre. La ragione e' che `offsetTicks` governa la
+// ricostruzione dei fill (il COSTO di selezione avversa), non il punteggio del venue: il LORDO nasce
+// da `levels[]` del board, che agent24 calcola con la propria posa tipica. **La distanza a cui il
+// piano stima il PREMIO resta disallineata da quella vera, e questa correzione non la tocca.**
+// Si applica lo stesso perche' il parametro deve dire il vero; non si spaccia per una cura.
+//
+// ⚠ `offsetTicks: null` E' NECESSARIO, e non e' un dettaglio. `offsetTicks` conta i tick DEL MERCATO:
+// 3 tick valgono 3,0¢ su una griglia da 1¢ ma 0,3¢ su una da 0,1¢ — cioe' dieci volte piu' vicino al
+// mid di dove il bot si mette davvero. Solo con `offsetTicks: null` l'allocatore usa `offsetCents` e
+// lo converte per mercato (`Math.round(offsetCents / (tick × 100))`), dando **3,0¢ su ogni griglia**.
+//
+// ⚠ IL NUMERO NON SI RICOPIA: esce da `distanzaObiettivoCents`, la STESSA funzione che decide dove il
+// motore posta. Ricopiare «3» qui sarebbe il reperto D1 fra la stima e l'esecuzione — cioe' proprio il
+// difetto che questo blocco cura. Banda non leggibile ⇒ si restituisce `null` e il piano resta al
+// comportamento di prima: un dato che manca non cambia una valutazione.
+const BANDA_MODALE_CENTS = 4.5;   // misurata: 80 dei 88 lunghi ammissibili del board del 23/08
+function offsetDiPiano() {
+  try {
+    const d = require('../lib/maker/distanza-obiettivo')
+      .distanzaObiettivoCents({ maxSpreadCents: BANDA_MODALE_CENTS });
+    return (d && Number.isFinite(d.distanzaC) && d.distanzaC > 0) ? d.distanzaC : null;
+  } catch { return null; }
+}
+/** Aggiunge alle opzioni del piano la distanza vera. Un punto solo: lo usano ENTRAMBI i piani. */
+function conDistanzaDiPiano(o) {
+  const c = offsetDiPiano();
+  return c === null ? o : { ...o, offsetTicks: null, offsetCents: c };
+}
+
 const RUNNER_PIANO = 'let b="";process.stdin.setEncoding("utf8");process.stdin.on("data",(d)=>{b+=d});process.stdin.on("end",()=>{try{const o=JSON.parse(b);process.stdout.write(JSON.stringify(require('
   + JSON.stringify(PERCORSO_ALLOCATOR)
   + ').planFromCollection(o)))}catch(e){process.stderr.write(String(e&&e.stack||e));process.exit(3)}});';
@@ -652,7 +693,7 @@ function restringiAllaSelezione(opzioni) {
 
 /** Il piano, fuori da questo processo. Rifiuta invece di restituire un piano parziale o indovinato. */
 function calcolaPianoFuoriProcesso(opzioniGrezze) {
-  const opzioni = restringiAllaSelezione(opzioniGrezze || {});
+  const opzioni = conDistanzaDiPiano(restringiAllaSelezione(opzioniGrezze || {}));
   return new Promise((resolve, reject) => {
     const figlio = execFile('node', ['-e', RUNNER_PIANO],
       { timeout: PLAN_TIMEOUT_MS, maxBuffer: PLAN_MAX_BUFFER },
@@ -1440,11 +1481,14 @@ async function nettiDeiCandidati(board, orizzonteMassimoOre) {
       // conseguenze: `capPerMarketUsd` si clampa al capitale, quindi con meno di $61,25 liquidi la
       // classifica degli sfidanti sarebbe stata calcolata su un piano che il bot non puo' finanziare.
       // Puo' solo STRINGERE — e' un `Math.min` — e `capitale` e' gia' garantito finito qui sopra.
-      figlio.stdin.end(JSON.stringify({
+      // ⚠ LA STESSA DISTANZA DEL PIANO OPERATIVO, dalla stessa funzione. Se i netti che ORDINANO la
+      // selezione nascessero a una distanza diversa da quelli che la FINANZIANO, la selezione e il
+      // piano tornerebbero a disallinearsi — che e' il difetto che questo giro cura.
+      figlio.stdin.end(JSON.stringify(conDistanzaDiPiano({
         capital: capitale, maxPerMarketUsd: capPerMarketUsd(capitale),
         from: new Date(ora - 24 * 3_600_000).toISOString(), to: new Date(ora).toISOString(),
         horizonFilter: true, onlyMarketIds: ammissibili,
-      }));
+      })));
     });
     // ── SU QUALE NUMERO SI ORDINA, E PERCHE' NON PIU' `bestNetPerDay` (21 agosto 2026) ────────────
     // `bestNetPerDay` e' una cifra da MOSTRARE: `net-per-day.js:80` la annulla quando nessun fill e'
