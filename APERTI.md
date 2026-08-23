@@ -11,6 +11,47 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 
 ---
 
+> ## ⏪ RIPRISTINO — LA DISTANZA DEI LUNGHI TORNA A 0,456 (2,05¢), 23 agosto 2026
+> Riporta i lunghi da **3,5¢** a **2,05¢** dal mid, cioè la frazione **0,456** che era in servizio
+> fino alle 08:2xZ del 23 agosto. Da `bot`, da `/home/bot/bot`. ⚠ Riavvio pm2 da confermare in chat.
+>
+> ```bash
+> sed -i "s#^const DISTANZA_LUNGHI_FRAZIONE_V = .*#const DISTANZA_LUNGHI_FRAZIONE_V = '0.456';   // 2,05c su banda 4,5c — ripristino#" agents/ecosystem.config.js && pm2 restart agents/ecosystem.config.js --only agent40-manual-reprice,agent41-realloc-scheduler && pm2 save && for n in agent40-manual-reprice agent41-realloc-scheduler; do echo -n "$n: "; tr '\0' '\n' < /proc/$(pm2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).find(x=>x.name==='$n').pid))")/environ | grep MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V; done
+> ```
+>
+> **Perché è una riga sola**: il numero vive in **un solo `const`** (`agents/ecosystem.config.js`,
+> `DISTANZA_LUNGHI_FRAZIONE_V`), e i due blocchi `env` lo referenziano — prima erano due letterali
+> `'0.456'` che potevano divergere.
+> **⚠ I DUE PROCESSI SI RIAVVIANO INSIEME** (§5.1): agent41 apre alla distanza, agent40 la rinnova.
+> Riavviarne uno solo fa quotare i due a distanze diverse. `--update-env` **non** rilegge l'ecosystem.
+> **⚠ RIAVVIARE agent40 ABBANDONA IL LIBRO ESISTENTE**: gli ordini vivi diventano PRE-ESISTENTI, cioè
+> invisibili al motore, e muoiono per GTD entro ~23 minuti. È il costo dichiarato di ogni giro su
+> questa manopola, non un difetto.
+> **⚠ E AZZERA LA QUARANTENA SLOT-STERILE** in memoria di agent41.
+> **⚠ Non tocca la distanza dei CORTI** (`MAKER_DISTANZA_CORTI_CENTS`, 3,0¢), che è un'altra manopola.
+
+---
+
+> ## ⏪ RIPRISTINO DEL 23 AGOSTO 2026 — LA RIGA UNICA, INCOLLABILE SENZA PENSARCI
+> Riporta il bot com'era prima del giro del 23 agosto: **filtro meteo RIACCESO** e **corti a 3,0¢**.
+> Si esegue dall'utente `bot`, da `/home/bot/bot`. ⚠ Il riavvio pm2 va **confermato in chat** (§2 r.2).
+>
+> ```bash
+> sed -i "s/^\( *\)MAKER_FILTRO_METEO: '0',/\1MAKER_FILTRO_METEO: '1',/" agents/ecosystem.config.js && sed -i "s/^\( *\)MAKER_DISTANZA_CORTI_CENTS: '[0-9.]*',/\1MAKER_DISTANZA_CORTI_CENTS: '3.0',/" agents/ecosystem.config.js && pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler && pm2 save && tr '\0' '\n' < /proc/$(pm2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).find(x=>x.name.includes('agent41')).pid))")/environ | grep -E 'MAKER_FILTRO_METEO|MAKER_DISTANZA_CORTI_CENTS'
+> ```
+>
+> **Cosa fa, in ordine**: mette `MAKER_FILTRO_METEO` a `'1'` (qualunque valore diverso da `'0'` **riarma**
+> il filtro — non serve togliere la riga) · riporta `MAKER_DISTANZA_CORTI_CENTS` a `'3.0'` (oggi è già
+> lì: la riga è idempotente e serve se qualcuno l'avesse mossa) · riavvia **solo agent41** dal file —
+> `--update-env` non rileggerebbe l'ecosystem (§5.1) · rifà `pm2 save`, o al reboot tornerebbe la flotta
+> di ieri · **rilegge le due variabili da `/proc`**, perché il ripristino si verifichi invece di crederci.
+> **⚠ Non tocca nessun ordine**: agent41 non abbandona il libro al riavvio (quella regola è di agent40).
+> **⚠ Azzera di nuovo la quarantena slot-sterile in memoria**, come ogni riavvio di agent41.
+> **⚠ Non riporta indietro il secchio basso** (`quotaScaglioni` 4+8): quello è codice committato e va
+> tolto con `git revert`, non con un env — ed è una decisione separata.
+
+---
+
 ## IL QUADRO — dove siamo, letto dai processi vivi il 19 agosto alle 15:20Z
 
 | | |

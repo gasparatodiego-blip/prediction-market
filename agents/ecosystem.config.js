@@ -115,6 +115,38 @@ const os   = require('os');
 const RADICE = path.resolve(__dirname, '..');
 const CASA   = os.homedir();
 
+// ══ LA DISTANZA DEI LUNGHI DAL MID — UN PUNTO SOLO, 23 agosto 2026 ═══════════════════════════════
+//
+// ⚠⚠ QUESTO È IL PUNTO. Prima il valore era scritto DUE VOLTE in questo file — una nel blocco `env`
+// di agent40 e una in quello di agent41 — perché sono due processi e pm2 vuole un ambiente per
+// ciascuno. Due letterali per lo stesso numero sono il reperto D1 su un PREZZO DI ORDINI VERI: basta
+// che un riavvio ne aggiorni uno solo perché agent41 apra a una distanza e il rinnovo di agent40 la
+// riporti a un'altra (§5.1). Adesso il numero vive qui e i due blocchi lo REFERENZIANO: divergere
+// non è più esprimibile.
+//
+// ⚠ LA MANOPOLA È UNA FRAZIONE DEL RAGGIO, NON CENTESIMI. `distanzaC = frazione × v`
+// (`lib/maker/distanza-obiettivo.js:227`), quindi il numero si SCRIVE come la divisione che lo
+// genera invece che come una costante opaca: l'operatore ha chiesto **3,5¢ sulla banda modale
+// ±4,5¢**, e `3.5 / 4.5` è esattamente quella richiesta, non un decimale da ricontrollare.
+//
+// IL CONTO DEL MARGINE, misurato sul board del 23/08 (88 mercati lunghi ammissibili):
+//   · banda ±4,5¢ tick 1,0¢  (70 mercati) ⇒ 3,500¢ dal mid · margine 4,5 − 3,5 = **1,000¢ = 1,00 tick** ✔
+//   · banda ±4,5¢ tick 0,1¢  (10 mercati) ⇒ 3,500¢ dal mid · margine 1,000¢ = 10,00 tick ✔
+//   · banda ±5,5¢ tick 0,1¢  ( 8 mercati) ⇒ 4,278¢ dal mid · margine 1,222¢ = 12,22 tick ✔
+//   ⇒ **88 mercati su 88 tengono almeno un tick di margine dal bordo. Zero sotto.**
+//
+// ⚠ 3,5¢ NON È UNA SCELTA LIBERA, È IL TETTO CHE IL CODICE GIÀ IMPONE. Il margine dal bordo di §4.1
+// vale `max(1 tick, 0,22 × v)` = max(1,0¢ · 0,99¢) = **1,0¢** su banda 4,5¢, quindi il punto più
+// esterno raggiungibile è `4,5 − 1,0 = 3,5¢`. Chiedere di più otterrebbe comunque 3,5¢, e chiederlo
+// esplicitamente rende il numero leggibile invece che emergente.
+// ⚠ NESSUN CLAMP MORDE: `FRAZIONE_MASSIMA` è 0,95 e 0,7778 le sta sotto (`clampata: false`);
+//   `FRAZIONE_MASSIMA_DEL_RAGGIO` (0,5) limita il MARGINE a v/2 = 2,25¢, e 1,0¢ le sta sotto.
+// ⚠ VALORE PRECEDENTE IN SERVIZIO: **0,456** ⇒ 2,052¢ dal mid (margine 2,448¢). Letto da
+//   `/proc/<pid>/environ` di agent40 (pid 822922) e agent41 (pid 791177) prima del cambio.
+// ⚠ LA LEGGONO DUE PROCESSI, E SI RIAVVIANO INSIEME (§5.1): agent41 apre, agent40 rinnova. Riavviarne
+//   uno solo fa divergere i prezzi. Lo strumento che le tiene allineate è `scripts/cli/distanza.js`.
+const DISTANZA_LUNGHI_FRAZIONE_V = String(3.5 / 4.5);   // 3,5¢ su banda ±4,5¢ ⇒ '0.7777777777777778'
+
 module.exports = {
   apps: [
     {
@@ -343,7 +375,7 @@ module.exports = {
         MAKER_MID_STANTIO_TIMEOUT_MS: '120000',
         // ⚠ 0,556 → 0,456 il 20 agosto 2026, decisione dell'operatore: 0,456 × v(4,5¢) = 2,05¢ dal mid
         // (`distanzaC = frazione × v`, lib/maker/distanza-obiettivo.js:227). Prima era 0,95 (bordo esterno).
-        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.456',
+        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: DISTANZA_LUNGHI_FRAZIONE_V,
         // ══ GRADINO 1 · MAKER_MODE APERTA — 18 agosto 2026, istruzione dell'operatore ══════════════
         // «apri MAKER_MODE, fermati, poi MAKER_ADAPTER_DRYRUN. MANUAL_ORDER_PLACEMENT non si tocca.»
         //
@@ -702,7 +734,7 @@ module.exports = {
         // esattamente il rischio che la manopola qui sotto porta con sé.
         // ⚠ 0,556 → 0,456 il 20 agosto 2026, decisione dell'operatore: 0,456 × v(4,5¢) = 2,05¢ dal mid
         // (`distanzaC = frazione × v`, lib/maker/distanza-obiettivo.js:227). Prima era 0,95 (bordo esterno).
-        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.456',
+        MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: DISTANZA_LUNGHI_FRAZIONE_V,
 
         // ══ LE QUATTRO CINTURE DI ARMAMENTO — SCRITTE IL 16 AGOSTO 2026, NON ANCORA IN SERVIZIO ═════
         // ⚠ QUESTE RIGHE ARMANO IL PIAZZAMENTO DI ORDINI VERI CON CAPITALE REALE, e questo e' il

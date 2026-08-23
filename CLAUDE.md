@@ -39,8 +39,11 @@ Il quadro del giro è in `APERTI.md`.
 > ## 🔴🔴 IL BOT È ARMATO E OPERA CON CAPITALE VERO — dalle 16:21Z del 18 agosto 2026
 > **STATO LETTO DAI PROCESSI VIVI**: flotta a 11 processi ONLINE (§5.1) · `MAKER_MODE=live-min` ·
 > `MAKER_ADAPTER_DRYRUN=false` · **`MANUAL_ORDER_PLACEMENT=send`** su agent40 **e** agent41 · freno di
-> agent41 `=0` ⇒ **ZERO CINTURE INSERITE, 0/4** (§4.14) · **`MAKER_MERCATI_CONTEMPORANEI=10`** su agent41
-> (R1, dal 22 agosto 2026) · `SLOT_STERILE_ARMATO=0` · KILL spento · selezione automatica **ACCESA** ·
+> agent41 `=0` ⇒ **ZERO CINTURE INSERITE, 0/4** (§4.14) · **`MAKER_MERCATI_CONTEMPORANEI=12`** e
+> **`MAKER_SLOT_CORTI=5`** su agent41 (R1, dal 22 agosto 2026; letti da `/proc`) ·
+> **`MAKER_FILTRO_METEO=0` ⇒ FILTRO METEO DISARMATO** (dal 23 agosto 2026, §4.13) · **`SLOT_STERILE_ARMATO`
+> ASSENTE ⇒ la regola dello slot sterile è ARMATA** (riarmata da `52c33f4`, 20 agosto 2026) · KILL spento ·
+> selezione automatica **ACCESA** ·
 > perno **vuoto**.
 > ⚠ **QUANTI ORDINI CI SIANO A LIBRO NON SI SCRIVE QUI: SI LEGGE**, da `data/venue-orders.json`, che
 > agent40 scrive da letture VERE del venue — **non** ricostruendolo dal giornale sommando i `sent` e
@@ -959,7 +962,7 @@ per chi esce. *(Storia delle stesure precedenti: `docs/storia-per-sezione.md`.)*
 
 | | |
 |---|---|
-| **vincoli** | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo** · **max N ATTIVI dove N = `MAKER_MERCATI_CONTEMPORANEI`** (R1: ambiente di agent41, un posto solo, letto da `/proc`; **soffitto e difetto 10 dal 22/08** — il difetto E' il soffitto, `quanti-mercati.js` lo importa) · **book UTILIZZABILE** (v. riquadro) · **composizione DERIVATA da N** (`quotaScaglioni`): N≥2 ⇒ 1 «basso» (≤20) + (N−1) «alto» (≤50); N=1 ⇒ un secchio solo, che ammette tutto |
+| **vincoli** | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo SE `MAKER_FILTRO_METEO` è armato** (assente o ≠ `'0'`; **disarmato dal 23/08**, v. riquadro) · **max N ATTIVI dove N = `MAKER_MERCATI_CONTEMPORANEI`** (R1: ambiente di agent41, un posto solo, letto da `/proc`; **soffitto e difetto 12 dal 22/08** — il difetto E' il soffitto, `quanti-mercati.js` lo importa) · **book UTILIZZABILE** (v. riquadro) · **composizione DERIVATA da N** (`quotaScaglioni`): N≥2 ⇒ **`round(N/3)` «basso» (≤20), almeno 1 e al più N−1, il resto «alto» (≤50)** — a **N=12 ⇒ 4 bassi + 8 alti** (dal 22/08 sera, §5.2 p.57 chiusa; prima era 1 basso fisso e a dodici slot teneva fermo il capitale); N=1 ⇒ un secchio solo, che ammette tutto |
 | **interruttore** | `data/selezione-mercati.json`, `scripts/cli/selezione.js {stato\|prova\|accendi\|spegni}`. Difetto **SPENTA**; file illeggibile ⇒ **spenta**. **ACCESA dal 15/08** |
 | **quando gira** | a ogni ciclo 6 h **e** a ogni controllo del capitale fermo (120 s), **prima** del piano — e prima di `decidiTrigger`, così un mercato che scade esce anche nei giri in cui il trigger non scatta |
 | **classifica** | `levels[<capitale minimo>].grossRewardDay`, cioè la stima che **il board ha già calcolato** con la formula del venue → ripiego `rateOrdinamento` → `rewardsDailyRate`. **Non** il montepremi. Pareggio rotto sul `conditionId`: due giri sullo stesso board danno la stessa risposta |
@@ -970,6 +973,35 @@ mercati **peggiori** (netto −$0,111/g e +$0,026/g contro +$10,64/g escluso). �
 168 h il board è VUOTO. ⚠ **Il filtro meteo toglie righe davvero solo da quando l'orizzonte è 24 h**
 (prima ne toglieva zero, le aveva già tolte la scadenza): una regola che vale «per conseguenza» va
 scritta esplicitamente, perché la conseguenza cambia e la regola no.
+
+> **🌦️ IL FILTRO METEO È UN INTERRUTTORE, ED È DISARMATO — `MAKER_FILTRO_METEO`, 23 agosto 2026,
+> decisione dell'operatore.** `lib/maker/selezione-mercati.js` · `filtroMeteoArmato` è **l'unico punto
+> di lettura del repo** (un test cammina `lib/` e `agents/` a commenti tolti e pretende UN file solo);
+> il valore vive nell'ambiente di agent41 e **si legge da `/proc/<pid>/environ`**, come R1.
+> **⚠ ASSENTE ⇒ ARMATO, e solo il valore ESATTO `'0'` disarma** — stessa disciplina di
+> `SLOT_STERILE_ARMATO` e `SBLOCCO_GRADINO6_ARMATO`. `''`, `'1'`, `'false'`, `'no'`, `null`: **armato**.
+> Un env che sparisce non può spegnere un filtro. **Per riaccenderlo**: qualunque valore ≠ `'0'` in
+> `agents/ecosystem.config.js` + riavvio **dal file** (la riga incollabile è in `APERTI.md`).
+> **LA MISURA CHE LO GIUSTIFICA** (board vivo del 23/08 alle 07:09Z): 234 righe, **160 meteo**, **119
+> fra 24 e 48 h**. Passati per tutti gli altri cancelli — 24 h, pavimento premiante, scadenza
+> determinabile e concorde, quarantena, già selezionati — ne restano **119 su 119**: nessuno cadeva
+> altrove. Il meteo **era l'unico cancello che mordesse sulla fascia corta**, e i 3 slot corti vuoti su
+> 5 erano vuoti per causa sua. **⚠ Zero falsi positivi**: 105 «highest temperature in ⟨città⟩» + 14
+> «lowest temperature in ⟨città⟩», tutti categoria `Weather` al venue, tutti in scadenza allo stesso
+> istante. Le ancore `\b` fanno il loro lavoro — il filtro è **corretto**, è la decisione di escludere
+> che è cambiata.
+> **⚠⚠ DA SOLO NON APRE NIENTE, E VA SAPUTO**: i meteo sono **tutti `rewardsMinSize` 20**, cioè tutti
+> nel secchio «basso». Quanti ne entrano lo decide `quotaScaglioni`, non questo flag. Misurato sullo
+> stato del 23/08: con la quota vecchia (1 «basso», già occupato) i posti liberi erano **0** ⇒ **zero
+> entranti**; con la quota nuova (4) sono **3** ⇒ **3 entranti**. I due lavori sono complementari, e
+> nessuno dei due basta.
+> **⚠ NON È UN PERMESSO, È UN CANCELLO IN MENO**: cambia **chi** è candidato, mai **quanti** slot né
+> **quanto** capitale — `MARKET_CAP_FIXED_USD` resta $61,25 per mercato e l'invariante
+> `12 × 2 × $61,25 = $1.470 ≤ cap $1.470` è **intatta**. Davanti restano identici tutti gli altri
+> cancelli, i quattro gate di piazzamento e le quattro cinture.
+> **⚠ IL PREMIO DEI METEO NON È STATO MISURATO SUL LUNGO**: sono mercati a 24 h per costruzione, cioè
+> la famiglia che §4.13 escludeva per **natura dell'esposizione**, non per rendimento. Il payback di
+> §5.2 p.58 li giudicherà uno per uno, e potrebbe rifiutarli come rifiuta gli altri corti.
 
 > **📖 IL BOOK DEV'ESSERE UTILIZZABILE.** Il cancello chiede «il book memorizzato è utilizzabile?»,
 > **non** «ha avuto eventi di recente»: escluso solo chi ha **`needsResnapshot === true`** o non ha
@@ -984,16 +1016,29 @@ scritta esplicitamente, perché la conseguenza cambia e la regola no.
 > `scartatiPerComposizione`): è spesso povertà del board, non un difetto, e le due cose devono restare
 > distinguibili.
 
-> **🧊 «SLOT STERILE» — LA REGOLA C'È MA È DISARMATA** (`SLOT_STERILE_ARMATO=0`). Libererebbe uno slot
-> che per **due osservazioni consecutive** non produce ordini. **⚠ Disarmata la sera stessa in cui è
-> nata**: presumeva che la causa stesse nel MERCATO mentre stava nel FEED, e ha buttato fuori **cinque
-> volte** un mercato che andava benissimo. **⚠ La correzione c'è e non è mai girata armata**: «nessun
+> **🧊 «SLOT STERILE» — RIARMATA IL 20 AGOSTO 2026** (`52c33f4`: soglia 22 min, quarantena **180 min**,
+> tetto **5 rilasci/ora**). ⚠ **`SLOT_STERILE_ARMATO` NON compare più in `ecosystem.config.js` né in
+> `/proc/<pid>/environ` di agent41, e ASSENTE ⇒ ARMATA**: è il fail-safe voluto, non una svista. Chi legge
+> `/proc` e non trova la variabile ha trovato la regola ACCESA. Il giornale lo conferma senza ambiguità —
+> `esito:'in-attesa'`/`'rilascia'` quando è armata, `esito:'disarmato'` quando non lo è.
+> ⚠ **LA QUARANTENA VIVE IN MEMORIA** (`statoLibroVuoto` in agent41, zero `require`, nessuna scrittura su
+> disco): **un riavvio di agent41 la azzera**, e con essa il contatore `zeroDa`. Non è un disarmo — dopo il
+> riavvio nessuno può essere rilasciato per almeno i 22 minuti della soglia — ma è una **perdita del freno
+> anti-churn**, e va dichiarata da chi riavvia.
+> ⚠ **E I MERCATI IN QUARANTENA NON COMPAIONO IN NESSUNA LISTA DI SCARTO DELLA SELEZIONE**: entrano in
+> `escludi` (agent41 §2479) e cadono a `selezione-mercati.js:787`, cioè **prima** del cancello di
+> composizione. `slotVuotiPerScarsita` dice «la ragione è nella composizione o negli scarti dichiarati qui
+> accanto», e per quei posti non è vero. **Difetto di osservabilità dichiarato, non corretto.**
+>
+> **La storia**: libererebbe uno slot
+> che per **due osservazioni consecutive** non produce ordini. **⚠ Fu disarmata la sera stessa in cui
+> nacque**: presumeva che la causa stesse nel MERCATO mentre stava nel FEED, e ha buttato fuori **cinque
+> volte** un mercato che andava benissimo. **⚠ La correzione c'è**: «nessun
 > ordine a libro» ha **due cause opposte** — *sterile* e *svuotato da noi* (mid stantio, erosione) —
 > quindi un'osservazione non conta come sterile se in quel mercato ci sono state **cancellazioni
-> nostre** nella finestra, e il contatore si **azzera a ogni piazzamento riuscito**. **⚠ Disarmata non
-> vuol dire assente**: misura e scrive cosa *avrebbe* fatto. **Per riarmarla**: si cancella
-> `SLOT_STERILE_ARMATO` da `ecosystem.config.js` e si riavvia agent41 **dal file**. Assente ⇒ **ARMATA**,
-> come `SBLOCCO_GRADINO6_ARMATO`.
+> nostre** nella finestra, e il contatore si **azzera a ogni piazzamento riuscito**. **Per disarmarla di nuovo**: si rimette
+> `SLOT_STERILE_ARMATO: '0'` in `ecosystem.config.js` e si riavvia agent41 **dal file** — solo il valore
+> ESATTO `'0'` disarma, come per `SBLOCCO_GRADINO6_ARMATO`.
 
 > **🔄 LA ROTAZIONE ROVESCIA LA REGOLA DELLO SLOT — decisione dell'operatore, 16 agosto 2026.**
 > Un mercato che riceve un fill — **totale o parziale** — **esce dal conteggio degli N attivi** e **resta
@@ -1208,13 +1253,48 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
    **Non corretto di proposito**: aggirare il payback è allentare un limite di rischio, e la
    domanda vera — se su un mercato a 30 h il costo di adverse selection sia stimato bene — è una
    misura che non esiste. **Serve una decisione dell'operatore**, non una patch.
-57. **🟡 LA COMPOSIZIONE PER SCAGLIONE NON SCALA COL NUMERO DI SLOT — 22 agosto 2026, NON corretta.**
-   `quotaScaglioni` dà **1 solo posto «basso»** (minSize ≤ 20) per qualunque N: a 12 slot sono
-   1 + 11. Ma la fascia corta è **dominata dai minSize 20** — misurato sul board del 22/08: 4 dei
-   7 corti ammissibili sono «basso» e si contendono **un posto solo**. È la ragione misurata per
-   cui il quinto slot corto è restato vuoto per due cicli (`postiVuoti: [{corta:1}]`). ⚠ Cambiarla
-   sposta la cifra di capitale per scaglione, che è una decisione dell'operatore (§4.13). **Non
-   toccata.**
+57. **✅ CHIUSA IL 22 AGOSTO, sera** — `quotaScaglioni` dà `round(N/3)` posti «basso» (almeno 1, al
+   più N−1): a N=12 sono **4 + 8**, a N=3 restano **1 + 2**, cioè la regola originale dell'operatore.
+   Misurato prima del cambio: 4 slot vuoti su 12 e **6 candidati scartati con `quota-scaglione-piena`,
+   tutti «basso»**; simulato dopo, sullo stesso board: **3 entranti, tutti nella fascia corta**.
+   ⚠ **Non muove il capitale**: `MARKET_CAP_FIXED_USD` è $61,25 per mercato in entrambi i secchi,
+   quindi `N × 2 × tetto = 12 × 2 × $61,25 = $1.470` è il cap versionato, e la quota non compare in
+   quel conto (asserito, `secchio-basso-scala.test.js` ⑤). Regola viva in §4.13.
+64. **🟡 LA DISTANZA DEI CORTI RESTA A 3,0¢: I 4,0¢ CHIESTI NON PASSANO LA REGOLA DEL TICK — 23
+   agosto 2026, NON applicati.** L'operatore ha chiesto di portare i corti da 3,0¢ a 4,0¢ **con la
+   condizione «almeno un tick di margine dal bordo», e con la ricaduta esplicita «se non ci sta,
+   ferma a 4,0¢ meno un tick»**. Misurato sul board vivo: **121 corti su 121 hanno tick 1,0¢** e
+   **119 su 121 banda ±4,5¢**, quindi a 4,0¢ il margine è **0,50¢ = mezzo tick** ⇒ la condizione
+   **non è soddisfatta**, e la ricaduta dice `4,0 − 1,0 = 3,0¢`, cioè il valore già in servizio.
+   **Il punto è stato applicato per intero e il risultato è: nessun cambiamento.**
+   ⚠ **E il costo era grosso comunque**, misurato a size $61,25 con la concorrenza del board di
+   adesso (`recoverCompetitorQ` + `quadraticUserShare`, mediana su 121 mercati): premio atteso
+   **$2,5923/g a 3,0¢ · $1,2282/g a 3,5¢ · $0,3216/g a 4,0¢** — 4,0¢ costa **−87,6%**, cioè
+   $10,37/g contro $1,29/g sui quattro slot corti. Il punteggio lo dice da solo:
+   `S = ((4,5−s)/4,5)²` vale 0,1111 · 0,0494 · **0,0123**.
+   ⚠ **3,5¢ È L'UNICO VALORE SOPRA 3,0 CHE SODDISFA LA REGOLA** (margine 1,00¢ = esattamente un
+   tick), a **−52,6%** di premio e con la probabilità di uscire di banda in un'ora che sale dal
+   **9,8% al 15,9%** (volatilità oraria misurata: mediana |Δmid| **0,50¢**, p90 2,50¢, su 529 passi
+   orari di 25 corti). **Non applicato**: la regola dell'operatore dice 3,0¢, e 3,5¢ sarebbe una
+   scelta diversa da quella scritta. **Serve una decisione**, non una patch.
+62. **🟡 I MERCATI IN QUARANTENA SLOT-STERILE NON COMPAIONO IN NESSUNA LISTA DI SCARTO — 22 agosto,
+   NON corretto.** Entrano in `escludi` (`agent41-realloc-scheduler.js:2479`, unione con la quarantena
+   del venue) e cadono a `selezione-mercati.js:787`, cioè **prima** del cancello di composizione:
+   quindi non finiscono né in `scartatiPerComposizione` né in `scartatiPerFascia`. Conseguenza
+   misurata il 22/08 alle 22:58Z: dei 4 slot vuoti, i 2 «alto» erano vuoti **per la quarantena** e il
+   referto diceva `slotVuotiPerScarsita.motivo: «la ragione è nella composizione o negli scarti
+   dichiarati qui accanto»` — che per quei due posti **non è vero**. La cura è una lista
+   `scartatiPerQuarantena` col motivo e la scadenza; **non fatta**: cambia la forma del referto, che
+   altri lettori confrontano.
+63. **🟡 IL CAMPIONATORE DELLA STIMA TACE SU DUE STATI DIVERSI — 22 agosto, NON corretto.**
+   `agents/agent40-manual-reprice.js:2441-2466` (`campionaStima`) ha un `catch { }` **muto**: un'eccezione
+   di `buildMarketBoard`/`buildOrderBoard` e un `estGrossUsdPerDay === null` producono dall'esterno lo
+   **stesso** effetto — nessuna riga in `data/stima-campioni.json` e nessuna riga di log. Misurato: il
+   file è fermo a **20:50:42Z**, 11 s dopo il riavvio di agent40, e alle 23:00 la copertura della
+   giornata è **0,8753** con due ore intere senza un campione. `registraCampione` restituisce
+   `{scritto:false, motivo}` e **nessuno lo legge**. La cura è un log del motivo e un `catch (e)` che
+   distingua; **non fatta**: tocca il percorso che misura, e la misura è la cosa da non sporcare
+   mentre la si diagnostica.
 56. **🟡 UN MERCATO CHE ATTRAVERSA LE 48 h NON RICEVE LA DISTANZA DELLA FASCIA NUOVA — 22 agosto.**
    La fascia si valuta **fresca a ogni giro** (giusto: è funzione dell'orologio, §5.2 p.51), ma
    `targetOffsetCents` si scrive **una volta sola, all'ingresso**. Misurato: `0x4757745c` è entrato
@@ -1331,6 +1411,17 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
    flotta spenta e snapshot posizioni scaduto, vale **0**. **⚠ Non è stabile per costruzione**: cambia con
    le posizioni. Il perno è ciò che lo rende **stabile e nominato**, vive nel processo, e scriverlo richiede
    `ecosystem.config.js` + riavvio **dal file e insieme** (§2 r.2). **Non impostato**: è un atto di armamento.
+31-bis. **🟢 LA DISTANZA DEI LUNGHI È A 3,5¢ DAL MID — 23 agosto 2026, decisione dell'operatore.**
+   `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V` da **0,456 (2,052¢)** a **`3.5/4.5` = 0,7778 (3,500¢)** sulla
+   banda modale. **⚠ UN SOLO PUNTO**: `const DISTANZA_LUNGHI_FRAZIONE_V` in `agents/ecosystem.config.js`,
+   referenziato dai blocchi `env` di agent40 **e** agent41 — prima erano **due letterali** `'0.456'`,
+   cioè il reperto D1 su un **prezzo di ordini veri**. **IL CONTO DEL MARGINE**, misurato su 88 mercati
+   lunghi del board: banda ±4,5¢ tick 1,0¢ (70) ⇒ margine **1,000¢ = 1,00 tick** · ±4,5¢ tick 0,1¢ (10)
+   ⇒ 10,00 tick · ±5,5¢ tick 0,1¢ (8) ⇒ 12,22 tick — **88 su 88 tengono almeno un tick, zero sotto**.
+   ⚠ **3,5¢ è il tetto che il codice già imponeva**: il margine dal bordo di §4.1 vale
+   `max(1 tick, 0,22·v)` = 1,0¢, quindi il punto più esterno raggiungibile è `4,5 − 1,0 = 3,5¢`;
+   0,95 darebbe 4,275¢, cioè **0,22 tick** dal bordo. ⚠ **Costa premio e va saputo**: `S = ((4,5−s)/4,5)²`
+   passa da **0,2959 (2,05¢) a 0,0494 (3,5¢)**, cioè **un sesto** del punteggio a parità di size. Il ripristino è in `APERTI.md`. ⚠ Si riavviano **entrambi** i processi (§5.1).
 31. **🟡 LA MANOPOLA DELLA DISTANZA RESTA A 0,95 — SCELTA, NON DERIVA (16 agosto 2026).**
    `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: '0.95'`. Da sola costerebbe il 99,6% del punteggio, ma **non decide
    più il punto d'arrivo**: il margine dal bordo di §4.1 riporta l'ordine a 3,4-3,5¢ dal mid, S ≈ 0,05, venti
