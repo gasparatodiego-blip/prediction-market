@@ -145,7 +145,13 @@ const CASA   = os.homedir();
 //   `/proc/<pid>/environ` di agent40 (pid 822922) e agent41 (pid 791177) prima del cambio.
 // ⚠ LA LEGGONO DUE PROCESSI, E SI RIAVVIANO INSIEME (§5.1): agent41 apre, agent40 rinnova. Riavviarne
 //   uno solo fa divergere i prezzi. Lo strumento che le tiene allineate è `scripts/cli/distanza.js`.
-const DISTANZA_LUNGHI_FRAZIONE_V = String(3.5 / 4.5);   // 3,5¢ su banda ±4,5¢ ⇒ '0.7777777777777778'
+const DISTANZA_LUNGHI_FRAZIONE_V = String(3.0 / 4.5);   // 3,0¢ su banda ±4,5¢ ⇒ '0.6666666666666666'
+// ⚠ 3,5¢ → 3,0¢ il 23 agosto 2026, decisione dell'operatore (era 0,456 = 2,05¢ fino alla mattina).
+//   IL CONTO DEL MARGINE sui 30 lunghi ammissibili del board:
+//     ±4,5¢ tick 1,0¢ (16) ⇒ 3,000¢ · margine 1,500¢ = 1,50 tick ✔
+//     ±4,5¢ tick 0,1¢ (10) ⇒ 3,000¢ · margine 1,500¢ = 15,00 tick ✔
+//     ±5,5¢ tick 0,1¢ ( 4) ⇒ 3,667¢ · margine 1,833¢ = 18,33 tick ✔
+//   30 su 30 tengono almeno un tick. 3,0¢ e' ESPRIMIBILE sulla griglia da 1¢, 3,5¢ non lo era.
 
 module.exports = {
   apps: [
@@ -600,7 +606,14 @@ module.exports = {
         //   (mediana $10/g contro $3/g) ma dalla CONCORRENZA — `competitorQ` mediana **68,6 sui corti
         //   contro 755,2 sui lunghi**, undici volte meno. Su un libro quasi vuoto $61 contano
         //   qualcosa; su uno da 755 share non contano niente.
-        MAKER_SLOT_CORTI: '5',
+        // ⚠ 5 → 2 il 23 agosto 2026, decisione dell'operatore: «slot corti vuoti non servono se i
+        //   corti non esistono». MISURATO sul board delle 08:24Z — dei 252 mercati a board ne restano
+        //   **23 ammissibili e liberi**, e di questi **22 sono LUNGHI e UNO SOLO e' corto**. Con 5
+        //   posti corti, 3 restavano vuoti per scarsita' vera mentre la fascia lunga era PIENA a 7/7 e
+        //   22 lunghi ammissibili aspettavano fuori.
+        // ⚠ I LUNGHI SI DERIVANO, NON SI SCRIVONO: `lunghi = totale − corti` (`quanti-mercati.js`), un
+        //   numero solo. 12 − 2 = **10 posti lunghi**, da 7 che erano.
+        MAKER_SLOT_CORTI: '2',
         // ══ LA DISTANZA DAL MID PER FASCIA — `MAKER_DISTANZA_CORTI_CENTS` ═══════════════════════
         //
         // I CORTI si quotano a 3,0¢ dal mid; i LUNGHI restano a `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V`
@@ -625,7 +638,16 @@ module.exports = {
         // ⚠ **NON PUO' MAI AVVICINARE AL MID**: un valore piu' piccolo della distanza dei lunghi
         //   viene RIFIUTATO da `distanza-fascia.js`, e comunque `planBehindBest` applica la
         //   distanza-obiettivo con un `Math.min` sul prezzo che «mai primo sul libro» ha gia' scelto.
-        MAKER_DISTANZA_CORTI_CENTS: '3.0',
+        // ⚠ 3,0¢ → 3,5¢ il 23 agosto 2026, decisione dell'operatore. IL CONTO, sui 3 corti ammissibili:
+        //     ±4,5¢ tick 1,0¢ (1) ⇒ 3,500¢ · margine 1,000¢ = 1,00 tick ✔
+        //     ±5,5¢ tick 1,0¢ (2) ⇒ 3,500¢ · margine 2,000¢ = 2,00 tick ✔
+        // ⚠ SU GRIGLIA DA 1¢ 3,5¢ NON E' ESPRIMIBILE, e si arrotonda VERSO L'INTERNO: misurato in
+        //   produzione dopo il riavvio delle 08:21Z — richiesta 3,5¢, atterrato **3,45¢**, cioe' piu'
+        //   vicino al mid del bersaglio, mai piu' vicino al bordo. Il paletto di `applicaObiettivo`
+        //   garantisce comunque il tetto: anche chiedendo 4,0¢ si ottiene 3,5¢ (`alBordo: true`).
+        // ⚠ RESTA PIU' LONTANA DEI LUNGHI (3,5 > 3,0): `distanza-fascia.js` RIFIUTA una distanza di
+        //   fascia piu' vicina al mid di quella dei lunghi, ed e' la sola direzione in cui farebbe danno.
+        MAKER_DISTANZA_CORTI_CENTS: '3.5',
         // ── LA QUOTA DELLA CODA LUNGA — 12% → 50%, 21 agosto 2026, decisione dell'operatore ────────
         // Alle 05:00Z il board offriva 7 ammissibili TUTTI di coda lunga (1.699-3.163 h): sei a
         // `minSize 50`, pavimento $61,25, contro una quota che al 12% valeva $33,41. Il cancello 2-ter
