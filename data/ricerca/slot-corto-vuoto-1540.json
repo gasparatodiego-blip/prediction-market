@@ -1,0 +1,54 @@
+{
+ "atIso": "2026-08-23T15:35:21.664Z",
+ "esportatiDalModulo": [
+  "MIN_SIZE_MASSIMA",
+  "ORIZZONTE_MINIMO_ORE",
+  "ORIZZONTE_MINIMO_MS",
+  "MAX_MERCATI_CONTEMPORANEI",
+  "QUOTA_SCAGLIONI",
+  "quotaScaglioni",
+  "scaglioneDi",
+  "categoriaDi",
+  "SOGLIA_FASCIA_CORTA_ORE",
+  "fasciaDi",
+  "partizionaSlot",
+  "eMeteo",
+  "valutaAmmissibilita",
+  "punteggio",
+  "valoreCandidato",
+  "ordinaCandidati",
+  "numero",
+  "SPODESTA_MARGINE_USD_GIORNO",
+  "SPODESTA_MARGINE_FRAZIONE",
+  "spodestaAbbastanza",
+  "statoVuoto",
+  "normalizzaStato",
+  "decidiSelezione"
+ ],
+ "classificatoreMeteoUsato": "modulo",
+ "righeBoard": 283,
+ "cortiFra24e48h": 75,
+ "diCuiMinSize20": 73,
+ "cortiMeteo": 72,
+ "cortiNonMeteo": 3,
+ "esempiCortiNonMeteo": [
+  {
+   "id": "0x316e494b35",
+   "minSize": 50,
+   "ore": 24.4,
+   "titolo": "Will Elon Musk post 40-64 tweets from August 22 to August 24, 2026?"
+  },
+  {
+   "id": "0xf3c634bd79",
+   "minSize": 50,
+   "ore": 24.4,
+   "titolo": "Will Elon Musk post <40 tweets from August 22 to August 24, 2026?"
+  },
+  {
+   "id": "0x0be89faf83",
+   "minSize": 20,
+   "ore": 32.4,
+   "titolo": "Will MrBeast's next video get between 39 and 41 million views on day 2"
+  }
+ ]
+}

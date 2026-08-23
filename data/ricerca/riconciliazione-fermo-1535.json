@@ -1,0 +1,282 @@
+{
+ "atIso": "2026-08-23T15:34:09.370Z",
+ "parametriInServizio": {
+  "slotN": 18,
+  "tettoPerMercatoUsd": 61.25,
+  "capEsposizioneUsd": 2400
+ },
+ "tetto": {
+  "formula": "N × tetto ≤ cap/2",
+  "NxTettoUsd": 1102.5,
+  "capMezziUsd": 1200,
+  "invarianteRispettata": true
+ },
+ "selezionati": 19,
+ "attivi": 17,
+ "inGestione": 2,
+ "slotVuoti": 1,
+ "fermoDaSlotVuotiUsd": 61.25,
+ "mercatiAlLavoro": 13,
+ "nozionaleARiposoUsd": 716.5772,
+ "perCausa": [
+  {
+   "causa": "netto-negativo",
+   "mercati": 2,
+   "capitaleFermoUsd": 122.5,
+   "ids": [
+    "0x80b3af88cb",
+    "0x316e494b35"
+   ],
+   "esempio": "reward troppo basso rispetto al costo: netto $-0.25/g al meglio"
+  },
+  {
+   "causa": "gate:live-min-market-mismatch",
+   "mercati": 1,
+   "capitaleFermoUsd": 61.25,
+   "ids": [
+    "0x5e082f0b57"
+   ],
+   "esempio": "nessuna gamba piazzata — gate: live-min-market-mismatch · live-min hard restriction: this order is for market 0x5e082f0b57f47a29044aa35b4c5658393122e6"
+  },
+  {
+   "causa": "quota-coda-lunga",
+   "mercati": 1,
+   "capitaleFermoUsd": 61.25,
+   "ids": [
+    "0x16c63b7cc3"
+   ],
+   "esempio": "scade fra 71.4 g, oltre i 7 del P90 misurato: il mercato è ammissibile, ma la coda lunga del piano è già al 50% del capitale — non è stato rifiutato, "
+  }
+ ],
+ "fermoTotaleDichiaratoUsd": 306.25,
+ "righe": [
+  {
+   "id": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+   "question": "Will Harry Kane win the 2026 Ballon d'Or?",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 52.528,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $52.53"
+  },
+  {
+   "id": "0x4d79d3068bdc6bbb2101462561d64c54773947d9c776d1ad637655c60ecbe5b9",
+   "question": "Will the number of Democratic House members who retire in 2026",
+   "scaglione": "basso",
+   "inGestione": true,
+   "uscenteDal": 1787452180346,
+   "motivoUscita": "riga-assente",
+   "ordini": 1,
+   "nozionaleUsd": 29.9013,
+   "causa": "gamba-singola",
+   "dettaglio": "1 ordine, $29.90"
+  },
+  {
+   "id": "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+   "question": "Will Spider-Man: Brand New Day have the best domestic opening ",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $52.55"
+  },
+  {
+   "id": "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+   "question": "Will NVIDIA be the largest company in the world by market cap ",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $52.55"
+  },
+  {
+   "id": "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988",
+   "question": "Will Avengers: Doomsday have the best domestic opening weekend",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $52.55"
+  },
+  {
+   "id": "0x5e082f0b57f47a29044aa35b4c5658393122e659d5feae521c06b57cdd7f905c",
+   "question": "Will 1 Fed rate cut happen in 2026?",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 0,
+   "nozionaleUsd": 0,
+   "causa": "gate:live-min-market-mismatch",
+   "dettaglio": "nessuna gamba piazzata — gate: live-min-market-mismatch · live-min hard restriction: this order is for market 0x5e082f0b57f47a29044aa35b4c5658393122e6"
+  },
+  {
+   "id": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+   "question": "Will the Republican Party control the House after the 2026 Mid",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $52.55"
+  },
+  {
+   "id": "0xda9215cfc9cb6ac927a36a22dced1e66aa4a8c2173a134320a79aabdcb66629d",
+   "question": "Will Darline Graham Nordone win Charleston County in the South",
+   "scaglione": "basso",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 53.103,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $53.10"
+  },
+  {
+   "id": "0x7619b095e07ae8f398303b7bca362e58246b0b6093aff9cba960906e405bf60e",
+   "question": "Will Donald Trump post 200+ Truth Social posts from August 18 ",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $52.55"
+  },
+  {
+   "id": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+   "question": "Will Lamine Yamal win the 2026 Ballon d'Or?",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 53.368,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $53.37"
+  },
+  {
+   "id": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "question": "Will no Fed rate cuts happen in 2026?",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 52.6779,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $52.68"
+  },
+  {
+   "id": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+   "question": "Fed rate hike in 2026?",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 0,
+   "nozionaleUsd": 0,
+   "causa": "netto-negativo",
+   "dettaglio": "reward troppo basso rispetto al costo: netto $-0.25/g al meglio"
+  },
+  {
+   "id": "0x3492e5634136aa730dee5d619c5ef61a8e26b508b3edc5f2ff2dcdfddf16fc9c",
+   "question": "Will Ralph Norman win Charleston County in the South Carolina ",
+   "scaglione": "basso",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 53.103,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $53.10"
+  },
+  {
+   "id": "0x316e494b3516d609954537ac216159f0366cd82f0b8b5f6be4d731314b4a2afa",
+   "question": "Will Elon Musk post 40-64 tweets from August 22 to August 24, ",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 0,
+   "nozionaleUsd": 0,
+   "causa": "netto-negativo",
+   "dettaglio": "reward troppo basso rispetto al costo: netto $-9.98/g al meglio"
+  },
+  {
+   "id": "0xb3c7f543267be8d963b4cbeb9d85df75d0cb41e72f3d30f6445067bb83a80cae",
+   "question": "US imposes new sanctions on Iran by Monday?",
+   "scaglione": "basso",
+   "inGestione": true,
+   "uscenteDal": 1787493677458,
+   "motivoUscita": "riga-assente",
+   "ordini": 0,
+   "nozionaleUsd": 0,
+   "causa": "non-dichiarata",
+   "dettaglio": "nessun record di ripristino nelle ultime 2 h"
+  },
+  {
+   "id": "0xbe1ff656b20d9267c41d421c6ab88291b14b6dfcb3ad43ac645f41d8fb0e5079",
+   "question": "Will Darline Graham Nordone win Richland County in the South C",
+   "scaglione": "basso",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $52.55"
+  },
+  {
+   "id": "0x3f1dc6b57ac3fda5b95d25c8db01ba5335e46dfe2f6be50dfff04710fab0e4ac",
+   "question": "Will Darline Graham Nordone win Lexington County in the South ",
+   "scaglione": "basso",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 53.523,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $53.52"
+  },
+  {
+   "id": "0xb3529e4cbcc5756ae7d5662ad1d6ddd8dd97b53bd459e2684af9bb8c4dbf582c",
+   "question": "Will the Republicans win the Pennsylvania governor race in 202",
+   "scaglione": "basso",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 2,
+   "nozionaleUsd": 53.103,
+   "causa": "(al lavoro)",
+   "dettaglio": "2 ordini, $53.10"
+  },
+  {
+   "id": "0x16c63b7cc37f012b9f59ee164ec03877914c701d06d48291ae8d6fc08a088b0d",
+   "question": "2026 Balance of Power: D Senate, D House",
+   "scaglione": "alto",
+   "inGestione": false,
+   "uscenteDal": null,
+   "motivoUscita": null,
+   "ordini": 0,
+   "nozionaleUsd": 0,
+   "causa": "quota-coda-lunga",
+   "dettaglio": "scade fra 71.4 g, oltre i 7 del P90 misurato: il mercato è ammissibile, ma la coda lunga del piano è già al 50% del capitale — non è stato rifiutato, "
+  }
+ ]
+}

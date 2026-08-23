@@ -1,0 +1,689 @@
+{
+ "atIso": "2026-08-23T15:35:41.409Z",
+ "ordiniAperti": 28,
+ "mercatiDistinti": 14,
+ "nozionaleARiposoUsd": 742.7759,
+ "etaMediaSec": 561,
+ "etaMaxSec": 1117,
+ "etaMinSec": 81,
+ "ordiniSenzaEta": 0,
+ "mercatiSimmetrici": 14,
+ "mercatiUnLatoSolo": 0,
+ "perMercato": [
+  {
+   "marketId": "0x4d79d3068bdc6bbb2101462561d64c54773947d9c776d1ad637655c60ecbe5b9",
+   "ordini": 2,
+   "nozionaleUsd": 56.1,
+   "tokens": {
+    "36153320657072550394781352182358760927897693430702554199212026200091068811656": 56.1,
+    "41752520152005053112572319774388016112483102440638395254073796359544664689528": 56.1
+   },
+   "lati": {
+    "SELL": 1,
+    "BUY": 1
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 625,
+   "etaMaxSec": 1117
+  },
+  {
+   "marketId": "0x3f1dc6b57ac3fda5b95d25c8db01ba5335e46dfe2f6be50dfff04710fab0e4ac",
+   "ordini": 2,
+   "nozionaleUsd": 53.523,
+   "tokens": {
+    "108840381160968302781461631494768964737044921296882723121242281847927683453845": 57,
+    "77971551933064024268857631563642346919068089224925089019565143734162379087855": 57
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 259,
+   "etaMaxSec": 280
+  },
+  {
+   "marketId": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+   "ordini": 2,
+   "nozionaleUsd": 53.368,
+   "tokens": {
+    "10466835326554416965099784068156829774726248334728156046559014834812912458273": 56,
+    "115364229170068359509280114761107502298430910856477421813089992309112580316620": 56
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 332,
+   "etaMaxSec": 382
+  },
+  {
+   "marketId": "0x3492e5634136aa730dee5d619c5ef61a8e26b508b3edc5f2ff2dcdfddf16fc9c",
+   "ordini": 2,
+   "nozionaleUsd": 53.103,
+   "tokens": {
+    "99439177942389765590222711507301830298191505588498800579987084814244900640844": 57.1,
+    "85452138313245021716845969226582400403013964802216056434690992316017288263497": 57.1
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 278,
+   "etaMaxSec": 426
+  },
+  {
+   "marketId": "0xb3529e4cbcc5756ae7d5662ad1d6ddd8dd97b53bd459e2684af9bb8c4dbf582c",
+   "ordini": 2,
+   "nozionaleUsd": 53.103,
+   "tokens": {
+    "5688801435889428424829669547673250506620304454224290559333533905846390372394": 57.1,
+    "21024189438556491499983312864085506291201006475691953166988844977583635820413": 57.1
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 138,
+   "etaMaxSec": 138
+  },
+  {
+   "marketId": "0xda9215cfc9cb6ac927a36a22dced1e66aa4a8c2173a134320a79aabdcb66629d",
+   "ordini": 2,
+   "nozionaleUsd": 53.103,
+   "tokens": {
+    "45548172876261594981765563602841541379137874363082470032683678601285432482774": 57.1,
+    "44985393084233082081160428398186584254138339183687860206128835999511077090893": 57.1
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 981,
+   "etaMaxSec": 1030
+  },
+  {
+   "marketId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "ordini": 2,
+   "nozionaleUsd": 52.6779,
+   "tokens": {
+    "21294592205022969346730955103773391901993330222644504059576935265667917187903": 56.1,
+    "12403602920039269077597917340921667997547115084613238528792639013246536343316": 56.1
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 399,
+   "etaMaxSec": 426
+  },
+  {
+   "marketId": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "tokens": {
+    "17371217118862125782438074585166210555214661810823929795910191856905580975576": 56.5,
+    "65139230827417363158752884968303867495725894165574887635816574090175320800482": 56.5
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 470,
+   "etaMaxSec": 859
+  },
+  {
+   "marketId": "0x7619b095e07ae8f398303b7bca362e58246b0b6093aff9cba960906e405bf60e",
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "tokens": {
+    "15385006163296083753725024944341113624266594156821170898287481854943028735044": 56.5,
+    "111472536053820341567404683751703875172091880014366950431003930509360519021064": 56.5
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 219,
+   "etaMaxSec": 269
+  },
+  {
+   "marketId": "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "tokens": {
+    "11876606915924142133615854761923277060697657209957870741155164849437788272266": 56.5,
+    "114033095271617070714983865791504478906266507670567428753203001241312040895286": 56.5
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 663,
+   "etaMaxSec": 1021
+  },
+  {
+   "marketId": "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "tokens": {
+    "14980109967714475040425172542938759843822646035539893575852591461888569553959": 56.5,
+    "64543324917663691115371696991757865454247742038284927684622083232310008554946": 56.5
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 912,
+   "etaMaxSec": 953
+  },
+  {
+   "marketId": "0xbe1ff656b20d9267c41d421c6ab88291b14b6dfcb3ad43ac645f41d8fb0e5079",
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "tokens": {
+    "54663292051506337239085684955088195179639478822243718470470578630800655206856": 56.5,
+    "43403708589396583299962305768748832355978984893582688263826136729752936896307": 56.5
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 945,
+   "etaMaxSec": 966
+  },
+  {
+   "marketId": "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988",
+   "ordini": 2,
+   "nozionaleUsd": 52.545,
+   "tokens": {
+    "37573228338665283688604106386288247955339098122616134537282110500293411203970": 56.5,
+    "103233456944535770064535084746323132698241141769628138054370458021432484856079": 56.5
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 1007,
+   "etaMaxSec": 1032
+  },
+  {
+   "marketId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+   "ordini": 2,
+   "nozionaleUsd": 52.528,
+   "tokens": {
+    "72710166409980712002774407052535905861151156175854323762835102340552522606004": 56,
+    "77740376296468109233042620775325425521895874827413068707200627224591548200577": 56
+   },
+   "lati": {
+    "BUY": 2
+   },
+   "tokenDistinti": 2,
+   "simmetrica": true,
+   "etaMediaSec": 636,
+   "etaMaxSec": 1023
+  }
+ ],
+ "ordini": [
+  {
+   "orderId": "0xf1969c40305cac47b3f8bc2f9da495909d1bb3475b275bfd19161ddcc3ceac83",
+   "marketId": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+   "tokenId": "17371217118862125782438074585166210555214661810823929795910191856905580975576",
+   "side": "BUY",
+   "price": 0.84,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 47.46,
+   "createdMs": 1787499260000,
+   "ageSec": 81,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500675000,
+   "secondsToExpiry": 1334
+  },
+  {
+   "orderId": "0x4a3ceae2e6b26fcabf6843d5c2622e4bda25fa6ffa093d17ffe37de7b309c732",
+   "marketId": "0x3492e5634136aa730dee5d619c5ef61a8e26b508b3edc5f2ff2dcdfddf16fc9c",
+   "tokenId": "99439177942389765590222711507301830298191505588498800579987084814244900640844",
+   "side": "BUY",
+   "price": 0.14,
+   "size": 57.1,
+   "sizeMatched": 0,
+   "sizeRemaining": 57.1,
+   "nozionaleUsd": 7.994,
+   "createdMs": 1787499212000,
+   "ageSec": 129,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500627000,
+   "secondsToExpiry": 1286
+  },
+  {
+   "orderId": "0xc0206535912aff53a6d6fb00c847f0492dea2428c1c7b2172ca38c853d2e6a45",
+   "marketId": "0x4d79d3068bdc6bbb2101462561d64c54773947d9c776d1ad637655c60ecbe5b9",
+   "tokenId": "36153320657072550394781352182358760927897693430702554199212026200091068811656",
+   "side": "SELL",
+   "price": 0.467,
+   "size": 56.1,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.1,
+   "nozionaleUsd": 26.1987,
+   "createdMs": 1787499208000,
+   "ageSec": 133,
+   "orderType": "GTD",
+   "expiresAtMs": 1787501223000,
+   "secondsToExpiry": 1882
+  },
+  {
+   "orderId": "0xb087185c5cba4e0220e8dc611e06d305b065fda25945604a83e102f7f5637b90",
+   "marketId": "0xb3529e4cbcc5756ae7d5662ad1d6ddd8dd97b53bd459e2684af9bb8c4dbf582c",
+   "tokenId": "5688801435889428424829669547673250506620304454224290559333533905846390372394",
+   "side": "BUY",
+   "price": 0.02,
+   "size": 57.1,
+   "sizeMatched": 0,
+   "sizeRemaining": 57.1,
+   "nozionaleUsd": 1.142,
+   "createdMs": 1787499204000,
+   "ageSec": 137,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500620000,
+   "secondsToExpiry": 1279
+  },
+  {
+   "orderId": "0x210c1e3ad771b5ea325a24bdc365a269d74c1733d4ec6bff4aed5eeb6e6dcebf",
+   "marketId": "0xb3529e4cbcc5756ae7d5662ad1d6ddd8dd97b53bd459e2684af9bb8c4dbf582c",
+   "tokenId": "21024189438556491499983312864085506291201006475691953166988844977583635820413",
+   "side": "BUY",
+   "price": 0.91,
+   "size": 57.1,
+   "sizeMatched": 0,
+   "sizeRemaining": 57.1,
+   "nozionaleUsd": 51.961,
+   "createdMs": 1787499203000,
+   "ageSec": 138,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500618000,
+   "secondsToExpiry": 1277
+  },
+  {
+   "orderId": "0x71a8a805400a13cd2b8e7c790d8e0a042eeca3f6dd3f5a2895e9448565b43958",
+   "marketId": "0x7619b095e07ae8f398303b7bca362e58246b0b6093aff9cba960906e405bf60e",
+   "tokenId": "15385006163296083753725024944341113624266594156821170898287481854943028735044",
+   "side": "BUY",
+   "price": 0.86,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 48.59,
+   "createdMs": 1787499172000,
+   "ageSec": 169,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500583000,
+   "secondsToExpiry": 1242
+  },
+  {
+   "orderId": "0x2767df1a78e03030d7c48ff7e1981da8a06d5df5b58629cb6b769a0f2324892c",
+   "marketId": "0x3f1dc6b57ac3fda5b95d25c8db01ba5335e46dfe2f6be50dfff04710fab0e4ac",
+   "tokenId": "108840381160968302781461631494768964737044921296882723121242281847927683453845",
+   "side": "BUY",
+   "price": 0.85,
+   "size": 57,
+   "sizeMatched": 0,
+   "sizeRemaining": 57,
+   "nozionaleUsd": 48.45,
+   "createdMs": 1787499104000,
+   "ageSec": 237,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500518000,
+   "secondsToExpiry": 1177
+  },
+  {
+   "orderId": "0x620b66f7995392759e84d9ffd8b623de30e019e93242a0e2e33c891903346e3e",
+   "marketId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+   "tokenId": "72710166409980712002774407052535905861151156175854323762835102340552522606004",
+   "side": "BUY",
+   "price": 0.584,
+   "size": 56,
+   "sizeMatched": 0,
+   "sizeRemaining": 56,
+   "nozionaleUsd": 32.704,
+   "createdMs": 1787499093000,
+   "ageSec": 248,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500507000,
+   "secondsToExpiry": 1166
+  },
+  {
+   "orderId": "0x109156874a67052874f76bcbb2f1ab66219adddcd460f097557b302132f3f19f",
+   "marketId": "0x7619b095e07ae8f398303b7bca362e58246b0b6093aff9cba960906e405bf60e",
+   "tokenId": "111472536053820341567404683751703875172091880014366950431003930509360519021064",
+   "side": "BUY",
+   "price": 0.07,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 3.955,
+   "createdMs": 1787499072000,
+   "ageSec": 269,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500484000,
+   "secondsToExpiry": 1143
+  },
+  {
+   "orderId": "0x77a9facf1f5af62d3fdcc46d9fef335abe34f5f8787c6fcb539ee4daaf9f9a7b",
+   "marketId": "0x3f1dc6b57ac3fda5b95d25c8db01ba5335e46dfe2f6be50dfff04710fab0e4ac",
+   "tokenId": "77971551933064024268857631563642346919068089224925089019565143734162379087855",
+   "side": "BUY",
+   "price": 0.089,
+   "size": 57,
+   "sizeMatched": 0,
+   "sizeRemaining": 57,
+   "nozionaleUsd": 5.073,
+   "createdMs": 1787499061000,
+   "ageSec": 280,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500472000,
+   "secondsToExpiry": 1131
+  },
+  {
+   "orderId": "0x0e1a232f3aa37432231796242e10fdb1b803e63871593b9a92ac133e265eab2c",
+   "marketId": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+   "tokenId": "10466835326554416965099784068156829774726248334728156046559014834812912458273",
+   "side": "BUY",
+   "price": 0.157,
+   "size": 56,
+   "sizeMatched": 0,
+   "sizeRemaining": 56,
+   "nozionaleUsd": 8.792,
+   "createdMs": 1787499060000,
+   "ageSec": 281,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500471000,
+   "secondsToExpiry": 1130
+  },
+  {
+   "orderId": "0x1dbac0864eb866172ac436c61bc4a69fd363fd15c99b9fd6af4f1cb40cc6a60a",
+   "marketId": "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+   "tokenId": "11876606915924142133615854761923277060697657209957870741155164849437788272266",
+   "side": "BUY",
+   "price": 0.69,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 38.985,
+   "createdMs": 1787499036000,
+   "ageSec": 305,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500450000,
+   "secondsToExpiry": 1109
+  },
+  {
+   "orderId": "0xf38e6e7dfcf32382ecdcbd51050fd483aa48557cd8a56096bb99d1381090833c",
+   "marketId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "tokenId": "21294592205022969346730955103773391901993330222644504059576935265667917187903",
+   "side": "BUY",
+   "price": 0.111,
+   "size": 56.1,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.1,
+   "nozionaleUsd": 6.2271,
+   "createdMs": 1787498969000,
+   "ageSec": 372,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500384000,
+   "secondsToExpiry": 1043
+  },
+  {
+   "orderId": "0xee637e69a44940c48c66d6213022ef7f1aefdbd261c990e9b6276589f062d5de",
+   "marketId": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+   "tokenId": "115364229170068359509280114761107502298430910856477421813089992309112580316620",
+   "side": "BUY",
+   "price": 0.796,
+   "size": 56,
+   "sizeMatched": 0,
+   "sizeRemaining": 56,
+   "nozionaleUsd": 44.576,
+   "createdMs": 1787498959000,
+   "ageSec": 382,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500374000,
+   "secondsToExpiry": 1033
+  },
+  {
+   "orderId": "0x8a3375fe08a8546965d84850206c32e20781485fcb9b331c6d66d143292dcfde",
+   "marketId": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+   "tokenId": "12403602920039269077597917340921667997547115084613238528792639013246536343316",
+   "side": "BUY",
+   "price": 0.828,
+   "size": 56.1,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.1,
+   "nozionaleUsd": 46.4508,
+   "createdMs": 1787498915000,
+   "ageSec": 426,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500330000,
+   "secondsToExpiry": 989
+  },
+  {
+   "orderId": "0x2a1602733c1b348ca03d9d6bc65c6877e0d00364fe6aa0a2a1af5bc1d6ee1c01",
+   "marketId": "0x3492e5634136aa730dee5d619c5ef61a8e26b508b3edc5f2ff2dcdfddf16fc9c",
+   "tokenId": "85452138313245021716845969226582400403013964802216056434690992316017288263497",
+   "side": "BUY",
+   "price": 0.79,
+   "size": 57.1,
+   "sizeMatched": 0,
+   "sizeRemaining": 57.1,
+   "nozionaleUsd": 45.109,
+   "createdMs": 1787498915000,
+   "ageSec": 426,
+   "orderType": "GTD",
+   "expiresAtMs": 1787500328000,
+   "secondsToExpiry": 987
+  },
+  {
+   "orderId": "0x52d6d7e629fddcbdae5ca6d4c9cb1cb7b59cf5cea7f0978e5ca4dfcc78b27493",
+   "marketId": "0x4e4f77e7dbf4cab666e9a1943674d7ae66348e862df03ea6f44b11eb95731928",
+   "tokenId": "65139230827417363158752884968303867495725894165574887635816574090175320800482",
+   "side": "BUY",
+   "price": 0.09,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 5.085,
+   "createdMs": 1787498482000,
+   "ageSec": 859,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499896000,
+   "secondsToExpiry": 555
+  },
+  {
+   "orderId": "0x89ce065e005be1db8a3794cadddd9193ba1cdcaba3b9bba8d486ad36c0de018f",
+   "marketId": "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+   "tokenId": "14980109967714475040425172542938759843822646035539893575852591461888569553959",
+   "side": "BUY",
+   "price": 0.3,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 16.95,
+   "createdMs": 1787498471000,
+   "ageSec": 870,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499886000,
+   "secondsToExpiry": 545
+  },
+  {
+   "orderId": "0x016ef024da987c3ca337c18686d4d23c27075460f24729f3bdf9ac2c030bac5a",
+   "marketId": "0xbe1ff656b20d9267c41d421c6ab88291b14b6dfcb3ad43ac645f41d8fb0e5079",
+   "tokenId": "54663292051506337239085684955088195179639478822243718470470578630800655206856",
+   "side": "BUY",
+   "price": 0.03,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 1.695,
+   "createdMs": 1787498417000,
+   "ageSec": 924,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499831000,
+   "secondsToExpiry": 490
+  },
+  {
+   "orderId": "0xe859241e202b38941c163e2d0b15c0117c08678f3c31b0ddf12447890b27213a",
+   "marketId": "0xda9215cfc9cb6ac927a36a22dced1e66aa4a8c2173a134320a79aabdcb66629d",
+   "tokenId": "45548172876261594981765563602841541379137874363082470032683678601285432482774",
+   "side": "BUY",
+   "price": 0.16,
+   "size": 57.1,
+   "sizeMatched": 0,
+   "sizeRemaining": 57.1,
+   "nozionaleUsd": 9.136,
+   "createdMs": 1787498410000,
+   "ageSec": 931,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499825000,
+   "secondsToExpiry": 484
+  },
+  {
+   "orderId": "0x49cc6d2b20add97268fa52a3c79123f71444c303ec0b1e65bb56b3f05d7bcb78",
+   "marketId": "0x76c1a69f2b0a7fcfa97b56ddbeaad1981a8cb3d8f24c1adce62ffa2d010ebbe0",
+   "tokenId": "64543324917663691115371696991757865454247742038284927684622083232310008554946",
+   "side": "BUY",
+   "price": 0.63,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 35.595,
+   "createdMs": 1787498388000,
+   "ageSec": 953,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499803000,
+   "secondsToExpiry": 462
+  },
+  {
+   "orderId": "0x3ff742a1c82334bbfc4a3e4149df5b2892d2973880fa475ff33108df9b6e0496",
+   "marketId": "0xbe1ff656b20d9267c41d421c6ab88291b14b6dfcb3ad43ac645f41d8fb0e5079",
+   "tokenId": "43403708589396583299962305768748832355978984893582688263826136729752936896307",
+   "side": "BUY",
+   "price": 0.9,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 50.85,
+   "createdMs": 1787498375000,
+   "ageSec": 966,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499789000,
+   "secondsToExpiry": 448
+  },
+  {
+   "orderId": "0x1dd5bf812c36b31217d1a878bc28581a6198ff28175b42cdc5aff93f9180579d",
+   "marketId": "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988",
+   "tokenId": "37573228338665283688604106386288247955339098122616134537282110500293411203970",
+   "side": "BUY",
+   "price": 0.3,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 16.95,
+   "createdMs": 1787498359000,
+   "ageSec": 982,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499773000,
+   "secondsToExpiry": 432
+  },
+  {
+   "orderId": "0xf7cfa502dc468368733d3c025048904fc297b98bb7b7f0db1abc1f4cb0eec0a4",
+   "marketId": "0x684e5b72d4e407695397a79ed75ef37273c2655ca2548791a4153233d3744696",
+   "tokenId": "114033095271617070714983865791504478906266507670567428753203001241312040895286",
+   "side": "BUY",
+   "price": 0.24,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 13.56,
+   "createdMs": 1787498320000,
+   "ageSec": 1021,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499735000,
+   "secondsToExpiry": 394
+  },
+  {
+   "orderId": "0xbe7e567966b23d031cdca8b51fb2cec9eb512cc6c58bfed7f53d11d99705da0e",
+   "marketId": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+   "tokenId": "77740376296468109233042620775325425521895874827413068707200627224591548200577",
+   "side": "BUY",
+   "price": 0.354,
+   "size": 56,
+   "sizeMatched": 0,
+   "sizeRemaining": 56,
+   "nozionaleUsd": 19.824,
+   "createdMs": 1787498318000,
+   "ageSec": 1023,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499733000,
+   "secondsToExpiry": 392
+  },
+  {
+   "orderId": "0x9ba9b2ebe5e9976e76648d37a4feb97a9eea3ed67b07ea8f7dcc0fd1d1e3c181",
+   "marketId": "0xda9215cfc9cb6ac927a36a22dced1e66aa4a8c2173a134320a79aabdcb66629d",
+   "tokenId": "44985393084233082081160428398186584254138339183687860206128835999511077090893",
+   "side": "BUY",
+   "price": 0.77,
+   "size": 57.1,
+   "sizeMatched": 0,
+   "sizeRemaining": 57.1,
+   "nozionaleUsd": 43.967,
+   "createdMs": 1787498311000,
+   "ageSec": 1030,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499726000,
+   "secondsToExpiry": 385
+  },
+  {
+   "orderId": "0x4cf7662a8b01e097b97eebf1b3e9e1c24ae575eaa1057d9730e8d1ab5ba12698",
+   "marketId": "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988",
+   "tokenId": "103233456944535770064535084746323132698241141769628138054370458021432484856079",
+   "side": "BUY",
+   "price": 0.63,
+   "size": 56.5,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.5,
+   "nozionaleUsd": 35.595,
+   "createdMs": 1787498309000,
+   "ageSec": 1032,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499723000,
+   "secondsToExpiry": 382
+  },
+  {
+   "orderId": "0xb756d5d3451eff1f4bdb4faf4788f3f0ff25967ba7295175c00af732004c402e",
+   "marketId": "0x4d79d3068bdc6bbb2101462561d64c54773947d9c776d1ad637655c60ecbe5b9",
+   "tokenId": "41752520152005053112572319774388016112483102440638395254073796359544664689528",
+   "side": "BUY",
+   "price": 0.533,
+   "size": 56.1,
+   "sizeMatched": 0,
+   "sizeRemaining": 56.1,
+   "nozionaleUsd": 29.9013,
+   "createdMs": 1787498224000,
+   "ageSec": 1117,
+   "orderType": "GTD",
+   "expiresAtMs": 1787499638000,
+   "secondsToExpiry": 297
+  }
+ ]
+}

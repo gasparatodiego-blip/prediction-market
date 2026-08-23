@@ -41,7 +41,7 @@ Il quadro del giro è in `APERTI.md`.
 > `MAKER_ADAPTER_DRYRUN=false` · **`MANUAL_ORDER_PLACEMENT=send`** su agent40 **e** agent41 · freno di
 > agent41 `=0` ⇒ **ZERO CINTURE INSERITE, 0/4** (§4.14) · **`MAKER_MERCATI_CONTEMPORANEI=18`** (soffitto **19**) e
 > **`MAKER_SLOT_CORTI=2`** su agent41 (R1, dal 23 agosto 2026; letti da `/proc`) ·
-> **`MAKER_FILTRO_METEO=0` ⇒ FILTRO METEO DISARMATO** (dal 23 agosto 2026, §4.13) · **`SLOT_STERILE_ARMATO`
+> **⚠ FILTRO METEO ARMATO — `MAKER_FILTRO_METEO` NON ESISTE** (misurato il 23/08 15:35Z, §5.2 p.69) · **`SLOT_STERILE_ARMATO`
 > ASSENTE ⇒ la regola dello slot sterile è ARMATA** (riarmata da `52c33f4`, 20 agosto 2026) · KILL spento ·
 > selezione automatica **ACCESA** ·
 > perno **vuoto**.
@@ -1084,7 +1084,7 @@ per chi esce. *(Storia delle stesure precedenti: `docs/storia-per-sezione.md`.)*
 
 | | |
 |---|---|
-| **vincoli** | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo SE `MAKER_FILTRO_METEO` è armato** (assente o ≠ `'0'`; **disarmato dal 23/08**, v. riquadro) · **max N ATTIVI dove N = `MAKER_MERCATI_CONTEMPORANEI`** (R1: ambiente di agent41, un posto solo, letto da `/proc`; **soffitto 19 e in servizio 18 dal 23/08** — il soffitto e' quello che il **cap $2.400** autorizza (19×2×$61,25 = $2.327,50 ≤ $2.400; a 20 sarebbero $2.450, no), il numero in servizio e' quello che la **cassa** consente (18×$61,25 = $1.102,50 su un saldo di $1.391,57 ⇒ residua $289,07 sopra il pavimento di $250; a 19 residuerebbe $227,82). `quanti-mercati.js` importa il soffitto e un valore oltre il soffitto vale il **difetto, in silenzio**) · **book UTILIZZABILE** (v. riquadro) · **composizione DERIVATA da N** (`quotaScaglioni`): N≥2 ⇒ **`round(N/3)` «basso» (≤20), almeno 1 e al più N−1, il resto «alto» (≤50)** — a **N=18 ⇒ 6 bassi + 12 alti** (dal 22/08 sera, §5.2 p.57 chiusa; prima era 1 basso fisso e a dodici slot teneva fermo il capitale); N=1 ⇒ un secchio solo, che ammette tutto |
+| **vincoli** | `rewardsMinSize ≤ 50` · **scadenza ≥ 24 h** e **≤ `MAX_HORIZON_DAYS`** · **niente famiglia meteo, SEMPRE E SENZA INTERRUTTORE** (`selezione-mercati.js:469`, `if (eMeteo(riga)) return ammissibile:false` — nessun env lo condiziona, v. riquadro e §5.2 p.69) · **max N ATTIVI dove N = `MAKER_MERCATI_CONTEMPORANEI`** (R1: ambiente di agent41, un posto solo, letto da `/proc`; **soffitto 19 e in servizio 18 dal 23/08** — il soffitto e' quello che il **cap $2.400** autorizza (19×2×$61,25 = $2.327,50 ≤ $2.400; a 20 sarebbero $2.450, no), il numero in servizio e' quello che la **cassa** consente (18×$61,25 = $1.102,50 su un saldo di $1.391,57 ⇒ residua $289,07 sopra il pavimento di $250; a 19 residuerebbe $227,82). `quanti-mercati.js` importa il soffitto e un valore oltre il soffitto vale il **difetto, in silenzio**) · **book UTILIZZABILE** (v. riquadro) · **composizione DERIVATA da N** (`quotaScaglioni`): N≥2 ⇒ **`round(N/3)` «basso» (≤20), almeno 1 e al più N−1, il resto «alto» (≤50)** — a **N=18 ⇒ 6 bassi + 12 alti** (dal 22/08 sera, §5.2 p.57 chiusa; prima era 1 basso fisso e a dodici slot teneva fermo il capitale); N=1 ⇒ un secchio solo, che ammette tutto |
 | **interruttore** | `data/selezione-mercati.json`, `scripts/cli/selezione.js {stato\|prova\|accendi\|spegni}`. Difetto **SPENTA**; file illeggibile ⇒ **spenta**. **ACCESA dal 15/08** |
 | **quando gira** | a ogni ciclo 6 h **e** a ogni controllo del capitale fermo (120 s), **prima** del piano — e prima di `decidiTrigger`, così un mercato che scade esce anche nei giri in cui il trigger non scatta |
 | **classifica** | `levels[<capitale minimo>].grossRewardDay`, cioè la stima che **il board ha già calcolato** con la formula del venue → ripiego `rateOrdinamento` → `rewardsDailyRate`. **Non** il montepremi. Pareggio rotto sul `conditionId`: due giri sullo stesso board danno la stessa risposta |
@@ -1096,15 +1096,29 @@ mercati **peggiori** (netto −$0,111/g e +$0,026/g contro +$10,64/g escluso). �
 (prima ne toglieva zero, le aveva già tolte la scadenza): una regola che vale «per conseguenza» va
 scritta esplicitamente, perché la conseguenza cambia e la regola no.
 
-> **🌦️ IL FILTRO METEO È UN INTERRUTTORE, ED È DISARMATO — `MAKER_FILTRO_METEO`, 23 agosto 2026,
-> decisione dell'operatore.** `lib/maker/selezione-mercati.js` · `filtroMeteoArmato` è **l'unico punto
-> di lettura del repo** (un test cammina `lib/` e `agents/` a commenti tolti e pretende UN file solo);
-> il valore vive nell'ambiente di agent41 e **si legge da `/proc/<pid>/environ`**, come R1.
-> **⚠ ASSENTE ⇒ ARMATO, e solo il valore ESATTO `'0'` disarma** — stessa disciplina di
-> `SLOT_STERILE_ARMATO` e `SBLOCCO_GRADINO6_ARMATO`. `''`, `'1'`, `'false'`, `'no'`, `null`: **armato**.
-> Un env che sparisce non può spegnere un filtro. **Per riaccenderlo**: qualunque valore ≠ `'0'` in
-> `agents/ecosystem.config.js` + riavvio **dal file** (la riga incollabile è in `APERTI.md`).
-> **LA MISURA CHE LO GIUSTIFICA** (board vivo del 23/08 alle 07:09Z): 234 righe, **160 meteo**, **119
+> **🌦️🔴 IL FILTRO METEO NON È UN INTERRUTTORE: È INCONDIZIONATO, E IL DISARMO NON È MAI ESISTITO —
+> misurato il 23 agosto 2026 alle 15:35Z (§5.2 p.69).**
+> **⚠⚠ QUESTO RIQUADRO HA DESCRITTO PER MEZZA GIORNATA UN MECCANISMO CHE NON C'È.** I fatti, verificati
+> con `grep` su tutto il repo (`node_modules` e `_archivio` esclusi):
+> · **`filtroMeteoArmato` non esiste** — zero occorrenze in `lib/`, `agents/`, `scripts/`; l'unica in
+>   tutto il repo era questa riga di `CLAUDE.md`, cioè il documento citava se stesso;
+> · **`MAKER_FILTRO_METEO` non compare in nessun sorgente**, né in `agents/ecosystem.config.js`, né in
+>   `.env`, né in `/proc/<pid>/environ` di agent41;
+> · `selezione-mercati.js` esporta `eMeteo` e **non** un `filtroMeteoArmato`, e il cancello a
+>   **`selezione-mercati.js:469`** è nudo: `if (eMeteo(riga)) return { ammissibile:false, motivo:
+>   'famiglia-meteo' }`. **Nessun env lo condiziona in nessun ramo.**
+> **⇒ IL FILTRO È ARMATO E NON SI PUÒ SPEGNERE DA CONFIGURAZIONE.** Scrivere `MAKER_FILTRO_METEO: '0'`
+> in `ecosystem.config.js` e riavviare **non cambierebbe niente**, e questo è il modo peggiore in cui
+> una manopola può fallire: si crede di aver disarmato e non si è disarmato nulla. **Disarmarlo davvero
+> richiede di scrivere il codice dell'interruttore** — è un lavoro, non un env.
+> **IL COSTO, MISURATO SUL BOARD VIVO DEL 23/08 ALLE 15:35Z** (`data/ricerca/slot-corto-vuoto-1540.json`,
+> col classificatore `selezione-mercati.eMeteo`, non con uno riscritto): 283 righe di board, **75 mercati
+> fra 24 e 48 h**, di cui **72 METEO** e **73 con `rewardsMinSize ≤ 20`**. Restano **3 non-meteo**, e due
+> hanno `minSize 50` (secchio «alto», quindi non idonei al posto «basso» libero): **UN solo candidato
+> vero** per lo slot corto. Lo slot corto/basso era infatti **vuoto** in quel momento, con i 3 scartati
+> per `quota-scaglione-piena` tutti «alto». **Il filtro meteo È la causa dello slot corto vuoto**, e
+> resterà tale finché l'interruttore non viene scritto.
+> **LA MISURA CHE GIUSTIFICAVA IL DISARMO RESTA VALIDA** (board vivo del 23/08 alle 07:09Z): 234 righe, **160 meteo**, **119
 > fra 24 e 48 h**. Passati per tutti gli altri cancelli — 24 h, pavimento premiante, scadenza
 > determinabile e concorde, quarantena, già selezionati — ne restano **119 su 119**: nessuno cadeva
 > altrove. Il meteo **era l'unico cancello che mordesse sulla fascia corta**, e i 3 slot corti vuoti su
@@ -1369,6 +1383,54 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
 54. **✅ CHIUSA IL 22 AGOSTO** — la cura non è una tolleranza sui timestamp (misurata e scartata) ma la
    **conservazione del valore**: `Δcassa + Δsize ≈ 0`, o il totale non è misurabile. Regola viva in §3,
    diagnosi integrale in §5-bis p.204 e `docs/registro-voci-chiuse.md`.
+69. **🔴 L'INTERRUTTORE DEL FILTRO METEO NON ESISTE: `MAKER_FILTRO_METEO` NON È IN NESSUN SORGENTE —
+   23 agosto 2026, 15:35Z, NON corretto.** §4.13 ha dichiarato per mezza giornata un interruttore
+   (`filtroMeteoArmato`, «assente ⇒ armato, solo `'0'` disarma») che **non è mai stato scritto**:
+   zero occorrenze di `filtroMeteoArmato` in `lib/`, `agents/`, `scripts/` — l'unica in tutto il repo
+   era la riga di `CLAUDE.md` che lo descriveva, cioè **il documento citava se stesso come prova**.
+   `MAKER_FILTRO_METEO` non compare in nessun `.js`, né in `agents/ecosystem.config.js`, né in `.env`,
+   né in `/proc/<pid>/environ` di agent41. Il cancello vero è nudo a `selezione-mercati.js:469`:
+   `if (eMeteo(riga)) return { ammissibile:false, motivo:'famiglia-meteo' }`. **⚠ IL MODO PEGGIORE IN
+   CUI UNA MANOPOLA PUÒ FALLIRE**: mettere `MAKER_FILTRO_METEO: '0'` nell'ecosystem e riavviare
+   **dal file** non cambierebbe nulla, e chi lo facesse crederebbe di aver disarmato. **IL COSTO,
+   MISURATO** (`data/ricerca/slot-corto-vuoto-1540.json`, classificatore `eMeteo` del modulo): dei **75**
+   mercati del board fra 24 e 48 h, **72 sono meteo**; dei 3 superstiti due hanno `minSize 50`, quindi
+   per il posto «basso» libero resta **un candidato solo** — ed è la causa dello slot corto vuoto di
+   §5.2 p.72. **Non corretto**: scrivere l'interruttore è un lavoro su un cancello di selezione, e la
+   decisione se il meteo debba entrare è dell'operatore (v. §5.2 p.58, il payback li giudicherebbe
+   comunque uno per uno). Classe **D7**, nella variante peggiore: il commento non descriveva una riga
+   sbagliata, descriveva una riga **inesistente**.
+70. **🔴 UNA RIGA DI PIANO SENZA ABILITAZIONE AL RIPREZZO: `live-min-market-mismatch` MURA UNO SLOT —
+   23 agosto 2026, NON corretto.** `0x5e082f0b57` (1 Fed rate cut 2026) è **selezionato**, ha una riga
+   di piano, e `ripristino-gambe` l'ha tentato **8 volte in 2 ore**: tutte rifiutate con
+   `gate: live-min-market-mismatch`, cioè il mercato non è nell'allowlist del riprezzo. Il piano lo
+   finanzia, il perimetro non lo ammette, **$61,25 di slot fermi** e nessun ordine mai piazzato; dopo
+   24,6 min lo slot è stato rilasciato come sterile «NESSUN subentrante». È un'inversione d'ordine fra
+   `preparaMercatoNuovo` (che abilita) e il tentativo di piazzamento. ⚠ **La regola dello slot sterile
+   nasconde il sintomo**: rilascia lo slot e azzera il contatore, quindi il caso si ripresenta al giro
+   dopo invece di accumularsi in un contatore visibile. **Non corretto**: tocca l'ordine di due azioni
+   su capitale reale. Misura in `data/ricerca/riconciliazione-fermo-1535.json`.
+71. **🔴 IL FIGLIO DEL PIANO NON CI STA IN MEMORIA, E QUANDO MUORE LA ROTAZIONE PERDE IL NETTO —
+   23 agosto 2026, NON corretto.** La macchina ha **1.855 MB** totali, ~**400 MB** disponibili e 1,5 GB
+   di swap già usato; il figlio del piano ne chiede ~1 GB. Conseguenza **in produzione**, non teorica:
+   `netti dei candidati non calcolabili (timeout 120000ms) — la selezione ordina col lordo e non
+   spodesta nessuno` compare **18 volte** nella coda del log di agent41, più `nessuna riga nel piano
+   salvato, e il piano fresco non e' disponibile` su tre mercati. ⚠ **È il meccanismo che avrebbe tolto
+   gli occupanti a netto negativo a spegnersi**: il 23/08 alle 15:35Z due slot erano tenuti da mercati a
+   **−$0,25/g** e **−$9,98/g** (§5.2 p.70 e la deroga di secchio di §4.13 esistono proprio per quello),
+   e nessuno li ha spodestati perché il netto non era calcolabile. ⚠ **E rende non riproducibile la
+   diagnosi**: un replay del piano da una sessione di ricerca muore con **SIGABRT (OOM) 3 volte su 3**,
+   quindi le cause per mercato oggi si leggono **solo** dal giornale di agent41. **Non corretto**: la
+   leva è memoria o un piano che non tenga in RAM il registro dei candidati, ed è una decisione.
+72. **🟡 LO SLOT CORTO/BASSO È VUOTO E IL REFERTO NON SA DIRE PERCHÉ — 23 agosto 2026, NON corretto.**
+   Alle 15:22Z: `postiNonAssegnati [{scaglione:'basso', posti:1}]` + `fasce.postiVuoti [{fascia:'corta',
+   posti:1}]`, `slotVuotiPerScarsita.motivo` rimanda «alla composizione o agli scarti dichiarati qui
+   accanto» — ma i 3 `scartatiPerComposizione` sono **tutti «alto»**, quindi per quel posto la frase
+   **non è vera**. L'unico candidato idoneo (`0x0be89faf83`, MrBeast 39-41M, minSize 20, 32,4 h) **non
+   compare in nessuna lista**: non è in quarantena, non è fra gli scarti, non è fra gli ammissibili.
+   Cade prima del cancello di composizione, esattamente come §5.2 p.62. La cura è una lista
+   `scartatiPerAmmissibilita` col motivo di `valutaAmmissibilita`; **non fatta**: cambia la forma del
+   referto, che altri lettori confrontano.
 65. **🔴 LA QUOTA CODA LUNGA IN SERVIZIO È 0,50, MA CHIUNQUE LA LEGGA FUORI DA agent41 VEDE 0,12 —
    23 agosto 2026, NON corretto.** `MAKER_QUOTA_CODA_LUNGA: '0.5'` sta **solo** in
    `agents/ecosystem.config.js:690` — non nel `.env` — e `horizon.LONG_TAIL_CAP_FRAC` si calcola
@@ -1444,7 +1506,10 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
    quindi `N × 2 × tetto = 12 × 2 × $61,25 = $1.470` è il cap versionato, e la quota non compare in
    quel conto (asserito, `secchio-basso-scala.test.js` ⑤). Regola viva in §4.13.
 64. **🟡 LA DISTANZA DEI CORTI RESTA A 3,0¢: I 4,0¢ CHIESTI NON PASSANO LA REGOLA DEL TICK — 23
-   agosto 2026, NON applicati.** L'operatore ha chiesto di portare i corti da 3,0¢ a 4,0¢ **con la
+   agosto 2026, NON applicati.**
+   **⚠ SUPERATA IL 23/08 (v. §5.2 p.31-bis): i corti sono a `MAKER_DISTANZA_CORTI_CENTS='3.5'`**
+   (`ecosystem.config.js:676`, confermato in `/proc` di agent41 e dal referto di selezione,
+   `distanzaCorti.cents 3.5 · fonte ambiente`). Il testo sotto è la misura che portò a 3,0¢, non lo stato. L'operatore ha chiesto di portare i corti da 3,0¢ a 4,0¢ **con la
    condizione «almeno un tick di margine dal bordo», e con la ricaduta esplicita «se non ci sta,
    ferma a 4,0¢ meno un tick»**. Misurato sul board vivo: **121 corti su 121 hanno tick 1,0¢** e
    **119 su 121 banda ±4,5¢**, quindi a 4,0¢ il margine è **0,50¢ = mezzo tick** ⇒ la condizione
@@ -1594,7 +1659,15 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
    flotta spenta e snapshot posizioni scaduto, vale **0**. **⚠ Non è stabile per costruzione**: cambia con
    le posizioni. Il perno è ciò che lo rende **stabile e nominato**, vive nel processo, e scriverlo richiede
    `ecosystem.config.js` + riavvio **dal file e insieme** (§2 r.2). **Non impostato**: è un atto di armamento.
-31-bis. **🟢 LA DISTANZA DEI LUNGHI È A 3,5¢ DAL MID — 23 agosto 2026, decisione dell'operatore.**
+31-bis. **🟢 LA DISTANZA DEI LUNGHI È A 3,0¢ DAL MID; I CORTI STANNO A 3,5¢ — 23 agosto 2026.**
+   **⚠ QUESTA VOCE DICEVA «LUNGHI 3,5¢ (0,7778)» E LE DUE FASCE ERANO INVERTITE.** Letto il 23/08 alle
+   15:35Z: `agents/ecosystem.config.js:148` porta `const DISTANZA_LUNGHI_FRAZIONE_V = String(3.0 / 4.5)`
+   = **0,6666666666666666 ⇒ 3,000¢**, e `/proc/<pid>/environ` di **entrambi** i processi conferma
+   `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V=0.6666666666666666` — i due processi **concordano fra loro**,
+   quindi nessun prezzo divergente (§5.1), era il documento a essere indietro. I **corti** stanno a
+   `MAKER_DISTANZA_CORTI_CENTS='3.5'` (`ecosystem.config.js:676`, letto in `/proc` di agent41 e
+   confermato dal referto di selezione: `distanzaCorti.cents 3.5 · fonte ambiente`) — quindi **§5.2 p.64
+   è superata: i corti NON sono più a 3,0¢**. Il testo qui sotto è la storia della decisione, non lo stato.
    `MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V` da **0,456 (2,052¢)** a **`3.5/4.5` = 0,7778 (3,500¢)** sulla
    banda modale. **⚠ UN SOLO PUNTO**: `const DISTANZA_LUNGHI_FRAZIONE_V` in `agents/ecosystem.config.js`,
    referenziato dai blocchi `env` di agent40 **e** agent41 — prima erano **due letterali** `'0.456'`,

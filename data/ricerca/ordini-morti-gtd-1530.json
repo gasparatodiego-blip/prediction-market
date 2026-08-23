@@ -1,0 +1,56 @@
+{
+ "atIso": "2026-08-23T15:29:47.152Z",
+ "giornale": "/home/bot/bot/data/polymarket-maker-audit.jsonl",
+ "bytesLetti": 67108864,
+ "righeLette": 198659,
+ "righeMalformate": 0,
+ "primaRigaLettaIso": "2026-08-23T03:22:37.021Z",
+ "copreLaFinestra7h": true,
+ "finestre": {
+  "1h": {
+   "ordiniMortiPerGtdSenzaRinnovo": 4,
+   "nozionaleUscitoDalLibroUsd": 0,
+   "ordiniSenzaNozionaleLeggibile": 4,
+   "mercatiDistinti": 0,
+   "perGate": {
+    "close-sell-floor": 1,
+    "motore-non-conforme": 3
+   }
+  },
+  "7h": {
+   "ordiniMortiPerGtdSenzaRinnovo": 53,
+   "nozionaleUscitoDalLibroUsd": 0,
+   "ordiniSenzaNozionaleLeggibile": 53,
+   "mercatiDistinti": 0,
+   "perGate": {
+    "motore-non-conforme": 43,
+    "rate-limited": 3,
+    "close-sell-floor": 4,
+    "(senza gate)": 3
+   }
+  }
+ },
+ "anomalieDichiarate": {
+  "1h": [],
+  "7h": []
+ },
+ "rinnovoEsente": {
+  "1h": 0,
+  "7h": 0,
+  "totale": 0,
+  "primaVistaIso": null
+ },
+ "rifiutiDiRinnovoPerCausa": {
+  "1h": {
+   "profondita-insufficiente": 202,
+   "prezzo": 6,
+   "motore-non-conforme (causa non estratta)": 1
+  },
+  "7h": {
+   "profondita-insufficiente": 4392,
+   "motore-non-conforme (causa non estratta)": 14,
+   "tetto": 255,
+   "prezzo": 29
+  }
+ }
+}
