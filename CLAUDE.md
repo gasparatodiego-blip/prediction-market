@@ -765,9 +765,32 @@ spedirlo toglie dalla rete gli invii garantiti-rifiuto) · minimo **non pubblica
 `MIN_ORDER_SIZE_UNREADABLE`, che **nomina il conditionId** e **non ripiega sul pavimento premiante** ·
 sopra il minimo d'ordine e sotto il pavimento premiante ⇒ **VALIDO**, e «non matura premio» viaggia
 come **avviso**, non come divieto.
-**⚠ CORRETTI ENTRAMBI I GATE, NON UNO**: `placeManualOrder` **e** il guard gemello di
-`auto-close.decideClose`. Il 17 agosto la deroga era stata messa solo sul primo e non veniva **mai**
-raggiunta, perché il secondo rifiutava prima.
+**⚠⚠ E I GATE SONO TRE, NON DUE — corretto il 24 agosto 2026, commit del terzo gate.** Questa riga
+diceva «CORRETTI ENTRAMBI I GATE, NON UNO» ed era essa stessa un **D7**: elencava
+`placeManualOrder` **e** il guard gemello di `auto-close.decideClose` — il 17 agosto la deroga era
+stata messa solo sul primo e non veniva mai raggiunta perché il secondo rifiutava prima — ma **a valle
+di entrambi c'è `adapter.postOrder`**, che rivalidava con `validateQuote(s.venueRules, {side, price,
+size})` **senza il timbro `uscita`**, ricostruiva il verdetto vecchio e rifiutava. La deroga dei primi
+due non veniva quindi **mai** raggiunta lo stesso: **terza occorrenza della stessa forma**, e la prova
+è che il 24/08, con `f0394fa` in servizio dalle 14:19:17Z, la vendita in profitto su `0x65109969`
+è stata rifiutata **93 volte in 30 minuti** con `BELOW_MIN_SIZE ... min_incentive_size 20` mentre la
+riga di `manual-place` portava già `uscita:{prezzoDeciso}` e l'avviso «il venue lo accetta perché
+supera minimum_order_size 5».
+**LA CURA, IN DUE PUNTI E NELLA STESSA FORMA DEI GEMELLI**: `manual-order` porta il timbro all'adapter
+accanto ad `allowOutOfBand` e `chiudePosizione` (che viaggiano lì **per la stessa ragione**, scritta:
+«l'adapter rifà la propria validazione in modo indipendente, quindi senza portargliela il gate riapre
+un passo più avanti»); l'adapter lo legge con `eOrdineDiUscita` — **la stessa funzione**, non un
+`=== true` ricopiato — e applica la deroga con la **stessa condizione** del gemello, riusando la
+`chiusuraProvata()` già memoizzata.
+**⚠ SI PASSA IL TIMBRO, NON LA DEROGA**: l'adapter rifà la **prova** sullo snapshot del venue con la
+stessa `provaChiusura`. Portargli «è già stato derogato» sarebbe una dichiarazione di cui fidarsi.
+**⚠ NON ALLARGA NIENTE PER CHI APRE** (asserito): senza timbro il ramo è identico, e il timbro lo mette
+solo `chiudendo`, che `riposizionaDopoChiusura` non attraversa. **⚠ `BELOW_MIN_ORDER_SIZE` RESTA NON
+DEROGABILE** anche qui. **LA PROVA**: `lib/maker/uscita-terzo-gate-adapter.test.js` (16/16,
+comportamentale sull'adapter vero in `paper`; **rosso su HEAD** col messaggio esatto del difetto).
+**IL COSTO EVITATO, misurato sull'ora al 24/08 15:05Z**: **157 rifiuti su 235**, tutti su
+`0x65109969` e tutti da 15,4 share; i 78 restanti sono size < 5 e restano rifiutati — ora col codice
+giusto. **⚠ IN SERVIZIO SOLO DOPO IL RIAVVIO di agent40 e agent41** (§5.1).
 **⚠ `MIN_ORDER_SIZE_UNREADABLE` RESTA DEROGABILE DA UNA CHIUSURA PROVATA**, come già lo era il
 pavimento premiante: finché il board non è riscritto col codice nuovo quel campo è `null` su **ogni**
 mercato, e senza la deroga si curerebbero 282 rifiuti con qualche migliaio di rifiuti nuovi. La deroga
