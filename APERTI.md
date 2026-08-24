@@ -11,6 +11,27 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 
 ---
 
+> ## ⏪ RIPRISTINO — IL PUNTO UNICO DEI MERCATI E L'INVARIANTE CAP, 24 agosto 2026
+> Annulla il commit `e1c223b` («punto unico mercati + invariante cap + rimozione falsa ricetta meteo»):
+> `MAKER_MERCATI_CONTEMPORANEI` torna ad avere un difetto, `MAX_MERCATI_CONTEMPORANEI = 19` torna in
+> `selezione-mercati.js`, e i due processi tornano a partire anche senza la variabile.
+> ⚠ **NON è un `sed`, ed è deliberato**: quel commit esiste anche per aver tolto due ricette `sed` che
+> non trovavano più la stringa che cercavano e **dichiaravano un ripristino mai avvenuto**. Un revert
+> non può mentire: o applica, o fallisce rumorosamente. Da `bot`, da `/home/bot/bot`.
+>
+> ```bash
+> git revert --no-edit e1c223b && pm2 delete agent40-manual-reprice agent41-realloc-scheduler && pm2 start agents/ecosystem.config.js --only agent40-manual-reprice,agent41-realloc-scheduler && pm2 save && for n in agent40-manual-reprice agent41-realloc-scheduler; do echo -n "$n: "; tr '\0' '\n' < /proc/$(pm2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).find(x=>x.name==='$n').pid))")/environ | grep -c MAKER_MERCATI_CONTEMPORANEI; done
+> ```
+>
+> **⚠ RIAVVIARE agent40 ABBANDONA IL LIBRO**: gli ordini vivi diventano PRE-ESISTENTI — invisibili al
+> motore, non riprezzati e non rinnovati — e muoiono per GTD entro ~23 min. È il costo dichiarato, non
+> un difetto. **⚠ E AZZERA LA QUARANTENA SLOT-STERILE** in memoria di agent41.
+> **⚠ Non tocca il cap** ($2.400 su disco e come tetto duro): il commit non lo aveva mosso.
+> **⚠ Il conteggio finale stampa `1` per processo**: dopo il revert agent40 non ha più bisogno della
+> variabile, ma il `const` unico gliela lascia — se stampasse `0` su uno dei due, i due sono divergenti.
+
+---
+
 > ## ⏪ RIPRISTINO — IL CAP TORNA A $1.470 E GLI SLOT A 12, 23 agosto 2026
 > Riporta il tetto di esposizione cumulativa da **$2.400** a **$1.470** e gli slot da **18** a **12**,
 > cioè la configurazione in servizio fino alle 11:0xZ del 23 agosto. Da `bot`, da `/home/bot/bot`.
