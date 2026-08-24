@@ -2761,3 +2761,243 @@ stanotte, in cui l'allocatore non avrebbe limitato niente. Alzare `p` aggira il 
 **Prove**: `lib/maker/quota-coda-lunga.test.js`, **29 asserzioni sull'ARITMETICA** (la p critica è
 calcolata, non scritta), e rosso su tre forme di difetto: **27/2** se la quota torna costante, **26/3**
 se il lettore perde il clamp, **27/2** se la manopola sparisce dall'ecosystem.
+
+---
+
+## 36 · 🔴 IL GIRO DEL 24 AGOSTO — IL MINIMO D'ORDINE È 5, NON 50, E LA SCALA D'USCITA NON ARRIVA AL PREZZO CHE DECIDE
+
+**24 agosto 2026, 06:44-07:00Z. Letto dal venue e dai processi vivi. Nessun ordine piazzato, nessun
+merge tentato, nessun processo riavviato.** Le due coppie completabili restano **scoperte**, e la ragione
+non è il percorso di merge: è il **minimo d'ordine del venue**.
+
+### ⓵ Il percorso di merge c'è — `POLYMARKET_RELAYER_API_KEY` è PRESENTE nei vivi
+
+Letta da `/proc/<pid>/environ` di **tutti e 10** i processi online (non dal `.env`, che qui è inerte —
+pm2 tiene la propria copia): `POLYMARKET_RELAYER_API_KEY` **presente e non vuota** (36 caratteri; il
+valore non si stampa), accanto a `POLYMARKET_RELAYER_API_KEY_ADDRESS` (42 caratteri). Su agent40, agent41
+e agent43 in particolare. Con `CTF_RELAYER_ENABLED = true` (costante di sorgente, §4.9) **il gate ①
+dell'operatore è verde**: comprare una sorella non avrebbe prodotto una coppia bloccata.
+**⚠ E resta vero il contrario, che è la ragione del gate**: comprare la sorella senza relayer
+trasformerebbe una gamba scoperta in una coppia che non si può fondere, cioè in capitale murato — è
+peggio, e il gate va tenuto in testa a qualunque giro che compri per completare.
+
+### ⓶ 🔴 IL MINIMO CHE IL BOT DICHIARA È IL PAVIMENTO DEL PREMIO, NON QUELLO DELL'ORDINE
+
+Il venue pubblica **due** numeri diversi, e non sono la stessa cosa:
+
+| campo del venue | 0x7619b095 | 0x790474c0 | 0xb3c7f543 | 0x4d79d306 | cosa significa |
+|---|---|---|---|---|---|
+| `minimum_order_size` | **5** | **5** | **5** | **5** | sotto questo l'ordine è **RIFIUTATO** |
+| `rewards.min_size` | 50 | 50 | 20 | 20 | sotto questo il **premio è ZERO** (§4.2) |
+| `minimum_tick_size` | 0,01 | 0,001 | 0,01 | 0,001 | |
+
+E agent40 scrive a ogni giro, per tutte e quattro: *«sotto il minimo del venue (50)»*, *«(20)»* — cioè
+**dichiara `rewards.min_size` come se fosse il minimo d'ordine**. Sono due concetti con un nome solo,
+ed è il reperto della famiglia «due grandezze, una variabile»: il numero che decide se un ordine viene
+accettato è **5**, e quello che il referto stampa è 10× o 4× più grande.
+**⚠ COSTO POTENZIALE, e va detto perché oggi non morde**: su queste quattro gambe la conclusione non
+cambia (4,85 · 2,01 · 2,8461 sono sotto **5** come sono sotto 50/20), quindi il bot ha ragione **per
+caso**. Ma un residuo di, per esempio, 30 share verrebbe dichiarato «non piazzabile» quando il venue lo
+accetterebbe: **una posizione recuperabile abbandonata su un numero letto sbagliato**.
+**NON CORRETTO in questo giro**: la correzione tocca la sorgente di `minSize` sul percorso di **uscita**
+(capitale reale), e non era nell'elenco del giro.
+
+### ⓷ Le due completabili: **RIFIUTATE DAL MINIMO**, non dal merge
+
+Letto dal venue alle 06:5xZ, camminando l'ask della sorella per la **quantità esatta** della gamba
+scoperta (non la size di piano):
+
+| | 0x7619b095 (Trump 200+) | 0x790474c0 (Trump 180-199) |
+|---|---|---|
+| gamba scoperta | **4,85** share YES, carico 82,0¢ | **2,01** share NO, carico 75,7¢ |
+| sorella | NO, best ask **8,0¢** (87,59 di profondità) | YES, best ask **5,9¢** (89,14) |
+| coppia **ricalcolata sull'ask vero** | **90,0¢** ≤ 101¢ ✅ | **81,6¢** ≤ 101¢ ✅ |
+| costo dell'acquisto | $0,388 | $0,119 |
+| `minimum_order_size` | **5 share** = $0,40 a quell'ask | **5 share** = $0,295 a quell'ask |
+| verdetto | 🔴 **RIFIUTATO DAL MINIMO** (4,85 < 5) | 🔴 **RIFIUTATO DAL MINIMO** (2,01 < 5) |
+
+**⚠ SONO ENTRAMBE ECONOMICAMENTE OTTIME E IRRAGGIUNGIBILI.** Il merge renderebbe $1,00/share, cioè
+**+10,0¢** e **+18,4¢** per share: **$0,485 + $0,370 = $0,855** di guadagno certo che il minimo d'ordine
+mura. Non è una perdita, è un ricavo che non si può incassare — e la causa non è una regola del bot ma
+una regola del venue, quindi **non c'è patch che la aggiri**: 4,85 share non diventano 5.
+**Comprare 5 invece di 4,85 non è la via d'uscita**: fonderebbe 4,85 coppie e lascerebbe **0,15 share**
+di sorella scoperta, cioè un residuo nuovo sotto ogni minimo — si sposterebbe il problema pagandolo.
+⇒ **Le due gambe ricadono in §6 (residuo sotto il minimo) e restano SCOPERTE. Non sono chiudibili a
+libro, in nessuna delle due direzioni.**
+
+**⚠ E LA MARCATURA R6 NON È STATA SCRITTA, per un motivo che è una decisione dell'operatore.**
+`abbandono-posizione.js` conosce **una** causa — `costa-piu-di-quanto-vale` (valore residuo sotto
+$3,0625 **e** costo d'uscita ≥ valore residuo) — e su 0x7619b095 il valore residuo è **$4,46** (bid
+camminato 92,0¢ × 4,85), quindi la regola **non** abbandona e una voce scritta a mano in
+`data/posizioni-abbandonate.json` verrebbe **riscritta da agent40 al giro dopo** (lo scrive lui, lo legge
+agent41, §4.13). Marcarle R6 con causa «size sotto il minimo del venue» richiede quindi **una causa nuova
+nel modulo** — e cablarla sul numero che il percorso d'uscita legge OGGI significherebbe cablarla su
+`rewards.min_size` (50/20), cioè su ⓶: si abbandonerebbero anche i residui **piazzabili**. **Non
+scritta**: prima si corregge quale minimo legge il percorso d'uscita, poi si aggiunge la causa. Le due
+cose vanno insieme o la seconda è una difesa tarata su un numero sbagliato.
+
+### ⓸ 🔴🔴 LA SCALA D'USCITA DECIDE 49,5¢ E AL VENUE ARRIVA 28,8¢ — `inCoda` sul percorso di CHIUSURA
+
+**Il SELL su `0x4d79d306` non era morto col riavvio: è vivo, e sta a 28,8¢** — peggio dei 30¢ che
+l'operatore aveva contestato. La riga che lo prova, dal giornale (06:18:02.430Z, `auto-close-on-fill`):
+
+```
+requested      { book:"no", side:"SELL", price:0.288, size:56.1 }
+priceAdjusted  { inCoda: { from: 0.495, to: 0.288, mode:"behind-best", bestOther:0.281 } }
+inCoda.reason  "un tick dietro il miglior ask altrui (71.9¢) ⇒ 71.8¢"
+```
+
+Trenta secondi prima, `auto-close` aveva **deciso** il prezzo giusto e lo aveva scritto:
+`modalita-chiusura-lato-posseduto-piazzato · SELL no 0.495 · «banda sotto il carico: in modalita'
+chiusura si piazza comunque a 49.5¢ = carico +1 tick, FUORI banda — nessun premio, ma si puo' uscire in
+pari»`. Poi `manual-order` — riga **1216**, `price = q.price`, dentro `if (spec.inCoda === true)` — ha
+riportato l'uscita **dentro la banda**, calcolando la coda sul book **YES** (71,9¢ ⇒ 71,8¢) e
+specchiandola sul NO a 28,8¢.
+
+**⚠ È ESATTAMENTE IL GUASTO CHE §4.6 DICHIARA DI EVITARE**, sull'altro percorso: *«⚠ E NON DICHIARA
+`inCoda`, o `manual-order` riporterebbe l'uscita dentro banda riassegnando `price = q.price`»*.
+L'omissione è scritta e contata per nome sulla **deroga fuori banda** (gamba scoperta con coppia oltre
+101¢); il percorso **`modalita-chiusura-lato-posseduto`** — «banda sotto il carico» — **dichiara
+`inCoda: true`** e prende la stessa botta. Classe «protezione presente su un percorso e assente sul
+gemello», la stessa contata 5+ volte in `CLAUDE.md`.
+
+**⚠ QUANTO VALE, MISURATO.** §7 al gradino oltre i 60 minuti concede al massimo
+`min(5% del carico, un tick)` = `min(2,47¢ ; 0,1¢)` = **0,1¢**, cioè un pavimento di **49,3¢** e una
+perdita massima autorizzata di **$1,39** su 56,1 share. L'ordine vivo a 28,8¢ autorizza **20,6¢/share**
+= **$11,56**, cioè **8,3× la concessione che la regola consente**. Non è ancora stato pagato solo perché
+il miglior bid NO è **22,0¢** e l'ordine gli sta 6,8¢ sopra — ma è un'istruzione firmata a incassare
+quella perdita se il libro sale. Ed è **rinnovata a ogni GTD**: `expiry-refresh` la ripiazza *allo stesso
+prezzo* (11 volte a 0,30, poi 0,288, 0,276, 0,272, 0,262 — tutti bordi di banda), mentre
+`skip-close-sell-floor` conta **6.337** rifiuti a scendere. Il pavimento difende un prezzo che è già
+20,5¢ sotto il pavimento: **la difesa è a valle del punto in cui il danno si fa.**
+
+### ⓹ 🔴🔴 E IL BUY DEL MERGE VIENE TRASCINATO FUORI DAL TETTO DI 101¢ DA `band-exit`
+
+Lo stesso mercato, lo stesso ciclo, l'altra gamba. `auto-close` piazza il completamento di **Livello 2**
+a `BUY yes 56.1 @ 0.516` e **dichiara** `deroga-banda-usata · «OUT_OF_BAND: 23,30¢ oltre ±5,50¢ — earns
+no reward»`: 0,516 è `101¢ − carico 49,4¢`, cioè il tetto della coppia al centesimo. **31 secondi dopo**
+(06:18:05.504Z) il TRIGGER 1 di `auto-reprice` non guarda quella deroga:
+
+```
+auto-reprice trigger  "band exit: |0.516 − 0.749| = 23.30¢ > ±5.50¢ + 0.100¢ hysteresis,
+                       confirmed on 2 consecutive observations → move to 0.708 (band-edge)"
+auto-reprice sent     { book:"yes", fromPrice:0.516, toPrice:0.708, size:56.1 }
+```
+
+e l'ordine finisce a **0,708**, poi 0,712, 0,713, **0,717**. **La coppia a 0,717 vale 121,1¢**: 20,1¢
+oltre il tetto di 101¢, cioè **$11,28 di perdita garantita** se si riempie — su un tetto che §4.6
+descrive come «asserito in **un punto solo**». Non si è riempito solo perché il miglior ask YES è 78,0¢.
+Il ciclo si ripete: **9** `merge-livello-2-piazzato` a 0,516, ognuno seguito da un `band-exit` verso
+~0,71. **⇒ Il completamento della coppia non sopravvive mai al proprio prezzo**, e la scala di §4.6 non
+arriva al gradino 3 per il libro, ma perché la sua stessa gamba viene spostata.
+
+**⚠ NESSUNO DEI DUE È STATO CORRETTO, ed è una scelta dichiarata.** Toccano `manual-order` e il TRIGGER 1
+di `auto-reprice` — cioè il prezzo di ordini veri — e non erano nell'elenco del giro; e nessuna
+correzione entrerebbe in servizio senza riavviare agent40, che questo giro **vieta esplicitamente**
+(il riavvio precedente ha ucciso l'unica uscita a libro, e quel costo è già misurato). **Servono due
+decisioni dell'operatore**: se `modalita-chiusura-lato-posseduto` debba smettere di dichiarare `inCoda`,
+e se `band-exit` debba saltare gli ordini che portano `deroga-banda-usata`.
+
+### ⓺ Il SELL legittimo: i tre numeri, e perché non è stato piazzato
+
+| | 0x4d79d306 (NO, 28,7 h) | 0xb3c7f543 (YES, 17,8 h) |
+|---|---|---|
+| carico | **49,4¢** | **87,0¢** |
+| 5% del carico | **2,47¢** | **4,35¢** |
+| un tick del mercato | **0,1¢** (`0.001`) | **1,0¢** (`0.01`) |
+| concessione = `min` dei due | **0,1¢** | **1,0¢** |
+| **prezzo legittimo** | **49,3¢** | **86,0¢** |
+| size vs `minimum_order_size` 5 | 56,1 ✅ | **2,8461 🔴 RIFIUTATO** |
+| miglior bid | 22,0¢ | 75,0¢ |
+| coppia sull'ask vero | 49,4 + 78,0 = **127,4¢** 🔴 | 87,0 + 25,0 = **112,0¢** 🔴 |
+
+**Nessuno dei due è stato piazzato, e le ragioni sono diverse.**
+· `0xb3c7f543`: **2,8461 share sono sotto il minimo d'ordine di 5** ⇒ nessun prezzo è piazzabile, in
+nessuna direzione; e con la coppia a 112,0¢ anche il merge è chiuso. **La gamba non ha uscita legale**:
+§6, residuo sotto il minimo. (⚠ E la sua scadenza — `2026-08-24T00:00:00Z` — **è già passata** mentre il
+venue la dà ancora `active: true, accepting_orders: true`.)
+· `0x4d79d306`: la size passa, il prezzo no. **Piazzare 49,3¢ attraverso `placeManualOrder` produce
+28,8¢**, perché è la stessa riga 1216 di ⓸ a riscrivere il prezzo — l'ho misurato sul record del venue,
+non dedotto. L'operatore ha scritto *«non abbassarlo»*: la superficie di piazzamento del repo, oggi,
+**non sa produrre quel prezzo**. E aggiungere un secondo SELL da 56,1 share accanto a quello vivo
+significherebbe **112,2 share di vendita firmata su 56,1 possedute** — la direzione dello scoperto nudo.
+⇒ **Anomalia grave dichiarata** (agent40 la scrive già: `scoperto-oltre-soglia-grave` ×751, «posizione
+scoperta da 1.722 minuti»), **e si ferma qui**, come §7 prescrive.
+
+### ⓻ La cintura che non si vedeva — adesso si vede
+
+`lib/safety/invariante-cap-slot.js` era **muto sul percorso felice**: su rottura stampava e sollevava,
+su successo no. La prova che girasse nei vivi era quindi *«il processo è su, dunque non ha sollevato»* —
+una difesa dimostrata **per assenza del proprio fallimento**, la forma con cui qui tre difese sono
+rimaste verdi e inerti. Adesso stampa **una riga sola su stdout a ogni avvio**, coi quattro numeri:
+
+```
+✅ invariante cap/slot · agent40-manual-reprice: N=18 · N x 2 x $61.25 = $2205 · cap dal file $2400
+   · tetto duro $2400 · cap effettivo $2400 · margine $195
+```
+
+Prodotta con l'ambiente **vero** dei due processi (`MAKER_MERCATI_CONTEMPORANEI=18` letta da `/proc` di
+entrambi). Selfcheck **13/13** — le asserzioni ⑦ e ⑧ nuove **provano la riga**, non l'intenzione: che
+esista, che sia **una** sola, che porti N/prodotto/cap/tetto duro, che il verdetto resti identico a
+`misuraInvariante` (nessun secondo conto: reperto D1 su un'invariante di rischio), e che il ramo **rotto
+non scriva niente su stdout** — un fallimento non deve poter passare per un avvio sano.
+`punto-unico-mercati.test.js` **42/42**.
+**⚠ E LA RIGA NON È ANCORA NEI LOG DEI VIVI: 0 occorrenze in entrambi, ed è corretto così.** I due
+processi sono su da **05:44:58Z**, cioè da prima della modifica, e il modulo si carica **una volta
+all'avvio**. La riga comparirà al primo riavvio **dal file** — che questo giro vieta. Non è «la difesa
+non c'è»: è «la difesa nuova non è ancora entrata», e la differenza si legge dall'uptime.
+
+### ⓼ Lo stato del capitale, e le sei gambe
+
+Due letture, prima e dopo il giro, dal mini-ciclo di agent41:
+
+| | 06:45:33Z (prima) | 06:57:35Z (dopo) |
+|---|---|---|
+| al lavoro | **58,5%** · $865,85 | **61,4%** · $910,15 |
+| totale | $1.480,72 | $1.482,47 |
+| fermo | $614,87 | $572,32 |
+| mancano per il 95% | $540,83 | $498,20 |
+
+**⚠⚠ QUEI +2,9 PUNTI NON SONO DEL GIRO, E ATTRIBUIRLI SAREBBE FALSO.** Questo giro **non ha mosso un
+dollaro**: nessun ordine inviato, nessuna cancellazione, nessun merge, nessun riavvio. La differenza è
+lavoro di **agent41**, che nella stessa finestra ha aperto una posizione nuova su `0xad22b2c5e3` (Bath &
+Body Works, **57,1 share @ 36,0¢**) — visibile nello snapshot posizioni, che passa da 6 voci a 7. Il
+contributo del giro al capitale al lavoro è **esattamente zero**, e va letto così.
+
+34 ordini a riposo, 21 slot occupati su 18 (4 `IN USCITA: riga-assente`, che si liberano a posizione
+chiusa).
+
+| gamba | ore scoperta | coppia sull'ask vero | stato |
+|---|---|---|---|
+| `0x4d79d306` NO 56,1 @ 49,4¢ | **28,7 h** | 127,4¢ | scoperta · SELL vivo a **28,8¢**, illegittimo (⓸) |
+| `0xb3c7f543` YES 2,8461 @ 87,0¢ | **17,8 h** | 112,0¢ | scoperta · **nessuna uscita legale** (minimo + coppia) |
+| `0x7619b095` YES 4,85 @ 82,0¢ | **12,8 h** | **90,0¢** | scoperta · completabile ma **sotto il minimo** |
+| `0x790474c0` NO 2,01 @ 75,7¢ | **10,0 h** | **81,6¢** | scoperta · completabile ma **sotto il minimo** |
+| `0xd947c421` NO 56,1 @ 6,5¢ | — | — | **abbandonata R6** `costa-piu-di-quanto-vale`, non toccata |
+| `0xc5cd9325` YES 36,4 @ 5,0¢ | — | — | **abbandonata R6** `costa-piu-di-quanto-vale`, non toccata |
+
+### ⓽ ⚠ L'HOOK DI PIAZZAMENTO NON HA MORSO — ed è uno stato VOLUTO che `CLAUDE.md` racconta ancora al contrario
+
+Una sonda che **importa `placeManualOrder`** dal repo è passata senza che l'hook intervenisse. Cercata la
+causa, e **non è un guasto**: `lib/safety/policy-permessi.test.js` gira **10/10** e si intitola *«POLICY
+DEI PERMESSI — svuotata per decisione dell'operatore (19 agosto 2026)»*, asserendo **zero regole `ask`**
+nei tre file, **nessun blocco `hooks`**, le due copie allineate a zero, e l'hook *«sul disco, disarmato ·
+NON registrato in nessuna configurazione»*. Verificato a mano: `.claude/settings.json` (345 byte) e
+`~/.claude/settings.json` (338 byte) portano **solo** una `allow` ampia, `ask: []`, nessun `hooks`.
+
+**🔴 MA `CLAUDE.md` DESCRIVE ANCORA LA POLICY DI PRIMA**, e va corretto perché è il file che ogni sessione
+legge come verità: dichiara *«`allow` ampio + **164 regole `ask`**»*, *«le tre famiglie»*, *«19 forme di
+scrittura»*, e l'hook come *«`PreToolUse`/`Bash`, ancorato a `$CLAUDE_PROJECT_DIR`»* con la regola
+*«**Non si aggira**: il comando lo esegue l'operatore»*. Nessuna di queste frasi è vera da **cinque
+giorni**. È la classe **D7** nella variante peggiore — la stessa di §5.2 p.69: il documento descrive un
+presidio che non esiste e **si cita da solo come prova**, e chi legge crede di avere due linee di difesa
+mentre ne ha zero. **Il presidio che ha tenuto questo giro è la regola 3 di §2 più il giudizio di chi
+lavora, e nient'altro.** ⇒ **La testata di `CLAUDE.md` è stata corretta in questo giro**; l'hook resta sul
+disco e disarmato, e riarmarlo è una riga di configurazione, cioè una decisione dell'operatore.
+
+**⚠ E SE SI RIARMA, PRIMA VA SISTEMATA LA SUA RADICE**: `blocca-piazzamento.js:44` porta
+`const RADICE = '/root/rewards-bot'`, un percorso **morto** (§5-bis p.188: il repo è in `/home/bot/bot`),
+usato in tre punti — `eUnTest` (riga 142, quindi **nessun `*.test.js` del repo verrebbe esentato**),
+la risoluzione dei percorsi relativi (194) e i percorsi `@/` (214). Riarmarlo così darebbe un hook che
+sbaglia le esenzioni e risolve i require contro una directory che non c'è. **Non corretto**: l'hook è
+disarmato, e correggere un file disarmato senza la decisione di riarmarlo sarebbe lavoro senza chiamanti.

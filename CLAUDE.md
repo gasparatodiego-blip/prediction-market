@@ -88,6 +88,42 @@ distanze si leggono da `/proc/<pid>/environ` degli 11 processi vivi. Il quadro d
 > **⚠ DUE DIVERGENZE CONFERMATE, dove il codice è PIÙ PRUDENTE della regola e resta com'è**: il margine dal
 > bordo è `max(1 tick, 0,22·banda)` e non un tick; il kill **non ha auto-riarmo affatto**.
 
+> ## ➕ EMENDAMENTO ALLA REGOLA 7 — LA PRECEDENZA DEL MERGE AL GRADINO 3
+> **24 agosto 2026, decisione dell'operatore. Scritta come REGOLA, non come eccezione.**
+>
+> **Quando una gamba è al gradino 3 della scala d'urgenza (oltre 240 min di scopertura) ma la coppia sta
+> ANCORA sotto 101¢, l'acquisto della gamba sorella con merge immediato PREVALE sulla vendita.** La
+> ragione è aritmetica e non discrezionale: il merge di una coppia completa rende **$1,00/share garantito**
+> (§4.9, gas del relayer, zero slippage), mentre la vendita al gradino 3 realizza una perdita — concede
+> fino al **5% del carico** (R7) e incassa il bid camminato, che è sempre meno di $1,00 meno il costo della
+> sorella quando la coppia è sotto 101¢. Comprare a completare non è un ripiego più lento: è l'unica delle
+> due vie che non perde denaro.
+>
+> **⚠ LA VENDITA DEL GRADINO 3 RESTA L'UNICA VIA QUANDO LA COPPIA SUPERA 101¢.** Sopra quel tetto
+> completare costerebbe più di quanto il merge renda, e allora la perdita è già stata fatta: si sceglie la
+> più piccola. Il tetto della coppia (`MAKER_TETTO_COPPIA_CENTS`, un punto solo, §4.6) è il discriminante,
+> e **non si allarga per far entrare questo emendamento**: la metà di R6 che comprerebbe *sopra* 101¢
+> resta non implementata e resta una decisione aperta (§5.2 p.44).
+>
+> **⚠ QUESTO EMENDAMENTO NON AUTORIZZA NIENTE DI NUOVO, RENDE ESPLICITA UNA PRECEDENZA CHE IL CODICE HA
+> GIÀ**, e va letto così o diventa il permesso per un meccanismo che nessuno ha scritto. La scala di §4.6
+> mette il merge al **Livello 0**, il taker sulla sorella al **Livello 1** e il maker a riposo sulla
+> sorella al **Livello 2** — tutti e tre con il vincolo `coppia ≤ 101¢` — e la vendita peggiorativa
+> soltanto ai gradini 2-3 dell'urgenza. L'ordine è quindi già quello che questo emendamento dichiara; ciò
+> che mancava era la riga che lo dice, così che chi legge un giornale non prenda per un'eccezione ciò che
+> è la regola.
+>
+> **⚠ OSSERVATO SUL VIVO MENTRE VENIVA SCRITTO**, ed è la prova che la precedenza è cablata e non
+> soltanto voluta: `0x4d79d306` è **al gradino 3** (scoperto da 28,7 h, `scoperto-oltre-soglia-grave` ×751)
+> e la scala **non sta vendendo per chiudere**: tiene un BUY a riposo sulla sorella YES per 56,1 share a
+> **51,6¢** (`merge-livello-2-piazzato`), cioè esattamente `101¢ − carico 49,4¢`. Il merge ha la
+> precedenza, e il tetto della coppia è il numero che la fissa.
+>
+> **⚠ NON ANCORA ESERCITATO SU CAPITALE, e va detto**: il giro del 24 agosto che ha prodotto questo
+> emendamento **non ha comprato nessuna gamba sorella** — le due coppie completabili sono state rifiutate
+> dal **minimo d'ordine del venue** (5 share contro 4,85 e 2,01; v. `APERTI.md`). L'emendamento è quindi
+> scritto **prima** del suo primo uso, non a giustificarne uno.
+
 ---
 
 ## 🟢 STATO OPERATIVO — letto dai processi vivi
@@ -196,10 +232,30 @@ non se può piazzare.
 
 ### Permessi della sessione e hook — dettaglio in **`docs/permessi-e-hook.md`**
 
-`.claude/settings.json` (progetto) e `~/.claude/settings.json` (utente) portano una **copia identica**
+> ## 🔴🔴 LA POLICY È SVUOTATA DAL 19 AGOSTO 2026, E QUESTA SEZIONE DESCRIVEVA QUELLA DI PRIMA
+> **Corretto il 24 agosto 2026 dopo verifica sul disco. Reperto D7, la variante peggiore: il documento
+> dichiarava due linee di difesa che non esistono e si citava da solo come prova (come §5.2 p.69).**
+> **LO STATO VERO, letto e provato**: `.claude/settings.json` (345 byte) e `~/.claude/settings.json`
+> (338 byte) portano **solo** una `allow` ampia — **`ask: []`**, **nessun blocco `hooks`**. Idem
+> `.claude/settings.local.json` (che ha solo `allow`). `lib/safety/policy-permessi.test.js` gira **10/10**
+> e si intitola *«POLICY DEI PERMESSI — svuotata per decisione dell'operatore (19 agosto 2026)»*: asserisce
+> **zero** regole `ask` nei tre file, **nessun** hook registrato, le due copie **allineate a zero**, e
+> l'hook *«sul disco, disarmato · NON registrato in nessuna configurazione»*.
+> **⇒ NON C'È NESSUN PRESIDIO TECNICO SUI PIAZZAMENTI IN SESSIONE.** Nessuna regola `ask` chiede niente e
+> l'hook non viene mai invocato — verificato il 24/08 con una sonda che **importa `placeManualOrder`** ed
+> è passata. **Il presidio è la regola 3 di §2 — conferma esplicita dell'utente in chat — e il giudizio di
+> chi lavora. Nient'altro.** Chi conta le difese conti queste.
+> **⚠ PER RIARMARE** serve una riga di `hooks` nei settings **e** la correzione di
+> `blocca-piazzamento.js:44` (`const RADICE = '/root/rewards-bot'`, percorso morto usato in tre punti —
+> §5-bis p.188), o si otterrebbe un hook che sbaglia le esenzioni. È una decisione dell'operatore.
+> **⚠ IL TESTO QUI SOTTO RESTA COME DESCRIZIONE DI COS'ERA E DI COSA TORNEREBBE SE SI RIARMASSE**, non
+> come stato: si legge al passato.
+
+`.claude/settings.json` (progetto) e `~/.claude/settings.json` (utente) **portavano** una **copia identica**
 della stessa policy: `allow` ampio + **164 regole `ask`**. `ask` batte `allow` da qualunque file arrivi, e
 le regole si **fondono**. `.claude/settings.local.json` deve restare privo di regole `ask`. Le due copie
-vanno tenute in sync, e `lib/safety/policy-permessi.test.js` fallisce se divergono.
+vanno tenute in sync, e `lib/safety/policy-permessi.test.js` **oggi asserisce l'opposto — che siano vuote
+entrambe** (v. il riquadro sopra).
 
 **Le tre famiglie, con criteri diversi apposta:** **①** capitale reale ⇒ `ask` **anche in lettura**: basta
 *nominare* la cosa, e **questa famiglia non si allarga**. **②** pm2 ⇒ `ask` **se nominato**
@@ -208,8 +264,8 @@ vanno tenute in sync, e `lib/safety/policy-permessi.test.js` fallisce se divergo
 ognuno dei sei flag; la lettura passa in autonomia. ⚠ **Eseguire** un file che nomina il flag chiede
 **anche quando è il suo stesso test**.
 
-**L'hook** `.claude/hooks/blocca-piazzamento.js` (`PreToolUse`/`Bash`, ancorato a `$CLAUDE_PROJECT_DIR`)
-**apre il file e cammina il grafo dei `require`** fino a profondità 3 cercando la superficie di
+**L'hook** `.claude/hooks/blocca-piazzamento.js` (**DISARMATO dal 19/08: sul disco, non registrato**;
+quando era armato: `PreToolUse`/`Bash`) **apre il file e cammina il grafo dei `require`** fino a profondità 3 cercando la superficie di
 piazzamento vera. **Cancellare non è in elenco** — può solo ridurre l'esposizione, e il guardiano deve
 poterlo fare. Tre esenzioni dichiarate: le letture (valutate **segmento per segmento**), i `*.test.js` del
 repo, il **corpo di un heredoc** (torna a contare se va in pasto a `node`). **⚠ Un riavvio pm2 non passa
@@ -643,6 +699,11 @@ coda, e il tetto di 30 min di `ripristino-gambe` sta sopra la GTD *della quotazi
 APERTURA è toccato** (`riposizionaDopoChiusura` escluso e dichiarato); `tooClose` resta davanti. **⚠ IL
 PUNTO UNICO È `chiudendo(spec)`, NON `piazzaChiudendo`**: delle **cinque** chiamate a `deps.placeOrder`
 **una sola** passa da `piazzaChiudendo`.
+
+**⚠ AL GRADINO 3, SE LA COPPIA È SOTTO 101¢, SI COMPRA LA SORELLA E SI FONDE — NON SI VENDE**
+(emendamento alla regola 7, 24 agosto 2026, in cima a questo file): il merge rende $1,00/share garantito,
+la vendita del gradino 3 realizza una perdita. La vendita resta l'unica via **sopra** 101¢. Non è un
+meccanismo nuovo: è l'ordine che i Livelli 0-1-2 di questa stessa tabella hanno già.
 
 **La resa dopo 60 minuti** (`urgenza-scoperto.js`): gradino 1 a **30 min** (uscita fino al carico), gradino
 2 a **60 min** ⇒ chiusura **peggiorativa**, gradino 3 a 240 min ⇒ anomalia grave. **⚠ LA CONCESSIONE È IL
@@ -1441,9 +1502,13 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
 - **Il piano nasce in un PROCESSO FIGLIO** (`RUNNER_PIANO`, `/api/rewards/allocate`) che rilegge il
   codice da disco: le modifiche a `lib/rewards/allocator.js` sono in servizio **senza riavvio**. Quello
   che vive nel processo di agent41 sono le righe di log e il cablaggio.
-- **L'hook di piazzamento blocca anche un ciclo di agent41 lanciato a mano**, e anche un heredoc di
-  documentazione che *nomini* una funzione di piazzamento. **Non si aggira**: il comando lo esegue
-  l'operatore, o si usa lo strumento di scrittura file invece di `cat <<EOF`.
+- **L'hook di piazzamento — QUANDO ERA ARMATO — bloccava anche un ciclo di agent41 lanciato a mano**, e
+  anche un heredoc di documentazione che *nomini* una funzione di piazzamento. ⚠⚠ **DAL 19 AGOSTO 2026
+  L'HOOK È DISARMATO E LE 164 REGOLE `ask` SONO STATE TOLTE** (v. §2, «Permessi della sessione e hook»):
+  la frase «non si aggira» **non descrive più uno stato del sistema**. Oggi l'unico presidio sui
+  piazzamenti è la **regola 3 di §2** — conferma esplicita dell'utente in chat, ogni volta — e resta la
+  buona pratica di far eseguire il comando all'operatore e di usare lo strumento di scrittura file invece
+  di `cat <<EOF`.
 
 ---
 
