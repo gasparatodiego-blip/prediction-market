@@ -700,6 +700,49 @@ APERTURA è toccato** (`riposizionaDopoChiusura` escluso e dichiarato); `tooClos
 PUNTO UNICO È `chiudendo(spec)`, NON `piazzaChiudendo`**: delle **cinque** chiamate a `deps.placeOrder`
 **una sola** passa da `piazzaChiudendo`.
 
+**🔒 IL PREZZO DECISO DALLA SCALA È VINCOLANTE — 24 agosto 2026, decisione dell'operatore**
+(`lib/maker/ordini-di-uscita.js`, puro; il timbro sta in **un punto solo**, `auto-close.chiudendo`).
+Un ordine di **USCITA** — il SELL sulla gamba scoperta e il BUY che completa la coppia — porta
+`uscita: true` e `prezzoDeciso`, e da lì **nessun ramo può riscriverne il prezzo**: né la coda «mai
+primi», né il ricalcolo dal mid vivo, né il rientro in banda. **⚠ `inCoda` NON si dichiara più su
+nessuna chiusura, e a toglierlo è `chiudendo`, non i chiamanti**: il 24/08 il lato posseduto lo
+dichiarava con una motivazione ragionevole («è un ordine che ASPETTA e matura premi»), vera finché la
+scala sceglie un prezzo *dentro* la banda e falsa appena lo sceglie fuori — e `prezzo-in-coda` ha
+riportato **0,495 → 0,288**, cioè 8,3× la concessione che §7 consente.
+**⚠ L'AGGIUSTAMENTO SI CALCOLA COMUNQUE E NON SI APPLICA**: la proposta finisce a verbale con prezzo
+deciso, prezzo proposto, delta e **nome del ramo** (`uscita-aggiustamento-rifiutato`). Non calcolarla
+renderebbe di nuovo invisibile ciò che è rimasto invisibile sette ore.
+**⚠ DUE CONTROLLI TERMINALI, un istante prima della POST**: ① il prezzo che parte dev'essere *ancora*
+quello deciso, o l'ordine **non parte** (`uscita-prezzo-riscritto`); ② un BUY di completamento la cui
+coppia — **ricalcolata sul prezzo di INVIO, non su quello di decisione** — superi il tetto **non
+parte** (`uscita-coppia-oltre-il-tetto`). Il carico si legge dallo **snapshot del venue**, non da una
+dichiarazione; fail-closed su ogni ingresso.
+**⚠ `band-exit` NON SPOSTA UN'USCITA**, e lo legge da `data/ordini-di-uscita.json` (il venue non
+conosce le nostre intenzioni). **Fail-closed: registro illeggibile ⇒ nessun ordine si sposta** — costa
+il premio del rientro in banda, mai un dollaro. **⚠ IL RINNOVO GTD NON È TOCCATO**: a scadenza
+imminente l'uscita si ri-piazza **allo stesso prezzo** (`uscita-rinnovo-gtd`), o la cura ucciderebbe
+l'ordine in 23 minuti.
+**⚠ E IL PAVIMENTO SI CONFRONTA CON LA SCALA, NON CON L'ORDINE VIVO**: `close-sell-floor` ha difeso
+**6.337 volte** un ordine a 28,8¢ contro un pavimento di scala di 49,5¢ — un pavimento che protegge un
+prezzo già sceso sotto di sé è un'eco. Adesso quando l'ordine vivo sta sotto il prezzo deciso si
+**dichiara** (`uscitaSottoIlPavimento`); non si sposta, perché cancellare lascerebbe la gamba nuda.
+**⚠ CONSEGUENZA DA SAPERE**: senza `inCoda`, «mai primo sul libro» **non si applica più a nessuna
+uscita** — che per un'uscita è lo scopo (è lì per essere eseguita), ma è un allargamento reale
+rispetto alle quattro omissioni puntuali di prima.
+
+**🔢 E I MINIMI DEL VENUE SONO DUE, CON DUE NOMI** (`lib/maker/minimi-del-venue.js`, puro):
+`rewards.min_size` è il **pavimento premiante** (50/20 sui mercati misurati) e dice «reward ZERO»;
+`minimum_order_size` è il **minimo d'ordine** (**5**) e dice «il venue rifiuta». `rules.minSize` in
+tutto il repo è il **primo**, e il percorso d'uscita lo leggeva come se fosse il secondo — agent40
+scriveva «sotto il minimo del venue (50)» dove il venue dice 5. **Ogni decisione d'uscita legge il
+minimo d'ordine; ogni decisione sul premio legge il pavimento premiante.**
+**⚠ FAIL-CLOSED ALL'OPPOSTO, apposta**: minimo d'ordine illeggibile ⇒ il percorso d'uscita **non
+indovina, non dichiara e NON marca R6** (`piazzabile: null`, mai `false`); pavimento illeggibile ⇒
+`premiante: null`, perché è una domanda sul ricavo. **⚠ Oggi `minOrderSize` non è ancora popolato da
+nessuno scrittore del catalogo** (il campo esiste, il valore è `null`): l'effetto in servizio è
+«illeggibile ⇒ non si indovina», che è la risposta voluta — ed è la ragione per cui la marcatura R6
+automatica **non è stata cablata**.
+
 **⚠ AL GRADINO 3, SE LA COPPIA È SOTTO 101¢, SI COMPRA LA SORELLA E SI FONDE — NON SI VENDE**
 (emendamento alla regola 7, 24 agosto 2026, in cima a questo file): il merge rende $1,00/share garantito,
 la vendita del gradino 3 realizza una perdita. La vendita resta l'unica via **sopra** 101¢. Non è un

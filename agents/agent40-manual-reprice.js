@@ -1988,6 +1988,14 @@ async function cycle() {
     // silenzio — la stessa classe di `resolveDepth` qui sopra, e la ragione per cui c'è un test che
     // asserisce il CABLAGGIO e non solo la decisione (§5-bis p.181).
     erosione: (arg) => valutaErosione(arg),
+    // ── IL REGISTRO DEGLI ORDINI DI USCITA (24 agosto 2026) ──────────────────────────────────────
+    // Dice a `decideReprice` se un ordine RILETTO DAL VENUE e' un'uscita, e a quale prezzo l'aveva
+    // deciso la scala. Senza, `band-exit` non ha modo di distinguere un BUY di completamento a
+    // `101¢ − carico` da una quotazione fuori banda da rimettere in banda: e' cio' che il 24/08 ha
+    // portato 0.516 a 0.717, coppia 121,1¢. Stessa classe di `erosione` qui sopra — una dep che
+    // rende raggiungibile una regola — quindi si inietta e si asserisce il CABLAGGIO, non solo la
+    // decisione.
+    statoUscita: (orderId) => require('../lib/maker/ordini-di-uscita').statoOrdine(orderId),
     // ── IL VETO DI PROFILO ────────────────────────────────────────────────────────────────────────
     // Due mani, non una logica: il ciclo chiede «che profilo ha questo mercato?» e «questo
     // piazzamento passa i controlli di quel profilo?». Entrambe le risposte vengono da moduli puri.

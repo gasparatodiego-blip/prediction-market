@@ -3001,3 +3001,114 @@ usato in tre punti — `eUnTest` (riga 142, quindi **nessun `*.test.js` del repo
 la risoluzione dei percorsi relativi (194) e i percorsi `@/` (214). Riarmarlo così darebbe un hook che
 sbaglia le esenzioni e risolve i require contro una directory che non c'è. **Non corretto**: l'hook è
 disarmato, e correggere un file disarmato senza la decisione di riarmarlo sarebbe lavoro senza chiamanti.
+
+---
+
+## 37 · 🔒 IL PREZZO DECISO DALLA SCALA È VINCOLANTE — la correzione, 24 agosto 2026
+
+**Il giro precedente aveva DIAGNOSTICATO due difetti su `0x4d79d306` e non li aveva corretti** (§36 ⓸ e
+⓹). Questo giro li corregge, e la prima cosa che ha fatto è stata togliere dal libro l'ordine illegale.
+
+### ⓪ Prima del codice: l'ordine illegale, cancellato
+
+Alle **07:33:57Z** il SELL a 0,288 **non c'era più**: era morto per **GTD** alle ~07:30:21Z (piazzato
+alle 07:08:21 con `ttlSeconds 1380`) e agent40 non l'aveva ancora rinnovato. **Non l'ho cancellato io, e
+non lo dichiaro:** il libro l'ha già consumato da sé. Vivo restava l'altro ordine illegale — il BUY di
+completamento trascinato da `band-exit` — e quello è stato cancellato con lo stesso criterio, scelto per
+**proprietà** e non per id (SELL sotto il pavimento della scala **oppure** BUY con coppia oltre 101¢):
+
+| | |
+|---|---|
+| orderId | `0xe8a27e8c7adfa45cd71e1a04a2151f3c15b54c30d03fe536f89cb729acfaf07f` |
+| mercato · lato | `0x4d79d306` · **BUY yes** |
+| prezzo · size | **0,717** · 56,1 share |
+| nozionale | **$40,2237** |
+| coppia | 49,4¢ + 71,7¢ = **121,1¢** — 20,1¢ oltre il tetto |
+| causa | `coppia oltre il tetto di 101c` |
+| richiesta → risposta | **07:34:29.562Z → 07:34:29.837Z** |
+| esito | `cancelled: true`, `simulated: false` — libro del mercato **vuoto** subito dopo |
+
+**⚠ E LA GAMBA È RIMASTA SENZA USCITA A LIBRO PER TUTTO IL GIRO, dichiarato**: 56,1 share NO a carico
+49,4¢, scoperte da **oltre 28 ore**. Non è una novità introdotta dalla cancellazione — l'unica uscita che
+c'era stava a 28,8¢, cioè autorizzava $11,56 di perdita contro gli $1,39 che §7 consente — ma va detto
+per intero invece di essere lasciato dedurre.
+
+### ⓵ Il divieto, e dove vive
+
+**Un modulo solo**, `lib/maker/ordini-di-uscita.js` (puro, **25/25**), importato dai tre che avevano il
+problema. La marcatura sta in **un punto solo**, `auto-close.chiudendo` — la funzione che già timbrava la
+GTD di chiusura, con quattro chiamanti — e da lì:
+
+| dove | cosa cambia |
+|---|---|
+| `auto-close.chiudendo` | timbra `uscita: true` + `prezzoDeciso`, e **toglie `inCoda`** |
+| `manual-order` (coda e mid) | calcola l'aggiustamento, **non lo applica**, e scrive `uscita-aggiustamento-rifiutato` con deciso/proposto/delta/**ramo** |
+| `manual-order`, prima della POST | ① il prezzo che parte dev'essere ancora quello deciso, o **non parte** · ② coppia sul **prezzo di invio** oltre il tetto ⇒ **non parte** |
+| `manual-order`, dopo l'invio | registra `orderId → prezzoDeciso` in `data/ordini-di-uscita.json` |
+| `auto-reprice` band-exit | **non sposta** un'uscita; a scadenza imminente la **rinnova allo stesso prezzo** |
+| `auto-reprice` inseguimento | **non insegue** un'uscita (più forte del pavimento: ferma anche la salita) |
+
+**⚠ `inCoda` LO TOGLIE `chiudendo`, NON I CHIAMANTI.** Il 24/08 il lato posseduto lo dichiarava con una
+motivazione scritta e ragionevole — *«è un ordine che ASPETTA e matura premi»* — vera finché la scala
+sceglie un prezzo **dentro** la banda, falsa appena lo sceglie fuori. Lasciare la decisione ai chiamanti
+significa rifarla giusta in quattro posti e sbagliarla nel quinto.
+**⚠ CONSEGUENZA REALE, e va saputa**: «mai primo sul libro» **non si applica più a nessuna uscita**. Per
+un'uscita essere in testa è lo scopo (`manual-order` lo dice già: *«è lì per essere eseguita»*), ma è un
+allargamento rispetto alle quattro omissioni puntuali che il repo contava per nome.
+
+**⚠ L'AGGIUSTAMENTO SI CALCOLA E POI NON SI APPLICA**, e non è spreco: se il ramo non venisse
+interrogato, «un aggiustamento voleva muovere il prezzo» tornerebbe invisibile — ed è esattamente ciò
+che ha tenuto il difetto in piedi per sette ore. La riga costa una riga.
+
+**⚠ IL CONTROLLO TERMINALE GUARDA IL PREZZO DI INVIO, NON QUELLO DI DECISIONE.** È tutta la differenza:
+la decisione era **0,516**, dentro il tetto **al centesimo**; a partire era 0,717. Un controllo sulla
+decisione avrebbe risposto «ammesso» a un ordine che rompeva il tetto di 20,1¢.
+
+**⚠ FAIL-CLOSED, E COSTA — dichiarato.** Registro illeggibile ⇒ `noto: false` ⇒ **nessun ordine viene
+spostato dalla banda**, nemmeno una quotazione ordinaria. Non spostare costa il **premio** del rientro in
+banda — un ricavo mancato, zero dollari di perdita; spostare un'uscita costa la perdita misurata. Fra un
+ricavo mancato e una perdita certa non c'è scelta.
+**⚠ E IL RINNOVO GTD NON È TOCCATO**, che era il rischio vero di questa correzione: un `return` secco su
+band-exit avrebbe tolto alle uscite fuori banda anche il rinnovo, facendole morire per scadenza in 23
+minuti — cioè si sarebbe curato uno spostamento **togliendo l'ordine dal libro**, il guasto del 18 agosto
+rifatto con altre mani. A scadenza imminente si cade in `uscita-rinnovo-gtd`: ri-piazzo **allo stesso
+prezzo**, e un'asserzione lo prova.
+
+### ⓶ I due minimi, con due nomi
+
+`lib/maker/minimi-del-venue.js` (puro, **15/15**). `rewards.min_size` = **pavimento premiante** (50/20)
+⇒ «reward ZERO»; `minimum_order_size` = **minimo d'ordine** (**5**) ⇒ «il venue rifiuta». `rules.minSize`
+è il primo, e il percorso d'uscita lo leggeva come il secondo.
+**⚠ FAIL-CLOSED ALL'OPPOSTO, apposta**: minimo d'ordine illeggibile ⇒ **non si indovina, non si dichiara,
+e NON si marca R6** (`piazzabile: null`, mai `false`); pavimento illeggibile ⇒ `premiante: null`, perché
+è una domanda sul **ricavo**.
+**⚠ IL CAMPO C'È, IL VALORE NO — e questo è il motivo per cui R6 non è stato cablato.** `minOrderSize` è
+stato aggiunto al record del catalogo e alle `rules`, ma **nessuno scrittore del catalogo lo popola
+ancora**: in servizio vale `null`, quindi il percorso d'uscita risponde «illeggibile» e si ferma — che è
+la risposta voluta. Cablare la marcatura R6 automatica **oggi** significherebbe cablarla su un numero
+assente o, peggio, ripiegare sul pavimento premiante: si abbandonerebbero residui che il venue accetta.
+**L'ordine giusto è: prima chi scrive il catalogo legge `minimum_order_size` dal venue, poi R6.**
+
+### ⓷ I test, e la prova che sono rossi sul codice di prima
+
+`lib/maker/uscita-prezzo-vincolante.test.js` — **47/47**, ognuno sui numeri veri del giornale.
+Eseguito **sul codice di HEAD** (worktree allo stesso commit, coi tre moduli nuovi copiati):
+**32 passati, 7 falliti**, e il fallimento è la riga del giornale verbatim:
+
+```
+band exit: |0.516 − 0.749000| = 23.30¢ > ±5.50¢ + 0.100¢ hysteresis,
+confirmed on 6 consecutive observations → move to 0.708 (band-edge)
+```
+
+**⚠ VA LETTO PER QUELLO CHE È, e non di più.** Solo il caso ② è rosso *sul comportamento* del codice
+vecchio, perché è l'unico che interroga una funzione che esisteva già (`decideReprice`). ①③④ girano su
+moduli **nuovi**: là «rosso su prima» significa «prima la domanda non era esprimibile», e la prova del
+difetto non è il test ma il **record vivo** — `priceAdjusted {inCoda:{from:0.495,to:0.288}}` per ①,
+l'ordine partito a 0,717 per ③, la riga `«sotto il minimo del venue (50)»` per ④.
+**⚠ E UN CONTROLLO PER OGNI CASO**: lo stesso ordine **non** marcato viene spostato da band-exit come
+sempre (senza, il test sarebbe verde anche avendo spento band-exit del tutto), e uno spec di **apertura**
+non passa da `chiudendo`, non è marcato e tiene il suo `inCoda`.
+**⚠ Un difetto della fixture trovato dal proprio controllo**: la prima stesura non portava
+`readable/midSource/midAgeSec`, quindi `decideReprice` rispondeva `skip/rules-unreadable` — e due
+asserzioni erano **verdi per il motivo sbagliato** (`targetPrice: null` passa «non lo sposta»). È lo
+stesso guasto degli otto test del 19 agosto (§5.2 p.11). L'ha rilevato il blocco CONTROLLO.
