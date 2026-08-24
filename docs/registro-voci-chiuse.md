@@ -767,3 +767,42 @@ Solo numero e titolo: serve a risolvere «§5 punto N», il resto è in `git log
 > condizione precedente era una tautologia e la guardia vera era «solo il primo giro» ·
 > **p.28 i due commenti a 110¢ in `auto-close.js`** → corretti il 16/08 nello stesso commit che porta
 > il tetto unico a 101¢ (§5-bis p.165), il reperto D7 non esiste più.
+
+
+### §5.2 p.72 — il referto puntava a un campo vuoto (chiusa il 24 agosto 2026)
+
+**IL FATTO, misurato due volte.** 23/08 15:22Z: `postiNonAssegnati [{scaglione:'basso', posti:1}]` +
+`fasce.postiVuoti [{fascia:'corta', posti:1}]`, e `slotVuotiPerScarsita.motivo` rimandava «alla
+composizione o agli scarti dichiarati qui accanto» — ma i 3 `scartatiPerComposizione` erano **tutti
+«alto»**, quindi per quel posto la frase **non era vera**. L'unico candidato idoneo (`0x0be89faf83`,
+MrBeast 39-41M, minSize 20, 32,4 h) non compariva in nessuna lista: cadeva prima del cancello di
+composizione, come §5.2 p.62. **24/08 10:58Z, il caso in forma pura**: `scartatiPerComposizione` era
+**`[]`** e i **dodici** scarti stavano tutti in `fasce.scartatiPerFascia` — il referto mandava il
+lettore su una **lista vuota** mentre la causa era in un altro campo.
+
+**LA CLASSE.** È **D7** applicato a un referto invece che a un commento: non descriveva una riga
+sbagliata, nominava un campo che non conteneva niente. La forma pericolosa è la stessa — chi legge si
+fida della frase e conclude «non c'è niente di scartato, quindi non c'erano candidati», che è
+esattamente il contrario di quello che era successo (dodici candidati pronti).
+
+**LA CURA (24 agosto 2026).** `slotVuotiPerScarsita` costruisce il motivo **dai campi che hanno davvero
+righe**, uno per uno, e non ne nomina nessun altro:
+`fasce.scartatiPerFascia` · `scartatiPerComposizione` · `postiNonAssegnati` · `scartatiPerCodaLunga` ·
+`scartatiPerCodaLungaSottoPavimento`. Il caso **fascia** si dice per nome e per numero — «gli scarti sono
+PER FASCIA: fascia «corta» piena, 12 candidati respinti» — con `perFasciaPiena: [{fascia, quanti}]` per
+chi conta a macchina, e `campi: [...]` come versione macchina dell'intera frase, così un lettore
+automatico non deve fare il parsing di una frase italiana. Aggiunto anche `travaso`, l'esito dell'ultima
+cosa che ha provato a riempire quei posti.
+**⚠ E SE NESSUNA LISTA È POPOLATA LO DICHIARA**: «restano N posti liberi con A ammissibili e NESSUNA
+lista di scarto è popolata: nessun campo di questo referto spiega questi posti». Una risposta onesta;
+«guarda qui accanto» quando non c'è niente accanto, no.
+**⚠ ADDITIVO**: le cinque chiavi che c'erano (`quanti`, `tetto`, `occupati`, `ammissibili`, `motivo`)
+restano tutte, e il ramo «il board non offre abbastanza mercati ammissibili» è **invariato parola per
+parola** — altri lettori confrontano quella frase. Cambia solo il ramo che mentiva.
+
+**LA PROVA**: `lib/maker/travaso-fasce.test.js` blocco ⑤ (rosso su HEAD: il motivo di ieri contiene
+«nella composizione o negli scarti dichiarati qui accanto» con `scartatiPerComposizione === []`).
+
+**⚠ NON È LA CURA DEL POSTO VUOTO, È LA CURA DEL REFERTO.** A riempire il posto è il **travaso fra
+fasce** (§4.13), scritto nello stesso giro: erano due difetti sovrapposti, e tenerli distinti è ciò che
+ha permesso di vedere il secondo.

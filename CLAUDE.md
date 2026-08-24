@@ -968,6 +968,28 @@ criterio vecchio, **1** col nuovo). **⚠ LA DOMANDA «SIAMO CIECHI?» NON APPAR
 risolve `mid-stantio` (§4.1) — due soglie sullo stesso fatto sarebbero due opinioni. **⚠ UNO SLOT VUOTO PER
 SCARSITÀ SI DICHIARA** (`slotVuotiPerScarsita`, `postiNonAssegnati`, `scartatiPerComposizione`).
 
+**↔️ IL TRAVASO FRA FASCE — 24 agosto 2026, decisione dell'operatore** (`decidiTravasoFasce`, puro,
+dentro `selezione-mercati.js` — quel modulo **non importa niente** e un test lo pretende). Una fascia con
+**posti vuoti E ZERO entranti propri** cede quei posti ai candidati dell'altra fascia scartati **solo**
+per `fascia-piena`, **in ordine di premio netto giornaliero**. **⚠ NON È L'ABOLIZIONE DELLA PARTIZIONE**:
+basta **un** entrante proprio perché i posti restino suoi — il travaso vive solo nel caso degenere in cui
+il vincolo non sceglie più fra due usi del capitale ma fra un uso e **nessuno**. **LE CINQUE COSE CHE NON
+FA**: ① **non alza il numero totale di slot** (usa lo **stesso** budget globale del 3-ter, quindi N non
+cambia e l'invariante d'avvio `N × 2 × $61,25 ≤ cap` di §4.2 **non è toccata**); ② **non tocca gli
+occupanti** (nessun ramo cancella da `selezionati`: riempie posti già vuoti, non ne libera — quindi
+nessuna cancellazione al venue ne discende); ③ **non attraversa il secchio di capitale** (la quota
+basso/alto è una partizione **ortogonale** e resta intera: si travasa solo se il **proprio** secchio ha
+ancora un posto); ④ **non travasa chi è caduto per altro** (secchio, coda lunga, ammissibilità, fascia
+**non determinabile**); ⑤ **non travasa nel dubbio** — netto non misurabile ⇒ non travasa, **e lo
+dichiara** (un netto che non si sa non diventa zero, §5.3). **⚠ IL COSTO MISURATO CHE L'HA PRODOTTO**:
+24/08 10:58Z, 15 slot su 18, i **tre** posti liberi tutti «lunga», zero entranti, e **dodici** candidati
+corti respinti uno per uno — tre slot fermi con dodici candidati pronti. **⚠ LASCIA SEMPRE UNA RIGA**
+(`tipo:'travaso-fasce'` nel giornale di agent41): fascia di origine, di destinazione, quanti posti, i
+`conditionId`, i netti con cui sono stati ordinati, i posti rimasti vuoti dopo — **e anche quando non
+travasa dice perché**. **⚠ DUE CONTEGGI DIVERSI, apposta**: `entrantiPerFascia` conta i mercati per la
+**loro** fascia (un corto travasato resta un corto), `postiOccupatiPerFascia` conta di **chi era il
+posto**. **LA PROVA**: `lib/maker/travaso-fasce.test.js` (24/24; **18 rossi su HEAD**).
+
 **🧊 «SLOT STERILE» — ARMATA dal 20/08** (`52c33f4`: soglia **22 min**, quarantena **180 min**, tetto **5
 rilasci/ora**): libera uno slot che per **due osservazioni consecutive** non produce ordini. ⚠
 **`SLOT_STERILE_ARMATO` ASSENTE ⇒ ARMATA** (giornale: `esito:'in-attesa'`/`'rilascia'` armata,
@@ -1104,7 +1126,7 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
 
 ### 5.2 · Aperte
 
-> **Voci di §5.2 CHIUSE** (p.15/16, p.17, p.18, p.21, p.28, p.37, p.39, p.49, p.54, p.57):
+> **Voci di §5.2 CHIUSE** (p.15/16, p.17, p.18, p.21, p.28, p.37, p.39, p.49, p.54, p.57, p.72):
 > diagnosi integrale in **`docs/registro-voci-chiuse.md`**, regole vive nelle sezioni citate.
 
 49. **✅ CHIUSA IL 21 AGOSTO** — catena obiettivo/stima concorde al bit. Diagnosi:
@@ -1172,15 +1194,13 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
    diagnosi**: un replay del piano da una sessione di ricerca muore con **SIGABRT (OOM) 3 volte su 3**,
    quindi le cause per mercato oggi si leggono **solo** dal giornale di agent41. **Non corretto**: la
    leva è memoria o un piano che non tenga in RAM il registro dei candidati, ed è una decisione.
-72. **🟡 LO SLOT CORTO/BASSO È VUOTO E IL REFERTO NON SA DIRE PERCHÉ — 23 agosto 2026, NON corretto.**
-   Alle 15:22Z: `postiNonAssegnati [{scaglione:'basso', posti:1}]` + `fasce.postiVuoti [{fascia:'corta',
-   posti:1}]`, `slotVuotiPerScarsita.motivo` rimanda «alla composizione o agli scarti dichiarati qui
-   accanto» — ma i 3 `scartatiPerComposizione` sono **tutti «alto»**, quindi per quel posto la frase
-   **non è vera**. L'unico candidato idoneo (`0x0be89faf83`, MrBeast 39-41M, minSize 20, 32,4 h) **non
-   compare in nessuna lista**: non è in quarantena, non è fra gli scarti, non è fra gli ammissibili.
-   Cade prima del cancello di composizione, esattamente come §5.2 p.62. La cura è una lista
-   `scartatiPerAmmissibilita` col motivo di `valutaAmmissibilita`; **non fatta**: cambia la forma del
-   referto, che altri lettori confrontano.
+72. **✅ CHIUSA IL 24 AGOSTO 2026** — `slotVuotiPerScarsita.motivo` nomina adesso **solo i campi che
+   hanno davvero righe** (`campi`, versione macchina della stessa frase), e quando gli scarti sono per
+   fascia lo dice **per nome e per numero**: «gli scarti sono PER FASCIA: fascia «corta» piena, 12
+   candidati respinti (in `fasce.scartatiPerFascia`)». Nessuna lista popolata ⇒ lo dichiara invece di
+   mandare il lettore a guardare «qui accanto». Regola viva in §4.13; diagnosi:
+   `docs/registro-voci-chiuse.md`. ⚠ Nello stesso giro è nato il **travaso fra fasce** (§4.13), che è
+   la cura del *posto vuoto*; questa voce era la cura del *referto che non sapeva dirlo*.
 65. **🔴 LA QUOTA CODA LUNGA IN SERVIZIO È 0,50, MA CHIUNQUE LA LEGGA FUORI DA agent41 VEDE 0,12 —
    23 agosto 2026, NON corretto.** `MAKER_QUOTA_CODA_LUNGA: '0.5'` sta **solo** in
    `agents/ecosystem.config.js:690` — non nel `.env` — e `horizon.LONG_TAIL_CAP_FRAC` si calcola

@@ -11,6 +11,25 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 
 ---
 
+> ## ⏪ RIPRISTINO — IL TRAVASO FRA FASCE, 24 agosto 2026
+> Annulla il commit `f378ea7` («travaso fra fasce quando una ha posti vuoti e zero entranti + referto
+> scarti su campo corretto»): i posti di una fascia tornano a restare vuoti anche quando quella fascia
+> non ha nessun candidato entrante, e `slotVuotiPerScarsita.motivo` torna a rimandare «alla composizione
+> o agli scarti dichiarati qui accanto» anche quando `scartatiPerComposizione` è vuoto (§5.2 p.72).
+> ⚠ **NON è un `sed`, ed è deliberato**: un revert o applica, o fallisce rumorosamente. Da `bot`, da
+> `/home/bot/bot`. ⚠ Riavvio pm2 da confermare in chat (§2 r.2).
+>
+> ```bash
+> git revert --no-edit f378ea7 && node lib/maker/fasce-slot.test.js && pm2 delete agent40-manual-reprice agent41-realloc-scheduler && pm2 start agents/ecosystem.config.js --only agent40-manual-reprice,agent41-realloc-scheduler && pm2 save
+> ```
+>
+> **⚠ NON TOCCA NÉ IL CAP NÉ IL NUMERO DI SLOT**: il travaso non li ha mai mossi (usa lo stesso budget
+> globale del 3-ter), quindi l'invariante `N × 2 × $61,25 ≤ cap` è la stessa prima e dopo.
+> **⚠ RIAVVIARE agent40 ABBANDONA IL LIBRO** (ordini PRE-ESISTENTI, morte per GTD in ~23 min) **e
+> azzera la quarantena slot-sterile** in memoria di agent41. È il costo dichiarato.
+
+---
+
 > ## ⏪ RIPRISTINO — IL PUNTO UNICO DEI MERCATI E L'INVARIANTE CAP, 24 agosto 2026
 > Annulla il commit `e1c223b` («punto unico mercati + invariante cap + rimozione falsa ricetta meteo»):
 > `MAKER_MERCATI_CONTEMPORANEI` torna ad avere un difetto, `MAX_MERCATI_CONTEMPORANEI = 19` torna in
