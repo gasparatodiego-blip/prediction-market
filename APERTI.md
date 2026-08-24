@@ -11,6 +11,42 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 
 ---
 
+> ## ⏪ RIPRISTINO — IL MINIMO D'ORDINE DAL VENUE, 24 agosto 2026
+> Annulla il commit `f0394fa`: nessuno popola più `minOrderSize`, e il percorso d'uscita torna a
+> misurare le size sul **pavimento premiante** (20/50) invece che sul **minimo d'ordine** del venue (5)
+> — cioè torna ai 22.206 rifiuti `BELOW_MIN_SIZE` in 24 ore, dei quali 282 su un'uscita in profitto.
+> ⚠ **NON è un `sed`**: un revert o applica, o fallisce rumorosamente. Da `bot`, da `/home/bot/bot`.
+> ⚠ Riavvio pm2 da confermare in chat (§2 r.2).
+>
+> ```bash
+> git revert --no-edit f0394fa && node lib/maker/minimo-ordine-dal-venue.test.js; node lib/rewards/scadenza-unificata.test.js
+> ```
+>
+> **⚠ IL PRIMO TEST DEVE DIVENTARE ROSSO DOPO IL REVERT**: è la prova che il revert ha applicato. Se
+> resta verde, il revert non ha fatto quello che dice.
+> **⚠ NON TOCCA NESSUN TETTO NÉ NESSUNA SOGLIA**: il commit non ha spostato numeri di rischio.
+
+---
+
+> ## 🔴 ATTENZIONE ALL'ORDINE DEL PRIMO RIAVVIO DOPO `f0394fa` — 24 agosto 2026
+> **`minOrderSize` è `null` su OGNI mercato finché agent24 non riscrive il board col codice nuovo**, e
+> il board si riscrive ogni **15 minuti**. Nel frattempo il percorso d'uscita risponde
+> `MIN_ORDER_SIZE_UNREADABLE` — che **non blocca** più di quanto bloccasse ieri, perché resta
+> derogabile da una chiusura provata, ma riempie il giornale e va saputo.
+> **L'ORDINE GIUSTO È: prima agent24, poi (dopo un giro di scansione) agent40 e agent41.**
+> ```bash
+> pm2 delete agent24-liquidity-rewards && pm2 start agents/ecosystem.config.js --only agent24-liquidity-rewards && pm2 save
+> # ATTENDERE un giro di scansione (≤ 15 min), poi verificare che il board porti il campo:
+> node -e "const j=require('/tmp/rewards-bot-bot/liquidity-rewards.json');const n=(j.markets||[]).filter(m=>Number.isFinite(m.minOrderSize)).length;console.log('righe col minimo d\'ordine:',n,'su',(j.markets||[]).length)"
+> # solo quando quel numero è > 0:
+> pm2 delete agent40-manual-reprice agent41-realloc-scheduler && pm2 start agents/ecosystem.config.js --only agent40-manual-reprice,agent41-realloc-scheduler && pm2 save
+> ```
+> **⚠ agent34 va riavviato anche lui** per portare il campo nella fotografia del book vivo, che
+> `resolveMarketRules` legge PRIMA del board. **⚠ RIAVVIARE agent40 ABBANDONA IL LIBRO** (ordini
+> PRE-ESISTENTI, morte per GTD in ~23 min) **e azzera la quarantena slot-sterile** di agent41.
+
+---
+
 > ## ⏪ RIPRISTINO — IL TRAVASO FRA FASCE, 24 agosto 2026
 > Annulla il commit `f378ea7` («travaso fra fasce quando una ha posti vuoti e zero entranti + referto
 > scarti su campo corretto»): i posti di una fascia tornano a restare vuoti anche quando quella fascia

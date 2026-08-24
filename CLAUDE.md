@@ -738,10 +738,45 @@ scriveva «sotto il minimo del venue (50)» dove il venue dice 5. **Ogni decisio
 minimo d'ordine; ogni decisione sul premio legge il pavimento premiante.**
 **⚠ FAIL-CLOSED ALL'OPPOSTO, apposta**: minimo d'ordine illeggibile ⇒ il percorso d'uscita **non
 indovina, non dichiara e NON marca R6** (`piazzabile: null`, mai `false`); pavimento illeggibile ⇒
-`premiante: null`, perché è una domanda sul ricavo. **⚠ Oggi `minOrderSize` non è ancora popolato da
-nessuno scrittore del catalogo** (il campo esiste, il valore è `null`): l'effetto in servizio è
-«illeggibile ⇒ non si indovina», che è la risposta voluta — ed è la ragione per cui la marcatura R6
-automatica **non è stata cablata**.
+`premiante: null`, perché è una domanda sul ricavo.
+
+**🔢🔢 E DAL 24 AGOSTO 2026 `minOrderSize` LO POPOLA IL VENUE — commit `f0394fa`.** Il campo esisteva e
+nessuno lo riempiva: le tre porte del catalogo lo leggevano già, mancavano i **produttori**.
+**IL CAMPO DEL VENUE HA DUE NOMI**: `minimum_order_size` sul CLOB (`GET /markets/<cid>`),
+`orderMinSize` su Gamma. **I CINQUE PUNTI CHE ORA LO SCRIVONO**: `agent24.leggiMercatoClob` (dalla
+**stessa** risposta che già scaricava per la scadenza ⇒ **zero chiamate HTTP in più**, `MAX_RPS`
+intatto) → riga di board · `lib/rewards-normalize` (riga normalizzata, corsia Polymarket; **Kalshi non
+pubblica il campo** e resta senza) · `verifica-mercati-venue.leggiVenueClob` (la terza fonte, i mercati
+fuori board) · `market-search` + `api/maker/markets/enable` (la corsia del pannello, Gamma) · `agent34`
+(watchlist, mercati abilitati a mano e **fotografia del book vivo**, che `resolveMarketRules` legge
+*prima* del board). Assente ⇒ **`null` ovunque, mai 0**.
+**IL LETTORE**: `venue-rules.validateQuote` accetta `uscita:true` — il timbro di `auto-close.chiudendo`,
+punto unico — e con quello misura la size sul **minimo d'ordine**. Tre esiti: size sotto un minimo
+**letto** ⇒ `BELOW_MIN_ORDER_SIZE`, rifiuto **non derogabile** (il venue rifiuterebbe di sicuro, e non
+spedirlo toglie dalla rete gli invii garantiti-rifiuto) · minimo **non pubblicato** ⇒
+`MIN_ORDER_SIZE_UNREADABLE`, che **nomina il conditionId** e **non ripiega sul pavimento premiante** ·
+sopra il minimo d'ordine e sotto il pavimento premiante ⇒ **VALIDO**, e «non matura premio» viaggia
+come **avviso**, non come divieto.
+**⚠ CORRETTI ENTRAMBI I GATE, NON UNO**: `placeManualOrder` **e** il guard gemello di
+`auto-close.decideClose`. Il 17 agosto la deroga era stata messa solo sul primo e non veniva **mai**
+raggiunta, perché il secondo rifiutava prima.
+**⚠ `MIN_ORDER_SIZE_UNREADABLE` RESTA DEROGABILE DA UNA CHIUSURA PROVATA**, come già lo era il
+pavimento premiante: finché il board non è riscritto col codice nuovo quel campo è `null` su **ogni**
+mercato, e senza la deroga si curerebbero 282 rifiuti con qualche migliaio di rifiuti nuovi. La deroga
+si **dichiara** e distingue «pavimento derogato» da «minimo d'ordine non letto» — il secondo è una cosa
+da **riparare** (agent24 non ha ancora riscritto quel mercato), non una condizione normale.
+**⚠ CHI APRE NON È TOCCATO**: senza il timbro `uscita` il ramo è identico, e un'apertura da 15,4 share
+resta rifiutata dal pavimento premiante (asserito).
+**IL COSTO CHE L'HA PRODOTTA, misurato su 24 ore**: **22.206** rifiuti `BELOW_MIN_SIZE` sul percorso
+d'uscita, su **quattro** mercati. Tre erano residui da 2,01 · 2,8461 · 4,85 share — sotto **entrambi** i
+minimi, quindi il bot aveva ragione **per caso**. Il quarto, `0x65109969…`, era una VENDITA da **15,4
+share a 25¢ con carico 21¢**, un'uscita **in profitto** rifiutata **282 volte** perché 15,4 < 20 dove il
+numero vero è 5. **LA PROVA**: `lib/maker/minimo-ordine-dal-venue.test.js` (17/17; **12 rossi su HEAD**),
+che include una prova su `leggiVenueClob` **vera** contro un server che risponde come il CLOB — così il
+nome del campo è fissato da un test e non da un commento.
+**⚠ LA MARCATURA R6 AUTOMATICA RESTA NON CABLATA**, ed è una decisione separata: adesso il numero c'è,
+ma marcare una posizione come abbandonata è un atto su capitale e non discende dal fatto che il minimo
+sia leggibile.
 
 **⚠ AL GRADINO 3, SE LA COPPIA È SOTTO 101¢, SI COMPRA LA SORELLA E SI FONDE — NON SI VENDE**
 (emendamento alla regola 7, 24 agosto 2026, in cima a questo file): il merge rende $1,00/share garantito,
@@ -1257,6 +1292,40 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
    `gambeDiUnaRiga` e **non arriva a disco**. Conseguenza misurata: la diagnosi del difetto del tick
    non era raggiungibile dal giornale — e' servito ricalcolare le gambe fuori processo. Un motivo che
    non si scrive e' un motivo che non esiste il giorno dopo.
+58-bis. **🔴🔴 VERDETTO DEL 24 AGOSTO 2026: È UNA FORMULA CIECA AI CORTI, NON UNA DIFESA CHE FUNZIONA.
+   Letto, misurato, NON corretto** (l'operatore ha chiesto il verdetto prima della cura).
+   **LA GRANDEZZA E LA SOGLIA**: `horizon.paybackDays(gross, cost) = cost / (gross − cost)`, e il
+   cancello è `days <= payback ⇒ short` (`horizon.js:294`). `costPerDay` arriva da
+   `best.costPerDay5m`, cioè il **markout a +5 min sui fill ricostruiti dal tape, ammortizzato sulla
+   finestra osservata**, con `policy: 'hold'` — che è quella in servizio (`allocator.js:1540`).
+   **IL PUNTO CHE DECIDE**: sotto `hold` il costo è un **FLUSSO** (\$/giorno ricorrente), non un costo
+   **una tantum**. Fra due flussi un «tempo di rientro» non esiste: se `net = gross − cost > 0` la
+   posizione guadagna **dal primo istante**, se `net ≤ 0` non guadagna **mai**, a nessun orizzonte.
+   `cost/net` resta un numero con le unità dei giorni, ma non è il tempo per recuperare niente — è
+   solo una misura riscalata di quanto è sottile il margine, usata come **requisito di vita
+   residua**.
+   **L'ALGEBRA, esatta**: `days ≤ cost/(gross−cost)` ⟺ **`net/gross ≤ 1/(1+days)`**. Cioè la soglia di
+   margine richiesta **dipende solo dalla vita residua**, e nel termine `1/(1+days)` non c'è nessun
+   costo. Misurato sul board del 24/08 sugli otto corti ancora presenti (`0x34ca7011`, `0x7ccd7a34`,
+   `0x591f485b`, `0x96d9c919` erano già usciti dal board):
+   `0xfad97d48` 25,0 h ⇒ **netto/lordo > 49,0%** · `0xdeb729bc`, `0x3de39f25`, `0x6bfc3338` 28,0 h ⇒
+   **> 46,1%** · `0xec0aef11`, `0x3492e563`, `0x0bd56b4e` 36,0 h ⇒ **> 40,0%**.
+   Per confronto, con la **stessa identica economia giornaliera**: 7 g ⇒ > 12,5% · 30 g ⇒ > 3,2% ·
+   150 g ⇒ **> 0,66%**. Un mercato a 25 ore deve essere **74 volte** più redditizio in percentuale di
+   uno a 150 giorni per superare lo stesso cancello.
+   **⚠ LA FORMULA È GIUSTA PER UNA POLICY CHE NON È IN SERVIZIO**: sotto `policy:'close-now'`
+   (`scripts/rewards-replay/lib/allocate.js:118`) il costo È una tantum — lo spread realizzato
+   attraversando il book, ammortizzato sulla finestra — e lì `cost/net` è un **payback vero**. La
+   corsia esiste, ma è quella del backtest.
+   **⚠ QUELLO CHE NON SI PUÒ DIRE, e va detto**: **quale** dei due cancelli abbia respinto ciascuno
+   degli undici oggi **non è su disco** (§5.2 p.10: nessun file conserva gli scartati del piano, e il
+   figlio va in OOM, p.71). I corti non hanno netto iniettato (`nettiIniettati 27` su 28 ammissibili),
+   quindi possono essere caduti prima, a `profondita: non-verificata` (p.55). Ciò che è dimostrato è
+   la **struttura** del test, che vale per qualunque mercato a 25-36 ore.
+   **⚠ NON CORRETTO IN QUESTO GIRO, per istruzione.** La cura non è allentare una soglia: è decidere
+   se il cancello debba esistere affatto sotto `hold`, dove il segno del netto è già l'intero
+   contenuto economico. È una decisione dell'operatore, e tocca `MIN_HORIZON_DAYS`/`horizonFilter`.
+
 58. **🔴 IL PAYBACK RIFIUTA I CORTI CHE LA SELEZIONE AMMETTE — 22 agosto 2026, NON corretto.**
    La fascia corta adesso vede, sceglie e prezza (§4.13), ma il piano non la finanzia: su
    `0x9db884ee` (MrBeast, 31 h) `horizonVerdict` risponde **`short`** — «scade fra 1,3 g ma il
