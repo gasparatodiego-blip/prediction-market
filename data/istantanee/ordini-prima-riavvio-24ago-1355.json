@@ -1,0 +1,482 @@
+{
+  "nota": "ISTANTANEA LETTA DAL VENUE con l'adapter cancel-only (listOpenOrders). Non ricostruita dal giornale.",
+  "etichetta": "prima-riavvio-24ago-1355",
+  "presaAl": "2026-08-24T13:55:03.807Z",
+  "leggibile": true,
+  "totaleOrdini": 30,
+  "nozionaleTotaleUsd": 768.2474,
+  "perMercato": [
+    {
+      "mercato": "0x0840c8440eb6493c90256b358efd0a83105732167eff539a0825444ff43ae607",
+      "ordini": 2,
+      "nozionaleUsd": 53.674
+    },
+    {
+      "mercato": "0x6f7c79f736e48441c69a1fa5496c0e1b9d1b56fd28c7def5724b68d61ebd1299",
+      "ordini": 2,
+      "nozionaleUsd": 53.11
+    },
+    {
+      "mercato": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+      "ordini": 2,
+      "nozionaleUsd": 52.752
+    },
+    {
+      "mercato": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+      "ordini": 2,
+      "nozionaleUsd": 52.6218
+    },
+    {
+      "mercato": "0xde3801fcbe45f94ab23ae56c8fdd759b5736d8d92c774688acde561987e6115a",
+      "ordini": 2,
+      "nozionaleUsd": 52.584
+    },
+    {
+      "mercato": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+      "ordini": 2,
+      "nozionaleUsd": 52.584
+    },
+    {
+      "mercato": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+      "ordini": 2,
+      "nozionaleUsd": 52.545
+    },
+    {
+      "mercato": "0xfb9f5d778a6a9130829345b06c569ae68d50720e56389003795391b25a381aa9",
+      "ordini": 2,
+      "nozionaleUsd": 52.545
+    },
+    {
+      "mercato": "0x0c4e3e74cc20bdd8380b60ce489178403e6c801028d7065f6ede90733a9a6352",
+      "ordini": 2,
+      "nozionaleUsd": 52.545
+    },
+    {
+      "mercato": "0xda9215cfc9cb6ac927a36a22dced1e66aa4a8c2173a134320a79aabdcb66629d",
+      "ordini": 2,
+      "nozionaleUsd": 52.545
+    },
+    {
+      "mercato": "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988",
+      "ordini": 2,
+      "nozionaleUsd": 52.545
+    },
+    {
+      "mercato": "0x3f1dc6b57ac3fda5b95d25c8db01ba5335e46dfe2f6be50dfff04710fab0e4ac",
+      "ordini": 2,
+      "nozionaleUsd": 52.173
+    },
+    {
+      "mercato": "0x34ca70117eea11224742709bc59947a089b5c918918155e417f72d541ff9fd46",
+      "ordini": 2,
+      "nozionaleUsd": 49.476
+    },
+    {
+      "mercato": "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+      "ordini": 2,
+      "nozionaleUsd": 37.2
+    },
+    {
+      "mercato": "0x4d79d3068bdc6bbb2101462561d64c54773947d9c776d1ad637655c60ecbe5b9",
+      "ordini": 1,
+      "nozionaleUsd": 28.9476
+    },
+    {
+      "mercato": "0xddcb215d8c020c9794ed641720bde228d41f7fbbc8591e6c93e6cb7b9ed39efc",
+      "ordini": 1,
+      "nozionaleUsd": 20.4
+    }
+  ],
+  "ordini": [
+    {
+      "id": "0xcb45535f443cfc4dff22e02ba23e23251759401f9e045ec77496020e0e45c8c7",
+      "mercato": "0xde3801fcbe45f94ab23ae56c8fdd759b5736d8d92c774688acde561987e6115a",
+      "tokenId": "42886740787070849677667435962046954744507546692160141925653974894735788658911",
+      "lato": "BUY",
+      "prezzo": 0.244,
+      "size": 56,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 13.664,
+      "creatoAl": 1787579687,
+      "scadenza": "1787579933",
+      "scadenzaIso": "2026-08-24T13:58:53.000Z"
+    },
+    {
+      "id": "0x1ecc467542f117c9fa93b497916abb998f30d90d3dbc0cb057256c26add3e5a7",
+      "mercato": "0xde3801fcbe45f94ab23ae56c8fdd759b5736d8d92c774688acde561987e6115a",
+      "tokenId": "1127002663204938898990271250083065386912833121400870094887163353650795924108",
+      "lato": "BUY",
+      "prezzo": 0.695,
+      "size": 56,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 38.92,
+      "creatoAl": 1787579684,
+      "scadenza": "1787579931",
+      "scadenzaIso": "2026-08-24T13:58:51.000Z"
+    },
+    {
+      "id": "0xe9cb20c4ab4288dc7313951667a7afd2c86112c74da973638c0a3a896e812cdc",
+      "mercato": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+      "tokenId": "75028752776148090296091099469912621384650554615761384992997579209329182670110",
+      "lato": "BUY",
+      "prezzo": 0.51,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 28.815,
+      "creatoAl": 1787579580,
+      "scadenza": "1787581027",
+      "scadenzaIso": "2026-08-24T14:17:07.000Z"
+    },
+    {
+      "id": "0x200ced7619aa20fe12a0750c77d15ce4563c0b4d3d9cc451e3b62466376e02da",
+      "mercato": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+      "tokenId": "77740376296468109233042620775325425521895874827413068707200627224591548200577",
+      "lato": "BUY",
+      "prezzo": 0.357,
+      "size": 56,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 19.992,
+      "creatoAl": 1787579554,
+      "scadenza": "1787581000",
+      "scadenzaIso": "2026-08-24T14:16:40.000Z"
+    },
+    {
+      "id": "0x15a9f8b6e0a6f1e2299ed9f7424b39adf61c3ab146a025c31d24e5626e24e554",
+      "mercato": "0x12dc2b61723b2a54fc1947a307389b5f32038e7a29a0e936ad1fe410b969d06a",
+      "tokenId": "72710166409980712002774407052535905861151156175854323762835102340552522606004",
+      "lato": "BUY",
+      "prezzo": 0.585,
+      "size": 56,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 32.76,
+      "creatoAl": 1787579427,
+      "scadenza": "1787580873",
+      "scadenzaIso": "2026-08-24T14:14:33.000Z"
+    },
+    {
+      "id": "0x93cde962674fd734841e9fa9a6ad120c01d403ee81b983bdd26d091890109f55",
+      "mercato": "0xfb9f5d778a6a9130829345b06c569ae68d50720e56389003795391b25a381aa9",
+      "tokenId": "58796266408126383393922411138384027313399817411036364767239174643845349541617",
+      "lato": "BUY",
+      "prezzo": 0.25,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 14.125,
+      "creatoAl": 1787579414,
+      "scadenza": "1787580860",
+      "scadenzaIso": "2026-08-24T14:14:20.000Z"
+    },
+    {
+      "id": "0x7e27c2a9c64328ffe7c78688f4efaa8dc09a961f3536d23834b456b66e30186a",
+      "mercato": "0x0c4e3e74cc20bdd8380b60ce489178403e6c801028d7065f6ede90733a9a6352",
+      "tokenId": "65347182265264265424333762667428038846566279619618221541184032576767073225423",
+      "lato": "BUY",
+      "prezzo": 0.9,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 50.85,
+      "creatoAl": 1787579409,
+      "scadenza": "1787580856",
+      "scadenzaIso": "2026-08-24T14:14:16.000Z"
+    },
+    {
+      "id": "0x98969f6dd636b36193334cc70103b90fdb461f4fd1287b152cea2df962cc909e",
+      "mercato": "0xda9215cfc9cb6ac927a36a22dced1e66aa4a8c2173a134320a79aabdcb66629d",
+      "tokenId": "44985393084233082081160428398186584254138339183687860206128835999511077090893",
+      "lato": "BUY",
+      "prezzo": 0.73,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 41.245,
+      "creatoAl": 1787579376,
+      "scadenza": "1787580823",
+      "scadenzaIso": "2026-08-24T14:13:43.000Z"
+    },
+    {
+      "id": "0x77d42175487ba48ea766418b0c8929be2423e4588aaffafd92b9b5588340d46c",
+      "mercato": "0x0c4e3e74cc20bdd8380b60ce489178403e6c801028d7065f6ede90733a9a6352",
+      "tokenId": "14353177847449637000680036096607017041343822518830021008001958289441826466630",
+      "lato": "BUY",
+      "prezzo": 0.03,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 1.695,
+      "creatoAl": 1787579370,
+      "scadenza": "1787580817",
+      "scadenzaIso": "2026-08-24T14:13:37.000Z"
+    },
+    {
+      "id": "0x84aca452c12a708ce65b5e4ef54960dbd9f6b3e724dbefcb9936c3a25e01167b",
+      "mercato": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+      "tokenId": "21294592205022969346730955103773391901993330222644504059576935265667917187903",
+      "lato": "BUY",
+      "prezzo": 0.11,
+      "size": 56.1,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 6.171,
+      "creatoAl": 1787579268,
+      "scadenza": "1787580715",
+      "scadenzaIso": "2026-08-24T14:11:55.000Z"
+    },
+    {
+      "id": "0x30152b38e33ac50132880c1bb44c7a06d773e5d4d363279879da0ee6b4130965",
+      "mercato": "0x6f7c79f736e48441c69a1fa5496c0e1b9d1b56fd28c7def5724b68d61ebd1299",
+      "tokenId": "64639793552626495177432525446804338105117833181147071191866980802006528734545",
+      "lato": "BUY",
+      "prezzo": 0.43,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 24.295,
+      "creatoAl": 1787579267,
+      "scadenza": "1787580711",
+      "scadenzaIso": "2026-08-24T14:11:51.000Z"
+    },
+    {
+      "id": "0xabc69afd5e523e7d1c99f0d2415cc875360adc94031af32be6fb5741d6ba1dcc",
+      "mercato": "0x4d79d3068bdc6bbb2101462561d64c54773947d9c776d1ad637655c60ecbe5b9",
+      "tokenId": "41752520152005053112572319774388016112483102440638395254073796359544664689528",
+      "lato": "BUY",
+      "prezzo": 0.516,
+      "size": 56.1,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 28.9476,
+      "creatoAl": 1787579253,
+      "scadenza": "1787581299",
+      "scadenzaIso": "2026-08-24T14:21:39.000Z"
+    },
+    {
+      "id": "0xc1fdf5c3e9fd1d3af8cd64eb5a82313b327b2b87b3ab6ddf1ae361643c6db2b7",
+      "mercato": "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+      "tokenId": "71142357229322422344089572678224125547687709803011207827324848262016351952627",
+      "lato": "BUY",
+      "prezzo": 0.64,
+      "size": 40,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 25.6,
+      "creatoAl": 1787579224,
+      "scadenza": "1787580669",
+      "scadenzaIso": "2026-08-24T14:11:09.000Z"
+    },
+    {
+      "id": "0xe653c0fb4fcd6460fa78b03215daad3a9f69fe969ba550e5194efe949f11ff36",
+      "mercato": "0xd4e77ba6f29fc093509d24f508631abd445ecf506bbdc9c4c80e60256a318527",
+      "tokenId": "12403602920039269077597917340921667997547115084613238528792639013246536343316",
+      "lato": "BUY",
+      "prezzo": 0.828,
+      "size": 56.1,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 46.4508,
+      "creatoAl": 1787579184,
+      "scadenza": "1787580631",
+      "scadenzaIso": "2026-08-24T14:10:31.000Z"
+    },
+    {
+      "id": "0x21d4b90884a833c737f46f551bc2ceafe234ee7537c387fe971543c8b8754db6",
+      "mercato": "0xbfc776a7f419fdc9bec5f026cb6bd115db75e22664f5d99873e4c330676015f8",
+      "tokenId": "41852539340970627294572261541672153709430009321845187893526698172238523925204",
+      "lato": "BUY",
+      "prezzo": 0.29,
+      "size": 40,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 11.6,
+      "creatoAl": 1787579159,
+      "scadenza": "1787580605",
+      "scadenzaIso": "2026-08-24T14:10:05.000Z"
+    },
+    {
+      "id": "0x2d46a832ee6273dc940c416390187727ec2c6e61e53dae083aab4858bef4df22",
+      "mercato": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+      "tokenId": "10466835326554416965099784068156829774726248334728156046559014834812912458273",
+      "lato": "BUY",
+      "prezzo": 0.133,
+      "size": 56,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 7.448,
+      "creatoAl": 1787579045,
+      "scadenza": "1787580490",
+      "scadenzaIso": "2026-08-24T14:08:10.000Z"
+    },
+    {
+      "id": "0x457745496b99a294759b3a71fe84fe1e9ca6fec8310375bb89d944f1883d673f",
+      "mercato": "0xa34edb6c898232378a9cc08744842df2cd89d278ba45b012bed3ac10c7241c4d",
+      "tokenId": "115364229170068359509280114761107502298430910856477421813089992309112580316620",
+      "lato": "BUY",
+      "prezzo": 0.806,
+      "size": 56,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 45.136,
+      "creatoAl": 1787579007,
+      "scadenza": "1787580453",
+      "scadenzaIso": "2026-08-24T14:07:33.000Z"
+    },
+    {
+      "id": "0xbf0c394b0b82d7d7f586319eb440a5767d6b8ad5c5324f1af0effbfc87493b44",
+      "mercato": "0x34ca70117eea11224742709bc59947a089b5c918918155e417f72d541ff9fd46",
+      "tokenId": "51135661924561224112445254614737589630433068328987811752307015054561576207775",
+      "lato": "BUY",
+      "prezzo": 0.04,
+      "size": 53.2,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 2.128,
+      "creatoAl": 1787578947,
+      "scadenza": "1787580393",
+      "scadenzaIso": "2026-08-24T14:06:33.000Z"
+    },
+    {
+      "id": "0x707484c4322d1dc1c20265e7d2b57dd07fd2e682fe12920e243e2519f18b56af",
+      "mercato": "0xda9215cfc9cb6ac927a36a22dced1e66aa4a8c2173a134320a79aabdcb66629d",
+      "tokenId": "45548172876261594981765563602841541379137874363082470032683678601285432482774",
+      "lato": "BUY",
+      "prezzo": 0.2,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 11.3,
+      "creatoAl": 1787578894,
+      "scadenza": "1787580341",
+      "scadenzaIso": "2026-08-24T14:05:41.000Z"
+    },
+    {
+      "id": "0xe3f5aafa1165562c98da1727f594617c70f4ed83107d7c4a9552c76f0a18c697",
+      "mercato": "0x34ca70117eea11224742709bc59947a089b5c918918155e417f72d541ff9fd46",
+      "tokenId": "62861043104540140718282702903890161378917405945953269622797527992843887071276",
+      "lato": "BUY",
+      "prezzo": 0.89,
+      "size": 53.2,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 47.348,
+      "creatoAl": 1787578863,
+      "scadenza": "1787580310",
+      "scadenzaIso": "2026-08-24T14:05:10.000Z"
+    },
+    {
+      "id": "0x5c10fca70d8cb493bf60c852606838942219d1d73db74258377fc7ec447788ac",
+      "mercato": "0x6f7c79f736e48441c69a1fa5496c0e1b9d1b56fd28c7def5724b68d61ebd1299",
+      "tokenId": "47309452808971302351148835790063836653500445474446881993412888405162350267757",
+      "lato": "BUY",
+      "prezzo": 0.51,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 28.815,
+      "creatoAl": 1787578786,
+      "scadenza": "1787580230",
+      "scadenzaIso": "2026-08-24T14:03:50.000Z"
+    },
+    {
+      "id": "0x3efd311cb0ba8a6cc87c11d0c5de2e1189470ca955e69338685118d44912f95f",
+      "mercato": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+      "tokenId": "93005850938352995663334573245996733794924636935158112548608169054144721737755",
+      "lato": "BUY",
+      "prezzo": 0.42,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 23.73,
+      "creatoAl": 1787578755,
+      "scadenza": "1787580201",
+      "scadenzaIso": "2026-08-24T14:03:21.000Z"
+    },
+    {
+      "id": "0x381c2556bb476c2bb609989be7e0d883e351befed6ed26c208c89c164a155f09",
+      "mercato": "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988",
+      "tokenId": "103233456944535770064535084746323132698241141769628138054370458021432484856079",
+      "lato": "BUY",
+      "prezzo": 0.63,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 35.595,
+      "creatoAl": 1787578711,
+      "scadenza": "1787580157",
+      "scadenzaIso": "2026-08-24T14:02:37.000Z"
+    },
+    {
+      "id": "0x1c5762281c3cc24fe03bdf83d5facca632cb16872f5d83d39ea78d31dced0a11",
+      "mercato": "0x0840c8440eb6493c90256b358efd0a83105732167eff539a0825444ff43ae607",
+      "tokenId": "100742381330934300478077263057772492637055936774825786712748235402010084606153",
+      "lato": "BUY",
+      "prezzo": 0.68,
+      "size": 57.1,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 38.828,
+      "creatoAl": 1787578709,
+      "scadenza": "1787580152",
+      "scadenzaIso": "2026-08-24T14:02:32.000Z"
+    },
+    {
+      "id": "0x731cc6a28b3898f8fb5c01e4cd349972b3f2a3f227b1259352b11d0422a8672f",
+      "mercato": "0x0840c8440eb6493c90256b358efd0a83105732167eff539a0825444ff43ae607",
+      "tokenId": "28048437367801266532268533455274952647514947395890656276328838465034693295232",
+      "lato": "BUY",
+      "prezzo": 0.26,
+      "size": 57.1,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 14.846,
+      "creatoAl": 1787578704,
+      "scadenza": "1787580150",
+      "scadenzaIso": "2026-08-24T14:02:30.000Z"
+    },
+    {
+      "id": "0x83d41293507c2f998627ec56ee0a4b5c80696d9a1bc8e211eec635909ce9b90d",
+      "mercato": "0x14d327328063504ab74b2ab11fe68ad305525fafc70effcd5ba5c5c688971988",
+      "tokenId": "37573228338665283688604106386288247955339098122616134537282110500293411203970",
+      "lato": "BUY",
+      "prezzo": 0.3,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 16.95,
+      "creatoAl": 1787578643,
+      "scadenza": "1787580089",
+      "scadenzaIso": "2026-08-24T14:01:29.000Z"
+    },
+    {
+      "id": "0x097f4b6ee0cac6193c28ee10ad95a3be393e42e867c4af9be544521a455c656c",
+      "mercato": "0x3f1dc6b57ac3fda5b95d25c8db01ba5335e46dfe2f6be50dfff04710fab0e4ac",
+      "tokenId": "77971551933064024268857631563642346919068089224925089019565143734162379087855",
+      "lato": "BUY",
+      "prezzo": 0.044,
+      "size": 56.1,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 2.4684,
+      "creatoAl": 1787578629,
+      "scadenza": "1787580076",
+      "scadenzaIso": "2026-08-24T14:01:16.000Z"
+    },
+    {
+      "id": "0xdd1eb26d405da436c3e12093d52c7012de22b4a37df1957906353e4af8fac2f9",
+      "mercato": "0xfb9f5d778a6a9130829345b06c569ae68d50720e56389003795391b25a381aa9",
+      "tokenId": "24214056759503838518124475044496581251678924406683028976605163028030404228457",
+      "lato": "BUY",
+      "prezzo": 0.68,
+      "size": 56.5,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 38.42,
+      "creatoAl": 1787578602,
+      "scadenza": "1787580048",
+      "scadenzaIso": "2026-08-24T14:00:48.000Z"
+    },
+    {
+      "id": "0x067fc826c1c05424778256109e02ac58885a5c062bdd1f6cdf0911191f003c53",
+      "mercato": "0x3f1dc6b57ac3fda5b95d25c8db01ba5335e46dfe2f6be50dfff04710fab0e4ac",
+      "tokenId": "108840381160968302781461631494768964737044921296882723121242281847927683453845",
+      "lato": "BUY",
+      "prezzo": 0.886,
+      "size": 56.1,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 49.7046,
+      "creatoAl": 1787578549,
+      "scadenza": "1787579995",
+      "scadenzaIso": "2026-08-24T13:59:55.000Z"
+    },
+    {
+      "id": "0x8c77caee7fa3d4c1ddec4f8602b746641adaaad604620b0686b243f4e8bd0b69",
+      "mercato": "0xddcb215d8c020c9794ed641720bde228d41f7fbbc8591e6c93e6cb7b9ed39efc",
+      "tokenId": "98793860786103429461036512093518407124361882646235919543546522571597697238170",
+      "lato": "BUY",
+      "prezzo": 0.4,
+      "size": 51,
+      "sizeRiempita": 0,
+      "nozionaleUsd": 20.4,
+      "creatoAl": 1787577983,
+      "scadenza": "1787580028",
+      "scadenzaIso": "2026-08-24T14:00:28.000Z"
+    }
+  ]
+}

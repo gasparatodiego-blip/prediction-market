@@ -1,0 +1,13 @@
+{
+  "istantanea": "data/istantanee/ordini-dopo-due-cicli-24ago-1429.json",
+  "presaAl": "2026-08-24T14:29:21.797Z",
+  "ordiniEsaminati": 29,
+  "violazioni": [],
+  "nonGiudicabili": [
+    {
+      "id": "0x5a1517b477e51a61fec2e4a53f5660d66e0c8fd3c093bd2983fe19272a80be0c",
+      "motivo": "tick o carico non leggibili"
+    }
+  ],
+  "conformi": 28
+}

@@ -3376,3 +3376,80 @@ stessa decisione di ⓸.
 | ricalcolo del piano per leggere i rifiuti veri del payback | OOM su questa macchina col bot armato (§5.2 p.71) |
 | riavvio di agent24/34/40/41 per mettere `f0394fa` in servizio | **richiede la conferma dell'operatore** (§2 r.2), e agent40 abbandona il libro |
 | cura del payback | serve una decisione fra ⓐ e ⓑ, non una patch |
+
+---
+
+## 39 · 🔧 VERBALE DEL RIAVVIO — `f0394fa` IN SERVIZIO, MA UN TERZO GATE RIFIUTA ANCORA
+
+**24 agosto 2026. Sequenza autorizzata dall'operatore: agent24 → agent34 → agent40+agent41, sempre
+`pm2 delete` + `pm2 start` DAL FILE, mai `--update-env`, `pm2 save` alla fine. Ogni passo verificato
+prima del successivo. Nessun ordine piazzato da me.**
+
+| passo | quando | verifica |
+|---|---|---|
+| agent24 | 13:55:35Z | board riscritto **14:16:45Z** ⇒ ok |
+| agent34 | 14:17:12Z | coverage 14:18:25Z, **77 mercati / 125 token**, `mid-history` 14:18:40Z ⇒ ok |
+| agent40 + agent41 | 14:19:17Z | invariante d'avvio su **entrambi**, `pm2 save` fatto |
+
+**① BOARD** — **315 righe su 315** portano `minOrderSize`, valore **5** su tutte; **zero** senza,
+quindi nessun `conditionId` da elencare. Prima del riavvio il campo era **assente** su tutte e 319.
+
+**② CODICI DI RIFIUTO** — ora 13:29-14:29Z: `BELOW_MIN_SIZE` **959** · `BELOW_MIN_ORDER_SIZE` **19** ·
+`MIN_ORDER_SIZE_UNREADABLE` **0**. Nei soli 10 minuti dopo il riavvio: **51 · 19 · 0**; nell'ora
+*prima* era **1.130 · 0 · 0**. **Il secondo codice è comparso ⇒ `f0394fa` è in servizio**, e cade
+sulle size 2,01 e 4,85, cioè sotto il minimo d'ordine vero: rifiuto **corretto e non derogabile**.
+`MIN_ORDER_SIZE_UNREADABLE` resta a zero perché il board porta il campo su tutte le righe.
+**⚠ MA IL PRIMO NON È SCESO A ZERO, e la ragione è ③.**
+
+**③ 🔴 LA VENDITA IN PROFITTO NON È PIAZZABILE, E NON L'HO PIAZZATA.** `0x65109969…`, 15,4 share YES,
+carico **21¢** contro un prezzo corrente di **45,5¢** (stamattina erano 25¢: il profitto è cresciuto a
+**24,5¢/share**, ~$3,77). Il codice nuovo **gira e si vede**: la riga `manual-place` porta
+`uscita:{prezzoDeciso:0.43, prezzoPartito:0.43}` e l'avviso *«ordine di USCITA: il premio non è lo
+scopo, e il venue lo accetta perché supera minimum_order_size 5»* — cioè `validateQuote` ha letto il
+minimo vero e ha **declassato** `BELOW_MIN_SIZE` ad avviso. **E l'ordine viene rifiutato lo stesso**,
+da un **TERZO gate**: `lib/venues/polymarket-clob-maker/adapter.js:769` chiama
+`validateQuote(s.venueRules, { side, price, size })` **senza `uscita`**, quindi ricalcola il verdetto
+vecchio e risponde `reject: venue-rules BELOW_MIN_SIZE — size 15.4 is below min_incentive_size 20`.
+**⚠ È LA STESSA FORMA DEL 17 AGOSTO, TERZA OCCORRENZA**: §4.6 dichiara «CORRETTI ENTRAMBI I GATE, NON
+UNO» (`placeManualOrder` e `auto-close.decideClose`) — i gate sono **tre**, e il terzo sta a valle di
+entrambi, quindi la deroga dei primi due **non viene mai raggiunta**. Classe «protezione presente su un
+percorso e assente sul gemello». **NON corretto in questo giro**: è una modifica di codice e un
+ulteriore deploy, fuori da ciò che è stato autorizzato. Finché resta, i ~250 rifiuti/ora sulla 15,4
+continuano e la vendita in profitto resta a terra.
+
+**④ ORDINI ABBANDONATI DAL RIAVVIO DI agent40** — istantanee lette dal **venue**, non ricostruite:
+30 ordini/$779,14 alle 14:19:07Z → 29/$764,12 alle 14:29:21Z. **14 sopravvissuti con lo stesso id**
+($419,68), 13 spariti **ma ripiazzati**, 15 nuovi. **Abbandonati e non ripiazzati entro due cicli:
+3 ordini, $72,98** — `0xde3801fc…` BUY 0,695 × 56 ($38,92) e BUY 0,244 × 56 ($13,66),
+`0xddcb215d…` BUY 0,40 × 51 ($20,40). È il costo dichiarato del riavvio (ordini PRE-ESISTENTI), non un
+difetto nuovo.
+
+**⑤ TRAVASO FRA FASCE** — **non scattato**, in nessuno dei tre cicli, e per la ragione giusta:
+«lunga» ha 4 posti vuoti e 2 candidati dell'altra fascia, **nessuno con netto misurabile ⇒ nel dubbio
+non si travasa». Nessun `conditionId` travasato. È la quinta delle cinque cose che §4.13 dice che non
+fa, ed è la stessa causa di §38 ⓹.
+
+**⑥ INVARIANTE CAP/SLOT, su entrambi i processi** — `N=18 · N × 2 × $61,25 = $2.205 · cap dal file
+$2.400 · tetto duro $2.400 · cap effettivo $2.400 · margine $195`, identica in `agent40-manual-reprice`
+e `agent41-realloc-scheduler`.
+
+**⑦ USCITE ILLEGALI — nessuna.** Sui 29 ordini a libro dopo due cicli: **0 violazioni**, 28 conformi,
+1 non giudicabile dal board (`0xddcb215d…` non è sul board, tick non leggibile da lì) — e quell'uno,
+calcolato con `pavimentoConcesso` a tick 1¢ **e** 0,1¢, dà pavimento **$0,5795** contro un ordine a
+**0,58**: conforme, esattamente al pavimento del 5% di R7. Nessun SELL sotto il pavimento di scala,
+nessun BUY con coppia oltre 101¢, né prima né dopo.
+
+**⑧ CAPITALE AL LAVORO** — prima **$881,36 / $1.477,56 = 59,6%** (fermo $596,20); dopo
+**$868,24 / $1.477,18 = 58,8%** (fermo $608,94). **−$13,12, −0,8 punti**: è il buco dei tre ordini
+abbandonati di ④, non ancora ricoperto.
+
+**⑨ Osservato di passaggio, e non toccato**: il cancello del payback ha rifiutato **sul vivo** —
+`ripristino 0xec0aef11…: ricalcolato il piano, e il mercato resta non quotabile — orizzonte: scade fra
+1.4 g ma il rientro ne chiede 1.5`. È §5.2 p.58/58-bis in azione su un mercato **misurato**, coerente
+con la lettura di §38 ⓸.
+
+**⑩ NON AFFRONTATI, per istruzione esplicita dell'operatore** — payback · `Number(null) === 0` e la
+famiglia `netPerDay` null · size degli ordini vivi · regola di travaso · regola 4 (erosione del book) ·
+rinnovo GTD · `daMin:null` · `tick:null` · soglia R6 · interruttore del filtro meteo · tetto per
+mercato · distanze · le 24 h · pavimento di profondità · guardiano · kill R10 · `MAX_MERCATI = 40` ·
+cap a 19 · `derogaBandaPerGradino` · i due pavimenti su `0x4d79d306` · `audit()` dell'adapter.

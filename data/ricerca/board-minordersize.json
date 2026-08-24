@@ -1,0 +1,13 @@
+{
+  "boardScrittoAl": "2026-08-24T14:16:45.325Z",
+  "righeTotali": 315,
+  "conMinOrderSize": 315,
+  "senzaMinOrderSize": 0,
+  "valoriDistinti": [
+    {
+      "minOrderSize": 5,
+      "righe": 315
+    }
+  ],
+  "senzaConditionId": []
+}

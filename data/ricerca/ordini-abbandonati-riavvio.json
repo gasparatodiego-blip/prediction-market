@@ -1,0 +1,63 @@
+{
+  "prima": {
+    "file": "data/istantanee/ordini-prima-agent40-24ago-1419.json",
+    "presaAl": "2026-08-24T14:19:07.673Z",
+    "n": 30,
+    "nozionaleUsd": 779.1432
+  },
+  "dopo": {
+    "file": "data/istantanee/ordini-dopo-due-cicli-24ago-1429.json",
+    "presaAl": "2026-08-24T14:29:21.797Z",
+    "n": 29,
+    "nozionaleUsd": 764.1218
+  },
+  "sopravvissutiStessoId": {
+    "n": 14,
+    "nozionaleUsd": 419.6794
+  },
+  "spariti": {
+    "n": 16,
+    "nozionaleUsd": 359.4638
+  },
+  "abbandonatiSenzaSostituto": {
+    "n": 3,
+    "nozionaleUsd": 72.984,
+    "ordini": [
+      {
+        "mercato": "0xde3801fcbe45f94ab23ae56c8fdd759b5736d8d92c774688acde561987e6115a",
+        "lato": "BUY",
+        "prezzo": 0.695,
+        "size": 56,
+        "nozionaleUsd": 38.92,
+        "id": "0xc2bc9ec4a050f56f681892bf2d6511a058a518c733469a154ed158fdc00dbc6f",
+        "creatoAl": 1787581133
+      },
+      {
+        "mercato": "0xde3801fcbe45f94ab23ae56c8fdd759b5736d8d92c774688acde561987e6115a",
+        "lato": "BUY",
+        "prezzo": 0.244,
+        "size": 56,
+        "nozionaleUsd": 13.664,
+        "id": "0xbb229645b44f71b2214b58176188561e9108a6e78fc62764769d8727d0c0d4fb",
+        "creatoAl": 1787581131
+      },
+      {
+        "mercato": "0xddcb215d8c020c9794ed641720bde228d41f7fbbc8591e6c93e6cb7b9ed39efc",
+        "lato": "BUY",
+        "prezzo": 0.4,
+        "size": 51,
+        "nozionaleUsd": 20.4,
+        "id": "0xf4d5b8dfe2df4c3671b4b5aa1fc526d8e85ce9214222bcb0e879a1042853667e",
+        "creatoAl": 1787579893
+      }
+    ]
+  },
+  "spariti_ma_ripiazzati": {
+    "n": 13,
+    "nozionaleUsd": 286.4798
+  },
+  "nuoviDopo": {
+    "n": 15,
+    "nozionaleUsd": 344.4424
+  }
+}

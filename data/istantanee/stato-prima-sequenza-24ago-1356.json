@@ -1,0 +1,22 @@
+{
+  "presaAl": "2026-08-24T13:55:33.698Z",
+  "nota": "STATO PRIMA DELLA SEQUENZA DI RIAVVIO del 24/08 (agent24 -> agent34 -> agent40+41).",
+  "capitaleAlLavoro": {
+    "alLavoroUsd": 881.36,
+    "totaleUsd": 1477.56,
+    "fermoUsd": 596.2,
+    "pct": 59.6,
+    "fonte": "giornale maker op:capitale-al-lavoro, mini-ciclo"
+  },
+  "ordiniARiposo": {
+    "n": 30,
+    "nozionaleUsd": 768.2474,
+    "fonte": "data/istantanee/ordini-prima-riavvio-24ago-1355.json (letti dal venue)"
+  },
+  "processi": {
+    "agent24": "2026-08-23T09:29:14.635Z",
+    "agent34": "2026-08-21T10:36:36.023Z",
+    "agent40": "2026-08-24T11:20:05.215Z",
+    "agent41": "2026-08-24T11:20:05.230Z"
+  }
+}
