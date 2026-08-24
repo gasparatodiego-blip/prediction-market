@@ -28,6 +28,9 @@ export interface CatalogRecord {
   rewardsDailyRate: number | null;
   rewardsMaxSpreadCents: number | null;
   rewardsMinSize: number | null;
+  /** MINIMO D'ORDINE del venue (`minimum_order_size` sul CLOB, `orderMinSize` su Gamma) — NON il
+   *  pavimento premiante. `null` = non pubblicato: chi lo legge sul percorso d'uscita si ferma. */
+  minOrderSize: number | null;
   hasRewards: boolean;
   endDate: string | null;
   /** Book AT FETCH TIME — a snapshot. Readers report its age (fetchedAt), never present it as live. */
@@ -71,6 +74,8 @@ export interface CatalogInput {
   rewardsDailyRate?: number | null;
   rewardsMaxSpreadCents?: number | null;
   rewardsMinSize?: number | null;
+  /** MINIMO D'ORDINE del venue. Assente ⇒ il record lo scrive `null`, mai 0. */
+  minOrderSize?: number | null;
   endDate?: string | null;
   mid?: number | null;
   bestBid?: number | null;

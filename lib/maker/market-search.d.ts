@@ -28,6 +28,8 @@ export interface MarketRow {
   tick: number | null;
   rewardsMaxSpreadCents: number | null;
   rewardsMinSize: number | null;
+  /** `orderMinSize` di Gamma — il MINIMO D'ORDINE del venue, non il pavimento premiante. */
+  minOrderSize: number | null;
   negRisk: boolean | null;
   tokenIdYes: string | null;
   tokenIdNo: string | null;

@@ -207,6 +207,11 @@ function collectDesiredMarkets(deps = {}) {
       tokenId: String(m.tokenId),
       tokenIdNo: m.tokenIdNo ? String(m.tokenIdNo) : null,
       minSize: Number(m.rewardsMinSize || m.minSize || 1) || 1,
+      // ⚠ IL MINIMO D'ORDINE DEL VENUE (`minimum_order_size`), che NON e' `minSize` qui sopra: quello
+      // e' il pavimento PREMIANTE. Nessun ripiego a 1 e nessun `|| 1`: assente ⇒ `null`, perche' su
+      // questo numero il percorso d'uscita si ferma invece di indovinare (lib/maker/minimi-del-venue).
+      minOrderSize: Number.isFinite(Number(m.minOrderSize)) && Number(m.minOrderSize) > 0
+        ? Number(m.minOrderSize) : null,
       maxSpread: Number(m.rewardsMaxSpread ?? m.maxSpread) || null, // cents; band radius = /2
       tick: Number(m.tickSize) > 0 ? Number(m.tickSize) : null,     // venue min tick (agent24 /tick-size); null if unknown
       title: (m.question || m.title || '').slice(0, 120),
@@ -269,6 +274,8 @@ async function operatorMarketMeta(id, deps = {}) {
     tokenId,
     tokenIdNo: tokenIdNo || null,
     minSize: rec && Number.isFinite(rec.rewardsMinSize) ? rec.rewardsMinSize : null,
+    // Idem: il secondo minimo, dal catalogo, col suo nome e senza valore di difetto.
+    minOrderSize: rec && Number.isFinite(rec.minOrderSize) && rec.minOrderSize > 0 ? rec.minOrderSize : null,
     maxSpread: rec && Number.isFinite(rec.rewardsMaxSpreadCents) ? rec.rewardsMaxSpreadCents : null,
     tick: rec && Number.isFinite(rec.tick) && rec.tick > 0 ? rec.tick : null,
     title: ((rec && rec.question) || '').slice(0, 120),
@@ -820,6 +827,10 @@ function buildSnapshot() {
       source: meta.source || (meta.fromLeg ? 'leg' : 'reward-board'),
       operatorEnabled: meta.operatorEnabled === true,
       minSize: meta.minSize,
+      // ⚠ Il minimo d'ORDINE viaggia con la fotografia perche' `manual-order.resolveMarketRules` legge
+      // il book vivo PRIMA del board: se si fermasse qui, un mercato sottoscritto perderebbe il numero
+      // proprio sulla corsia che lo usa. Assente ⇒ `null`, e a valle l'uscita si ferma dichiarandolo.
+      minOrderSize: Number.isFinite(meta.minOrderSize) && meta.minOrderSize > 0 ? meta.minOrderSize : null,
       maxSpread: meta.maxSpread,
       bandRadiusC,
       mid, plainMid, midAdjVsPlainC,

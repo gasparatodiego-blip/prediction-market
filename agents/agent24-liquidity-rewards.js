@@ -542,18 +542,55 @@ async function getTick(tokenId) {
 // FAIL-OPEN SULLA LETTURA, e NON e' in contraddizione col fail-closed della regola: una lettura mancante
 // non e' una contraddizione fra fonti. Senza il CLOB si usa Gamma e lo si DICHIARA (`gamma-sola`);
 // e' la DIVERGENZA fra due letture presenti a escludere il mercato.
-const _scadenzaClobCache = new Map(); // conditionId -> { iso, ts }
-async function getScadenzaClob(conditionId) {
-  if (!conditionId) return null;
+// ── ⚠⚠ E LA STESSA RISPOSTA PORTA IL MINIMO D'ORDINE DEL VENUE — 24 agosto 2026 ────────────────────
+// `GET /markets/<conditionId>` pubblica DUE minimi, e questo repo ne leggeva UNO:
+//   `rewards.min_size`     → PAVIMENTO PREMIANTE (20/50): sotto, il premio e' ZERO ma l'ordine e' VALIDO
+//   `minimum_order_size`   → MINIMO D'ORDINE (5):         sotto, il venue RIFIUTA l'ordine
+// Il campo del venue e' `minimum_order_size`, ed e' scritto per esteso qui sotto perche' chi rilegge
+// questa riga fra un mese possa verificarlo contro la risposta vera senza indovinare quale nome usare.
+// Vedi `lib/maker/minimi-del-venue.js` per la regola, e §5.2 per il costo misurato: 22.206 rifiuti
+// `BELOW_MIN_SIZE` in 24 ore, dei quali 282 su un'uscita da 15,4 share che il venue avrebbe accettato.
+//
+// ⚠ COSTA ZERO CHIAMATE IN PIU'. E' la risposta che questa funzione gia' scaricava per la scadenza: si
+// legge un secondo campo dallo stesso corpo, non si fa una seconda richiesta. `MAX_RPS = 1.5` e' il
+// collo della scansione (§4.7) e non viene toccato.
+// ⚠ ASSENTE ⇒ `null`, MAI 0. Uno zero direbbe «nessun minimo», cioe' fail-open sulla domanda «il venue
+// accetterebbe quest'ordine?» — la famiglia `Number(null) === 0` di §5.3. Chi lo legge a valle si ferma
+// RUMOROSAMENTE dichiarando il conditionId, e non ripiega sul pavimento premiante.
+// ⚠ LA CACHE TIENE ANCHE UNA LETTURA SENZA DATA. Prima si memorizzava solo quando `iso` era presente,
+// perche' la data era l'unica cosa cercata; adesso una risposta con `minimum_order_size` e senza
+// `end_date_iso` e' comunque una lettura utile, e buttarla vorrebbe dire richiedere il mercato a ogni
+// giro per un campo che il venue ha gia' dato.
+const _scadenzaClobCache = new Map(); // conditionId -> { iso, minOrderSize, ts }
+/** La lettura grezza, una sola per mercato e per ora. Non decide niente: legge e mette in cache. */
+async function leggiMercatoClob(conditionId) {
+  if (!conditionId) return { iso: null, minOrderSize: null };
   const c = _scadenzaClobCache.get(conditionId);
-  if (c && Date.now() - c.ts < 3_600_000) return c.iso;
+  if (c && Date.now() - c.ts < 3_600_000) return c;
   try {
     const r = await httpGet(`https://clob.polymarket.com/markets/${encodeURIComponent(conditionId)}`);
-    const iso = r && r.status === 200 && r.data && typeof r.data.end_date_iso === 'string'
-      ? r.data.end_date_iso : null;
-    if (iso) { _scadenzaClobCache.set(conditionId, { iso, ts: Date.now() }); return iso; }
-  } catch { /* si ripiega su un valore in cache, altrimenti null — mai una data inventata */ }
-  return c ? c.iso : null;
+    const d = r && r.status === 200 && r.data ? r.data : null;
+    const iso = d && typeof d.end_date_iso === 'string' ? d.end_date_iso : null;
+    // ⚠ IL NOME DEL CAMPO DEL VENUE, ESPLICITO: `minimum_order_size`.
+    const mos = d ? Number(d.minimum_order_size) : NaN;
+    const minOrderSize = Number.isFinite(mos) && mos > 0 ? mos : null;
+    if (iso || minOrderSize !== null) {
+      const rec = { iso, minOrderSize, ts: Date.now() };
+      _scadenzaClobCache.set(conditionId, rec);
+      return rec;
+    }
+  } catch { /* si ripiega su un valore in cache, altrimenti null — mai una data ne' un minimo inventati */ }
+  return c || { iso: null, minOrderSize: null };
+}
+async function getScadenzaClob(conditionId) {
+  const r = await leggiMercatoClob(conditionId);
+  return r ? r.iso : null;
+}
+/** Il MINIMO D'ORDINE del venue (`minimum_order_size`), non il pavimento premiante. `null` = non
+ *  pubblicato per questo mercato, e a valle vale «non lo so», mai un numero di difetto. */
+async function getMinOrderSizeClob(conditionId) {
+  const r = await leggiMercatoClob(conditionId);
+  return r ? r.minOrderSize : null;
 }
 
 // ── Measure book depth + quadratic competitor score from CLOB ─────────────────
@@ -932,7 +969,7 @@ async function scan() {
         lato: book.assente ? (bookNo && bookNo.assente ? 'entrambi' : 'yes') : 'no' });
       continue;
     }
-    const [vol, stab, tickSize, scadenzaClob] = await Promise.all([
+    const [vol, stab, tickSize, scadenzaClob, minOrderSize] = await Promise.all([
       measure24hVolatility(m.tokenId),
       // Separate 7d window for the stability score. NOT derived from the 24h call — a 13-point
       // sample cannot measure stillness (see measurePriceStability). Same token: NO = 1 − YES, so
@@ -940,6 +977,10 @@ async function scan() {
       measurePriceStability(m.tokenId),
       getTick(m.tokenId),   // real market tick — required for the price-first row's on-tick prices
       getScadenzaClob(m.conditionId),   // la SECONDA fonte di scadenza — vedi getScadenzaClob
+      // ⚠ IL MINIMO D'ORDINE DEL VENUE (`minimum_order_size`), che NON e' `rewardsMinSize`. Stessa
+      // risposta HTTP della riga sopra, quindi zero chiamate in piu': `leggiMercatoClob` la scarica
+      // una volta e la tiene in cache un'ora. Vedi `lib/maker/minimi-del-venue.js`.
+      getMinOrderSizeClob(m.conditionId),
     ]);
 
     // LA RICONCILIAZIONE, in un punto solo. Da qui in poi il board porta UNA scadenza — la piu' prudente
@@ -992,6 +1033,11 @@ async function scan() {
       rewardsDailyRate:  m.rewardsDailyRate,
       rewardsMaxSpread:  m.rewardsMaxSpread,
       rewardsMinSize:    m.rewardsMinSize,
+      // ⚠ IL SECONDO MINIMO, CON IL SUO NOME E DALLA SUA FONTE. `rewardsMinSize` qui sopra e' il
+      // PAVIMENTO PREMIANTE (`rewards.min_size`): dice «reward ZERO». Questo e' il MINIMO D'ORDINE del
+      // venue (`minimum_order_size`): dice «il venue RIFIUTA». Il percorso d'uscita legge QUESTO.
+      // ⚠ Assente ⇒ `null` e non compare come 0: chi lo legge si ferma dichiarando il conditionId.
+      minOrderSize:      Number.isFinite(minOrderSize) ? minOrderSize : null,
       assetAddress:      m.assetAddress,
       tokenId:           m.tokenId,
       tokenIdNo:         m.tokenIdNo || null,

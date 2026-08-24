@@ -261,6 +261,10 @@ export async function POST(req: NextRequest) {
       question: m.question, slug: m.slug, category: m.category,
       tokenIdYes: m.tokenIdYes, tokenIdNo: m.tokenIdNo, tick: m.tick, negRisk: m.negRisk,
       rewardsDailyRate: m.rewardsDailyRate, rewardsMaxSpreadCents: m.rewardsMaxSpreadCents, rewardsMinSize: m.rewardsMinSize,
+      // Il MINIMO D'ORDINE del venue (Gamma: `orderMinSize`), separato dal pavimento premiante qui
+      // sopra: sono due numeri e due domande. Assente ⇒ il catalogo lo lascia `null`, e il percorso
+      // d'uscita si ferma dichiarandolo invece di ripiegare (lib/maker/minimi-del-venue.js).
+      minOrderSize: (m as { minOrderSize?: number | null }).minOrderSize ?? null,
       endDate: m.endDate, mid: m.mid, bestBid: m.bestBid, bestAsk: m.bestAsk, spreadCents: m.spreadCents,
       fetchedAt: m.fetchedAt,
     }, { by: BY, reason: reason || `aggiunto dalla tab Allocazione${capitalUsd != null ? ` · capitale ${capitalUsd}$` : ''}` });
