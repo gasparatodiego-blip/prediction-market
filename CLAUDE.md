@@ -740,7 +740,15 @@ minimo d'ordine; ogni decisione sul premio legge il pavimento premiante.**
 indovina, non dichiara e NON marca R6** (`piazzabile: null`, mai `false`); pavimento illeggibile ⇒
 `premiante: null`, perché è una domanda sul ricavo.
 
-**🔢🔢 E DAL 24 AGOSTO 2026 `minOrderSize` LO POPOLA IL VENUE — commit `f0394fa`.** Il campo esisteva e
+**🔢🔢 E DAL 24 AGOSTO 2026 `minOrderSize` LO POPOLA IL VENUE — commit `f0394fa`.**
+**⚠⚠ COMMITTATO NON VUOL DIRE IN SERVIZIO, E OGGI NON LO È** (verificato il 24/08 alle 13:27Z):
+agent40 e agent41 sono in piedi dalle **11:20:05Z**, `f0394fa` è delle **12:30:09Z**, e agent24 non è
+stato riavviato dal **23/08 09:29Z** — le 319 righe del board **non portano affatto il campo
+`minOrderSize`**. La prova sta nei codici: nelle 24 ore al 13:27Z ci sono **17.541 `BELOW_MIN_SIZE` e
+ZERO `BELOW_MIN_ORDER_SIZE`, ZERO `MIN_ORDER_SIZE_UNREADABLE`**. Fino al riavvio — **da confermare in
+chat** (§2 r.2), e **nell'ordine scritto in `APERTI.md`**: prima agent24, un giro di scansione,
+agent34, poi agent40 e agent41 — la vendita in profitto di `0x65109969…` continua a essere rifiutata a
+**~250 rifiuti/ora** (665 nelle ultime 24 h). Referto: `APERTI.md` §38 ⓵. Il campo esisteva e
 nessuno lo riempiva: le tre porte del catalogo lo leggevano già, mancavano i **produttori**.
 **IL CAMPO DEL VENUE HA DUE NOMI**: `minimum_order_size` sul CLOB (`GET /markets/<cid>`),
 `orderMinSize` su Gamma. **I CINQUE PUNTI CHE ORA LO SCRIVONO**: `agent24.leggiMercatoClob` (dalla
@@ -1229,6 +1237,23 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
    diagnosi**: un replay del piano da una sessione di ricerca muore con **SIGABRT (OOM) 3 volte su 3**,
    quindi le cause per mercato oggi si leggono **solo** dal giornale di agent41. **Non corretto**: la
    leva è memoria o un piano che non tenga in RAM il registro dei candidati, ed è una decisione.
+73. **🔴 L'AUDIT DEI PIAZZAMENTI NON REGISTRA IL MERCATO SU CUI RIFIUTA — 24 agosto 2026, NON
+   corretto.** Nelle 24 ore al 24/08 13:27Z, **4.219 dei 17.541** rifiuti `BELOW_MIN_SIZE` **non sono
+   attribuibili a nessun mercato**, e sono esattamente la corsia `op:"postOrder"`, quella
+   dell'adapter. Le altre due ce l'hanno: `manual-place` (10.354) e `auto-close` (2.968) portano
+   `marketRef: "cid_…"`. La riga di `postOrder` nasce da `lib/venues/polymarket-clob-maker/adapter.js`
+   con `requested: redact(req)`, e le sue chiavi sono tutte e sole `ts, venue, op, mode, requested,
+   response, outcome, latencyMs, gate, reasons, source, idempotencyKey, notionalUsd, rejectReason,
+   wouldPost`: **nessun `conditionId`, nessun `marketRef`**, e il `tokenId` — il solo campo che
+   avrebbe permesso di risalirci — è **oscurato da `redact`**. ⚠ **Non è un problema di segreti**:
+   il `conditionId` è pubblico e sta già in chiaro sulle altre due corsie. ⚠ **Il costo è misurato ed
+   è già stato pagato**: per dire *quale* mercato ha prodotto quei 4.219 rifiuti l'unica strada è
+   correlare per `size` col giornale di `auto-close`, e l'operatore ha chiuso l'attribuzione perché
+   costa più della risposta. **Un rifiuto che non sa dire su cosa è caduto è un rifiuto che il giorno
+   dopo non si può diagnosticare** — stessa famiglia di p.59 e p.67. La cura è in **un punto solo**,
+   `audit()` dell'adapter, non sulle undici chiamate. **Non corretta**: cambia la forma di un giornale
+   che altri lettori confrontano. Misura: `data/ricerca/below-min-size-24h.json`; referto:
+   `APERTI.md` §38 ⓶.
 72. **✅ CHIUSA IL 24 AGOSTO 2026** — `slotVuotiPerScarsita.motivo` nomina adesso **solo i campi che
    hanno davvero righe** (`campi`, versione macchina della stessa frase), e quando gli scarti sono per
    fascia lo dice **per nome e per numero**: «gli scarti sono PER FASCIA: fascia «corta» piena, 12
@@ -1325,6 +1350,35 @@ non sono dichiarate né nell'ecosystem né nel `.env`: i processi vivi leggono l
    **⚠ NON CORRETTO IN QUESTO GIRO, per istruzione.** La cura non è allentare una soglia: è decidere
    se il cancello debba esistere affatto sotto `hold`, dove il segno del netto è già l'intero
    contenuto economico. È una decisione dell'operatore, e tocca `MIN_HORIZON_DAYS`/`horizonFilter`.
+   **⚠ AGGIORNAMENTO 24 AGOSTO 2026, 13:35Z — LETTO SUL VIVO: IL CANCELLO NON È SEVERO CON I
+   CORTI, È SEVERO CON I CORTI DI CUI ESISTE UNA MISURA.** L'algebra qui sopra resta esatta; cambia
+   **su chi cade**. Il cancello È armato sulla strada in servizio (`horizonFilter: true` in tutti e
+   tre i punti in cui agent41 chiede un piano: `agent41-realloc-scheduler.js:819`, `:910`, `:1550` —
+   il difetto dell'allocatore è `false`, quindi la domanda andava fatta). Ma **quattro delle undici
+   righe del piano salvato hanno `netPerDay: null`**, cioè **nessun fill osservato**, **e stanno nel
+   piano**. È una **prova che si chiude da sé**: `allocator.bindsOnHorizon` rifiuta lo stato
+   `unknown`, quindi se il cancello avesse ricevuto un costo `null` quelle righe non ci sarebbero;
+   ci sono ⇒ il costo ricevuto era **finito** ⇒ per un mercato senza fill vale **0** ⇒
+   `paybackDays(gross, 0) = 0` ⇒ `days ≤ 0` è falso a qualunque scadenza ⇒ **`ok`, sempre**.
+   **⇒ UN MERCATO SU CUI NON SI È MAI OSSERVATO UN FILL SUPERA IL PAYBACK A QUALUNQUE ORIZZONTE**:
+   a un corto di 25 ore misurato il cancello chiede il **49,0%** di margine netto, a un corto di 25
+   ore **non misurato** chiede **zero**.
+   **⚠ È LA FAMIGLIA `Number(null) === 0` DI §5.3, SETTIMA OCCORRENZA, NELLA DIREZIONE CHE APRE**: la
+   stessa assenza è `null` per chi **RACCONTA** (`calcNetPerDay`, `perchePerNettoAssente:
+   'nessun-fill-osservato'`) e **0** per chi **DECIDE** (`costPerDay5m`). Il commento di
+   `allocator.js:1000-1006` la dichiara e la difende — «assumere un costo inventato escluderebbe un
+   mercato per un'ipotesi» — ed è una ragione vera per **scegliere**; il filtro d'orizzonte però non
+   sceglie, **giudica**.
+   **⚠ E SUL PORTAFOGLIO DI OGGI IL PAYBACK NON MORDE AFFATTO**: delle 11 righe finanziate, le 7 con
+   un netto misurabile hanno `net/gross` fra **68,4% e 100%** contro soglie fra 0,8% e 41,0%, e
+   **passerebbero tutte e sette** anche se scadessero fra 24 h (soglia 50,0%). I due slot vuoti delle
+   13:27Z non li tiene il payback: il travaso non travasa perché i due candidati corti (34,5 h,
+   montepremi $38/g e $44/g) hanno **netto non misurabile** — e non è la corsia ws a mancare (424
+   campioni `mid-history` ciascuno oggi), è di nuovo l'assenza di fill.
+   **⚠ LE DUE CURE SONO OPPOSTE E NESSUNA È OVVIA, quindi resta APERTA**: ⓐ rendere il cancello
+   fail-closed (costo non misurato ⇒ rifiuta) toglierebbe **4 righe su 11 oggi**, e sono i mercati
+   **silenziosi**, quelli su cui un maker di rewards vuole stare; ⓑ togliere il payback sotto
+   `policy:'hold'` lo toglierebbe **anche** ai corti misurati. Referto integrale: `APERTI.md` §38 ⓸ e ⓹.
 
 58. **🔴 IL PAYBACK RIFIUTA I CORTI CHE LA SELEZIONE AMMETTE — 22 agosto 2026, NON corretto.**
    La fascia corta adesso vede, sceglie e prezza (§4.13), ma il piano non la finanzia: su

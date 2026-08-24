@@ -3167,3 +3167,212 @@ non passa da `chiudendo`, non è marcato e tiene il suo `inCoda`.
 `readable/midSource/midAgeSec`, quindi `decideReprice` rispondeva `skip/rules-unreadable` — e due
 asserzioni erano **verdi per il motivo sbagliato** (`targetPrice: null` passa «non lo sposta»). È lo
 stesso guasto degli otto test del 19 agosto (§5.2 p.11). L'ha rilevato il blocco CONTROLLO.
+
+---
+
+## 38 · 📋 REFERTO DEL GIRO — I RIFIUTI SOTTO IL MINIMO, E LA LETTURA DEL PAYBACK
+
+**24 agosto 2026, 13:27-13:35Z. SOLA LETTURA: nessun ordine piazzato, nessun ordine cancellato,
+nessun processo riavviato, nessun parametro spostato.**
+
+### ⓵ I rifiuti `BELOW_MIN_SIZE` nelle ultime 24 ore — **17.541**, su **quattro** size distinte
+
+Finestra **23/08 13:27:13Z → 24/08 13:27:13Z**. Fonti: l'archivio ruotato
+`polymarket-maker-audit-2026-08-23T23-42-58Z.jsonl` **più** il file corrente, con l'**overlap del
+carryover tolto per BYTE OFFSET** e non per timestamp: la rotazione porta nel file nuovo gli ultimi
+64 MB dell'archivio, e contare i due file interi avrebbe raddoppiato ~20 ore di righe. L'offset è
+stato **verificato**, non stimato — `archivio[355403083..]` è byte per byte la testa del file
+corrente. Script: `data/ricerca/script-1330-below-min-size.js`; misura:
+`data/ricerca/below-min-size-24h.json`.
+
+| | |
+|---|---|
+| totale rifiuti nella finestra | **17.541** |
+| dall'archivio (prima dell'overlap) | 962 |
+| dal file corrente | 16.579 |
+| primo · ultimo | 23/08 13:31:37Z · 24/08 13:27:06Z |
+
+**Le quattro size distinte, e sono quattro e basta:**
+
+| size | rifiuti | quota |
+|---|---|---|
+| **2,8461** | 7.084 | 40,4% |
+| **4,85** | 5.279 | 30,1% |
+| **2,01** | 4.513 | 25,7% |
+| **15,4** | **665** | 3,8% |
+
+**⚠ SI CONTA IL MOTIVO DEL RIFIUTO, NON L'AVVISO.** `bandAdvisory` nomina `BELOW_MIN_SIZE` anche
+quando a rifiutare è altro: contare le occorrenze della stringa dava **25.587** righe candidate
+contro le 17.541 vere. Il filtro è `outcome` che inizia per `reject` **e** il codice dentro
+`reasons[].code` o in testa a `reason`.
+
+**⚠ LE PRIME TRE SIZE SONO SOTTO ENTRAMBI I MINIMI E IL RIFIUTO È GIUSTO** (2,01 · 2,8461 · 4,85
+contro un minimo d'ordine di **5**): lì il bot ha ragione, anche se per il numero sbagliato. **La
+quarta no**: 15,4 share è **sopra** il minimo d'ordine e sotto il solo pavimento premiante, ed è la
+vendita in profitto di `0x65109969…` (25¢ contro un carico di 21¢). **665 rifiuti in 24 ore**, e non
+sono storia: 12 alle 10Z, **214 alle 11Z, 263 alle 12Z, 159 nella prima mezz'ora delle 13Z**.
+
+**⚠⚠ E LA CURA È COMMITTATA MA NON È IN SERVIZIO — questo è il fatto che conta.** Nella finestra i
+codici sono **17.541 `BELOW_MIN_SIZE` e ZERO `BELOW_MIN_ORDER_SIZE`, ZERO
+`MIN_ORDER_SIZE_UNREADABLE`**: se `f0394fa` girasse, il percorso d'uscita risponderebbe con uno dei
+due codici nuovi. Non gira, e si legge dagli orologi:
+
+| | |
+|---|---|
+| agent40 · agent41 in piedi da | **24/08 11:20:05Z** (riavvio del travaso, `f378ea7`) |
+| `f0394fa` committato alle | **24/08 12:30:09Z** — un'ora e dieci **dopo** |
+| agent24 in piedi da | **23/08 09:29:14Z** |
+| `minOrderSize` sulle righe del board (319 mercati, board delle 13:23Z) | **campo assente** |
+
+⇒ i due processi che decidono un'uscita eseguono il codice di **prima** della correzione, e il board
+non porta ancora il campo perché agent24 non è stato riavviato. **La sequenza giusta è quella scritta
+in cima a questo file** (prima agent24, si aspetta un giro di scansione, poi agent34, poi agent40 e
+agent41) e **richiede la conferma dell'operatore in chat** (§2 r.2). Fino ad allora i ~250 rifiuti
+all'ora sulla vendita in profitto continuano.
+
+### ⓶ 🔴 IL DIFETTO SEPARATO: l'audit dei piazzamenti non registra il mercato su cui rifiuta
+
+**4.219 dei 17.541 rifiuti non sono attribuibili a nessun mercato**, ed è esattamente la corsia
+`op:"postOrder"` — quella dell'adapter. Le altre due corsie il mercato ce l'hanno:
+
+| corsia | rifiuti | mercato nella riga |
+|---|---|---|
+| `manual-place` | 10.354 | `marketRef: "cid_…"` — **sì** |
+| `auto-close` | 2.968 | `marketRef: "cid_…"` — **sì** |
+| **`postOrder`** | **4.219** | **no, e nemmeno il tokenId** |
+
+La riga di `postOrder` nasce da `lib/venues/polymarket-clob-maker/adapter.js` e porta
+`requested: redact(req)`, dove `redact` sostituisce il `tokenId` con `[redacted]`. Le chiavi sono
+tutte e sole `ts, venue, op, mode, requested, response, outcome, latencyMs, gate, reasons, source,
+idempotencyKey, notionalUsd, rejectReason, wouldPost`, e dentro `requested` c'è `tokenId, side,
+price, size, tickSize, postOnly, negRisk, orderType, expiration, …`: **nessun `conditionId`, nessun
+`marketRef`, e il solo campo che avrebbe permesso di risalirci è oscurato.**
+
+**⚠ NON È UN PROBLEMA DI SEGRETI**: il `conditionId` è pubblico, sta già in chiaro su ogni riga di
+`manual-place` e di `auto-close`, ed è la chiave con cui tutto il resto del repo nomina un mercato.
+**⚠ IL COSTO È QUELLO CHE HA FATTO CHIUDERE L'ATTRIBUZIONE DI QUESTO GIRO**: per dire *quale* mercato
+ha prodotto quei 4.219 rifiuti l'unica strada è correlare per `size` col giornale di `auto-close`,
+che costa più di quanto valga la risposta. **Un rifiuto che non sa dire su cosa è caduto è un rifiuto
+che il giorno dopo non si può diagnosticare** — è la stessa famiglia di §5.2 p.59 (`gamba-impossibile`
+senza sotto-motivo) e p.67 (il `gate` originale sovrascritto). Voce nuova: **§5.2 p.73**.
+**Non corretto in questo giro**: cambia la forma di un giornale che altri lettori confrontano, e la
+correzione va fatta in un punto solo — `audit()` dell'adapter — non su ognuna delle undici chiamate.
+
+### ⓷ LA LETTURA DEL PAYBACK — il cancello è armato, e **oggi non ha rifiutato niente**
+
+Board delle **13:23:07Z** (319 mercati, `data/liquidity-rewards.json`), piano salvato delle
+**10:41:57Z** (11 righe). Script: `data/ricerca/script-1335-payback-lettura.js`; misura:
+`data/ricerca/payback-lettura-1335.json`.
+
+**⚠ IL PIANO NON È STATO RICALCOLATO, E NON È PIGRIZIA**: il figlio del piano chiede ~1 GB, la
+macchina ha **426 MB disponibili** e 1,2 GB di swap già usato (§5.2 p.71, SIGABRT 3 volte su 3).
+Farlo girare col bot armato significa offrire all'OOM killer un agent che tiene il libro. Si è letto
+ciò che è su disco e si è applicata l'algebra che §5.2 p.58-bis ha già dimostrato, che per essere
+letta **non ha bisogno del costo**: `days ≤ cost/(gross−cost)` ⟺ **`net/gross ≤ 1/(1+days)`**.
+
+**Il cancello È armato sulla strada in servizio**: `horizonFilter: true` in **tutti e tre** i punti
+in cui agent41 chiede un piano (`agent41-realloc-scheduler.js:819`, `:910`, `:1550`). Il difetto
+dell'allocatore è `false`, quindi la domanda «è acceso?» andava fatta, e la risposta è sì.
+
+**Il board, e quanto margine netto il cancello chiede a ogni fascia di vita residua:**
+
+| vita residua | mercati | `net/gross` richiesto |
+|---|---|---|
+| < 12 h (sotto il pavimento) | 30 | 69,6-78,7% |
+| 12-24 h | 131 | 50,5-62,3% |
+| **24-48 h** | **97** | **33,6-47,5%** |
+| 2-7 g | 4 | 30,2-32,2% |
+| 7-30 g | 9 | 4,5-11,9% |
+| 30-150 g | 37 | 0,8-2,4% |
+| > 150 g (oltre il muro) | 8 | 0,1-0,2% |
+
+Zero mercati senza scadenza leggibile, 3 già risolti. **L'asimmetria di p.58-bis è confermata sul
+board vivo**: 228 mercati stanno fra 12 h e 48 h, e a ognuno il cancello chiede fra il 33,6% e il
+62,3% di margine netto — dove a 128 giorni ne chiede lo **0,8%**.
+
+**Le undici righe finanziate, coi loro numeri veri:**
+
+| mercato | giorni | lordo/g | netto/g | `net/gross` | soglia | payback | stato |
+|---|---|---|---|---|---|---|---|
+| `0x3f1dc6b5…` | 1,44 | 4,6693 | 3,6956 | **79,1%** | 41,0% | 0,26 | ok |
+| `0xda9215cf…` | 1,44 | 4,4627 | 3,0511 | **68,4%** | 41,0% | 0,46 | ok |
+| `0x6f7c79f7…` | 2,10 | 0,8203 | 0,8203 | 100% | 32,2% | 0,00 | ok |
+| `0x0840c844…` | 2,31 | 2,3582 | 2,3582 | 100% | 30,2% | 0,00 | ok |
+| `0x14d32732…` | 128,44 | 0,1240 | 0,1240 | 100% | 0,8% | 0,00 | ok |
+| `0x6d244daa…` | 7,44 | 1,7656 | 1,6068 | 91,0% | 11,9% | 0,10 | ok |
+| `0x5e082f0b…` | 128,44 | 0,0382 | 0,0382 | 100% | 0,8% | 0,00 | ok |
+| `0x28e2a37c…` · `0x65109969…` · `0xbfc776a7…` · `0xde3801fc…` | — | — | **null** | — | — | — | v. sotto |
+
+**⇒ Nessuna delle sette righe misurabili è vicina al cancello**, e il controfattuale lo dice per
+intero: se **tutte e sette** scadessero fra 24, 25, 28, 36 o 48 ore — cioè alle soglie di 50,0% ·
+49,0% · 46,2% · 40,0% · 33,3% — **passerebbero tutte e sette lo stesso**. Sul portafoglio di oggi il
+payback non è il vincolo che morde.
+
+**⚠ IL `net/gross` DELLE RIGHE È UN SURROGATO, E VA DETTO**: `netPerDay` della riga è
+`calcNetPerDay`, che è **null senza fill osservati**; il cancello invece guarda `best.costPerDay5m`
+al livello finanziato. Sono due grandezze parenti, non la stessa, e le sette righe sopra sono un
+limite inferiore del margine, non il numero esatto che il cancello ha visto.
+
+### ⓸ 🔴 E LA STESSA ASSENZA VALE `null` PER CHI RACCONTA E **ZERO** PER CHI DECIDE
+
+**Quattro delle undici righe finanziate hanno `netPerDay: null`** — `0x28e2a37c…` (JM Smucker),
+`0x65109969…`, `0xbfc776a7…`, `0xde3801fc…` — cioè **nessun fill osservato**, cioè nessun costo di
+selezione avversa misurato. **E stanno nel piano.**
+
+Questo è una **prova**, non una deduzione, e si chiude da sé: il piano è stato calcolato con
+`horizonFilter: true`, e in `allocator.bindsOnHorizon` lo stato **`unknown` RIFIUTA**. Se il cancello
+avesse ricevuto un costo `null` avrebbe risposto `unknown` e quelle quattro righe non sarebbero lì.
+Ci sono ⇒ **il cancello ha ricevuto un costo FINITO** ⇒ per un mercato senza fill quel costo è
+**zero** ⇒ `paybackDays(gross, 0) = 0` ⇒ `days ≤ 0` è falso a qualunque scadenza positiva ⇒ **`ok`,
+sempre**.
+
+**⇒ UN MERCATO SU CUI NON SI È MAI OSSERVATO UN FILL SUPERA IL CANCELLO DEL PAYBACK A QUALUNQUE
+ORIZZONTE.** Il cancello che chiede il 49,0% di margine a un mercato di 25 ore ne chiede **zero** a
+un mercato di 25 ore di cui non sappiamo niente.
+
+**⚠ È LA FAMIGLIA `Number(null) === 0` DI §5.3, SETTIMA OCCORRENZA, E NELLA DIREZIONE CHE APRE.** La
+stessa assenza — *nessun fill osservato* — è trattata in due modi opposti dallo stesso piano:
+`calcNetPerDay` la rifiuta e restituisce `null` **a chi racconta** (la riga, la card, il referto,
+`perchePerNettoAssente: 'nessun-fill-osservato'`), mentre `costPerDay5m` la scrive **0** a chi
+**decide**. Il commento in `allocator.js:1000-1006` la dichiara e la difende — «assumere un costo
+inventato escluderebbe un mercato per un'ipotesi» — ed è una ragione vera per **scegliere**; ma il
+filtro d'orizzonte non sceglie, **giudica**, e lì «non ho misurato» è diventato «non costa».
+
+**⚠ QUESTO RIBALTA LA LETTURA DI §5.2 p.58 E RESTRINGE QUELLA DI p.58-bis.** L'algebra di p.58-bis è
+esatta e resta; ciò che cambia è **su chi cade**. Il cancello non è severo con i corti: è severo con
+i corti **di cui esiste una misura**, e muto su quelli di cui non esiste. Non è un cancello sul
+calendario, è un cancello **sull'aver visto qualcosa**.
+
+**⚠ NON CORRETTO, ED È UNA DECISIONE DELL'OPERATORE, non una patch.** Le due vie sono opposte e
+nessuna è ovvia: ⓐ rendere il cancello fail-closed (costo non misurato ⇒ `unknown` ⇒ rifiuta)
+**svuoterebbe il piano** — quattro righe su undici sparirebbero oggi, e sono i mercati **silenziosi**,
+quelli su cui un maker di rewards vuole stare (è lo stesso guasto misurato l'8 agosto, quando
+ordinare per `bestNetPerDay` rendeva invisibili 33 mercati su 113); ⓑ togliere il payback sotto
+`policy:'hold'`, che è la cura che p.58-bis indica, lo toglierebbe **anche** ai corti misurati.
+Toccare `MIN_HORIZON_DAYS`/`horizonFilter` senza decidere quale delle due si vuole è spostare il
+difetto, non curarlo.
+
+### ⓹ E i due slot vuoti di adesso **non li tiene il payback**
+
+Selezione delle 13:27:53Z: **16 occupati su 18**, 25 ammissibili, **2 posti liberi**. Il travaso fra
+fasce (`f378ea7`, in servizio dalle 11:20) è **partito e ha fatto la cosa giusta**: «lunga» ha 4
+posti vuoti e 2 candidati dell'altra fascia, e **non ha travasato** perché *«NESSUNO ha un netto
+misurabile: nel dubbio non si travasa»* — la quinta delle cinque cose che §4.13 dice che non fa.
+
+I due candidati sono `0xc2e76d66…` (MrBeast, montepremi **$38/g**) e `0x0bd56b4e…` (Oklahoma
+Superintendent, **$44/g**), entrambi a **34,5 ore** e con `rewardsMinSize 20`, cioè nel secchio basso.
+**⚠ E NON È LA CORSIA WEBSOCKET A MANCARE** (§5.2 p.55): oggi in `mid-history` hanno **424 campioni
+ciascuno**. Il loro netto non è misurabile per la stessa ragione delle quattro righe di ⓸ — nessun
+fill osservato — e il travaso, che è fail-closed, si ferma. **Due slot fermi, $82/giorno di
+montepremi guardati e non toccati, e la causa è di nuovo il netto assente, non l'orizzonte.**
+**Nessuna azione**: il travaso si comporta come scritto, e cambiare «nel dubbio non si travasa» è la
+stessa decisione di ⓸.
+
+### Cosa NON è stato fatto in questo giro, e perché
+
+| | |
+|---|---|
+| attribuzione per `conditionId` dei 4.219 rifiuti | l'audit non registra il mercato (⓶); la correlazione per size costa più della risposta — **per istruzione dell'operatore** |
+| ricalcolo del piano per leggere i rifiuti veri del payback | OOM su questa macchina col bot armato (§5.2 p.71) |
+| riavvio di agent24/34/40/41 per mettere `f0394fa` in servizio | **richiede la conferma dell'operatore** (§2 r.2), e agent40 abbandona il libro |
+| cura del payback | serve una decisione fra ⓐ e ⓑ, non una patch |

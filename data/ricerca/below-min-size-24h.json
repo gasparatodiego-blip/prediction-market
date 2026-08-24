@@ -1,0 +1,66 @@
+{
+  "generatoIso": "2026-08-24T13:27:13.285Z",
+  "finestra": {
+    "daIso": "2026-08-23T13:27:13.285Z",
+    "aIso": "2026-08-24T13:27:13.285Z",
+    "ore": 24
+  },
+  "fonti": {
+    "archivio": "data/polymarket-maker-audit-2026-08-23T23-42-58Z.jsonl",
+    "corrente": "data/polymarket-maker-audit.jsonl",
+    "overlapOffsetByte": 355403083
+  },
+  "totaleRifiuti": 17541,
+  "dallArchivio": 962,
+  "dalFileCorrente": 16579,
+  "primoIso": "2026-08-23T13:31:37.032Z",
+  "ultimoIso": "2026-08-24T13:27:06.501Z",
+  "perSizeDistinta": [
+    {
+      "size": "2.8461",
+      "n": 7084
+    },
+    {
+      "size": "4.85",
+      "n": 5279
+    },
+    {
+      "size": "2.01",
+      "n": 4513
+    },
+    {
+      "size": "15.4",
+      "n": 665
+    }
+  ],
+  "perOp": [
+    {
+      "op": "manual-place",
+      "n": 10354
+    },
+    {
+      "op": "postOrder",
+      "n": 4219
+    },
+    {
+      "op": "auto-close",
+      "n": 2968
+    }
+  ],
+  "perSource": [
+    {
+      "source": "auto-close-on-fill",
+      "n": 15039
+    },
+    {
+      "source": "manual-ui",
+      "n": 2502
+    }
+  ],
+  "mercatoIdentificabile": {
+    "si": 13322,
+    "no": 4219
+  },
+  "righeCandidateLette": 25587,
+  "righeNonParsabili": 0
+}

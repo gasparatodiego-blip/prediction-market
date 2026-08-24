@@ -1,0 +1,1613 @@
+{
+  "generatoIso": "2026-08-24T13:30:13.261Z",
+  "fonti": {
+    "board": "data/liquidity-rewards.json",
+    "boardMercati": 319,
+    "piano": "data/realloc-ultimo-piano.json",
+    "pianoAt": "2026-08-24T10:41:57.188Z",
+    "pianoRighe": 11
+  },
+  "cancello": {
+    "minHorizonDays": 0.5,
+    "maxHorizonDays": 150,
+    "formula": "days <= cost/(gross-cost)  <=>  net/gross <= 1/(1+days)"
+  },
+  "board": {
+    "senzaScadenza": 0,
+    "giaRisolti": 3,
+    "perFascia": [
+      {
+        "fascia": "< 12 h (sotto il pavimento)",
+        "n": 30,
+        "margineNettoRichiestoPct": [
+          69.6,
+          78.7
+        ]
+      },
+      {
+        "fascia": "12-24 h",
+        "n": 131,
+        "margineNettoRichiestoPct": [
+          50.5,
+          62.3
+        ]
+      },
+      {
+        "fascia": "24-48 h",
+        "n": 97,
+        "margineNettoRichiestoPct": [
+          33.6,
+          47.5
+        ]
+      },
+      {
+        "fascia": "2-7 g",
+        "n": 4,
+        "margineNettoRichiestoPct": [
+          30.2,
+          32.2
+        ]
+      },
+      {
+        "fascia": "7-30 g",
+        "n": 9,
+        "margineNettoRichiestoPct": [
+          4.5,
+          11.9
+        ]
+      },
+      {
+        "fascia": "30-150 g",
+        "n": 37,
+        "margineNettoRichiestoPct": [
+          0.8,
+          2.4
+        ]
+      },
+      {
+        "fascia": "> 150 g (oltre il muro)",
+        "n": 8,
+        "margineNettoRichiestoPct": [
+          0.1,
+          0.2
+        ]
+      }
+    ]
+  },
+  "cortiAmmissibiliDallaSelezione": [
+    {
+      "conditionId": "0x915c9bfc57ffc855316beb6d9640c1056974616ca22e079f12ef85097959b871",
+      "ore": 14.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 62.3
+    },
+    {
+      "conditionId": "0x06b78ae1ae7e781409ba8889de96bda3d99cbfa48d68bf2bd4f2135fa06eddbb",
+      "ore": 14.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 62.3
+    },
+    {
+      "conditionId": "0x0403184da9e0f8de35cc2b5a7b1e19390c5d0132d0927bd1eaca2f27eae3f103",
+      "ore": 14.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 62.3
+    },
+    {
+      "conditionId": "0xa77d64776031aff15fba4517f37687b9ca6a3b27a14005c17da88120788d501b",
+      "ore": 14.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 62.3
+    },
+    {
+      "conditionId": "0xce4a641a566aac81cca69be0ba13122e55fd42a0b1db42631751a6707b322422",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xf9722cab198fb0c6a0573692444222d6925383098a57f77c0825bb4d72291deb",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xfb7b71a850a2e9ec0b3e94a528cec7a330245ba984220657e62baa0381ce0fb6",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xc094ca89bebb332a761422d1067b6460ff063daca477cc39d9cee46298c81f15",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x2773a3cc19dd1ecd2b21390b133414343a13d6fe869c1fb278a62b0f99684aaa",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xe362dd57360511280a567c5ef75f42fc77c6f310d18120390d5cbfeef47ab3c8",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xfeb60edb875d99bf7ea0ba56d4340adcfd26df86ef8883e91ccd8ff412238814",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xafede09a322de841f902d0a7df54e5d5cfc292309889d9422eb782fefe0e363a",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x2d510e05142535d215e9f7d0ca0c965d7175be3dc99efc4f206c4bca76f6142e",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xaa844afc882478b234d9d3d848dff66ff0460eb79253b6b76421a294883aa166",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xedaefae5aba04c81de783c94efc327ae51ee9d205c643d4ec71fc1ea6180ec2b",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xb64154b8dbe58e3eb4b221ec85016c92271ac5bb0449240235e9a79c45121502",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x6ef3e90c91e64485928c578826352660c7405b67c88d7349e7d88dbed88d9119",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x1b5427a186df8fe4900c2e53223ded083d485be1c75d6f1f92448c39ee14cfa8",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x1c8fc257f76314d3545b4befe0341824eb1ddbc0b180ab30afff66888a3e85e1",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x5453e534a78a31637886bfc311bbef8871d28f97240f6baccf4f5f289246dd75",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x20e2b0c497aa2515df5661d363a769321345058afea2cc24aa565f8026472c73",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x479a025c65cb710077a7aebc08b15b315308a30807c30f921ed5498022342670",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x665d5e5279e4614432279b1049ba73461f72f20d7ab148564db08ad6ce2b9f2c",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x98b978d80fab91eb3b5085ad7d7b350c02e99726dd277e531a4d7d078ff82c33",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xe3fca784e7b87e538b5f770f88888bd77df794a856d494d8de4da1cf74a833bd",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x79e6889a35b2b1be28eb0446dc68f28973d3c186da99018af737a6e5323906b1",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x167843b96d81ae771a00181d3be8a6e41e301c2f9bd931964a7a1166163ccec8",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xf4572804fdb60a75ecacf916d99c968e0036ba94f3970054d5bf784e05f6f1a9",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xfd1c43e84ce806af58bae0132afbaffb9edc4765a7fc7da2e24bc412fb282eff",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x5357f9de730b4436dc1e048f57bbbee02bc3825ee3f09f470097194be52dd4cf",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xbf0afcf7008b99037dbca64050415bdf7f67834e69c471e8584c5af32746ef6d",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xf4f2c9251269b4d05a1a9626dd9cfbffe2aa3bcac661c2ad1c7547099c399605",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x63a7538367cf5e4c83d81f89ead4e1c367bf2170e52868fc7970483f5ab0658d",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xb577d459327cc135fc582ae551a5f7efeb4272b56680b34c6f3008a06664b045",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x8a701002d82bfa4d0240f10826890262664742c3edc781d61149b7a9971dedc2",
+      "ore": 22.5,
+      "rewardsMinSize": 100,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xa59bab706b5dda6cab1329b177b91b819fa48bca44944fbf9f02b1485e4d61fc",
+      "ore": 22.5,
+      "rewardsMinSize": 100,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x3d1110cece957353f733bda5662da4282a6fef15d453fe999c6db5c376c8d57f",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x09f6557f11d09ec3463d5b5f6dddf5ddd45224211ce268dd501487e8c8b69ada",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xd03fb77e2d3073da853426e330acccd3bb508799e6c932143c783fc5fbcf1e4b",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x173d44ff20e099dbd4ef68513444f77609a63c93ab81714f6cebd87fcef8e639",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x76c8c096426419f3667439c7c53dc000f8706bf27d5848a7823778d81561aa51",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xac00bb1f2eb1fec77074942c0d934e5f0e77f58571850e6aecf32c1d42f655d4",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x90b43a391c963c9fa4b57f97adebadcc12cb6428fee85e79a1229205a7add7d3",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x6eeae752c6c178d7eb3b11d2ed20747d2e49adf1a87e790c5b2ebdb49210513a",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x94128992d1fd0de3adc00ff01601b699cb958630942df05df731425a5af87266",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x6c3980f63e83bf8811e61594ca81265e1e97c7f50c9a6c93f9a701292209ab53",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x0774ce3b77e72ab7fa44085c7c4da38615916df7e8ec98f7f5d9e87de9ce8b29",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xca50539af8b12d37e7d1395ed25e69ccf4b72a1e603d2ab9cb90399c8fc3a271",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x825109256d0638fca5760196db80d17448082f21f72704035ac3d56747b00faf",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x46030b7c5e21d3e5343c45bec26dc79e8954bfc61303ceb3a91d27918d048e13",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x4a9c3e8db3fd726dc1fa3668fa896199e5fc4ebaab5b21a8d89abd85ad3b0bd8",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x1e8a5e1eb73a333cf74a06d073584193160efb310451111b1e5804b1b4d905a6",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xf8a588092f5b9b52dc38b1208a19eceaa8f06377ea3a1a80393c869e7ee546d8",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x9f38591991cfc2039db5a2fb6e45a2b205801e888d369f3fa0951b3c53750b60",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xa81674283e281efbb9999e6c14ad6fc7194c098e7b97aeb89d64b8c1332964d9",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x408f43917935c59a199ad44547ba2abb4e5965f193b230eae51e560dc584d96d",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x8d997fee59f34122658f2cce73f05c29f711d4348c7ed3d4c7d8b50b42f87035",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xd75d45c7799668997d7456899e795284c5365945d8cbeac614357fd509ea12ac",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x4117feeee8135900918ed234c5052f2f6036c3b7152f70a35187883f37488e7d",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x382a096e4d7711e3dc2f25732c492c9072f8f1d24897daf7e8df3e1c96ef1326",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x95edf8dcac620557be00ac8b9e38040d709696af0798d1746631fff757ead055",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x89da93e484161aab5c480fbf80008fe00ad4b4425ba1eff3146fa8ed9debd1ca",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x9a6d27f69b4b508bbbaccabaf13ae39f5634ca7ce45422d3410c69f235c48eb8",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xe593e330b18e3a6a44eb34c58f329fc7e5797e2965586b5c09dbf44b1e0bf261",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xbbb7b95be8a076d6cac4025dc8740d8ad80aa64c16bfc2aa5097cc6ea796b268",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x6be97f339cd5ebf018e2ca02369f075c1c75aa3f41ca8eb1a500a98a16d2cf52",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x05c206dde7998ebec5921b226c22c2a1e00634585372e7b9f41acf4323ed9093",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x57b57275034edc5ac7ff9acd197a6d3f38a333ed676ab9509775a6caec9ddc25",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xd5319d8774375cb07fa1a8b3f97b69dd86ee08926e36a2305e978358bc31d8bf",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x0a25ebcd4d66aa9916f29616bed0031173504bd9ab2cc4706f0cdc6c0b307dc8",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x67be704f47864650cfac3cfbd83ce8c69e9f3a4b00eafdd45b390839f15721db",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x5c7d267034a2d0bc379532a5aade8f8cae28df9b0574c3e65efef2d46f439714",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xe02c554e98d3f2d4575ec9d74cca927147adc31ac37fe9739a71c8c389dedcf5",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x8054e1d8c2faf57412ea324d6eedb3d60d93ab1311cb501312757b7df3c2d518",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x269284d96d9a8910103b2829ce01c5ea078e12370e622652db088cab2c357ace",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x33c7071a3b6c097fd1f017ceb0d55ba6e1650638aa9fa1f9745a7a4c0d8f4a33",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x89dc87cd3ba7ccb7c1021aa11c85487919549336d6776f506754ed9a0f06bd45",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xe7fc9e65adc7be2ff02956885fc8ba097aedf911a6bacabb040e975f50818b6d",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x14337df5a0157b9a146db0d0629b3fa47a2a9bc9ee1930ceab123df5797223e7",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x3c5d92e477e49de0f3113c62a65d5438c33925e33bda530ad9650c46923a6be7",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x34728b6e83dfb3747f61249c6208cc7c110b7197a1bdd3c31a21e5a742fb9996",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xacd7d8107cec451ae13d35a825c1c52b619b2aac180c512156a5f374a8b88c17",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x8cd1ad5f41acef956fafbbeebb22d5ae9fbcce05940f6ee7b5f328f902b19eac",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xb4ebb2c32115a05dcfeb461abcfc35f55b3c4c00f3258c6c14aba9599415afad",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x4c6a99b39308235f349a155609f19d15c00aa35dbca272ad6686fe4f64af5640",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x3634449aaa022206e8ebcb7a322ea42673d72f303341115c1b1df0f196225e72",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x3e364f107f62cff9aa7e2a92308ed32358fed9103e02b9aff5d6c1c54cf5eaa0",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x9b37e62cb5288196c73c7b9eee4e96d84272ebe2f2d3e902be595ffef1e624af",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xb878abf15aea8c45494ab7006997cb3d018074911c9b1e432161150c7227ed15",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xa428ff7365a91f84ebc8fd170b51d2269cfa9342a6c58b7a6486db06bce47b44",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xfa4aebc25b73fdbe4c0b43b99c36aeb994ee2b31dd9741b9d3beb2a09a1e5ccc",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x1c55ba5ce9004decb1ad216fede22bc4821d944ddac2433884c7704c8d76999d",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x7d58db5e39d372d6bfd884689424c302f9091a47b26552c46ef908b9eb3a8ef8",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xf351c7a888ccf631c1a013bbe51df7c9e84b5d0ad0bd1199031803f51929f60a",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xef57921014126ba5975243c1a211b3f04010a3e0bf88b238142d6e817b692070",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xcdff5df606acc2519c811d6ef4cc860ca2a5d9cfc5ba3d1230148e9fec7c3805",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x7bb788e63d18058c7f1ed50648b5585bd677d1c69adfde3bcb8e3452ea1d5fea",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x506c886cc2bf15d10e3127fa0483e381f16d078fd39b3c01a53fd8df2206617c",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x6c13447354bc549f14858f0961634b5ab644fe45c262ef8cf4a5684c7526282c",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x48e5b6c3876bc1cef7b768bdcad94cf3e7a4f5924183df362d9351f69f479dc0",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x08c890d74365cee7ec66b3ddc26c793f4e06739b73f36fb8a50902750ed29a63",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xc6e8c63bfdc9492e7c2cf40a9f8bf2028711b53266b1fd9325c1ed06d0492371",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x5d4fcab492bb3085e898e6f14ac9df5931503e2ab98fc77e37e3eccd62eaed40",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x2d9d700ce3419f76fc303021feaaec4281acb0ab33ed72ab94b73ac6a4807e5a",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x8fbdbf34e4d109c3c7259bbcfb2c79db45cef92abe31a3ba7c5939a16a467ff7",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x1dde0805990c382e3f9c34cdc37f61d54a9759a0f3cbd92bb1f240773a3d2fad",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x089155e64b0d25b9a713f3d2713a9e4f6450ccabef9b94d176c80721220f1cb5",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x2256747b17427c0d05ee475ae8cef0a2d0a1ada684379fff04c6d20919243896",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xa5c846e39cff03bd6cd9e3a524db98725923b0c86a52c4b67a171f7b41f08361",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x66a7bbaaf55c1e8178df7876b1b1bc02fc6d2536c38363af2332f9d39958edc4",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xb056ea39c2b23917fb48c6b033720adcbc6ab4c21c34362126560d4a40a6b77b",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xc31995b5c363b8bbda4439a2ef217bc6cac6bce33266bf683f572c1780b5782d",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x07817074c7de20263a1d6a2b4a17ac2f4a9443db37b3d28a7fff883876d34573",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x138ea2a5a238071d47e07efb067c93295a303545ef76d506a543387f0bc07c4f",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x20f52bd35335ca24dbe7b0a0b101d2df47ea79b38d66f4e309087df5d1e268fe",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x0a154f14a59b19b3d84e69ec5b2459ce3acb4dab582730665d35cc0b62e08c9a",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x316b8388bea4ea2fa42a8cd1ec62963156c2b3bec9b40b3f97066542c76d569b",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x39cc1118870396e0d3a7fe0d430e9f70707b5e3623db9ac2e4eed4cd2d3e05a1",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xfb6c5c769463efee967a63bbc98cdbbefc4dad44ec8f2764ecab7086426862c1",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x01686efd7cdabb9a93471c008b8a13d3b3023a56eb34cd7ca19a6ab8fd54853a",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x5b34e6cf40c4051de4803ba4e356d5d0088243be970a5220b8e35e671597a6e5",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x9a31b1696e74852144480d01431bf4bf15ff017677da467e529440cd28623bd8",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x53911f9181dad48981a0812dc5ab6829502000b5954264971dcdeaa046e6c812",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x88edfa87dab0ad7eb49e9e5376e9a8a77bec785dca148cf98af803df8ac80122",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x53d633a184e798e6e9b26065813a6e9bdbb31d8cf8a461e11eb1de6b20f13c94",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xd6f8c7f29f6ce8361b44822dedcab7ea98d7f13526c01c12bea34bbea85b1fc7",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xb72ef330f87afa4d3b32b54962fb96b374d2d35992303aa0b830f741204eb48d",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0x84a91754fd7840d89c71bb5472f5157cd26192e0601186f50fb60593b7e9bc78",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xaabdf46c4a97038c50ec14f52efc7e31686580515f0def98876369ab4e787fbc",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xe2ed02645edd3e5abcd471641a7c4f107039a386412575f7ffe5c9d7c54efd5f",
+      "ore": 22.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 51.6
+    },
+    {
+      "conditionId": "0xfad97d4875cecc4cfc626b4a762bc653ab0f3e69ecb2b49a75ff449a2e76c289",
+      "ore": 23.5,
+      "rewardsMinSize": 50,
+      "margineNettoRichiestoPct": 50.5
+    },
+    {
+      "conditionId": "0x3de39f25c6c7f15ead26ef1dbc4c62c0d0c69861be5cccda47d98df64baf7961",
+      "ore": 26.5,
+      "rewardsMinSize": 50,
+      "margineNettoRichiestoPct": 47.5
+    },
+    {
+      "conditionId": "0xdeb729bc563b4d5e176137a460599b10aa6531f40efb14a14f7dff4673a11252",
+      "ore": 26.5,
+      "rewardsMinSize": 50,
+      "margineNettoRichiestoPct": 47.5
+    },
+    {
+      "conditionId": "0x7619b095e07ae8f398303b7bca362e58246b0b6093aff9cba960906e405bf60e",
+      "ore": 26.5,
+      "rewardsMinSize": 50,
+      "margineNettoRichiestoPct": 47.5
+    },
+    {
+      "conditionId": "0x790474c004aa9cdd243b4c5b343bca994ea0e69782530b5bf52daad252ecd8d7",
+      "ore": 26.5,
+      "rewardsMinSize": 50,
+      "margineNettoRichiestoPct": 47.5
+    },
+    {
+      "conditionId": "0x3f1dc6b57ac3fda5b95d25c8db01ba5335e46dfe2f6be50dfff04710fab0e4ac",
+      "ore": 34.5,
+      "rewardsMinSize": 50,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0xda9215cfc9cb6ac927a36a22dced1e66aa4a8c2173a134320a79aabdcb66629d",
+      "ore": 34.5,
+      "rewardsMinSize": 50,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0x65109969538f6c3302999c293cbdcd73036faa624cd46378a82fea5fd1c7a7fa",
+      "ore": 34.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0x23ff21fc91a4aa9af85e9c0018b378ee937b9ecec3e3fbacc9b00513267e12aa",
+      "ore": 34.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0xdca7693457826c4d2397bb82c087ddc7dbbd759175f08d7515ca19d4289f415e",
+      "ore": 34.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0xec0aef11295f1aecb1a81abd3939ddf665bca1482377e905816bebbd3fa983cd",
+      "ore": 34.5,
+      "rewardsMinSize": 50,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0x3492e5634136aa730dee5d619c5ef61a8e26b508b3edc5f2ff2dcdfddf16fc9c",
+      "ore": 34.5,
+      "rewardsMinSize": 50,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0x34ca70117eea11224742709bc59947a089b5c918918155e417f72d541ff9fd46",
+      "ore": 34.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0xf7e970da0466afa11887917fe24efa0e20226b338486c69217f25bf87920157e",
+      "ore": 34.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0x0bd56b4e8ce56d35047f50bc79075abe6e99bc24df0e0cc84a965e01ad411855",
+      "ore": 34.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0xc2e76d6660636d87a7ac7f2d87c114362ed9673bd75bb0fd4d429b71ac3b33da",
+      "ore": 34.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 41
+    },
+    {
+      "conditionId": "0xea3b4d2804ea76b1f8c265420255ce807a41c89c275cbdd18a0ea0ed59238cd2",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xf842b11c777082b2c365ff84741180d3d69dad79707f91cdd05b3586200cd13a",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xd4b496ded4403dc0a908d61c0e2346d59efafe688d424c443d200bba41f59a02",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x3f71f5be5fcb1a2d6bb4760a59b150ad77faf3c27d48ec40fc738b158390639f",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x64243bafbeae78f3c9b5ff59c2285d9595fdfab8b7bda66d2f6fe9d1fb234a09",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xef97248f4c64a6822906305877355e4aa1b5b39c12842755262a972b4fcdd6cb",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x424e24ace4cad4f45feba89adce412a50b7ce8c6cd526bea0f8dcf9dde43b7bc",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x22c2075d44723e63873fe9069da7b88392b85c1de6beefbc33f89cfc6c5f86d5",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x5e8f6ce803ed016c8d7c8dfb6e6444b174746f1daa00a9f164bca77f41d0c9b3",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x1856c5f99d7a318757c0445572c7b353a19558e8a750cc28aa3ebce97548f0d1",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xb64f65a870174cb117f16d38994cf30181d950fa9c2a140381ab48485e11eb5a",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x4590c48a315fb1bb2e18af5a89a924baf44dffa1e84daea59e68cb81cafb1b3c",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xe932ccf9d94ea575943a1eabf9c854391c06e4d076be5f22a5c3c6481a6274bf",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x5cc226ed878c28c74f52871abe0b4c778c52c0e16704fc8453db521f621a1f99",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x9e437adad6fe3927080bbe276d0499094822655c312091ffb8fc80f5c738bda1",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xad967925fbe726ae444dbce86ecdb527162141720acd6e6a34a18137ebb4cb4c",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xa1a422b838f046ef3a2358cc37387f1d5f03534cc1c8eea92899d03e54b9cb7a",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xb0d077e39fe50ba4365a4db2be81fe96c24cd8633cff8715a9ec1a597942507f",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x7d89ee76ec747d487f74a139dba3be66d03a243f281e4a7c234d2683214e444f",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x25ef63f39f9110ec5e749cd68f9295ddc79600a9c6c6b383fda0ec2b764c99c1",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xb5b53cb31aff4aa12da8bb7459674e14febf7232393d1008d9137ee381365f18",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x5347fa016922a4a74c16c05ce6289eba7f4c4159c7e546bf45b331f40ac38265",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x156b34ade9c3b0624a65ca36d55da8209f8f0ce7e9e49ea1b393fb72edba67eb",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xa78881bdc91051607b09d1d6748e2affd14cd260969ec1b8c244bc6eed3cfd21",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x1da0c5b742f6f0e8ccc2b5e23683d897336e1b3ec4e7c853c9d4db13b55bc9d0",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x05d2edf82bc2b4bf89813bb989432a5bb038e1dfa86e0f063286dd34ba903485",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x4a848494e3e36590a6a38ab474dd457cbf478f1aefbb05d3ce8813d63b7fc7a4",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x39975a154708b74c7be94537254b3879c8050ebdbc35c8f5ea3aa2b060d48111",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xd398e0aa6daa131d8c185529c29f2b7e50b00372d2e24b6a485b29f667a58bea",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x9fe7f0a5a021aa8f8bdaf0b51fbab09f37cc70f0e3a55e23a2947009cfa5918b",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x120bace883770b8c1576c23d0babbc095041b69bea7c1b1ad0cb34c311d20a25",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x7a582c37338e42f5ea7efe2111d4be511cc773f9fda727d81a2ec9d1ee8f0bdd",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xf665befa40d3aa25ddeee20d4c0dae34195bb070db8c31d2264c3ba8e5146e56",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x9ad0353e38784493c1b776999e72fdc85a6d9b5c4b621f044947aec7a54908d6",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x89f7c181d5f2f46d35aca062d1fcad2b8be8586fc3abf94931789fa3c089fb1b",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x82f459c9803c151626242417e2d689604ce68ffae6394a9c0e63fb4a01179216",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xd7c90fc4e9e9d912cfc73c50d8533a0e292e431d1ab76f604c61c799110855a9",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x87f6215cadbd251c6ec5985277a5a204e67ac8b6112810257c0f4de271005e2f",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xb9b950b04bb3d91bb35b03fe832a03e544e2b469957497740d9ffd39aa7a3402",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x42ca6471e3bfc0d040d355a3e9dc73a86986be7387a754f0a41e770ccfcfdea9",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x3bbaade437e6d1a27026903800c06982baafcfd25dc4494f9fa1e18984bf30de",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xc286135eac95707b62740539d51b8d6720b4ab479d9bb5148bfdc1c62a3f9340",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xd570467681f28301f9d5017ea9910205a3f036770fc351070acc8dcb4919a287",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x1862b8aa032fa9600fcba63514beaab7d16765016498dfde02be938455aae7a0",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xb3a9e6742e9e54d90008b51ea47fd63e79653160b38074f79593d255567c38e3",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x754da6484de0d33f8281b609424d802c83a8289e6ea8eab1ce9cb11c2f410414",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xc74e46f844f5c6694f22066e58f409489230bd90a64d6e1a6808a54d8a7b65d2",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xb213ff1cbc26d65a34df77a479bed0d8663b5bae903505cbfc43af56028fa2ee",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x22206014d9b7e2073abc26499807343e79426973d9bc9fb3e112898e21f70ad9",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xb02bff3a8c63aebec5d4723289f50d23c31c93532b77157c0cf51faf43fd705b",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x2ce92bac723ee4528c0b143de54cc121c225c992542c52cbf1767ce392d5c8da",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x7586f48b5712c83ddb8b117ea3f620ba7d186cfac4e1360d4193981883f66fbc",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x35173069eca6ee47a7c9e69a0953d1b5fb6577a9e149b6d773bb9431edf93407",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xdcdcf249c1ac84fadeceba410d07586d20b8a25ea8c3ddbaaae11dccdd3974b9",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xc12a35c8744ed637ceca451e724caf653bfc1fbf99fb1bfeda40311bf5a74055",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x1cceed890607741574187f2b2153f865d3ea7aa6d8c8421c9025e369bfd8a3a2",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xdf7ecc7492ee2617d8c0ecf294da2d20928379a0b7fe2955ff9db005d89964c5",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xf5756ef2cd89bbf5d7c695b3a535242996edc3a9d3245abc977d6c183ccb21eb",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xec28c073a83c6a28c63ec7b8c37b445f75bc09d52acb447ad5c8c43e3d2e2eba",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x84abb0a6e814101ab9c8b6d0b79cb060a999d43c0c39b45061f82b10dc048727",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xbe230623173aa6b3add6ea31823840b0256e0c10382994f40e825e2759e598f8",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x9821be483f41bb78c7dd89df863fdaf2a17ba979ff52762ee56cce77e98d9a95",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xdd2ae5eff708f399d7aa53674c0ba5c708fe163cf78f8b21eab8b8486a4acfd3",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x93328de4ce63a80849c64b138eac5bf9de94d3508c7e17764385483d2e9715e3",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xabb9fec56de3488996a297a512a60bd8817fdc18c5a5346a4c5a2bca84002898",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x59f4a63902e92e5b5899ed17aa35610461c6d8cbf3e6996a7d0853a395d2d086",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x89f40064bb4a96a58e04acd44b292c970c93463b3df47bc01ff09e56e09d1857",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x9523d473f9921ec0f46ff9e6489a8d1774933b1611b7ce364adf89d14fcae919",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x4eeb4c3f950db13a2e3902cf73f6debbd8c745f18004009aa8e7793c69384cf8",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xcd81364d40c4014b5d821fc66ddaa44eaabae6cc160adadaee838f297149b4d4",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x98ba93da1177f8fe6680c89dd6ff944249dc26085dc5961ab97987eaac4b870f",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x8e4f387f6e0d4043efab3d39feb079fb8b1995b8d18e846b77bdd4ed9d7945e8",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x19e680c11e486637ee34367d03a6c87d526e39a4ef0bdea9cae92465d7d29b47",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x69ab6083e625067c5c4c417d4e3e88c0692cdf3ed207cda56af1317e21b69637",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xf09746b72d155020a9e25827acbb600f2113832e7d2e4e7fcca81399adb281ca",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x62eca1fa95cee50bd283b48ec776dc36e8a17dfea99398d76ea8679ba48f26a4",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x59b681ded6648080863af8b481b15c24e3b23b69bb947bdb4ddfa82dbc62d82e",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xc6b288e7308e1045b76b7f80c3c8b3d318e3d0bc35cbb6efddb5cac8a9bd81c4",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x0e76013a5cfb7a4523a688da659cc684423dbb620592313eeb6458f4096aa67f",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x69a194d590f7cdee9e27759067c16985039fe34c811a9404b74f2ca528ba252e",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0x15cee239434b350865723054c8bdc63755832b3610b729513a33e73be0bdf278",
+      "ore": 46.5,
+      "rewardsMinSize": 20,
+      "margineNettoRichiestoPct": 34
+    },
+    {
+      "conditionId": "0xad22b2c5e3e9ead1cef697cc49fea881bf7663797f8ebff0b62a5d3a6e9bc895",
+      "ore": 47.5,
+      "rewardsMinSize": 50,
+      "margineNettoRichiestoPct": 33.6
+    }
+  ],
+  "finanziati": [
+    {
+      "shortId": "0x3f1dc6b5…e4ac",
+      "giorni": 1.44,
+      "grossPerDay": 4.6693,
+      "netPerDay": 3.6956,
+      "costPerDay": 0.9736,
+      "margineNettoPct": 79.1,
+      "sogliaRichiestaPct": 41,
+      "payback": 0.26,
+      "stato": "ok",
+      "motivo": "scade fra 1.4 g, rientro in 0.3"
+    },
+    {
+      "shortId": "0xda9215cf…629d",
+      "giorni": 1.44,
+      "grossPerDay": 4.4627,
+      "netPerDay": 3.0511,
+      "costPerDay": 1.4116,
+      "margineNettoPct": 68.4,
+      "sogliaRichiestaPct": 41,
+      "payback": 0.46,
+      "stato": "ok",
+      "motivo": "scade fra 1.4 g, rientro in 0.5"
+    },
+    {
+      "shortId": "0x6f7c79f7…1299",
+      "giorni": 2.1,
+      "grossPerDay": 0.8203,
+      "netPerDay": 0.8203,
+      "costPerDay": 0,
+      "margineNettoPct": 100,
+      "sogliaRichiestaPct": 32.2,
+      "payback": 0,
+      "stato": "ok",
+      "motivo": "scade fra 2.1 g, rientro in 0.0"
+    },
+    {
+      "shortId": "0x0840c844…e607",
+      "giorni": 2.31,
+      "grossPerDay": 2.3582,
+      "netPerDay": 2.3582,
+      "costPerDay": 0,
+      "margineNettoPct": 100,
+      "sogliaRichiestaPct": 30.2,
+      "payback": 0,
+      "stato": "ok",
+      "motivo": "scade fra 2.3 g, rientro in 0.0"
+    },
+    {
+      "shortId": "0x28e2a37c…b0e3",
+      "giorni": null,
+      "grossPerDay": 3.0441,
+      "netPerDay": null,
+      "costPerDay": null,
+      "margineNettoPct": null,
+      "sogliaRichiestaPct": null,
+      "payback": null,
+      "stato": "unknown",
+      "motivo": "scadenza non leggibile — non viene indovinata"
+    },
+    {
+      "shortId": "0x65109969…a7fa",
+      "giorni": 1.44,
+      "grossPerDay": 24.5339,
+      "netPerDay": null,
+      "costPerDay": null,
+      "margineNettoPct": null,
+      "sogliaRichiestaPct": 41,
+      "payback": null,
+      "stato": "unknown",
+      "motivo": "costo di adverse selection non misurato — nessun rientro calcolabile"
+    },
+    {
+      "shortId": "0x14d32732…1988",
+      "giorni": 128.44,
+      "grossPerDay": 0.124,
+      "netPerDay": 0.124,
+      "costPerDay": 0,
+      "margineNettoPct": 100,
+      "sogliaRichiestaPct": 0.8,
+      "payback": 0,
+      "stato": "ok",
+      "motivo": "scade fra 128.4 g, rientro in 0.0"
+    },
+    {
+      "shortId": "0x6d244daa…7779",
+      "giorni": 7.44,
+      "grossPerDay": 1.7656,
+      "netPerDay": 1.6068,
+      "costPerDay": 0.1589,
+      "margineNettoPct": 91,
+      "sogliaRichiestaPct": 11.9,
+      "payback": 0.1,
+      "stato": "ok",
+      "motivo": "scade fra 7.4 g, rientro in 0.1"
+    },
+    {
+      "shortId": "0x5e082f0b…905c",
+      "giorni": 128.44,
+      "grossPerDay": 0.0382,
+      "netPerDay": 0.0382,
+      "costPerDay": 0,
+      "margineNettoPct": 100,
+      "sogliaRichiestaPct": 0.8,
+      "payback": 0,
+      "stato": "ok",
+      "motivo": "scade fra 128.4 g, rientro in 0.0"
+    },
+    {
+      "shortId": "0xbfc776a7…15f8",
+      "giorni": 128.44,
+      "grossPerDay": 0.0697,
+      "netPerDay": null,
+      "costPerDay": null,
+      "margineNettoPct": null,
+      "sogliaRichiestaPct": 0.8,
+      "payback": null,
+      "stato": "unknown",
+      "motivo": "costo di adverse selection non misurato — nessun rientro calcolabile"
+    },
+    {
+      "shortId": "0xde3801fc…115a",
+      "giorni": null,
+      "grossPerDay": 6.8745,
+      "netPerDay": null,
+      "costPerDay": null,
+      "margineNettoPct": null,
+      "sogliaRichiestaPct": null,
+      "payback": null,
+      "stato": "unknown",
+      "motivo": "scadenza non leggibile — non viene indovinata"
+    }
+  ],
+  "controfattualeSuiFinanziati": [
+    {
+      "ore": 24,
+      "sogliaRichiestaPct": 50,
+      "passerebbero": 7,
+      "su": 7
+    },
+    {
+      "ore": 25,
+      "sogliaRichiestaPct": 49,
+      "passerebbero": 7,
+      "su": 7
+    },
+    {
+      "ore": 28,
+      "sogliaRichiestaPct": 46.2,
+      "passerebbero": 7,
+      "su": 7
+    },
+    {
+      "ore": 36,
+      "sogliaRichiestaPct": 40,
+      "passerebbero": 7,
+      "su": 7
+    },
+    {
+      "ore": 48,
+      "sogliaRichiestaPct": 33.3,
+      "passerebbero": 7,
+      "su": 7
+    }
+  ]
+}
