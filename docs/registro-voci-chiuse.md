@@ -723,3 +723,47 @@ Solo numero e titolo: serve a risolvere «§5 punto N», il resto è in `git log
    che confronta il versionato col disco chiave per chiave — una difesa che non vive nella memoria di
    chi ha scritto il numero. Due copie significavano solo che una sarebbe invecchiata, ed era
    invecchiata a $150 per un giorno.
+
+### §5.2 p.37 — cap ≥ esposizione massima raggiungibile (chiusa il 19 agosto 2026)
+
+37. **✅ CHIUSA IL 19 AGOSTO** — l'invariante è **`cap ≥ esposizione massima raggiungibile`** (N coppie a
+   riposo **più** il loro completamento), non `cap ≤ N × tetto per mercato`; definizione unica in
+   `concentration.esposizioneMassimaRaggiungibileUsd(N)`. **⚠ Non si scende sotto**: un tetto che
+   impedisce di CHIUDERE non è un limite di rischio, è un rischio. Diagnosi integrale:
+   `docs/registro-voci-chiuse.md`.
+
+### §5.2 p.57 — quotaScaglioni round(N/3) (chiusa il 22 agosto 2026, sera)
+
+57. **✅ CHIUSA IL 22 AGOSTO, sera** — `quotaScaglioni` dà `round(N/3)` posti «basso» (almeno 1, al
+   più N−1): a N=12 sono **4 + 8**, a N=3 restano **1 + 2**, cioè la regola originale dell'operatore.
+   Misurato prima del cambio: 4 slot vuoti su 12 e **6 candidati scartati con `quota-scaglione-piena`,
+   tutti «basso»**; simulato dopo, sullo stesso board: **3 entranti, tutti nella fascia corta**.
+   ⚠ **Non muove il capitale**: `MARKET_CAP_FIXED_USD` è $61,25 per mercato in entrambi i secchi,
+   quindi `N × 2 × tetto = 12 × 2 × $61,25 = $1.470` è il cap versionato, e la quota non compare in
+   quel conto (asserito, `secchio-basso-scala.test.js` ⑤). Regola viva in §4.13.
+
+### §5.2 p.54 — le due fonti del totale si riconciliano sul valore (chiusa il 22 agosto 2026)
+
+54. **✅ CHIUSA IL 22 AGOSTO** — la cura non è una tolleranza sui timestamp (misurata e scartata) ma la
+   **conservazione del valore**: `Δcassa + Δsize ≈ 0`, o il totale non è misurabile. Regola viva in §3,
+   diagnosi integrale in §5-bis p.204 e `docs/registro-voci-chiuse.md`.
+
+### §5.2 p.49 — obiettivo/stima concordano al bit (chiusa il 21 agosto 2026)
+
+49. **✅ CHIUSA IL 21 AGOSTO** — la catena obiettivo/stima concorda al bit; `realistic-estimate.js:269`
+   NON era solo display (ordina `scegliMercato` e alimenta `confrontoDiValore`), ma sul board vivo sposta
+   **uno scambio adiacente su 29** e la prima scelta non cambia. Diagnosi integrale:
+   `docs/registro-voci-chiuse.md`.
+
+### §5.2 — blocco «Chiuse oggi, e scese a una riga» (spostato il 23 agosto 2026)
+
+> **Chiuse oggi, e scese a una riga** (diagnosi integrale in §5-bis e in `git log`):
+> **p.15/16 guardiano k=2 + letture distinte** → §5-bis p.141 e p.145 · **p.17 registro residui senza
+> consumatore** → p.148 · **p.18 tetto per ordine sul riposizionamento scoperto** → p.147 ·
+> **p.21 «cancellazioni continue» = ciclo di riprezzo** → NO, misurato: vita mediana di un ordine
+> **18,2 min**, `band-exit` è una VALUTAZIONE (3.622 giudizi «fuori banda», **zero** cancellazioni) e
+> 3.898 dei 4.874 eventi sono macchina di CHIUSURA ·
+> **p.39 il residuo su fill parziale** → CHIUSO il 17/08: si cancella SEMPRE e subito (§4.6), la
+> condizione precedente era una tautologia e la guardia vera era «solo il primo giro» ·
+> **p.28 i due commenti a 110¢ in `auto-close.js`** → corretti il 16/08 nello stesso commit che porta
+> il tetto unico a 101¢ (§5-bis p.165), il reperto D7 non esiste più.

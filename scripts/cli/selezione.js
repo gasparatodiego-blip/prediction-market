@@ -38,8 +38,9 @@ const SELS = require('../../lib/maker/selezione-stato');
 function quantiVivi() {
   const v = C.flottaViva().per.get('agent41-realloc-scheduler');
   const amb = v && v.pid ? C.envDiProcesso(v.pid) : null;
-  const q = QUANTI.quantiMercati(amb || {});
-  return amb ? String(q.quanti) : `${q.quanti} (difetto: agent41 non vivo)`;
+  const q = QUANTI.provaQuantiMercati(amb || {});
+  if (!q.ok) return 'NON DICHIARATA (il processo non partirebbe: nessun difetto dal 24/08)';
+  return amb ? String(q.quanti) : `${q.quanti} (letto fuori dal processo: agent41 non vivo)`;
 }
 const VP = require('../../lib/safety/venue-positions-snapshot');
 const ARC = require('../../lib/maker/auto-reprice-config');
@@ -137,7 +138,14 @@ function prova() {
   // chiesto 1, cioe' mostrerebbe mercati che il bot non aprirebbe.
   const vivoQ = C.flottaViva().per.get('agent41-realloc-scheduler');
   const ambQ = vivoQ && vivoQ.pid ? C.envDiProcesso(vivoQ.pid) : null;
-  const maxQ = QUANTI.quantiMercati(ambQ || {}).quanti;
+  // ⚠ SENZA IL NUMERO NON SI SIMULA. Prima l'assenza valeva il difetto e la prova mostrava mercati
+  // per un tetto che nessuno aveva chiesto: e' lo stesso guasto del difetto, spostato nel reporter.
+  const provaQ = QUANTI.provaQuantiMercati(ambQ || {});
+  if (!provaQ.ok) {
+    console.log('\n  ' + C.col.rosso('NON SI PUO\' SIMULARE: ') + provaQ.errore);
+    return;
+  }
+  const maxQ = provaQ.quanti;
   const d = SELM.decidiSelezione({ board, stato: s.stato, posizioni: pos, ora: Date.now(), escludi: quar, orizzonteMassimoOre, max: maxQ });
   if (!d.ok) {
     console.log('\n  ' + C.col.giallo('NESSUNA DECISIONE: ') + d.motivo);

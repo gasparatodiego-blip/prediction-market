@@ -245,17 +245,20 @@ C.titolo('SELEZIONE DEI MERCATI');
   // riga che stampasse la costante direbbe 3 mentre il bot ne apre 1 — peggio che non stamparla.
   const vivoSel = C.flottaViva().per.get('agent41-realloc-scheduler');
   const ambSel = vivoSel && vivoSel.pid ? C.envDiProcesso(vivoSel.pid) : null;
-  const q = QUANTI.quantiMercati(ambSel || {});
-  const quantiTxt = ambSel ? `${q.quanti}` : `${q.quanti} (agent41 non vivo)`;
+  // ⚠ `provaQuantiMercati` E NON `quantiMercati`: dal 24/08 il numero non ha piu' un difetto e la
+  // lettura SOLLEVA quando manca. Un reporter che muore non riporta niente — qui l'assenza e' proprio
+  // la cosa da stampare, quindi si usa la variante che risponde `ok:false` invece di indovinare.
+  const q = QUANTI.provaQuantiMercati(ambSel || {});
+  const quantiTxt = !q.ok ? 'NON DICHIARATA' : (ambSel ? `${q.quanti}` : `${q.quanti} (agent41 non vivo)`);
   if (!s.leggibile) {
     riga('automatica', C.col.rosso('ILLEGGIBILE ⇒ SPENTA'), `${s.error} — la lista resta quella scritta a mano`);
   } else {
     riga('automatica', s.attiva ? C.col.verde('ACCESA') : C.col.giallo('spenta'),
       s.attiva ? `agent41 sceglie fino a ${quantiTxt} mercati a ogni ciclo`
         : 'la lista si scrive a mano con `mercati.js`');
-    riga('quanti mercati', C.col.ciano(quantiTxt),
-      `${q.motivo}${ambSel ? '' : ' — ⚠ letto dal DIFETTO, non dal processo'}`);
-    riga('composizione', C.col.spento(SELM.quotaScaglioni(q.quanti)
+    riga('quanti mercati', q.ok ? C.col.ciano(quantiTxt) : C.col.rosso(quantiTxt),
+      q.ok ? q.motivo : `${q.motivo.split('.')[0]} — ⚠ il processo NON PARTIREBBE: non c'e' piu' un difetto`);
+    if (q.ok) riga('composizione', C.col.spento(SELM.quotaScaglioni(q.quanti)
       .map((b) => `${b.posti}× ${b.chiave} (minSize ≤ ${b.maxMinSize})`).join(' + ')),
     'derivata dal numero, non dichiarata a parte');
     riga('vincoli', C.col.spento(`minSize ≤ ${SELM.MIN_SIZE_MASSIMA} · scadenza ≥ ${SELM.ORIZZONTE_MINIMO_ORE} h · niente meteo`), '');

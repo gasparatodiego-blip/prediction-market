@@ -146,6 +146,24 @@ const CASA   = os.homedir();
 // ⚠ LA LEGGONO DUE PROCESSI, E SI RIAVVIANO INSIEME (§5.1): agent41 apre, agent40 rinnova. Riavviarne
 //   uno solo fa divergere i prezzi. Lo strumento che le tiene allineate è `scripts/cli/distanza.js`.
 const DISTANZA_LUNGHI_FRAZIONE_V = String(3.0 / 4.5);   // 3,0¢ su banda ±4,5¢ ⇒ '0.6666666666666666'
+
+// ══ QUANTI MERCATI CONTEMPORANEI — UN `const` SOLO, LETTO DA DUE PROCESSI (24 agosto 2026) ═══════
+// ⚠⚠ DA OGGI QUESTA VARIABILE NON HA PIU' UN DIFETTO. `lib/maker/quanti-mercati.js` SOLLEVA se manca,
+// e' vuota, non e' un intero o cade fuori da 1..20 — quindi va dichiarata su OGNI processo che la
+// legge, e i due processi che decidono un prezzo la leggono entrambi: agent41 per SCEGLIERE i
+// mercati, agent40 e agent41 per verificare all'avvio l'invariante `N x 2 x $61,25 <= cap`.
+// ⚠ UN LETTERALE SOLO, come per la distanza: due `'18'` in due blocchi `env` sarebbero il reperto D1
+// su una decisione di capitale — potrebbero divergere e i due processi giudicherebbero l'invariante
+// su numeri diversi, cioe' uno partirebbe e l'altro no senza che nessuno capisca perche'.
+// ⚠ IL NUMERO E' UN CONTO SULLA CASSA, e va rifatto quando l'equity cambia:
+//     N = floor((equity − cassa obbligatoria $250) / tetto per mercato $61,25)
+//   Equity letta il 24/08 alle 04:47:01Z = $1.480,63 (cassa $1.456,64 + posizioni $23,99)
+//     ⇒ floor(($1.480,63 − $250) / $61,25) = floor(20,09) = 20 slot che la CASSA consentirebbe.
+//   ⚠⚠ MA IL CAP NE AUTORIZZA 19, E VINCE IL PIU' STRETTO: 20 x 2 x $61,25 = $2.450 > $2.400, cioe'
+//   l'invariante si romperebbe e i due processi NON PARTIREBBERO. La cura non e' alzare il cap — il
+//   cap e' un budget, alzarlo e' un ordine di allocare di piu' — quindi il tetto onesto di oggi
+//   resta **18**, che e' il numero gia' in servizio e non richiede di muovere nessun limite.
+const MERCATI_CONTEMPORANEI = '18';
 // ⚠ 3,5¢ → 3,0¢ il 23 agosto 2026, decisione dell'operatore (era 0,456 = 2,05¢ fino alla mattina).
 //   IL CONTO DEL MARGINE sui 30 lunghi ammissibili del board:
 //     ±4,5¢ tick 1,0¢ (16) ⇒ 3,000¢ · margine 1,500¢ = 1,50 tick ✔
@@ -382,6 +400,12 @@ module.exports = {
         // ⚠ 0,556 → 0,456 il 20 agosto 2026, decisione dell'operatore: 0,456 × v(4,5¢) = 2,05¢ dal mid
         // (`distanzaC = frazione × v`, lib/maker/distanza-obiettivo.js:227). Prima era 0,95 (bordo esterno).
         MAKER_DISTANZA_OBIETTIVO_FRAZIONE_V: DISTANZA_LUNGHI_FRAZIONE_V,
+        // ⚠ QUI DAL 24 AGOSTO 2026, E NON PER SCEGLIERE MERCATI: agent40 non seleziona niente, ma
+        // verifica all'avvio la STESSA invariante `N x 2 x $61,25 <= min(cap, tetto duro)` di
+        // agent41, e per verificarla deve conoscere N. Senza questa riga agent40 non partirebbe —
+        // che e' la risposta voluta di un numero senza difetto, non un effetto collaterale.
+        // Stesso `const`, quindi i due non possono divergere.
+        MAKER_MERCATI_CONTEMPORANEI: MERCATI_CONTEMPORANEI,
         // ══ GRADINO 1 · MAKER_MODE APERTA — 18 agosto 2026, istruzione dell'operatore ══════════════
         // «apri MAKER_MODE, fermati, poi MAKER_ADAPTER_DRYRUN. MANUAL_ORDER_PLACEMENT non si tocca.»
         //
@@ -525,7 +549,7 @@ module.exports = {
         // «il numero lo decido io prima di ogni sessione (uno, due, tre). I mercati li sceglie il bot.
         //  Un solo posto dove scrivere quel numero, letto dai processi vivi.»
         //
-        // ⚠ QUESTO È IL POSTO, ed è uno solo. Prima il numero era `MAX_MERCATI_CONTEMPORANEI = 3` nel
+        // ⚠ QUESTO È IL POSTO, ed è uno solo. Prima il numero era un letterale di sorgente nel
         // sorgente, e agent41 non lo passava nemmeno: non si poteva cambiare senza toccare il codice, e
         // `stato.js` stampava la costante di QUESTA copia del repo invece del numero del processo vivo.
         // Adesso vive qui, quindi si legge da `/proc/<pid>/environ` come le cinture (§5-bis p.184).
@@ -612,7 +636,7 @@ module.exports = {
         // ⚠ COMPOSIZIONE DERIVATA, non scritta: `quotaScaglioni(18)` ⇒ round(18/3) = **6 «basso»
         //     (minSize ≤ 20) + 12 «alto»**. E `MAKER_SLOT_CORTI` resta '2', cioe' 2 corti + 16
         //     lunghi: e' un secondo asse, ortogonale ai secchi, e non e' stato toccato.
-        MAKER_MERCATI_CONTEMPORANEI: '18',
+        MAKER_MERCATI_CONTEMPORANEI: MERCATI_CONTEMPORANEI,
         // ══ I DUE CONTATORI DI FASCIA — `MAKER_SLOT_CORTI` ═══════════════════════════════════════
         //
         // Quanti dei `MAKER_MERCATI_CONTEMPORANEI` slot appartengono alla fascia CORTA (scadenza

@@ -1034,13 +1034,25 @@ console.log(`commit worktree ${String(IDENTITA.commitWorktree).slice(0, 12)} · 
       prove.push({ chiesto: n, letto: letto.quanti, fonte: letto.fonte, posti,
         entranti: d.ok ? d.entranti.length : null, ok: letto.quanti === n && posti === n && d.ok === true && d.entranti.length <= n });
     }
-    // ⚠ E il valore illeggibile deve valere il DIFETTO, mai zero: un errore di battitura non puo'
-    // fermare il bot in silenzio. Si esercita nel giro, non solo nel test unitario.
-    const rotto = QUANTI.quantiMercati({ MAKER_MERCATI_CONTEMPORANEI: 'due' });
-    const okRotto = rotto.quanti === SELM.MAX_MERCATI_CONTEMPORANEI && rotto.fonte === 'difetto';
+    // ⚠⚠ LA PROPRIETA' E' CAMBIATA IL 24 AGOSTO 2026, E IL PASSO CON LEI (R1 lo impone: chi cambia
+    // una regola cambia anche il suo passo del banco, o la prova resta a difendere la regola vecchia).
+    // Prima: «un valore illeggibile vale il DIFETTO, mai zero». Adesso: **non esiste piu' un difetto**
+    // — un valore illeggibile SOLLEVA e il processo non parte. Il difetto era il modo in cui un errore
+    // di battitura diventava una posa su capitale vero, in silenzio.
+    let rotto = null;
+    try { QUANTI.quantiMercati({ MAKER_MERCATI_CONTEMPORANEI: 'due' }); }
+    catch (e) { rotto = e; }
+    let assente = null;
+    try { QUANTI.quantiMercati({}); } catch (e) { assente = e; }
+    const okRotto = rotto !== null && assente !== null
+      && /MAKER_MERCATI_CONTEMPORANEI/.test(String(rotto.message))
+      && /MAKER_MERCATI_CONTEMPORANEI/.test(String(assente.message));
     const ok18 = prove.every((x) => x.ok) && okRotto;
     passo('18 · R1 · il tetto dei mercati viene dall\'AMBIENTE, e la composizione lo deriva', {
-      ok: ok18, prove, valoreRotto: { grezzo: rotto.grezzo, quanti: rotto.quanti, fonte: rotto.fonte },
+      ok: ok18, prove,
+      valoreRotto: { grezzo: 'due', esito: rotto ? 'SOLLEVA' : 'NON HA SOLLEVATO',
+        messaggio: rotto ? String(rotto.message).slice(0, 120) : null },
+      variabileAssente: { esito: assente ? 'SOLLEVA' : 'NON HA SOLLEVATO' },
       ambienteDelProcesso: process.env.MAKER_MERCATI_CONTEMPORANEI ?? '(non dichiarata in questo processo)',
     });
     if (!ok18) annota('passo 18', `la catena ambiente→selezione non regge: ${JSON.stringify(prove)}`,

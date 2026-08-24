@@ -283,6 +283,24 @@ const { atomicWriteJson } = require('../lib/atomicJsonWrite');
 // fotografia ferma e' peggio di un processo caduto. Dettagli in `lib/safety/percorsi-critici.js`.
 require('../lib/safety/percorsi-critici').verificaOMuori('agent40-manual-reprice');
 
+// ══ L'INVARIANTE CAP ≥ ESPOSIZIONE, PRIMA DI QUALUNQUE ALTRA COSA — 24 agosto 2026 ═══════════════
+// `N x 2 x $61,25 <= min(cap versionato, HARD_CEILINGS.maxOpenNotionalUsd)`. Un controllo SOLO,
+// condiviso fra i due processi che decidono un prezzo, perche' due copie dello stesso conto
+// divergono (reperto D1) e qui divergerebbero su una decisione di capitale.
+// ⚠ STA QUI E NON DENTRO IL CICLO: un cap troppo stretto non rallenta il bot, lo fa smettere di
+// piazzare A META' STRADA lasciando gambe nude (§4.2, il guasto del 16 agosto). Meglio non partire.
+// ⚠ SOLLEVA ANCHE SE `MAKER_MERCATI_CONTEMPORANEI` manca o e' scritta male: il numero di mercati non
+// ha piu' un difetto (§ punto unico, 24/08), e un processo che lo indovina e' peggio di uno fermo.
+// ⚠ SOTTO `require.main === module`, ED E' LA STESSA GUARDIA CHE PROTEGGE `main()` VENTI RIGHE
+// PIU' IN BASSO — non e' un'esenzione, e' la definizione di «avvio». Un test che IMPORTA questo
+// file per ispezionarlo non e' il processo che parte, e non deve morire per un ambiente che non
+// ha; il processo che parte passa da qui e non ha nessun'altra strada, perche' TUTTO il lavoro
+// vive dentro `main()`, che ha esattamente questa guardia. Chi togliesse la guardia da `main()`
+// dovrebbe toglierla anche da qui, e un test lo verifica per identita'.
+if (require.main === module) {
+  require('../lib/safety/invariante-cap-slot').esigiInvarianteCapSlot({ processo: 'agent40-manual-reprice' });
+}
+
 const HEARTBEATS = fileRuntime('agent-heartbeats.json');
 // ── IL BATTITO CHE IL GUARDIANO DEVE SORVEGLIARE ────────────────────────────────────────────────────
 // Questo processo possiede gli ordini della corsia manuale: li piazza, li riprezza, li rinnova, li

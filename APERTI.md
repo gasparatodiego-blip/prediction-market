@@ -17,9 +17,16 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 > ⚠ Riavvio pm2 da confermare in chat (§2 r.2).
 >
 > ```bash
-> node -e "const f='data/safety-risk-limits.json';const j=require('./'+f);j.global.maxOpenNotionalUsd=1470;require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')" && sed -i "s/^\( *\)MAKER_MERCATI_CONTEMPORANEI: '18',/\1MAKER_MERCATI_CONTEMPORANEI: '12',/" agents/ecosystem.config.js && sed -i "s/^const MAX_MERCATI_CONTEMPORANEI = 19;/const MAX_MERCATI_CONTEMPORANEI = 12;/" lib/maker/selezione-mercati.js && pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler && pm2 save && node -e "console.log('cap in servizio:',require('./lib/safety/risk-limits').resolveLimits({userId:'op'}).limits.maxOpenNotionalUsd)" && tr '\0' '\n' < /proc/$(pm2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).find(x=>x.name.includes('agent41')).pid))")/environ | grep MAKER_MERCATI_CONTEMPORANEI
+> node -e "const f='data/safety-risk-limits.json';const j=require('./'+f);j.global.maxOpenNotionalUsd=1470;require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\n')" && sed -i "s/^\( *\)MAKER_MERCATI_CONTEMPORANEI: '18',/\1MAKER_MERCATI_CONTEMPORANEI: '12',/" agents/ecosystem.config.js && pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler && pm2 save && node -e "console.log('cap in servizio:',require('./lib/safety/risk-limits').resolveLimits({userId:'op'}).limits.maxOpenNotionalUsd)" && tr '\0' '\n' < /proc/$(pm2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).find(x=>x.name.includes('agent41')).pid))")/environ | grep MAKER_MERCATI_CONTEMPORANEI
 > ```
 >
+> **⚠ AGGIORNATA IL 24 AGOSTO 2026**: la riga conteneva anche un
+> `sed -i "s/^const MAX_MERCATI_CONTEMPORANEI = 19;/…12;/" lib/maker/selezione-mercati.js`, e da
+> oggi **quel letterale non esiste più** — il `sed` non avrebbe sostituito nulla, sarebbe uscito 0 e
+> avrebbe lasciato credere di aver abbassato il soffitto. È stato **tolto**, non aggiornato: il
+> numero adesso vive solo in `MAKER_MERCATI_CONTEMPORANEI` (`agents/ecosystem.config.js`,
+> `const MERCATI_CONTEMPORANEI`), che la riga già cambia, e l'invariante `N × 2 × $61,25 ≤ cap` è
+> verificata all'avvio: se le due cose non tornano, **i processi non partono** invece di quotare.
 > **⚠ L'ORDINE È OBBLIGATO, e va giù prima il numero di slot o non va giù affatto.** Il cap e il
 > soffitto sono legati dall'invariante `N × 2 × $61,25 ≤ cap`: abbassare il cap a $1.470 lasciando 18
 > slot vorrebbe dire $2.205 di esposizione autorizzata contro $1.470 di tetto, cioè **il gate che
@@ -58,23 +65,18 @@ se non si ripara. Lo stato del sistema al momento della chiusura è in fondo.
 
 ---
 
-> ## ⏪ RIPRISTINO DEL 23 AGOSTO 2026 — LA RIGA UNICA, INCOLLABILE SENZA PENSARCI
-> Riporta il bot com'era prima del giro del 23 agosto: **filtro meteo RIACCESO** e **corti a 3,0¢**.
-> Si esegue dall'utente `bot`, da `/home/bot/bot`. ⚠ Il riavvio pm2 va **confermato in chat** (§2 r.2).
->
-> ```bash
-> sed -i "s/^\( *\)MAKER_FILTRO_METEO: '0',/\1MAKER_FILTRO_METEO: '1',/" agents/ecosystem.config.js && sed -i "s/^\( *\)MAKER_DISTANZA_CORTI_CENTS: '[0-9.]*',/\1MAKER_DISTANZA_CORTI_CENTS: '3.0',/" agents/ecosystem.config.js && pm2 restart agents/ecosystem.config.js --only agent41-realloc-scheduler && pm2 save && tr '\0' '\n' < /proc/$(pm2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).find(x=>x.name.includes('agent41')).pid))")/environ | grep -E 'MAKER_FILTRO_METEO|MAKER_DISTANZA_CORTI_CENTS'
-> ```
->
-> **Cosa fa, in ordine**: mette `MAKER_FILTRO_METEO` a `'1'` (qualunque valore diverso da `'0'` **riarma**
-> il filtro — non serve togliere la riga) · riporta `MAKER_DISTANZA_CORTI_CENTS` a `'3.0'` (oggi è già
-> lì: la riga è idempotente e serve se qualcuno l'avesse mossa) · riavvia **solo agent41** dal file —
-> `--update-env` non rileggerebbe l'ecosystem (§5.1) · rifà `pm2 save`, o al reboot tornerebbe la flotta
-> di ieri · **rilegge le due variabili da `/proc`**, perché il ripristino si verifichi invece di crederci.
-> **⚠ Non tocca nessun ordine**: agent41 non abbandona il libro al riavvio (quella regola è di agent40).
-> **⚠ Azzera di nuovo la quarantena slot-sterile in memoria**, come ogni riavvio di agent41.
-> **⚠ Non riporta indietro il secchio basso** (`quotaScaglioni` 4+8): quello è codice committato e va
-> tolto con `git revert`, non con un env — ed è una decisione separata.
+> ## 🔴 NON C'È NESSUN RIPRISTINO DEL FILTRO METEO, E LA RICETTA CHE C'ERA QUI MENTIVA
+> **`MAKER_FILTRO_METEO` non esiste in nessun sorgente, in nessun `.env`, in nessun `/proc/<pid>/environ`**
+> — verificato il 24 agosto 2026: zero occorrenze in `lib/`, `agents/`, `agents/ecosystem.config.js`.
+> **Il filtro meteo previsto dalla regola 2 NON è in servizio come manopola**: il cancello è nudo a
+> `selezione-mercati.js` (`if (eMeteo(riga)) return { ammissibile:false, motivo:'famiglia-meteo' }`),
+> quindi è **armato e non spegnibile da configurazione**, e **§5.2 p.69 resta APERTA**.
+> **⚠ Qui c'era un `sed -i "s/MAKER_FILTRO_METEO: '0'/…'1'/" agents/ecosystem.config.js`**: quella
+> stringa nell'ecosystem non c'è, il `sed` non sostituisce nulla, **esce 0** e la riga proseguiva col
+> `&&` fino a `pm2 restart` — cioè **dichiarava un riarmo mai avvenuto e riavviava per niente**. Era
+> §5.2 p.69 (D7) spostata dal documento allo strumento di rollback, che è il posto peggiore: un
+> ripristino che fallisce in silenzio si scopre quando serve. **Non è ripristinabile con un `sed`:**
+> per avere l'interruttore bisogna **scriverlo**, e non è stato fatto in questo giro.
 
 ---
 
