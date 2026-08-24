@@ -1,0 +1,17 @@
+{
+  "nota": "ISTANTANEA PRIMA DEL RIAVVIO. ⚠ RICOSTRUITA DAL GIORNALE, NON LETTA DAL VENUE (CLAUDE.md: una ricostruzione non e una lettura). Il giornale registra il CONTEO di manual-list, non l elenco degli ordini: piu di cosi non c e su disco, e non si inventa.",
+  "presaAl": "2026-08-24T11:19:17.472Z",
+  "totaleOrdiniARiposo": 30,
+  "totaleOsservatoAl": "2026-08-24T11:19:00.928Z",
+  "perMercato": [
+    {
+      "mercato": "0x[redacted-64hex]",
+      "ordini": 2,
+      "osservatoAl": "2026-08-24T11:19:14.647Z"
+    }
+  ],
+  "posizioniAlVenue": {
+    "leggibile": true,
+    "token": 8
+  }
+}

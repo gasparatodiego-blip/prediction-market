@@ -1,0 +1,57 @@
+{
+  "at": "2026-08-24T11:17:42.872Z",
+  "istantanea": "dopo-travaso",
+  "totali": {
+    "eseguiti": 259,
+    "verdi": 251,
+    "rossi": 7,
+    "nonParte": 1
+  },
+  "rossi": [
+    "lib/maker/dipendenze-mai-iniettate.test.js",
+    "lib/maker/distanza-2c.test.js",
+    "lib/maker/end-of-scale-cycle.test.js",
+    "lib/maker/tetti-per-giro-e-scope.test.js",
+    "lib/rewards/categoria-mercato.test.js",
+    "lib/rewards/tetto-derivato-dallo-scaglione.test.js",
+    "lib/rewards/tetto-e-scoperta.test.js"
+  ],
+  "rossiDettaglio": [
+    {
+      "file": "lib/maker/dipendenze-mai-iniettate.test.js",
+      "coda": "sun nome compare in due famiglie\n\n── ④ `resolveOwnOrders` è collegata, e non può tornare morta in silenzio ──\n  ✓ `resolveOwnOrders` esiste ancora fra le dep analizzate\n  ✓   ed è INIETTATA da qualcuno\n  ✓   e NON è nell'inventario delle mai-iniettate\n\ndipendenze mai iniettate: 22 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/distanza-2c.test.js",
+      "coda": "ard, agent24-liquidity-rewards, agent-monitor, agent34-clob-ws, agent40-manual-reprice, agent38-tape-watchdog, agent41-realloc-scheduler, agent42-watch-makers, agent43-guardian, agent44-audit-scoperta, agent45-osservatore\n  ✓ …e nemmeno fra i processi critici da tenere sempre vivi\n\n45 verdi, 3 rossi"
+    },
+    {
+      "file": "lib/maker/end-of-scale-cycle.test.js",
+      "coda": "azza senza intervento — 2 nuovi ordini\n\n── la soglia non e duplicata: i due motori leggono lo stesso numero\n  ✓ nessuno dei due motori scrive 3.0 o 97.0 per conto suo\n  ✓ entrambi importano end-of-scale\n  ✓   e il modulo esporta un solo confine per lato\n\nend-of-scale nei cicli: 25 passati, 1 falliti"
+    },
+    {
+      "file": "lib/maker/tetti-per-giro-e-scope.test.js",
+      "coda": "-snapshot\",\"0x0840c8440eb6493c90256b358efd0a83105732167eff539a0825444ff43ae607\":\"ordini-a-riposo-snapshot\",\"0x6d244daa9ac01837aa4f16ab3b989c21458dcdf8e7417aa2f7221e35d4df7779\":\"ordini-a-riposo-snapshot\",\"0xde3801fcbe45f94ab23ae56c8fdd759b5736d8d92c774688acde561987e6115a\":\"ordini-a-riposo-snapshot\"}}"
+    },
+    {
+      "file": "lib/rewards/categoria-mercato.test.js",
+      "coda": "Gamma: 287/288 — 99.7% (soglia 90%)\n\n4 · il modulo è uno strumento di misura, non una regola del motore\n  ✗ nessun modulo di lib/, agents/ o app/ lo importa — lib/safety/riavvio-condizionato.js\n  ✓   e non legge file né rete\n  ✓   le categorie dichiarate sono le otto attese\n\n❌  39 passati, 2 falliti"
+    },
+    {
+      "file": "lib/rewards/tetto-derivato-dallo-scaglione.test.js",
+      "coda": "ernal/modules/cjs/loader:1091:12)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)\n    at node:internal/main/run_main_module:28:49 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: 1,\n  expected: 0,\n  operator: 'strictEqual'\n}\n\nNode.js v20.20.2"
+    },
+    {
+      "file": "lib/rewards/tetto-e-scoperta.test.js",
+      "coda": " più largo» ≠ «filtro spento»\n  ✓   e fallisce chiuso se la config non si legge\n  ✓ sottile e NON gestito ⇒ soppresso\n  ✓ sottile e GESTITO ⇒ resta sul board\n  ✓   e uno sano resta comunque, gestito o no\n  ✓ il cancello di profondità pre-knapsack non conosce l'esenzione\n\nROSSI: 54 passati, 9 falliti"
+    }
+  ],
+  "nonParte": [
+    "lib/leg-order.test.js"
+  ],
+  "statoToccato": [
+    "data/maker-auto-reprice.json",
+    "data/maker-manual-mode.json",
+    "data/selezione-mercati.json"
+  ]
+}

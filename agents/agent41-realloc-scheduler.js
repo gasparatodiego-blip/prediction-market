@@ -2926,6 +2926,10 @@ async function selezionaMercati(deps = {}) {
     // ⚠ SI SCRIVE ANCHE QUANDO SONO SPENTE (`attiva:false`): «la fascia non ha lasciato posti vuoti»
     // e «la fascia non c'era» sono due stati diversi, e un campo assente non li distingue.
     fasce: d.fasce || null,
+    // ── IL TRAVASO FRA FASCE — 24 agosto 2026 ──────────────────────────────────────────────────
+    // Anche qui dentro, oltre che nella sua riga propria: chi rilegge un record di selezione deve
+    // poter rispondere «quei tre posti chi li ha presi» senza cercare una seconda riga nel giornale.
+    travaso: d.travaso || null,
     fasceConfig: { corti: fascia.corti, lunghi: fascia.lunghi, totale: fascia.totale,
       fonte: fascia.fonte, grezzo: fascia.grezzo, clampata: fascia.clampata, motivo: fascia.motivo,
       distanzaCorti: DFASCIA.leggiDistanzaCorti() },
@@ -2939,6 +2943,20 @@ async function selezionaMercati(deps = {}) {
     statoSalvato: salvato.ok, statoErrore: salvato.ok ? null : salvato.error,
   };
   scrivi(rec);
+  // ── ⚠ LA RIGA DEL TRAVASO E' SUA, E SI SCRIVE ANCHE QUANDO NON TRAVASA — 24 agosto 2026 ─────────
+  // Decisione dell'operatore: «se nessun travaso avviene, la riga dice perche'». Un travaso mancato e
+  // un travaso mai valutato producono lo stesso disco se si tace, ed e' proprio la coppia di stati
+  // che serve distinguere il giorno in cui tre slot restano vuoti. La riga porta fascia di origine,
+  // fascia di destinazione, quanti posti, i conditionId, il netto con cui sono stati ordinati e
+  // quanti posti restano vuoti dopo — tutto cio' che `decidiTravasoFasce` ha gia' calcolato.
+  if (d.travaso) {
+    try {
+      scrivi({ ...d.travaso, esito: (d.travaso.posti > 0 ? 'travasato' : 'nessuno') });
+      if (d.travaso.posti > 0) {
+        annuncia('log', `selezione: TRAVASO fra fasce — ${d.travaso.motivo}`);
+      }
+    } catch { /* un giornale non scritto non annulla una decisione gia' presa */ }
+  }
   try {
     SELS.giornale({ op: 'giro', ...rec });
     appendMakerAudit({ ts: Date.now(), venue: 'polymarket', source: 'selezione-automatica',
